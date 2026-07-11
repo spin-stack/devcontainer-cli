@@ -472,6 +472,10 @@ contra el oráculo 0.88 (lanes contract + runtime, `PARITY_LANE=all`).
 - **`build --output`/`--push` con Dockerfile + features** — la imagen base es intermedia y debe
   quedar en el store local para que el build de features resuelva `$_DEV_CONTAINERS_BASE_IMAGE`;
   `--output`/`--push` se difieren al build final (como TS).
+- **`consistency=consistent` en workspaceMount** — 0.88 solo añade el sufijo `consistency=` en hosts
+  no-Linux (`getWorkspaceConfiguration`); en Linux el bind mount no lo lleva. Go lo ponía siempre;
+  corregido con gate por `runtime.GOOS`. Cerraba las 21 divergencias de `compare-parity.sh`
+  (read-configuration por fixture; ahora 39/39, 3 skipped).
 
 ### Ajustes de la matriz (no producto)
 
@@ -481,6 +485,7 @@ contra el oráculo 0.88 (lanes contract + runtime, `PARITY_LANE=all`).
   timestamp + `Error: ` para alinear un throw de TS con el mensaje plano de Go.
 - `parityEnv` fija `BUILDX_NO_DEFAULT_ATTESTATIONS=1` en ambos lados: el BuildKit nuevo adjunta
   attestations por defecto y rompe el `COPY --from` del build de features del TS.
-- Nuevo flag `expect_ts_failure` para divergencias documentadas donde Go es más correcto (TS falla
-  no-infra, Go tiene éxito); el test avisa si TS cambia. Aplicado al caso compose reuse-stopped con
-  overrides persistidos.
+
+> La divergencia sospechada en `compose reuse-stopped-with-persisted-overrides` (TS fallaba el
+> segundo `docker compose up --no-recreate`) resultó ser artefacto del setup con el path TS viejo;
+> con el setup apuntando al submódulo, TS y Go coinciden. No hay divergencia real registrada.

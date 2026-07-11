@@ -1419,9 +1419,8 @@ initial_cases:
     cleanup_cmd: "docker compose --project-name compose-dockerfile-with-features_devcontainer -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true; rm -rf ${USER_DATA_FOLDER}"
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
-    current_status: divergence
-    expect_ts_failure: true
-    notes: "Divergencia documentada (Go más correcto): incluso con el setup alineado al oracle TS, TS falla el segundo `docker compose up --no-recreate` con overrides persistidos y Go devuelve success. Marcado expect_ts_failure para mantenerlo visible; el test avisa si TS cambia."
+    current_status: match
+    notes: "Reuse de container compose parado con overrides persistidos. La divergencia observada antes (TS fallaba el segundo `docker compose up --no-recreate`) era artefacto del setup con el path TS viejo; con el setup apuntando al submódulo TS y Go coinciden."
 
   - id: up.compose-dockerfile-with-features-reuse-stopped-container-without-persisted-overrides-success
     no_compose_isolation: true
