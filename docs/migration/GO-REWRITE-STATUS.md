@@ -531,11 +531,16 @@ Resultado matriz endurecida: 0 fallos de producto reales; los compose flaky pasa
   con `\n   `, manifest re-indentado desde bytes crudos (preserva orden de anotaciones). Casos:
   `features-info.manifest-text-success`, `.tags-text-success`.
 
+- ✅ **`features/templates package` → `devcontainer-collection.json`**: emitido con orden de keys preservado
+  vía `github.com/iancoleman/orderedmap` (sourceInformation primero, 4-space indent), + validación
+  id/version/name. Byte-idéntico a TS. Caso: `features.package-collection-success`.
+
 ### Backlog restante (menor impacto / mayor esfuerzo)
-- `features package`: `collection.json` diverge en **orden de keys** (Go ordena, TS preserva orden fuente;
-  `sourceInformation` primero en TS) y el digest del tarball depende del encoding del header (Go archive/tar
-  vs node-tar). El file-list del tarball SÍ coincide. Requiere serialización JSON ordenada anidada.
+- `features package` **tarball digest**: el file-list coincide; solo el encoding del header del tar (Go
+  `archive/tar` vs node-tar: `%07o`+NUL vs `%06o`+space, gname) difiere → digest de layer distinto. Solo
+  afecta reproducibilidad bit-a-bit entre CLIs en `publish`; el contenido es correcto. Bajo impacto.
 - `features resolve-dependencies` / `features info dependencies`: Go no resuelve deps transitivas (FNodes sin
-  dependsOn/installsAfter en `features_resolve_deps.go`) + omite/diverge el grafo mermaid. Port sustancial.
-- Cobertura pendiente: `features package/publish/test`, `templates publish/metadata` (publish requiere
-  registry local).
+  dependsOn/installsAfter en `features_resolve_deps.go`) + grafo mermaid. El **formato mermaid es trivial**
+  (~15 líneas, Go ya lo genera); el trabajo real es portar `buildDependencyGraph` (fetch recursivo de
+  dependsOn/installsAfter). No requiere librería de mermaid.
+- Cobertura pendiente: `features publish/test`, `templates publish/metadata` (publish requiere registry local).
