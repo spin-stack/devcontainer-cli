@@ -7,124 +7,146 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 )
 
-func TestDevContainerConfig_ImageVariant(t *testing.T) {
-	input := `{"image": "ubuntu:22.04", "remoteUser": "vscode"}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
+func TestDevContainerConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		check func(t *testing.T, c *DevContainerConfig)
+	}{
+		{
+			name:  "image variant",
+			input: `{"image": "ubuntu:22.04", "remoteUser": "vscode"}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				if !c.IsImageConfig() {
+					t.Error("expected image config")
+				}
+				if c.IsDockerfileConfig() || c.IsComposeConfig() {
+					t.Error("should not be dockerfile or compose")
+				}
+				if c.Image != "ubuntu:22.04" {
+					t.Errorf("image = %q", c.Image)
+				}
+				if c.RemoteUser != "vscode" {
+					t.Errorf("remoteUser = %q", c.RemoteUser)
+				}
+			},
+		},
+		{
+			name:  "dockerfile variant legacy",
+			input: `{"dockerFile": "Dockerfile", "context": "."}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				if !c.IsDockerfileConfig() {
+					t.Error("expected dockerfile config")
+				}
+				if c.GetDockerfile() != "Dockerfile" {
+					t.Errorf("dockerfile = %q", c.GetDockerfile())
+				}
+			},
+		},
+		{
+			name:  "dockerfile variant build",
+			input: `{"build": {"dockerfile": "Dockerfile.dev", "target": "dev", "args": {"NODE_VERSION": "18"}}}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				if !c.IsDockerfileConfig() {
+					t.Error("expected dockerfile config")
+				}
+				if c.GetDockerfile() != "Dockerfile.dev" {
+					t.Errorf("dockerfile = %q", c.GetDockerfile())
+				}
+				if c.Build.Target != "dev" {
+					t.Errorf("target = %q", c.Build.Target)
+				}
+				if c.Build.Args["NODE_VERSION"] != "18" {
+					t.Errorf("args = %v", c.Build.Args)
+				}
+			},
+		},
+		{
+			name:  "compose variant",
+			input: `{"dockerComposeFile": "docker-compose.yml", "service": "app", "workspaceFolder": "/workspace"}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				if !c.IsComposeConfig() {
+					t.Error("expected compose config")
+				}
+				if c.Service != "app" {
+					t.Errorf("service = %q", c.Service)
+				}
+				if len(c.DockerComposeFile) != 1 || c.DockerComposeFile[0] != "docker-compose.yml" {
+					t.Errorf("dockerComposeFile = %v", c.DockerComposeFile)
+				}
+			},
+		},
+		{
+			name:  "compose variant array",
+			input: `{"dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"], "service": "app", "workspaceFolder": "/workspace"}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				if len(c.DockerComposeFile) != 2 {
+					t.Errorf("dockerComposeFile len = %d", len(c.DockerComposeFile))
+				}
+			},
+		},
 	}
-	if !c.IsImageConfig() {
-		t.Error("expected image config")
-	}
-	if c.IsDockerfileConfig() || c.IsComposeConfig() {
-		t.Error("should not be dockerfile or compose")
-	}
-	if c.Image != "ubuntu:22.04" {
-		t.Errorf("image = %q", c.Image)
-	}
-	if c.RemoteUser != "vscode" {
-		t.Errorf("remoteUser = %q", c.RemoteUser)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c DevContainerConfig
+			if err := json.Unmarshal([]byte(tt.input), &c); err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, &c)
+		})
 	}
 }
 
-func TestDevContainerConfig_DockerfileVariant_Legacy(t *testing.T) {
-	input := `{"dockerFile": "Dockerfile", "context": "."}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
+func TestLifecycleCommand(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		check func(t *testing.T, c *DevContainerConfig)
+	}{
+		{
+			name:  "string",
+			input: `{"postCreateCommand": "npm install"}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				s, ok := c.PostCreateCommand.AsString()
+				if !ok || s != "npm install" {
+					t.Errorf("postCreateCommand = %q, ok = %v", s, ok)
+				}
+			},
+		},
+		{
+			name:  "array",
+			input: `{"postCreateCommand": ["npm", "install"]}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				arr, ok := c.PostCreateCommand.AsStringSlice()
+				if !ok || len(arr) != 2 || arr[0] != "npm" || arr[1] != "install" {
+					t.Errorf("postCreateCommand = %v, ok = %v", arr, ok)
+				}
+			},
+		},
+		{
+			name:  "map",
+			input: `{"postCreateCommand": {"install": "npm install", "build": "npm run build"}}`,
+			check: func(t *testing.T, c *DevContainerConfig) {
+				m, ok := c.PostCreateCommand.AsMap()
+				if !ok {
+					t.Fatal("expected map")
+				}
+				if m["install"] != "npm install" {
+					t.Errorf("install = %v", m["install"])
+				}
+			},
+		},
 	}
-	if !c.IsDockerfileConfig() {
-		t.Error("expected dockerfile config")
-	}
-	if c.GetDockerfile() != "Dockerfile" {
-		t.Errorf("dockerfile = %q", c.GetDockerfile())
-	}
-}
 
-func TestDevContainerConfig_DockerfileVariant_Build(t *testing.T) {
-	input := `{"build": {"dockerfile": "Dockerfile.dev", "target": "dev", "args": {"NODE_VERSION": "18"}}}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
-	}
-	if !c.IsDockerfileConfig() {
-		t.Error("expected dockerfile config")
-	}
-	if c.GetDockerfile() != "Dockerfile.dev" {
-		t.Errorf("dockerfile = %q", c.GetDockerfile())
-	}
-	if c.Build.Target != "dev" {
-		t.Errorf("target = %q", c.Build.Target)
-	}
-	if c.Build.Args["NODE_VERSION"] != "18" {
-		t.Errorf("args = %v", c.Build.Args)
-	}
-}
-
-func TestDevContainerConfig_ComposeVariant(t *testing.T) {
-	input := `{"dockerComposeFile": "docker-compose.yml", "service": "app", "workspaceFolder": "/workspace"}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
-	}
-	if !c.IsComposeConfig() {
-		t.Error("expected compose config")
-	}
-	if c.Service != "app" {
-		t.Errorf("service = %q", c.Service)
-	}
-	if len(c.DockerComposeFile) != 1 || c.DockerComposeFile[0] != "docker-compose.yml" {
-		t.Errorf("dockerComposeFile = %v", c.DockerComposeFile)
-	}
-}
-
-func TestDevContainerConfig_ComposeVariant_Array(t *testing.T) {
-	input := `{"dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"], "service": "app", "workspaceFolder": "/workspace"}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
-	}
-	if len(c.DockerComposeFile) != 2 {
-		t.Errorf("dockerComposeFile len = %d", len(c.DockerComposeFile))
-	}
-}
-
-func TestLifecycleCommand_String(t *testing.T) {
-	input := `{"postCreateCommand": "npm install"}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
-	}
-	s, ok := c.PostCreateCommand.AsString()
-	if !ok || s != "npm install" {
-		t.Errorf("postCreateCommand = %q, ok = %v", s, ok)
-	}
-}
-
-func TestLifecycleCommand_Array(t *testing.T) {
-	input := `{"postCreateCommand": ["npm", "install"]}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
-	}
-	arr, ok := c.PostCreateCommand.AsStringSlice()
-	if !ok || len(arr) != 2 || arr[0] != "npm" || arr[1] != "install" {
-		t.Errorf("postCreateCommand = %v, ok = %v", arr, ok)
-	}
-}
-
-func TestLifecycleCommand_Map(t *testing.T) {
-	input := `{"postCreateCommand": {"install": "npm install", "build": "npm run build"}}`
-	var c DevContainerConfig
-	if err := json.Unmarshal([]byte(input), &c); err != nil {
-		t.Fatal(err)
-	}
-	m, ok := c.PostCreateCommand.AsMap()
-	if !ok {
-		t.Fatal("expected map")
-	}
-	if m["install"] != "npm install" {
-		t.Errorf("install = %v", m["install"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c DevContainerConfig
+			if err := json.Unmarshal([]byte(tt.input), &c); err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, &c)
+		})
 	}
 }
 

@@ -1,98 +1,85 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 )
 
-func TestSubstituteHost_LocalEnv(t *testing.T) {
-	ctx := HostSubContext{
+func TestSubstituteHost(t *testing.T) {
+	localEnvCtx := HostSubContext{
 		Platform: "linux",
 		Env:      map[string]string{"HOME": "/home/user", "USER": "test"},
 	}
-
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"${localEnv:HOME}", "/home/user"},
-		{"${env:HOME}", "/home/user"},
-		{"${localEnv:HOME}/project", "/home/user/project"},
-		{"${localEnv:MISSING}", ""},
-		{"${localEnv:MISSING:fallback}", "fallback"},
-		{"no vars here", "no vars here"},
-		{"${localEnv:USER}@${localEnv:HOME}", "test@/home/user"},
-	}
-
-	for _, tt := range tests {
-		got := SubstituteHost(ctx, tt.input)
-		if got != tt.want {
-			t.Errorf("SubstituteHost(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestSubstituteHost_WorkspaceFolder(t *testing.T) {
-	ctx := HostSubContext{
+	workspaceCtx := HostSubContext{
 		Platform:                 "linux",
 		LocalWorkspaceFolder:     "/home/user/project",
 		ContainerWorkspaceFolder: "/workspaces/project",
 		Env:                      map[string]string{},
 	}
-
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"${localWorkspaceFolder}", "/home/user/project"},
-		{"${localWorkspaceFolderBasename}", "project"},
-		{"${containerWorkspaceFolder}", "/workspaces/project"},
-		{"${containerWorkspaceFolderBasename}", "project"},
-	}
-
-	for _, tt := range tests {
-		got := SubstituteHost(ctx, tt.input)
-		if got != tt.want {
-			t.Errorf("SubstituteHost(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestSubstituteHost_UnknownVariable(t *testing.T) {
-	ctx := HostSubContext{Platform: "linux", Env: map[string]string{}}
-	got := SubstituteHost(ctx, "${unknownVar}")
-	if got != "${unknownVar}" {
-		t.Errorf("expected passthrough, got %q", got)
-	}
-}
-
-func TestSubstituteHost_Recursive(t *testing.T) {
-	ctx := HostSubContext{
+	emptyCtx := HostSubContext{Platform: "linux", Env: map[string]string{}}
+	recursiveCtx := HostSubContext{
 		Platform:             "linux",
 		LocalWorkspaceFolder: "/home/user/project",
 		Env:                  map[string]string{"HOME": "/home/user"},
 	}
 
-	// Test map substitution
-	input := map[string]interface{}{
-		"workspaceFolder": "${localWorkspaceFolder}",
-		"env": map[string]interface{}{
-			"HOME": "${localEnv:HOME}",
+	tests := []struct {
+		name  string
+		ctx   HostSubContext
+		input interface{}
+		want  interface{}
+	}{
+		// localEnv substitution
+		{"localEnv HOME", localEnvCtx, "${localEnv:HOME}", "/home/user"},
+		{"env alias", localEnvCtx, "${env:HOME}", "/home/user"},
+		{"localEnv with suffix", localEnvCtx, "${localEnv:HOME}/project", "/home/user/project"},
+		{"localEnv missing", localEnvCtx, "${localEnv:MISSING}", ""},
+		{"localEnv missing with fallback", localEnvCtx, "${localEnv:MISSING:fallback}", "fallback"},
+		{"no vars", localEnvCtx, "no vars here", "no vars here"},
+		{"multiple localEnv", localEnvCtx, "${localEnv:USER}@${localEnv:HOME}", "test@/home/user"},
+
+		// workspace folder substitution
+		{"localWorkspaceFolder", workspaceCtx, "${localWorkspaceFolder}", "/home/user/project"},
+		{"localWorkspaceFolderBasename", workspaceCtx, "${localWorkspaceFolderBasename}", "project"},
+		{"containerWorkspaceFolder", workspaceCtx, "${containerWorkspaceFolder}", "/workspaces/project"},
+		{"containerWorkspaceFolderBasename", workspaceCtx, "${containerWorkspaceFolderBasename}", "project"},
+
+		// unknown variables pass through unchanged
+		{"unknown variable", emptyCtx, "${unknownVar}", "${unknownVar}"},
+
+		// non-string values pass through unchanged
+		{"number passthrough", emptyCtx, 42.0, 42.0},
+		{"bool passthrough", emptyCtx, true, true},
+		{"nil passthrough", emptyCtx, nil, nil},
+
+		// recursive substitution into nested maps and slices
+		{
+			"recursive map and slice",
+			recursiveCtx,
+			map[string]interface{}{
+				"workspaceFolder": "${localWorkspaceFolder}",
+				"env": map[string]interface{}{
+					"HOME": "${localEnv:HOME}",
+				},
+				"ports": []interface{}{"${localEnv:HOME}:8080"},
+			},
+			map[string]interface{}{
+				"workspaceFolder": "/home/user/project",
+				"env": map[string]interface{}{
+					"HOME": "/home/user",
+				},
+				"ports": []interface{}{"/home/user:8080"},
+			},
 		},
-		"ports": []interface{}{"${localEnv:HOME}:8080"},
 	}
 
-	result := SubstituteHost(ctx, input)
-	m := result.(map[string]interface{})
-	if m["workspaceFolder"] != "/home/user/project" {
-		t.Errorf("workspaceFolder = %v", m["workspaceFolder"])
-	}
-	envMap := m["env"].(map[string]interface{})
-	if envMap["HOME"] != "/home/user" {
-		t.Errorf("env.HOME = %v", envMap["HOME"])
-	}
-	ports := m["ports"].([]interface{})
-	if ports[0] != "/home/user:8080" {
-		t.Errorf("ports[0] = %v", ports[0])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SubstituteHost(tt.ctx, tt.input)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("SubstituteHost(%v) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -156,20 +143,5 @@ func TestSubstituteContainer(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("SubstituteContainer(%q) = %q, want %q", tt.input, got, tt.want)
 		}
-	}
-}
-
-func TestSubstituteHost_NonStringValues(t *testing.T) {
-	ctx := HostSubContext{Platform: "linux", Env: map[string]string{}}
-
-	// Numbers, bools, nil should pass through unchanged
-	if got := SubstituteHost(ctx, 42.0); got != 42.0 {
-		t.Errorf("number = %v", got)
-	}
-	if got := SubstituteHost(ctx, true); got != true {
-		t.Errorf("bool = %v", got)
-	}
-	if got := SubstituteHost(ctx, nil); got != nil {
-		t.Errorf("nil = %v", got)
 	}
 }

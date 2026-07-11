@@ -6,162 +6,273 @@ import (
 	"testing"
 )
 
-func TestFindConfigFile_DevcontainerDir(t *testing.T) {
-	dir := t.TempDir()
-	dcDir := filepath.Join(dir, ".devcontainer")
-	os.MkdirAll(dcDir, 0755)
-	os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{"image":"ubuntu"}`), 0644)
+func TestFindConfigFile(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(dir string)
+		want  func(dir string) string
+	}{
+		{
+			name: "devcontainer dir",
+			setup: func(dir string) {
+				dcDir := filepath.Join(dir, ".devcontainer")
+				os.MkdirAll(dcDir, 0755)
+				os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{"image":"ubuntu"}`), 0644)
+			},
+			want: func(dir string) string {
+				return filepath.Join(dir, ".devcontainer", "devcontainer.json")
+			},
+		},
+		{
+			name: "root dot file",
+			setup: func(dir string) {
+				os.WriteFile(filepath.Join(dir, ".devcontainer.json"), []byte(`{"image":"ubuntu"}`), 0644)
+			},
+			want: func(dir string) string {
+				return filepath.Join(dir, ".devcontainer.json")
+			},
+		},
+		{
+			name: "prefer devcontainer dir when both exist",
+			setup: func(dir string) {
+				dcDir := filepath.Join(dir, ".devcontainer")
+				os.MkdirAll(dcDir, 0755)
+				os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{"image":"a"}`), 0644)
+				os.WriteFile(filepath.Join(dir, ".devcontainer.json"), []byte(`{"image":"b"}`), 0644)
+			},
+			want: func(dir string) string {
+				return filepath.Join(dir, ".devcontainer", "devcontainer.json")
+			},
+		},
+		{
+			name:  "not found",
+			setup: func(dir string) {},
+			want:  func(dir string) string { return "" },
+		},
+	}
 
-	got := FindConfigFile(dir)
-	want := filepath.Join(dcDir, "devcontainer.json")
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tt.setup(dir)
+			got := FindConfigFile(dir)
+			if want := tt.want(dir); got != want {
+				t.Errorf("got %q, want %q", got, want)
+			}
+		})
 	}
 }
 
-func TestFindConfigFile_RootDotFile(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, ".devcontainer.json"), []byte(`{"image":"ubuntu"}`), 0644)
+func TestLoadDevContainerConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		// files maps a path relative to the temp dir to its content.
+		files map[string]string
+		// configPath and overridePath are relative to the temp dir; empty means "".
+		configPath   string
+		overridePath string
+		wantErr      bool
+		check        func(t *testing.T, result *LoadResult)
+	}{
+		{
+			name: "image",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					"image": "ubuntu:22.04",
+					"remoteUser": "vscode",
+					"features": {
+						"ghcr.io/devcontainers/features/go:1": {}
+					}
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				if !result.Config.IsImageConfig() {
+					t.Error("expected image config")
+				}
+				if result.Config.Image != "ubuntu:22.04" {
+					t.Errorf("image = %q", result.Config.Image)
+				}
+				if result.Config.RemoteUser != "vscode" {
+					t.Errorf("remoteUser = %q", result.Config.RemoteUser)
+				}
+				if len(result.Config.Features) != 1 {
+					t.Errorf("features len = %d", len(result.Config.Features))
+				}
+			},
+		},
+		{
+			name: "dockerfile",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					"build": {
+						"dockerfile": "Dockerfile",
+						"context": ".."
+					}
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				if !result.Config.IsDockerfileConfig() {
+					t.Error("expected dockerfile config")
+				}
+				if result.Config.GetDockerfile() != "Dockerfile" {
+					t.Errorf("dockerfile = %q", result.Config.GetDockerfile())
+				}
+			},
+		},
+		{
+			name: "explicit path",
+			files: map[string]string{
+				"custom.json": `{"image": "alpine"}`,
+			},
+			configPath: "custom.json",
+			check: func(t *testing.T, result *LoadResult) {
+				if result.Config.Image != "alpine" {
+					t.Errorf("image = %q", result.Config.Image)
+				}
+			},
+		},
+		{
+			name: "workspace folder",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					"image": "ubuntu",
+					"workspaceFolder": "/custom/workspace"
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				if result.WorkspaceConfig.WorkspaceFolder != "/custom/workspace" {
+					t.Errorf("workspaceFolder = %q", result.WorkspaceConfig.WorkspaceFolder)
+				}
+			},
+		},
+		{
+			name: "jsonc with comments and trailing comma",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					// This is a comment
+					"image": "ubuntu",
+					"features": {}, // trailing comma
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				if result.Config.Image != "ubuntu" {
+					t.Errorf("image = %q", result.Config.Image)
+				}
+			},
+		},
+		{
+			name:    "not found",
+			files:   map[string]string{},
+			wantErr: true,
+		},
+		{
+			name: "override path",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{"image": "original"}`,
+				"override.json":                   `{"image": "overridden", "remoteUser": "custom"}`,
+			},
+			overridePath: "override.json",
+			check: func(t *testing.T, result *LoadResult) {
+				if result.Config.Image != "overridden" {
+					t.Errorf("image = %q, want 'overridden'", result.Config.Image)
+				}
+				if result.Config.RemoteUser != "custom" {
+					t.Errorf("remoteUser = %q", result.Config.RemoteUser)
+				}
+			},
+		},
+		{
+			name: "lifecycle commands",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					"image": "ubuntu",
+					"postCreateCommand": "npm install",
+					"onCreateCommand": ["sh", "-c", "echo hello"],
+					"postStartCommand": {"a": "cmd1", "b": "cmd2"}
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				s, ok := result.Config.PostCreateCommand.AsString()
+				if !ok || s != "npm install" {
+					t.Errorf("postCreateCommand = %v", result.Config.PostCreateCommand.Raw())
+				}
+				arr, ok := result.Config.OnCreateCommand.AsStringSlice()
+				if !ok || len(arr) != 3 {
+					t.Errorf("onCreateCommand = %v", result.Config.OnCreateCommand.Raw())
+				}
+				m, ok := result.Config.PostStartCommand.AsMap()
+				if !ok || len(m) != 2 {
+					t.Errorf("postStartCommand = %v", result.Config.PostStartCommand.Raw())
+				}
+			},
+		},
+		{
+			name: "features",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					"image": "ubuntu",
+					"features": {
+						"ghcr.io/devcontainers/features/go:1": {"version": "1.21"},
+						"ghcr.io/devcontainers/features/node:1": true,
+						"./local-feature": {}
+					}
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				if len(result.Config.Features) != 3 {
+					t.Errorf("features count = %d", len(result.Config.Features))
+				}
+			},
+		},
+		{
+			name: "mounts",
+			files: map[string]string{
+				".devcontainer/devcontainer.json": `{
+					"image": "ubuntu",
+					"mounts": [
+						"source=vol,target=/data,type=volume",
+						{"type": "bind", "source": "/host", "target": "/container"}
+					]
+				}`,
+			},
+			check: func(t *testing.T, result *LoadResult) {
+				if len(result.Config.Mounts) != 2 {
+					t.Errorf("mounts = %d", len(result.Config.Mounts))
+				}
+			},
+		},
+	}
 
-	got := FindConfigFile(dir)
-	want := filepath.Join(dir, ".devcontainer.json")
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for rel, content := range tt.files {
+				full := filepath.Join(dir, rel)
+				os.MkdirAll(filepath.Dir(full), 0755)
+				os.WriteFile(full, []byte(content), 0644)
+			}
 
-func TestFindConfigFile_PreferDevcontainerDir(t *testing.T) {
-	dir := t.TempDir()
-	// Both exist — .devcontainer/devcontainer.json should win
-	dcDir := filepath.Join(dir, ".devcontainer")
-	os.MkdirAll(dcDir, 0755)
-	os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{"image":"a"}`), 0644)
-	os.WriteFile(filepath.Join(dir, ".devcontainer.json"), []byte(`{"image":"b"}`), 0644)
+			configPath := ""
+			if tt.configPath != "" {
+				configPath = filepath.Join(dir, tt.configPath)
+			}
+			overridePath := ""
+			if tt.overridePath != "" {
+				overridePath = filepath.Join(dir, tt.overridePath)
+			}
 
-	got := FindConfigFile(dir)
-	want := filepath.Join(dcDir, "devcontainer.json")
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-func TestFindConfigFile_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	got := FindConfigFile(dir)
-	if got != "" {
-		t.Errorf("expected empty, got %q", got)
-	}
-}
-
-func TestLoadDevContainerConfig_Image(t *testing.T) {
-	dir := t.TempDir()
-	dcDir := filepath.Join(dir, ".devcontainer")
-	os.MkdirAll(dcDir, 0755)
-	os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{
-		"image": "ubuntu:22.04",
-		"remoteUser": "vscode",
-		"features": {
-			"ghcr.io/devcontainers/features/go:1": {}
-		}
-	}`), 0644)
-
-	result, err := LoadDevContainerConfig(dir, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Config.IsImageConfig() {
-		t.Error("expected image config")
-	}
-	if result.Config.Image != "ubuntu:22.04" {
-		t.Errorf("image = %q", result.Config.Image)
-	}
-	if result.Config.RemoteUser != "vscode" {
-		t.Errorf("remoteUser = %q", result.Config.RemoteUser)
-	}
-	if len(result.Config.Features) != 1 {
-		t.Errorf("features len = %d", len(result.Config.Features))
-	}
-}
-
-func TestLoadDevContainerConfig_Dockerfile(t *testing.T) {
-	dir := t.TempDir()
-	dcDir := filepath.Join(dir, ".devcontainer")
-	os.MkdirAll(dcDir, 0755)
-	os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{
-		"build": {
-			"dockerfile": "Dockerfile",
-			"context": ".."
-		}
-	}`), 0644)
-
-	result, err := LoadDevContainerConfig(dir, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Config.IsDockerfileConfig() {
-		t.Error("expected dockerfile config")
-	}
-	if result.Config.GetDockerfile() != "Dockerfile" {
-		t.Errorf("dockerfile = %q", result.Config.GetDockerfile())
-	}
-}
-
-func TestLoadDevContainerConfig_ExplicitPath(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "custom.json")
-	os.WriteFile(configPath, []byte(`{"image": "alpine"}`), 0644)
-
-	result, err := LoadDevContainerConfig(dir, configPath, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Config.Image != "alpine" {
-		t.Errorf("image = %q", result.Config.Image)
-	}
-}
-
-func TestLoadDevContainerConfig_WorkspaceFolder(t *testing.T) {
-	dir := t.TempDir()
-	dcDir := filepath.Join(dir, ".devcontainer")
-	os.MkdirAll(dcDir, 0755)
-	os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{
-		"image": "ubuntu",
-		"workspaceFolder": "/custom/workspace"
-	}`), 0644)
-
-	result, err := LoadDevContainerConfig(dir, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.WorkspaceConfig.WorkspaceFolder != "/custom/workspace" {
-		t.Errorf("workspaceFolder = %q", result.WorkspaceConfig.WorkspaceFolder)
-	}
-}
-
-func TestLoadDevContainerConfig_JSONC(t *testing.T) {
-	dir := t.TempDir()
-	dcDir := filepath.Join(dir, ".devcontainer")
-	os.MkdirAll(dcDir, 0755)
-	os.WriteFile(filepath.Join(dcDir, "devcontainer.json"), []byte(`{
-		// This is a comment
-		"image": "ubuntu",
-		"features": {}, // trailing comma
-	}`), 0644)
-
-	result, err := LoadDevContainerConfig(dir, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Config.Image != "ubuntu" {
-		t.Errorf("image = %q", result.Config.Image)
-	}
-}
-
-func TestLoadDevContainerConfig_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	_, err := LoadDevContainerConfig(dir, "", "")
-	if err == nil {
-		t.Error("expected error for missing config")
+			result, err := LoadDevContainerConfig(dir, configPath, overridePath)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error for missing config")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, result)
+		})
 	}
 }
 
