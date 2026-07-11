@@ -1000,6 +1000,36 @@ commands:
             choices: [info, debug, trace]
             default: info
 
+  # Go-only host diagnostics (no TS oracle). `check` diagnoses and persists;
+  # `setup` applies the safe remediations. Covered by unit tests, not the parity
+  # matrix. Note: `setup` (host config) is distinct from `set-up` (container).
+  check:
+    description: "Diagnose whether the host is configured to run dev containers"
+    handler: checkHandler
+    flags:
+      json:
+        type: boolean
+        default: false
+        description: "Output the report as JSON."
+      docker-path:
+        type: string
+        description: "Docker CLI path."
+  setup:
+    description: "Configure the host system to run dev containers"
+    handler: setupHandler
+    flags:
+      json:
+        type: boolean
+        default: false
+        description: "Output the result as JSON."
+      dry-run:
+        type: boolean
+        default: false
+        description: "Report what would be changed without changing anything."
+      docker-path:
+        type: string
+        description: "Docker CLI path."
+
 # =============================================================================
 # RESUMEN JSON OUTPUT ENVELOPES
 # =============================================================================

@@ -131,6 +131,10 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		}
 	}
 
+	// Non-blocking hint (interactive TTY only) if the host was never checked or a
+	// previous `devcontainer check` found a failing configuration.
+	warnUncheckedHost(out)
+
 	// TS folds the deprecated --experimental-frozen-lockfile into --frozen-lockfile
 	// (effectiveFrozenLockfile = frozenLockfile || experimentalFrozenLockfile).
 	opts.experimentalFrozenLockfile = opts.experimentalFrozenLockfile || opts.frozenLockfile

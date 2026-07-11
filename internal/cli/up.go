@@ -184,6 +184,9 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return writeValidationError(out, err.Error())
 	}
+	// Non-blocking hint (interactive TTY only) if the host was never checked or a
+	// previous `devcontainer check` found a failing configuration.
+	warnUncheckedHost(out)
 	// 0.88: default --workspace-folder to the current directory when neither
 	// --workspace-folder, --id-label nor --override-config is given.
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.overrideConfig == "" {
