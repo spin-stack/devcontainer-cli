@@ -522,10 +522,20 @@ Resultado matriz endurecida: 0 fallos de producto reales; los compose flaky pasa
   de tag), no el tag.
 - **`resolve-dependencies`**: cwd-default 0.88.
 
-### Backlog documentado (divergencias en comandos auxiliares, bajo impacto de usuario)
-- `features/templates generate-docs`: reimplementación hand-rolled, orden no determinista, formato distinto.
-- `features resolve-dependencies`: Go no resuelve deps transitivas (FNodes sin dependsOn/installsAfter) +
-  omite el grafo mermaid.
-- `features info manifest/tags` (texto): anchos/indentación; solo se testea `--output-format json`.
-- `features package`: encoding del header del tarball → digest distinto (afecta `publish`).
-- Cobertura pendiente: `features package/publish/test`, `templates publish/generate-docs/metadata`.
+### Comandos auxiliares — CERRADOS (byte-idénticos a TS + casos de paridad)
+- ✅ **`features/templates generate-docs`**: reescritura como port fiel del template TS (iteración de hijos
+  directos sin descender a `src/`, columnas `Options Id|Description|Type|Default Value` en orden de
+  inserción, header deprecated/legacyIds, customizations, NOTES.md). Verificado byte-idéntico en 31 docs de
+  features + 4 de templates. Casos: `features/templates.generate-docs-success`.
+- ✅ **`features info manifest/tags` (texto)**: caja ajustada al título (`encloseStringInBox`), tags unidos
+  con `\n   `, manifest re-indentado desde bytes crudos (preserva orden de anotaciones). Casos:
+  `features-info.manifest-text-success`, `.tags-text-success`.
+
+### Backlog restante (menor impacto / mayor esfuerzo)
+- `features package`: `collection.json` diverge en **orden de keys** (Go ordena, TS preserva orden fuente;
+  `sourceInformation` primero en TS) y el digest del tarball depende del encoding del header (Go archive/tar
+  vs node-tar). El file-list del tarball SÍ coincide. Requiere serialización JSON ordenada anidada.
+- `features resolve-dependencies` / `features info dependencies`: Go no resuelve deps transitivas (FNodes sin
+  dependsOn/installsAfter en `features_resolve_deps.go`) + omite/diverge el grafo mermaid. Port sustancial.
+- Cobertura pendiente: `features package/publish/test`, `templates publish/metadata` (publish requiere
+  registry local).

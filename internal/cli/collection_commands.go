@@ -3,6 +3,7 @@ package cli
 import (
 	"archive/tar"
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -437,11 +438,16 @@ func publishCollection(targetFolder, registry, namespace, collectionType, logLev
 	return nil
 }
 
-// README templates, matching the TS FEATURES_README_TEMPLATE / TEMPLATE_README_TEMPLATE
-// byte-for-byte (leading newline, blank lines, double space before "Add").
-const featuresReadmeTemplate = "\n# #{Name}\n\n#{Description}\n\n## Example Usage\n\n```json\n\"features\": {\n    \"#{Registry}/#{Namespace}/#{Id}:#{Version}\": {}\n}\n```\n\n#{OptionsTable}\n#{Customizations}\n#{Notes}\n\n---\n\n_Note: This file was auto-generated from the [devcontainer-feature.json](#{RepoUrl}).  Add additional notes to a `NOTES.md`._\n"
+// README templates match the TS FEATURES_README_TEMPLATE / TEMPLATE_README_TEMPLATE
+// byte-for-byte. They live as real files (leading newline, blank lines, double space
+// before "Add" all preserved) so they stay readable and diffable instead of being
+// buried in escaped Go string literals.
+//
+//go:embed templates/feature-readme.tmpl
+var featuresReadmeTemplate string
 
-const templatesReadmeTemplate = "\n# #{Name}\n\n#{Description}\n\n#{OptionsTable}\n\n#{Notes}\n\n---\n\n_Note: This file was auto-generated from the [devcontainer-template.json](#{RepoUrl}).  Add additional notes to a `NOTES.md`._\n"
+//go:embed templates/template-readme.tmpl
+var templatesReadmeTemplate string
 
 // generateDocs is a faithful port of the TS _generateDocumentation: it iterates
 // the DIRECT children of projectFolder (no auto-descent into src/), and for each
