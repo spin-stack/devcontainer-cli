@@ -350,11 +350,17 @@ con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
     ruta (`oci` cliente propio) — cubierto para pull del CLI, no bridgeado porque
     no lo necesita. Si en el futuro el pull de base necesitara el mismo puente,
     reusar `oci.ResolveBuildAuth`.
-- **T3.1 — `--secrets-file` en `build`.** Hoy sólo en `up`/`run-user-commands`;
-  passthrough a buildx `--secret`. Añadir al inventario de flags.
-- **T3.2 — `BUILDKIT_INLINE_CACHE=1` condicional.** Hoy hardcodeado
-  (`docker/client.go`). Debe replicar la guarda exacta de TS
-  (`singleContainer.ts:202`, rama no-`--no-cache`) — parity-sensible.
+- **T3.1 — `--secrets-file` en `build`. DECISIÓN DE SCOPE (pendiente).** TS `build`
+  (`buildOptions`, líneas 523-563) **no** tiene `--secrets-file` (sólo `up` y
+  `run-user-commands`), así que Go ya está en paridad. Agregarlo + passthrough a
+  buildx `--secret` sería una **divergencia Go-only deliberada** (build gana un
+  flag que TS no expone), no un fix. Requiere confirmación explícita antes de
+  tocar; si se aprueba, va documentado como divergencia + inventario + unit tests.
+- **T3.2 — `BUILDKIT_INLINE_CACHE=1` condicional. HECHO.** Go lo hardcodeaba en
+  todos los builds buildx; TS lo omite cuando `--cache-to` es un exportador inline
+  (`isBuildxCacheToInline`: `/type\s*=\s*inline/i`). Replicado en
+  `docker.buildArgs` (cubre Dockerfile + features + imagen). Unit tests del helper
+  y del ensamblado de args.
 - **T4.1 — `read-configuration --cache-key`.** Hash determinista
   content-addressed de `{devcontainer.json normalizado + Dockerfile + contexto +
   digests base/features + proxy env}` para prebuild-reuse sin re-implementar el

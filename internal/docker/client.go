@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/exec"
@@ -113,6 +114,15 @@ type BuildOptions struct {
 	CacheTo   string
 }
 
+// buildxCacheToInlineRe matches a buildx cache spec that is itself an inline
+// cache exporter (type=inline), mirroring TS isBuildxCacheToInline.
+var buildxCacheToInlineRe = regexp.MustCompile(`(?i)type\s*=\s*inline`)
+
+// isBuildxCacheToInline reports whether a --cache-to spec is an inline exporter.
+func isBuildxCacheToInline(cacheTo string) bool {
+	return cacheTo != "" && buildxCacheToInlineRe.MatchString(cacheTo)
+}
+
 func (c *Client) buildArgs(opts BuildOptions) []string {
 	var args []string
 
@@ -131,7 +141,11 @@ func (c *Client) buildArgs(opts BuildOptions) []string {
 		if opts.CacheTo != "" {
 			args = append(args, "--cache-to", opts.CacheTo)
 		}
-		args = append(args, "--build-arg", "BUILDKIT_INLINE_CACHE=1")
+		// Inline cache is redundant (and rejected) when --cache-to is itself an
+		// inline cache exporter; match TS, which skips the build-arg in that case.
+		if !isBuildxCacheToInline(opts.CacheTo) {
+			args = append(args, "--build-arg", "BUILDKIT_INLINE_CACHE=1")
+		}
 	} else {
 		args = append(args, "build")
 	}
