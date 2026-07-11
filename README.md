@@ -85,6 +85,7 @@ reference/           git submodule → devcontainers/cli @ v0.88.0 (parity oracl
 task build          # statically-linked ./devcontainer (CGO_ENABLED=0)
 task test:unit      # hermetic Go unit tests
 task test:integration # local HTTP integration tests
+task coverage       # reproducible hermetic coverage report
 task lint           # go vet
 task build:cross    # static binaries for linux/darwin/windows × amd64/arm64
 ```

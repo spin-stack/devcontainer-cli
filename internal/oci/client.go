@@ -32,6 +32,11 @@ func NewClient(logger log.Log, env map[string]string) *Client {
 // devcontainer-specific validation (config media type must be
 // application/vnd.devcontainers) and result shape.
 func (c *Client) FetchManifest(ref *Ref, expectedDigest string) (*ManifestContainer, error) {
+	return c.FetchManifestContext(context.Background(), ref, expectedDigest)
+}
+
+// FetchManifestContext is FetchManifest with caller-controlled cancellation.
+func (c *Client) FetchManifestContext(ctx context.Context, ref *Ref, expectedDigest string) (*ManifestContainer, error) {
 	// Skip non-domain registries
 	if !strings.Contains(ref.Registry, ".") && !strings.HasPrefix(ref.Registry, "localhost") {
 		return nil, fmt.Errorf("registry %q does not look like a domain", ref.Registry)
@@ -49,7 +54,7 @@ func (c *Client) FetchManifest(ref *Ref, expectedDigest string) (*ManifestContai
 
 	c.log.Write(fmt.Sprintf("manifest url: https://%s/v2/%s/manifests/%s", ref.Registry, ref.Path, reference), log.LevelTrace)
 
-	desc, rc, err := repo.FetchReference(context.Background(), reference)
+	desc, rc, err := repo.FetchReference(ctx, reference)
 	if err != nil {
 		return nil, err
 	}
@@ -85,11 +90,16 @@ func (c *Client) FetchManifest(ref *Ref, expectedDigest string) (*ManifestContai
 
 // FetchBlob downloads a blob and verifies its digest (via oras-go).
 func (c *Client) FetchBlob(ref *Ref, digest string) ([]byte, error) {
+	return c.FetchBlobContext(context.Background(), ref, digest)
+}
+
+// FetchBlobContext is FetchBlob with caller-controlled cancellation.
+func (c *Client) FetchBlobContext(ctx context.Context, ref *Ref, digest string) ([]byte, error) {
 	repo, err := c.repository(ref)
 	if err != nil {
 		return nil, err
 	}
-	desc, rc, err := repo.Blobs().FetchReference(context.Background(), digest)
+	desc, rc, err := repo.Blobs().FetchReference(ctx, digest)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +110,17 @@ func (c *Client) FetchBlob(ref *Ref, digest string) ([]byte, error) {
 
 // GetPublishedTags lists all tags for a resource (via oras-go).
 func (c *Client) GetPublishedTags(ref *Ref) ([]string, error) {
+	return c.GetPublishedTagsContext(context.Background(), ref)
+}
+
+// GetPublishedTagsContext is GetPublishedTags with caller-controlled cancellation.
+func (c *Client) GetPublishedTagsContext(ctx context.Context, ref *Ref) ([]string, error) {
 	repo, err := c.repository(ref)
 	if err != nil {
 		return nil, err
 	}
 	var tags []string
-	if err := repo.Tags(context.Background(), "", func(page []string) error {
+	if err := repo.Tags(ctx, "", func(page []string) error {
 		tags = append(tags, page...)
 		return nil
 	}); err != nil {

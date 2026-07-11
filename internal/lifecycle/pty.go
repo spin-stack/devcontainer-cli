@@ -29,6 +29,10 @@ func ExecWithPTY(dockerPath string, args []string) (exitCode int, err error) {
 	// Handle window resize
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGWINCH)
+	defer func() {
+		signal.Stop(ch)
+		close(ch)
+	}()
 	go func() {
 		for range ch {
 			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
