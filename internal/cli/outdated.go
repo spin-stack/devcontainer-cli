@@ -52,9 +52,66 @@ func newOutdatedCmd() *cobra.Command {
 }
 
 type outdatedEntry struct {
-	Current string `json:"current"`
-	Wanted  string `json:"wanted"`
-	Latest  string `json:"latest"`
+	Current     string `json:"current"`
+	Wanted      string `json:"wanted"`
+	WantedMajor string `json:"wantedMajor,omitempty"`
+	Latest      string `json:"latest"`
+	LatestMajor string `json:"latestMajor,omitempty"`
+}
+
+// highestSatisfyingTag returns the newest published version a feature tag resolves
+// to: for "latest"/empty the newest overall, for a version tag (e.g. "2") the newest
+// within that major. versions must be sorted ascending. "" if none match.
+func highestSatisfyingTag(versions []*semver.Version, tag string) string {
+	if len(versions) == 0 {
+		return ""
+	}
+	if tag == "" || tag == "latest" {
+		return versions[len(versions)-1].Original()
+	}
+	tagV, err := semver.NewVersion(tag)
+	if err != nil {
+		return ""
+	}
+	constraint, err := semver.NewConstraint(fmt.Sprintf("^%d", tagV.Major()))
+	if err != nil {
+		return ""
+	}
+	for i := len(versions) - 1; i >= 0; i-- {
+		if constraint.Check(versions[i]) {
+			return versions[i].Original()
+		}
+	}
+	return ""
+}
+
+// resolvePublishedVersions fetches and returns a feature ref's published semver
+// tags, sorted ascending.
+func resolvePublishedVersions(ociClient *oci.Client, ref *oci.Ref) []*semver.Version {
+	tags, err := ociClient.GetPublishedTags(ref)
+	if err != nil {
+		return nil
+	}
+	var versions []*semver.Version
+	for _, t := range tags {
+		if v, err := semver.NewVersion(t); err == nil {
+			versions = append(versions, v)
+		}
+	}
+	sort.Sort(semver.Collection(versions))
+	return versions
+}
+
+// majorOf returns the major version of a semver string, or "" if unparseable.
+func majorOf(v string) string {
+	if v == "" {
+		return ""
+	}
+	parsed, err := semver.NewVersion(v)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", parsed.Major())
 }
 
 func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logFormatStr string) error {
@@ -87,65 +144,43 @@ func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logForm
 
 	ociClient := oci.NewClient(logger, osEnvMap())
 
+	// Lockfile pins the concrete "current" version when present (matches TS
+	// loadVersionInfo: current = lockfileVersion || wanted).
+	lockfile, _, _ := features.ReadLockfile(cfg.ConfigFilePath)
+
 	result := make(map[string]outdatedEntry)
-	var featureIDs []string
 
 	for id := range cfg.Features {
 		resolvedID, _ := features.ResolveFeatureID(id, false)
-		featureIDs = append(featureIDs, id)
 
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
+			// Not a versionable OCI feature (local path, etc.) — TS omits these.
+			continue
+		}
+		// Published versions. Features with no versions are omitted (as TS does).
+		versions := resolvePublishedVersions(ociClient, ref)
+		if len(versions) == 0 {
 			continue
 		}
 
-		// Current version from the tag used
-		current := ref.Tag
-		if current == "" || current == "latest" {
-			current = "-"
-		}
+		latest := versions[len(versions)-1].Original()
+		wanted := highestSatisfyingTag(versions, ref.Tag)
 
-		// Fetch all published tags
-		tags, err := ociClient.GetPublishedTags(ref)
-		if err != nil || len(tags) == 0 {
-			result[features.StripVersionFromFeatureID(id)] = outdatedEntry{
-				Current: current, Wanted: "-", Latest: "-",
-			}
-			continue
-		}
-
-		// Filter to semver-only tags and sort
-		var versions []*semver.Version
-		for _, t := range tags {
-			v, err := semver.NewVersion(t)
-			if err == nil {
-				versions = append(versions, v)
-			}
-		}
-		sort.Sort(semver.Collection(versions))
-
-		latest := "-"
-		wanted := "-"
-		if len(versions) > 0 {
-			latest = versions[len(versions)-1].Original()
-
-			// Wanted: highest version matching the current major
-			if current != "-" {
-				currentV, err := semver.NewVersion(current)
-				if err == nil {
-					constraint, _ := semver.NewConstraint(fmt.Sprintf("^%d", currentV.Major()))
-					for i := len(versions) - 1; i >= 0; i-- {
-						if constraint.Check(versions[i]) {
-							wanted = versions[i].Original()
-							break
-						}
-					}
-				}
+		// current = lockfile version if pinned, else the resolved wanted version.
+		current := wanted
+		if lockfile != nil {
+			if e, ok := lockfile.Features[id]; ok && e.Version != "" {
+				current = e.Version
 			}
 		}
 
-		result[features.StripVersionFromFeatureID(id)] = outdatedEntry{
-			Current: current, Wanted: wanted, Latest: latest,
+		result[id] = outdatedEntry{
+			Current:     current,
+			Wanted:      wanted,
+			WantedMajor: majorOf(wanted),
+			Latest:      latest,
+			LatestMajor: majorOf(latest),
 		}
 	}
 
@@ -155,13 +190,16 @@ func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logForm
 		fmt.Fprintln(os.Stdout, string(data))
 	} else {
 		// Text table
-		sort.Strings(featureIDs)
+		ids := make([]string, 0, len(result))
+		for id := range result {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
 		fmt.Printf("%-50s %-12s %-12s %-12s\n", "Feature", "Current", "Wanted", "Latest")
-		for _, id := range featureIDs {
-			key := features.StripVersionFromFeatureID(id)
-			e := result[key]
+		for _, id := range ids {
+			e := result[id]
 			// Shorten display ID
-			display := key
+			display := id
 			if parts := strings.Split(display, "/"); len(parts) > 2 {
 				display = strings.Join(parts[len(parts)-2:], "/")
 			}
@@ -274,6 +312,27 @@ func resolveFeatureSets(cfg *config.DevContainerConfig, ociClient *oci.Client, l
 			continue
 		}
 
+		// The lockfile records the concrete feature version, not the tag. Prefer the
+		// manifest's dev.containers.metadata annotation; if absent (some features
+		// don't publish it), resolve the tag to its newest published version — both
+		// match the version TS stores.
+		version := ref.Tag
+		if manifest.Manifest != nil {
+			if meta := manifest.Manifest.Annotations["dev.containers.metadata"]; meta != "" {
+				var m struct {
+					Version string `json:"version"`
+				}
+				if json.Unmarshal([]byte(meta), &m) == nil && m.Version != "" {
+					version = m.Version
+				}
+			}
+		}
+		if version == ref.Tag {
+			if v := highestSatisfyingTag(resolvePublishedVersions(ociClient, ref), ref.Tag); v != "" {
+				version = v
+			}
+		}
+
 		set := &features.FeatureSet{
 			SourceInfo: &features.OCISource{
 				Registry:       ref.Registry,
@@ -284,7 +343,7 @@ func resolveFeatureSets(cfg *config.DevContainerConfig, ociClient *oci.Client, l
 				ManifestDigest: manifest.ContentDigest,
 				UserID:         id,
 			},
-			Features:       []features.Feature{{ID: ref.ID, Version: ref.Tag, Value: opts}},
+			Features:       []features.Feature{{ID: ref.ID, Version: version, Value: opts}},
 			ComputedDigest: manifest.ContentDigest,
 		}
 		sets = append(sets, set)

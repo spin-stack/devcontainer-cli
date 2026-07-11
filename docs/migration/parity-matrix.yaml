@@ -1974,6 +1974,28 @@ initial_cases:
     current_status: match
     notes: "templates apply extrae el tarball y aplica los archivos (antes {\"files\":null}); omite devcontainer-template.json/README/NOTES y aplica defaults de opciones + substitución ${templateOption:x}."
 
+  - id: outdated.image-with-features-success
+    lane: runtime
+    command: outdated
+    priority: p1
+    network_required: true
+    ts_cmd: "outdated --workspace-folder src/test/configs/image-with-features --output-format json"
+    asserts: [exit_code, stdout_normalized]
+    class: outdated-runtime
+    current_status: match
+    notes: "outdated resuelve current/wanted/latest (+ wantedMajor/latestMajor) por feature; key = userFeatureId completo (con tag). Ambos lados consultan el mismo registry, así que latest coincide entre sí."
+
+  - id: upgrade.image-with-features-success
+    lane: runtime
+    command: upgrade
+    priority: p1
+    network_required: true
+    ts_cmd: "upgrade --workspace-folder src/test/configs/image-with-features --dry-run"
+    asserts: [exit_code, stdout_normalized]
+    class: upgrade-runtime
+    current_status: match
+    notes: "upgrade --dry-run emite el lockfile a stdout; version = versión concreta resuelta (no el tag), resolved = resource@digest, integrity = digest."
+
 groups:
   mode-validation:
     rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"
