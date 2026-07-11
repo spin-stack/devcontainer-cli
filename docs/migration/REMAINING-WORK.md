@@ -1,113 +1,113 @@
-# Trabajo restante para paridad y release
+# Remaining work for parity and release
 
-Este documento es la **única fuente operativa del trabajo pendiente** para llevar
-el CLI Go a paridad demostrada con `devcontainers/cli` v0.88.0. El estado resumido vive en
-[`GO-REWRITE-STATUS.md`](GO-REWRITE-STATUS.md) y el gate final en
+This document is the **single operational source of pending work** for bringing
+the Go CLI to demonstrated parity with `devcontainers/cli` v0.88.0. The summarized status lives in
+[`GO-REWRITE-STATUS.md`](GO-REWRITE-STATUS.md) and the final gate in
 [`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md).
 
-## Regla de cierre
+## Closing rule
 
-Un ítem sólo se considera cerrado cuando:
+An item is only considered closed when:
 
-1. el comportamiento está implementado o la divergencia fue descartada de forma
-   explícita;
-2. existe un test proporcional al riesgo;
-3. cuando aplica, el test compara Go contra el oráculo TS;
-4. CI ejecuta el test en el lane correcto;
-5. la matriz y este documento se actualizan con evidencia, no anticipadamente.
+1. the behavior is implemented or the divergence was explicitly
+   ruled out;
+2. a test proportional to the risk exists;
+3. where applicable, the test compares Go against the TS oracle;
+4. CI runs the test in the correct lane;
+5. the matrix and this document are updated with evidence, not ahead of time.
 
-## Estado (al día)
+## Status (current)
 
-Cerrados o hechos: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009, RW-010, RW-011,
-RW-012, RW-013, RW-014, RW-015, RW-016, RW-017. **RW-018** (gate final): corrida limpia
-lograda contra v0.88.0 (189/0/0 runtime, artefactos guardados); queda formalizarla en CI
-con `goreleaser`/`syft` instalados. Parciales menores: RW-005/006/008 (colas de evidencia
-absorbidas por la corrida limpia; matriz cloud de RW-008 gated por secrets).
+Closed or done: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009, RW-010, RW-011,
+RW-012, RW-013, RW-014, RW-015, RW-016, RW-017. **RW-018** (final gate): clean run
+achieved against v0.88.0 (189/0/0 runtime, artifacts saved); it remains to formalize it in CI
+with `goreleaser`/`syft` installed. Minor partials: RW-005/006/008 (evidence tails
+absorbed by the clean run; RW-008 cloud matrix gated by secrets).
 
-## P0 — Paridad funcional
+## P0 — Functional parity
 
-### RW-001 — `overrideFeatureInstallOrder` en `up`/`build` — ✅ HECHO
-`cfg.OverrideFeatureInstallOrder` se cablea hasta el builder unificado; rechaza
-entradas inválidas como TS. Tests en `internal/features/graph_test.go`.
+### RW-001 — `overrideFeatureInstallOrder` in `up`/`build` — ✅ DONE
+`cfg.OverrideFeatureInstallOrder` is wired all the way to the unified builder; it rejects
+invalid entries like TS. Tests in `internal/features/graph_test.go`.
 
-### RW-002 — Unificar el grafo de Features — ✅ HECHO
-`features.BuildDependencyGraph` (seam `processFeature`) alimenta instalación,
-`resolve-dependencies` y mermaid; arregla el bug de `resolve-dependencies` que
-construía nodos **sin aristas**. Tests herméticos con stub en memoria.
+### RW-002 — Unify the Features graph — ✅ DONE
+`features.BuildDependencyGraph` (seam `processFeature`) feeds installation,
+`resolve-dependencies` and mermaid; it fixes the `resolve-dependencies` bug that
+built nodes **without edges**. Hermetic tests with an in-memory stub.
 
-### RW-003 — Contrato PTY/señales de `exec` — ✅ HECHO
-`exec` usa `docker exec -it` heredado (equivalente al fallback sin node-pty de TS);
-el código PTY muerto fue borrado; contrato `128+N` endurecido para el caso del
-proceso host señalado. Decisión: herencia directa (no PTY propio), equivalente al
-fallback de TS cuando node-pty no está — ver `exec.go` y la sección de decisiones.
+### RW-003 — `exec` PTY/signal contract — ✅ DONE
+`exec` uses inherited `docker exec -it` (equivalent to the TS fallback without node-pty);
+the dead PTY code was removed; the `128+N` contract was hardened for the signaled
+host-process case. Decision: direct inheritance (no own PTY), equivalent to the
+TS fallback when node-pty is absent — see `exec.go` and the decisions section.
 
-### RW-004 — `--docker-compose-path` — ✅ HECHO
-Cableado end-to-end en `build` (único comando que faltaba; `up` ya lo tenía). Los
-otros comandos con el flag no ejecutan compose (attach por labels), igual que TS. Test
-discriminante en `internal/cli/build_compose_path_test.go`.
+### RW-004 — `--docker-compose-path` — ✅ DONE
+Wired end-to-end in `build` (the only command that was missing it; `up` already had it). The
+other commands with the flag do not run compose (attach by labels), same as TS. Discriminating
+test in `internal/cli/build_compose_path_test.go`.
 
-### RW-005 — Casos diferidos de la matriz — 🟡 PARCIAL
-El assert de `features.test-single-scenario-success` se redujo a `[exit_code]` (su
-stdout es ANSI no determinista, no comparable). **Pendiente:** la promoción
-*evidence-based* de ambos casos (`build.buildkit-never-platform-failure` y el de
-features-test) — correr con Docker/red en amd64 y flipear `current_status → match` a
-partir del JSON artefactado. **Se ejecuta dentro de RW-018.**
+### RW-005 — Deferred matrix cases — 🟡 PARTIAL
+The `features.test-single-scenario-success` assert was reduced to `[exit_code]` (its
+stdout is non-deterministic ANSI, not comparable). **Pending:** the *evidence-based*
+promotion of both cases (`build.buildkit-never-platform-failure` and the
+features-test one) — run with Docker/network on amd64 and flip `current_status → match`
+from the artifacted JSON. **Runs inside RW-018.**
 
-## P1 — Compatibilidad de datos y plataformas
+## P1 — Data and platform compatibility
 
-### RW-006 — Interop metadata TS↔Go — 🟡 HECHO (hermético)
-Test de round-trip Go y de invariancia de whitespace (comparando JSON parseado, no
-bytes) en `internal/cli/metadata_interop_test.go`. **Pendiente:** la mitad TS→Go
-(construir con el oráculo TS, leer con Go) está *skip-guarded* hasta tener el oráculo
-compilado → se valida en RW-018.
+### RW-006 — TS↔Go metadata interop — 🟡 DONE (hermetic)
+Go round-trip test and whitespace-invariance test (comparing parsed JSON, not
+bytes) in `internal/cli/metadata_interop_test.go`. **Pending:** the TS→Go half
+(build with the TS oracle, read with Go) is *skip-guarded* until the oracle is
+compiled → validated in RW-018.
 
-### RW-007 — OCI image indexes por plataforma — ✅ HECHO (retirado)
-Los tipos muertos `ImageIndex`/`ImageIndexEntry`/`Platform` y
-`OCIImageIndexMediaType` fueron retirados. v0.88.0 sólo usa resolución de índices en
-`inspectImageInRegistry` (no portado). Decisión: si en el futuro se porta ese path,
-implementarlo vía oras, no con structs de índice a mano.
+### RW-007 — Per-platform OCI image indexes — ✅ DONE (removed)
+The dead types `ImageIndex`/`ImageIndexEntry`/`Platform` and
+`OCIImageIndexMediaType` were removed. v0.88.0 only uses index resolution in
+`inspectImageInRegistry` (not ported). Decision: if that path is ported in the future,
+implement it via oras, not with hand-rolled index structs.
 
-### RW-008 — Registries y credenciales reales — 🟡 HECHO (hermético)
-Loop 401→bearer→pull/push contra `registry:3` con htpasswd, protocolo de credential
-helper con fake en PATH, `secretservice` fijado (no el `secret` erróneo de TS), y
-cache de auth compartido en `oci.Client`. Tests en `internal/oci/`. **Pendiente:** la
-matriz cloud real (ACR identity/refresh, ECR helper, GHCR autenticado) **gated por
-secrets** en CI, no bloqueante. Helpers sólo Linux (`secretservice`/`pass`).
+### RW-008 — Real registries and credentials — 🟡 DONE (hermetic)
+401→bearer→pull/push loop against `registry:3` with htpasswd, credential-helper
+protocol with a fake in PATH, `secretservice` pinned (not the erroneous TS `secret`), and
+shared auth cache in `oci.Client`. Tests in `internal/oci/`. **Pending:** the real cloud
+matrix (ACR identity/refresh, ECR helper, authenticated GHCR) **gated by
+secrets** in CI, non-blocking. Helpers are Linux-only (`secretservice`/`pass`).
 
-### RW-009 — Podman y Compose v1 — ✅ CERRADO: no soportado
-El CLI Go soporta **sólo Docker** y **sólo `docker compose` v2**. Podman y Compose v1
-**no se soportan** — divergencia deliberada, sin garantía ni test de paridad.
+### RW-009 — Podman and Compose v1 — ✅ CLOSED: not supported
+The Go CLI supports **only Docker** and **only `docker compose` v2**. Podman and Compose v1
+**are not supported** — deliberate divergence, no parity guarantee or test.
 
-### RW-010 — Paths y ejecución Windows — ✅ CERRADO: no soportado
-El CLI Go se soporta **sólo en Linux** (amd64/arm64). Windows y macOS no son
-objetivos: sin runtime/E2E/release/lane `windows-latest`/ConPTY. La lógica
-`platform="win32"` se conserva sólo por paridad con el oráculo TS.
+### RW-010 — Windows paths and execution — ✅ CLOSED: not supported
+The Go CLI is supported **only on Linux** (amd64/arm64). Windows and macOS are not
+targets: no runtime/E2E/release/`windows-latest`/ConPTY lane. The
+`platform="win32"` logic is kept solely for parity with the TS oracle.
 
-## P2 — Calidad orientada a riesgo
+## P2 — Risk-oriented quality
 
-### RW-011 — Seams para efectos externos — ✅ HECHO
-Cuatro interfaces pequeñas (`cli.Output`, `oci.Registry`, `exec.Runner`, `pfs.FS`),
-sin `CLIHost` monolítico (decisión deliberada). Tests con fakes (publish parcial, runner).
+### RW-011 — Seams for external effects — ✅ DONE
+Four small interfaces (`cli.Output`, `oci.Registry`, `exec.Runner`, `pfs.FS`),
+without a monolithic `CLIHost` (deliberate decision). Tests with fakes (partial publish, runner).
 
-### RW-012 — Cobertura de paths críticos — ✅ HECHO (riesgos nombrados)
+### RW-012 — Coverage of critical paths — ✅ DONE (named risks)
 
-Cobertura de los riesgos nombrados, cada test atado a un riesgo (no padding),
-apoyada en los seams de RW-011. Deltas por paquete:
+Coverage of the named risks, each test tied to a risk (not padding),
+supported by the RW-011 seams. Deltas per package:
 
-- `internal/oci` 75.9% → **86.1%** (publish parcial sin rollback, loop 401→bearer→token→retry, branches de credential helper);
-- `internal/docker` 63.3% → **79.7%** (buildArgs/runArgs/compose args exactos vía `exec.Runner`);
-- `internal/lifecycle` 39.5% → **60.2%** (seam `shellExec`; probe cache/timeout-124/PATH-merge; parsers 100%);
-- `internal/templates` 46.5% → **88.9%** (workspace a medio escribir vía fake `pfs.FS`; errores fetch/merge);
-- `internal/cli` — errores cross-layer pre-Docker en `runBuild`/`runUp`/`runExec`.
+- `internal/oci` 75.9% → **86.1%** (partial publish without rollback, 401→bearer→token→retry loop, credential-helper branches);
+- `internal/docker` 63.3% → **79.7%** (exact buildArgs/runArgs/compose args via `exec.Runner`);
+- `internal/lifecycle` 39.5% → **60.2%** (`shellExec` seam; probe cache/timeout-124/PATH-merge; parsers 100%);
+- `internal/templates` 46.5% → **88.9%** (half-written workspace via fake `pfs.FS`; fetch/merge errors);
+- `internal/cli` — cross-layer pre-Docker errors in `runBuild`/`runUp`/`runExec`.
 
-**Pendiente menor:** la **cancelación por contexto** en los runners de comandos
-necesita un seam de contexto / rewiring (fuera del alcance de estos tracks); anotado
-para un incremento futuro. Los paths sólo-Docker (p. ej. cleanup del Dockerfile temporal)
-quedan cubiertos por E2E, no herméticamente.
+**Minor pending:** **context cancellation** in the command runners
+needs a context seam / rewiring (out of scope for these tracks); noted
+for a future increment. The Docker-only paths (e.g. cleanup of the temporary Dockerfile)
+are covered by E2E, not hermetically.
 
-Baseline unitario aproximado (previo a RW-011; ya superado en varios paquetes):
+Approximate unit baseline (prior to RW-011; already exceeded in several packages):
 
-| Paquete | Cobertura |
+| Package | Coverage |
 |---|---:|
 | CLI | 21.1% |
 | OCI | 43.2% |
@@ -118,158 +118,158 @@ Baseline unitario aproximado (previo a RW-011; ya superado en varios paquetes):
 | imagemeta | 74.3% |
 | config | 78.6% |
 
-No se exige subir números mediante tests triviales. Prioridad (apoyada en los seams de
-RW-011, ya disponibles):
+Bumping numbers with trivial tests is not required. Priority (supported by the RW-011
+seams, already available):
 
-- errores entre capas y cancelación;
-- cleanup tras fallos parciales;
-- publish parcial (fake `oci.Registry`);
-- auth/retries OCI (registry httptest);
-- shell server y user env probe real (extraer un `shellExec` inyectable);
-- templates con workspace parcialmente escrito (fake `pfs.FS` con `WriteFile` que falla);
+- cross-layer errors and cancellation;
+- cleanup after partial failures;
+- partial publish (fake `oci.Registry`);
+- OCI auth/retries (registry httptest);
+- shell server and real user env probe (extract an injectable `shellExec`);
+- templates with a partially written workspace (fake `pfs.FS` with a failing `WriteFile`);
 - Docker/Compose argument construction.
 
-**Aceptación:** cada incremento cubre un riesgo nombrado. El objetivo de referencia de
-80% por paquete se mantiene como dirección, no como sustituto de paridad E2E.
+**Acceptance:** each increment covers a named risk. The reference target of
+80% per package is kept as a direction, not as a substitute for E2E parity.
 
-### RW-013 — Validar inventario de flags automáticamente — ✅ HECHO
-`TestFlagInventoryParity` camina el árbol Cobra y lo diffea contra
-`cli-flags-inventory.yaml` (0 drift; CI falla ante drift). Además destapó y corrigió
-bugs reales de `hidden`/alias (`skip-feature-auto-mapping` y experimentales en
-`up`/`run-user-commands`/`exec`; `-f`/`-v` + hidden en `upgrade`).
+### RW-013 — Validate the flag inventory automatically — ✅ DONE
+`TestFlagInventoryParity` walks the Cobra tree and diffs it against
+`cli-flags-inventory.yaml` (0 drift; CI fails on drift). It also uncovered and fixed
+real `hidden`/alias bugs (`skip-feature-auto-mapping` and experimentals in
+`up`/`run-user-commands`/`exec`; `-f`/`-v` + hidden in `upgrade`).
 
-### RW-014 — Completar contratos de HTTP y host — ✅ HECHO
+### RW-014 — Complete the HTTP and host contracts — ✅ DONE
 
-**Hecho:** transporte HTTP compartido (`httpx.NewTransport`) usado por **todos** los
-paths (httpx, OCI/oras vía `retry.NewTransport`, y descarga de tarballs). Honra
-`HTTP(S)_PROXY`/`NO_PROXY` leyendo el entorno **fresco por request**
-(`golang.org/x/net/http/httpproxy`, sin el `sync.Once` de `http.ProxyFromEnvironment`)
-y carga CA extra (`NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`) — antes el path OCI y el de
-descarga no cargaban la CA, por lo que un proxy con intercepción TLS rompía los pulls
-(síntoma: "no respeta el proxy"). Tests herméticos de selección de proxy, ruteo real y
-confianza de CA end-to-end.
+**Done:** shared HTTP transport (`httpx.NewTransport`) used by **all**
+paths (httpx, OCI/oras via `retry.NewTransport`, and tarball download). It honors
+`HTTP(S)_PROXY`/`NO_PROXY` by reading the environment **fresh per request**
+(`golang.org/x/net/http/httpproxy`, without the `sync.Once` of `http.ProxyFromEnvironment`)
+and loads extra CAs (`NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`) — previously the OCI path and the
+download path did not load the CA, so a TLS-intercepting proxy broke pulls
+(symptom: "does not respect the proxy"). Hermetic tests of proxy selection, real routing, and
+end-to-end CA trust.
 
-**Contexto y redirects en `httpx.Do`:** la firma pasó a `Do(ctx, opts)`
-(`http.NewRequestWithContext`), así una cancelación/deadline de contexto aborta la
-request (el único caller, `GetControlManifest` → `enforceDisallowedFeatures`, propaga
-el `ctx` del comando). Se expone `Client.SetCheckRedirect` para instalar una política
-de redirects (el default de Go sigue hasta 10 saltos). Tests herméticos con `httptest`:
-cadena de redirects multi-salto seguida entera, `ErrUseLastResponse` corta la cadena, y
-contexto cancelado / con deadline aborta la request.
+**Context and redirects in `httpx.Do`:** the signature became `Do(ctx, opts)`
+(`http.NewRequestWithContext`), so a context cancellation/deadline aborts the
+request (the only caller, `GetControlManifest` → `enforceDisallowedFeatures`, propagates
+the command's `ctx`). `Client.SetCheckRedirect` is exposed to install a redirect
+policy (Go's default follows up to 10 hops). Hermetic tests with `httptest`:
+a multi-hop redirect chain followed all the way, `ErrUseLastResponse` cuts the chain, and
+a cancelled / deadline context aborts the request.
 
-**log-file (tee a archivo, implementado):** `--log-file` está cableado — cuando se
-setea, el writer del logger pasa a ser `io.MultiWriter(os.Stderr, file)` (helper
-`logWriter` en `internal/cli/logfile.go`), con cierre del archivo vía `defer`. Cableado
-en los comandos que exponen el flag según el inventario de paridad: `up`, `set-up`,
-`run-user-commands`, `read-configuration`, `outdated`, `upgrade` y `exec` (`build` **no**
-lo expone en v0.88.0, así que se deja fuera). Un error al abrir el archivo se reporta
-(no se descartan logs en silencio) y cae de vuelta a `os.Stderr`. Test hermético
-(`logfile_test.go`) que asegura que una línea de log aterriza en el archivo.
+**log-file (tee to file, implemented):** `--log-file` is wired — when
+set, the logger's writer becomes `io.MultiWriter(os.Stderr, file)` (helper
+`logWriter` in `internal/cli/logfile.go`), with the file closed via `defer`. Wired
+in the commands that expose the flag per the parity inventory: `up`, `set-up`,
+`run-user-commands`, `read-configuration`, `outdated`, `upgrade` and `exec` (`build` does **not**
+expose it in v0.88.0, so it is left out). An error opening the file is reported
+(logs are not silently discarded) and it falls back to `os.Stderr`. Hermetic test
+(`logfile_test.go`) that asserts a log line lands in the file.
 
-**`--terminal-log-file` (divergencia documentada):** en v0.88.0 el flag distingue el
-stream terminal (con ANSI) del plano; el CLI Go mantiene **un solo stream de log** sin
-PTY/terminal auto-gestionado (RW-003 Rama A: `exec` hereda la terminal), así que no hay
-un stream terminal-formateado distinto que capturar. Por eso `--terminal-log-file`
-también se teea al mismo stream combinado (nunca es un agujero negro), documentando que
-ambos flags capturan la misma salida (sin ANSI). Divergencia deliberada del CLI TS, que
-produce dos archivos con formatos distintos.
+**`--terminal-log-file` (documented divergence):** in v0.88.0 the flag distinguishes the
+terminal stream (with ANSI) from the plain one; the Go CLI keeps **a single log stream** without
+a self-managed PTY/terminal (RW-003 Branch A: `exec` inherits the terminal), so there is no
+distinct terminal-formatted stream to capture. That is why `--terminal-log-file`
+also tees to the same combined stream (it is never a black hole), documenting that
+both flags capture the same output (without ANSI). Deliberate divergence from the TS CLI, which
+produces two files with different formats.
 
-**Errores de proceso/filesystem:** tests herméticos de propagación apoyados en los seams
-de RW-011 — `docker.Client.Run` envuelve y propaga un fallo del `exec.Runner`
-(binario-no-encontrado/cancelado) en vez de fingir éxito, y `templates.mergeFeatures`
-propaga un fallo de `ReadFile` del `pfs.FS` inyectado.
+**Process/filesystem errors:** hermetic propagation tests supported by the RW-011
+seams — `docker.Client.Run` wraps and propagates an `exec.Runner` failure
+(binary-not-found/cancelled) instead of faking success, and `templates.mergeFeatures`
+propagates a `ReadFile` failure from the injected `pfs.FS`.
 
-## P3 — Release y operación
+## P3 — Release and operations
 
-### RW-015 — Pipeline GoReleaser — ✅ HECHO
-`.goreleaser.yml` sin `go test ./...` en el hook, matriz reducida a Linux
-(amd64/arm64), bloque `sboms:`, y workflow `release.yml` por tag que corre los gates
-de CI y produce draft release con checksums/SBOM. Imágenes vía `dockers_v2` (sin
-deprecations). **Verificado:** `goreleaser check` limpio y `goreleaser release
---snapshot --clean` produce binarios + archives + SBOMs (syft) + imágenes docker.
+### RW-015 — GoReleaser pipeline — ✅ DONE
+`.goreleaser.yml` without `go test ./...` in the hook, matrix reduced to Linux
+(amd64/arm64), `sboms:` block, and a per-tag `release.yml` workflow that runs the CI
+gates and produces a draft release with checksums/SBOM. Images via `dockers_v2` (no
+deprecations). **Verified:** `goreleaser check` clean and `goreleaser release
+--snapshot --clean` produces binaries + archives + SBOMs (syft) + docker images.
 
-### RW-016 — Distribuir imagen OCI del CLI — ✅ HECHO
+### RW-016 — Distribute the CLI OCI image — ✅ DONE
 
-**Decisión tomada (firme):** imagen `ghcr.io/spin-stack/devcontainer-cli`
+**Decision taken (firm):** image `ghcr.io/spin-stack/devcontainer-cli`
 (source repo `https://github.com/spin-stack/devcontainer-cli`).
 
-**Hecho:**
-- `./Dockerfile` — `FROM gcr.io/distroless/static:nonroot` (trae CA certs para el TLS
-  a registries), `USER nonroot`, `COPY devcontainer /devcontainer`,
-  `ENTRYPOINT ["/devcontainer"]`. Labels OCI `title=devcontainer-cli`,
-  `source`, `version`, `revision`, `created`, `licenses`. `VERSION`/`REVISION` por
-  `ARG` (los inyecta GoReleaser; en local por `--build-arg`).
-- `.goreleaser.yml` — bloque `dockers_v2:` (un único build multi-plataforma
-  linux/amd64+arm64 con buildx, reusando los binarios; el Dockerfile hace
-  `COPY ${TARGETPLATFORM}/devcontainer`) que produce el manifest `:{{.Version}}` +
-  `:latest` vía buildx imagetools.
-- `.github/workflows/release.yml` — job `goreleaser` con `docker/setup-qemu-action`,
-  `docker/setup-buildx-action`, login a GHCR (`docker/login-action` con
-  `GITHUB_TOKEN`), permisos `packages: write` + `id-token: write`. Tras publicar:
-  smoke test `docker run --rm <img> --version` (asserta la versión esperada), registro
-  del digest vía `docker buildx imagetools inspect`, y firma keyless + attest SBOM de
-  imagen con cosign + syft contra el digest. Gated al path de tag+aprobación; nunca
-  desde PRs.
+**Done:**
+- `./Dockerfile` — `FROM gcr.io/distroless/static:nonroot` (brings CA certs for the TLS
+  to registries), `USER nonroot`, `COPY devcontainer /devcontainer`,
+  `ENTRYPOINT ["/devcontainer"]`. OCI labels `title=devcontainer-cli`,
+  `source`, `version`, `revision`, `created`, `licenses`. `VERSION`/`REVISION` via
+  `ARG` (injected by GoReleaser; locally via `--build-arg`).
+- `.goreleaser.yml` — `dockers_v2:` block (a single multi-platform build
+  linux/amd64+arm64 with buildx, reusing the binaries; the Dockerfile does
+  `COPY ${TARGETPLATFORM}/devcontainer`) that produces the `:{{.Version}}` +
+  `:latest` manifest via buildx imagetools.
+- `.github/workflows/release.yml` — `goreleaser` job with `docker/setup-qemu-action`,
+  `docker/setup-buildx-action`, GHCR login (`docker/login-action` with
+  `GITHUB_TOKEN`), permissions `packages: write` + `id-token: write`. After publishing:
+  smoke test `docker run --rm <img> --version` (asserts the expected version), recording
+  the digest via `docker buildx imagetools inspect`, and keyless signing + image SBOM
+  attestation with cosign + syft against the digest. Gated to the tag+approval path; never
+  from PRs.
 
-**Provenance/SBOM:** `dockers_v2` usa buildx imagetools (que sí anida OCI indexes), así
-que la restricción del viejo `docker_manifests:` ya no aplica. SBOM del archive por
-`sboms:` (syft); SBOM/firma keyless de imagen por cosign+syft en el workflow contra el
-digest inmutable del manifest publicado.
+**Provenance/SBOM:** `dockers_v2` uses buildx imagetools (which does nest OCI indexes), so
+the restriction of the old `docker_manifests:` no longer applies. Archive SBOM via
+`sboms:` (syft); image SBOM/keyless signing via cosign+syft in the workflow against the
+immutable digest of the published manifest.
 
-**Verificado localmente:** `docker build` + `docker run --rm <img> --version` → `0.0.0-smoke`
-(binario estático `CGO_ENABLED=0`, host amd64). Build multi-arch
-`docker buildx build --platform linux/amd64,linux/arm64` exitoso (containerd store).
-La variante arm64 corre nativamente en CI (el smoke test usa la arch del runner).
-`goreleaser`/`syft` verificados: `goreleaser check` valida la config y `goreleaser
-release --snapshot` buildea las imágenes `ghcr.io/spin-stack/devcontainer-cli:*-{amd64,
-arm64}` con SBOMs; `docker run <img> --version` → `0.0.0-SNAPSHOT-<sha>` ✅. La firma
-cosign de imagen (push real) queda para el path de tag en CI.
+**Verified locally:** `docker build` + `docker run --rm <img> --version` → `0.0.0-smoke`
+(static binary `CGO_ENABLED=0`, amd64 host). Multi-arch build
+`docker buildx build --platform linux/amd64,linux/arm64` succeeded (containerd store).
+The arm64 variant runs natively in CI (the smoke test uses the runner's arch).
+`goreleaser`/`syft` verified: `goreleaser check` validates the config and `goreleaser
+release --snapshot` builds the images `ghcr.io/spin-stack/devcontainer-cli:*-{amd64,
+arm64}` with SBOMs; `docker run <img> --version` → `0.0.0-SNAPSHOT-<sha>` ✅. The
+image cosign signing (real push) is left for the tag path in CI.
 
-**Aceptación:** `docker run <image> --version` ✅ (local, amd64), amd64/arm64 build ✅,
-digest artefactado en el workflow ✅.
+**Acceptance:** `docker run <image> --version` ✅ (local, amd64), amd64/arm64 build ✅,
+digest artifacted in the workflow ✅.
 
-### RW-017 — Métricas de rendimiento y distribución — ✅ HECHO
+### RW-017 — Performance and distribution metrics — ✅ DONE
 
-`task metrics` (Taskfile) emite `artifacts/metrics.json` y el job `metrics` de
-`.github/workflows/release.yml` lo captura como artefacto. Usa `hyperfine` si está en
-el runner, con fallback a un loop `date +%s%N` promediado (`METRICS_RUNS`, default
-30). El task es **no-gating** (`ignore_error: true`; el job usa `continue-on-error`).
+`task metrics` (Taskfile) emits `artifacts/metrics.json` and the `metrics` job of
+`.github/workflows/release.yml` captures it as an artifact. It uses `hyperfine` if present on
+the runner, with a fallback to an averaged `date +%s%N` loop (`METRICS_RUNS`, default
+30). The task is **non-gating** (`ignore_error: true`; the job uses `continue-on-error`).
 
-**Métricas capturadas** (`metrics.json`): `startup_ms.{go_version,go_read_configuration,
+**Captured metrics** (`metrics.json`): `startup_ms.{go_version,go_read_configuration,
 node_version}`; `sizes_bytes.{local_binary,linux_amd64_binary,linux_amd64_gzip,
-linux_arm64_binary,linux_arm64_gzip}`; metadatos `timing_tool/runs/version/generated_at`.
+linux_arm64_binary,linux_arm64_gzip}`; metadata `timing_tool/runs/version/generated_at`.
 
-**Aceptación:** cada release produce `metrics.json` con todos los campos no nulos en un
-runner con Docker + oráculo Node compilado, registrado en `GO-REWRITE-STATUS.md`.
+**Acceptance:** each release produces `metrics.json` with all fields non-null on a
+runner with Docker + the compiled Node oracle, recorded in `GO-REWRITE-STATUS.md`.
 
-**Regresión aceptada (registrada, NO gated):** base = primera corrida limpia sobre el
-commit candidato de RW-018. Se anota —sin frenar el release— startup > 1.5× base o peor
-que el oráculo Node, binario > 1.2× base, o gzip > 1.2× base. Cruzar el umbral exige
-una nota en `GO-REWRITE-STATUS.md`; no invalida el release.
+**Accepted regression (recorded, NOT gated):** base = first clean run on the
+RW-018 candidate commit. It is noted —without stopping the release— if startup > 1.5× base or worse
+than the Node oracle, binary > 1.2× base, or gzip > 1.2× base. Crossing the threshold requires
+a note in `GO-REWRITE-STATUS.md`; it does not invalidate the release.
 
-### RW-018 — Corrida limpia de paridad v0.88.0 — 🟢 CORRIDA LIMPIA LOGRADA (gate final)
+### RW-018 — Clean v0.88.0 parity run — 🟢 CLEAN RUN ACHIEVED (final gate)
 
-**Corrida limpia contra el pin v0.88.0 (oracle `f683c29`), artefactos en `artifacts/`:**
+**Clean run against the v0.88.0 pin (oracle `f683c29`), artifacts in `artifacts/`:**
 lint ✅ · coverage ✅ 47.6% · test:integration ✅ · test:e2e ✅ · build:cross ✅ (linux
 amd64/arm64) · parity:contract ✅ 68/0/0 · parity:network ✅ 13/0/0 · parity:runtime ✅
 **189 matched / 0 failed / 0 inconclusive** (+ TestPublishParity ✅) · skipped-arm64 4
-(experimental). Reportes JSON por lane + `reference-commit.txt` + `coverage.out` guardados.
+(experimental). Per-lane JSON reports + `reference-commit.txt` + `coverage.out` saved.
 
-**Caveats — resueltos:** (1) la flakiness del runtime lane bajo `-parallel 4` se
-eliminó: el gate (`task parity:runtime`) ahora default `-parallel 2` (determinista,
-override `PARITY_PARALLEL`). (2) `goreleaser`/`syft` verificados localmente:
-`goreleaser check` valida la config (queda sólo la deprecation intencional de
-`dockers`→`dockers_v2`), `goreleaser release --snapshot` buildea binarios + archives +
-SBOMs + imágenes docker, y `docker run <img> --version` funciona. El gate CI
-(`.github/workflows/go-cli.yml`) corre toda la secuencia con artefactos; arm64 es un job
-experimental no-bloqueante.
+**Caveats — resolved:** (1) the runtime lane flakiness under `-parallel 4` was
+eliminated: the gate (`task parity:runtime`) now defaults to `-parallel 2` (deterministic,
+override `PARITY_PARALLEL`). (2) `goreleaser`/`syft` verified locally:
+`goreleaser check` validates the config (only the intentional `dockers`→`dockers_v2`
+deprecation remains), `goreleaser release --snapshot` builds binaries + archives +
+SBOMs + docker images, and `docker run <img> --version` works. The CI gate
+(`.github/workflows/go-cli.yml`) runs the whole sequence with artifacts; arm64 is a
+non-blocking experimental job.
 
-**Para declarar paridad completa:** correr el gate CI en verde sobre el commit candidato
-y tildar la RELEASE-CHECKLIST. No quedan blockers de producto ni de infra conocidos.
+**To declare full parity:** run the CI gate green on the candidate commit
+and check off the RELEASE-CHECKLIST. No known product or infra blockers remain.
 
 
 
-Ejecutar en el commit candidato, en un runner con Docker + red + oráculo compilado:
+Run on the candidate commit, on a runner with Docker + network + compiled oracle:
 
 ```sh
 task lint && task coverage && task test:integration && task test:e2e
@@ -278,142 +278,141 @@ task parity:contract && task parity:network && task parity:runtime
 task build:cross
 ```
 
-Las colas de otros ítems ya están cubiertas: los diferidos de **RW-005** matchean en la
-corrida limpia, y `goreleaser release --snapshot` de **RW-015/016** fue verificado.
+The tails of other items are already covered: the **RW-005** deferrals match in the
+clean run, and `goreleaser release --snapshot` of **RW-015/016** was verified.
 
-**Aceptación:** cero `failed`, cero `inconclusive`, deferred resueltos, SHA del
-oráculo y JSON de cada lane guardados, checklist completa. `skipped-arm64` (runtime
-arm64 experimental) NO cuenta contra el gate. Bloqueado por RW-012 (alimenta `task
-coverage`) y por las colas de RW-005/006.
+**Acceptance:** zero `failed`, zero `inconclusive`, deferrals resolved, oracle SHA
+and each lane's JSON saved, checklist complete. `skipped-arm64` (experimental
+runtime arm64) does NOT count against the gate. Blocked by RW-012 (feeds `task
+coverage`) and by the RW-005/006 tails.
 
-**Estado de los inconclusive observados** (corrida runtime previa tenía 7): los 2
-`*-workspace-secrets` eran un fixture-path faltante — **corregido** (→ matched); los 4
-`update-uid-arm64*` eran contención/flakiness bajo ejecución paralela — ahora son
-`skipped-arm64` (experimental, opt-in `PARITY_ARM64=true`, matchean aislados con QEMU);
-`build.unsupported-platform-failure` es un infra-skip legítimo (fallo a nivel docker).
-Así que el gate ya no depende de emulación arm64 en el runner.
+**Status of the observed inconclusives** (a previous runtime run had 7): the 2
+`*-workspace-secrets` were a missing fixture-path — **fixed** (→ matched); the 4
+`update-uid-arm64*` were contention/flakiness under parallel execution — now they are
+`skipped-arm64` (experimental, opt-in `PARITY_ARM64=true`, they match in isolation with QEMU);
+`build.unsupported-platform-failure` is a legitimate infra-skip (docker-level failure).
+So the gate no longer depends on arm64 emulation on the runner.
 
-## Endurecimiento del harness (wave B — falsos-verdes de la auditoría)
+## Harness hardening (wave B — audit false-greens)
 
-La auditoría de cobertura marcó que una matriz "verde" sobreestima paridad. Estado:
+The coverage audit flagged that a "green" matrix overestimates parity. Status:
 
-- **Hecho — verificación de digests** (`compare_hashes: true`): el scrub global
-  `sha256/hex→<HASH>` ocultaba digests deterministas y comparables; ahora se comparan
-  en resolve-dependencies / read-configuration.features-configuration / lockfile.
-- **Hecho — null vs absent** (`compare_nulls: true`): `normalizeValue` dropeaba los
-  null; ahora los casos-envelope los comparan.
-- **Descartado — stderr exacto**: `extractErrorReason` ya canoniza sólo el *formato*
-  (tokens que preservan flag/value/choices/arg-name) y compara el *wording* verbatim en
-  el fallback (así se cazaron las divergencias de features-test). Un assert de texto
-  exacto forzaría a Go a imitar el framing de Node/yargs — contraproducente.
-- **Diferido — banner de versión**: Go reporta git-hash y TS semver; el banner es una
-  caja cuyo ancho depende del largo de la versión, así que no matchea ni scrubbeando.
-  Requiere strippear el banner entero por payoff cosmético (features-test/features-info
-  verbose ya pasan por exit_code/stderr).
-- **Hecho — cobertura cross-command**: substitución de variables — `${devcontainerId}`
-  pinneado por unit test al algoritmo TS (el harness no puede cazarlo: cada lado usa
-  id-labels distintos), `${localEnv:X}`/`${localWorkspaceFolderBasename}` en
-  `read-configuration.host-variable-substitution`. Merge de metadata-label ya cubierto y
+- **Done — digest verification** (`compare_hashes: true`): the global scrub
+  `sha256/hex→<HASH>` hid deterministic, comparable digests; they are now compared
+  in resolve-dependencies / read-configuration.features-configuration / lockfile.
+- **Done — null vs absent** (`compare_nulls: true`): `normalizeValue` dropped the
+  nulls; now the envelope cases compare them.
+- **Ruled out — exact stderr**: `extractErrorReason` already canonicalizes only the *format*
+  (tokens that preserve flag/value/choices/arg-name) and compares the *wording* verbatim in
+  the fallback (this is how the features-test divergences were caught). An exact-text assert
+  would force Go to imitate the Node/yargs framing — counterproductive.
+- **Deferred — version banner**: Go reports a git-hash and TS a semver; the banner is a
+  box whose width depends on the version length, so it does not match even when scrubbed.
+  It would require stripping the entire banner for a cosmetic payoff (features-test/features-info
+  verbose already pass via exit_code/stderr).
+- **Done — cross-command coverage**: variable substitution — `${devcontainerId}`
+  pinned by a unit test to the TS algorithm (the harness cannot catch it: each side uses
+  different id-labels), `${localEnv:X}`/`${localWorkspaceFolderBasename}` in
+  `read-configuration.host-variable-substitution`. Metadata-label merge already covered and
   `match`: `container-metadata-success` (base-image label) + `features-configuration`
-  (multi-feature, con `compare_nulls`).
-- **Hecho — masking de secrets**: la redacción del logger (`********`, paridad TS
-  `maskSecrets`) está unit-testeada (`log.TestSecretMasking`: valor, substring, vacío), y
-  los casos `up`/`run-user-commands.workspace-secrets-success` (antes inconclusive por un
-  fixture-path faltante, ya corregido) corren con `--log-level trace` + secrets y matchean
-  — verificado 0 leaks del valor crudo en la salida de ambos lados.
+  (multi-feature, with `compare_nulls`).
+- **Done — secret masking**: the logger's redaction (`********`, TS `maskSecrets` parity)
+  is unit-tested (`log.TestSecretMasking`: value, substring, empty), and
+  the `up`/`run-user-commands.workspace-secrets-success` cases (previously inconclusive due to a
+  missing fixture-path, now fixed) run with `--log-level trace` + secrets and match
+  — verified 0 leaks of the raw value in the output of both sides.
 
-## Mejoras de integración (post-paridad, tiers)
+## Integration improvements (post-parity, tiers)
 
-Trabajo dirigido a que orquestadores/tooling downstream corran el CLI sin
-maquinaria externa (auth, cache de build, prebuilds). No son gaps de paridad
-con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
+Work aimed at letting external orchestrators/downstream tooling run the CLI without
+external machinery (auth, build cache, prebuilds). They are not parity gaps
+with the TS oracle except where indicated; they are sequenced by value/risk.
 
-- **T1.1 — `config.build.cacheFrom` cableado.** El campo existe (`config/types.go`)
-  pero sólo se usaba el flag `--cache-from`; TS (`singleContainer.ts:226-234`)
-  además empuja `config.build.cacheFrom` (string|array) tras los del flag. Se
-  mergea en la build del Dockerfile del usuario (no en las capas de features, que
-  en TS usan sólo `additionalCacheFroms`). No-breaking. → **cerrado** si hay test
-  del merge y del orden.
-- **T1.2 — `build --label`.** Ya funciona (`docker/client.go`), adelantado a
-  upstream #930. Sin trabajo; registrado como capacidad presente.
-- **T2.1 — Puente de auth para `docker build`. HECHO.** `oci.ResolveBuildAuth`
-  resuelve los registries referenciados por la build con la cadena del CLI
-  (`DEVCONTAINERS_OCI_AUTH` → docker config / cred helpers → `GITHUB_TOKEN`) y
-  escribe un `DOCKER_CONFIG` temporal self-contained (sólo `auths`; los tokens ya
-  vienen materializados de todas las fuentes, incl. el credsStore del usuario) que
-  se pasa por env (`BuildOptions.Env`) al subproceso. Sin credenciales resueltas
-  no crea nada (idéntico al comportamiento previo). Cableado en: build de
-  Dockerfile (`build`+`up`), extend-con-features (push/cache) e imagen-con-push.
-  Cubierto por unit tests (resolver + extractores de registry + cleanup).
-  - **Gap restante:** el pull de la base en configs *image-based* usa
-    `engine.PullImage` (no el subproceso de build), así que su auth va por otra
-    ruta (`oci` cliente propio) — cubierto para pull del CLI, no bridgeado porque
-    no lo necesita. Si en el futuro el pull de base necesitara el mismo puente,
-    reusar `oci.ResolveBuildAuth`.
-- **T3.1 — `--secrets-file` en `build`. HECHO (divergencia Go-only, aprobada).** TS
-  `build` no expone `--secrets-file`; Go lo agrega y pasa cada secreto a BuildKit
-  como build secret (`--secret id=KEY,env=KEY`, valor por env del subproceso —
-  nunca en la línea de comandos), de modo que un Dockerfile puede `RUN
-  --mount=type=secret,id=KEY`. Requiere buildx; con el builder legacy se ignora
-  con warning. Marcado como divergencia en el inventario. Sin oráculo TS →
-  unit tests del ensamblado de `--secret`, del ruteo por env y del no-leak del
-  valor.
-- **T3.2 — `BUILDKIT_INLINE_CACHE=1` condicional. HECHO.** Go lo hardcodeaba en
-  todos los builds buildx; TS lo omite cuando `--cache-to` es un exportador inline
-  (`isBuildxCacheToInline`: `/type\s*=\s*inline/i`). Replicado en
-  `docker.buildArgs` (cubre Dockerfile + features + imagen). Unit tests del helper
-  y del ensamblado de args.
-- **T4.1 — `read-configuration --cache-key`. HECHO (Go-only, aditivo).** sha256
-  sobre `{config normalizada + Dockerfile + contexto + lockfile (digests resueltos
-  si existe) + proxy env}`. Hermético (sin red). Aditivo: default off → output
-  byte-idéntico a TS; con el flag agrega el campo `cacheKey`. En el inventario
-  como divergencia. Unit tests de formato, determinismo y sensibilidad al cambio
-  (image, Dockerfile, proxy; ignora env no-proxy). **Limitación:** refs de feature
-  no pinneadas hashean por tag; pinnear (@sha256 o lockfile commiteado) para que
-  la key siga los bits exactos.
-- **T4.2 — `--cache-image` en `up`. HECHO (Go-only, aprobado).** Arranca el
-  contenedor desde una imagen prebuildeada (features ya horneadas), saltándose el
-  build y el feature-install; la config merged se recupera del label
-  `devcontainer.metadata` de la imagen (igual que un config image-based).
-  remoteUser/mounts/lifecycle siguen viniendo de devcontainer.json. No soportado
-  con Compose (error de validación). En el inventario como divergencia.
-  Verificado end-to-end (build de imagen con metadata → `up --cache-image` →
-  contenedor creado, "skipping build and feature install"). Cobertura automática
-  del happy-path/compose-guard queda para la lane runtime (hoy bloqueada por disco
-  en CI, ver más abajo).
-- **T4.3 — deep-merge de `--override-config`. HECHO (divergencia de paridad
-  aprobada).** TS reemplaza el config con el override
-  (`readDocument(overrideConfigFile ?? configFile)`); Go ahora deep-mergea el
-  override sobre el base (objetos anidados recursivo; escalares/arrays reemplazan),
-  para que un orquestador pase un override parcial sin restatear todo el
-  devcontainer.json. Sin base legible, el override queda solo (idéntico a TS).
-  **Divergencia deliberada del oráculo.** Impacto en matriz: nulo — el único caso
-  de override-config (`up.missing-workspace-or-override-config`) es el error-path
-  (falta workspace+override), no ejercita merge-vs-replace; contract+semantic
-  siguen verdes. Unit tests del helper (`deepMergeConfig`: anidado, replace de
-  escalar/array, nil) y del loader con override parcial.
+- **T1.1 — `config.build.cacheFrom` wired.** The field exists (`config/types.go`)
+  but only the `--cache-from` flag was used; TS (`singleContainer.ts:226-234`)
+  also pushes `config.build.cacheFrom` (string|array) after the flag's. It is
+  merged into the build of the user's Dockerfile (not into the features layers, which
+  in TS use only `additionalCacheFroms`). Non-breaking. → **closed** if there is a test
+  of the merge and the ordering.
+- **T1.2 — `build --label`.** Already works (`docker/client.go`), ahead of
+  upstream #930. No work; recorded as a present capability.
+- **T2.1 — Auth bridge for `docker build`. DONE.** `oci.ResolveBuildAuth`
+  resolves the registries referenced by the build with the CLI's chain
+  (`DEVCONTAINERS_OCI_AUTH` → docker config / cred helpers → `GITHUB_TOKEN`) and
+  writes a self-contained temporary `DOCKER_CONFIG` (only `auths`; the tokens already
+  come materialized from all sources, incl. the user's credsStore) that
+  is passed by env (`BuildOptions.Env`) to the subprocess. With no resolved credentials
+  it creates nothing (identical to the previous behavior). Wired in: Dockerfile
+  build (`build`+`up`), extend-with-features (push/cache) and image-with-push.
+  Covered by unit tests (resolver + registry extractors + cleanup).
+  - **Remaining gap:** the base pull in *image-based* configs uses
+    `engine.PullImage` (not the build subprocess), so its auth goes through another
+    route (`oci` own client) — covered for the CLI pull, not bridged because
+    it does not need it. If in the future the base pull needed the same bridge,
+    reuse `oci.ResolveBuildAuth`.
+- **T3.1 — `--secrets-file` in `build`. DONE (Go-only divergence, approved).** TS
+  `build` does not expose `--secrets-file`; Go adds it and passes each secret to BuildKit
+  as a build secret (`--secret id=KEY,env=KEY`, value via the subprocess env —
+  never on the command line), so that a Dockerfile can `RUN
+  --mount=type=secret,id=KEY`. Requires buildx; with the legacy builder it is ignored
+  with a warning. Marked as a divergence in the inventory. No TS oracle →
+  unit tests of the `--secret` assembly, the env routing and the value not leaking.
+- **T3.2 — Conditional `BUILDKIT_INLINE_CACHE=1`. DONE.** Go hardcoded it in
+  all buildx builds; TS omits it when `--cache-to` is an inline exporter
+  (`isBuildxCacheToInline`: `/type\s*=\s*inline/i`). Replicated in
+  `docker.buildArgs` (covers Dockerfile + features + image). Unit tests of the helper
+  and the args assembly.
+- **T4.1 — `read-configuration --cache-key`. DONE (Go-only, additive).** sha256
+  over `{normalized config + Dockerfile + context + lockfile (resolved digests
+  if present) + proxy env}`. Hermetic (no network). Additive: default off → output
+  byte-identical to TS; with the flag it adds the `cacheKey` field. In the inventory
+  as a divergence. Unit tests of format, determinism and sensitivity to change
+  (image, Dockerfile, proxy; ignores non-proxy env). **Limitation:** unpinned feature
+  refs hash by tag; pin them (@sha256 or a committed lockfile) so that
+  the key follows the exact bits.
+- **T4.2 — `--cache-image` in `up`. DONE (Go-only, approved).** Starts the
+  container from a prebuilt image (features already baked in), skipping the
+  build and the feature-install; the merged config is recovered from the
+  `devcontainer.metadata` label of the image (like an image-based config).
+  remoteUser/mounts/lifecycle still come from devcontainer.json. Not supported
+  with Compose (validation error). In the inventory as a divergence.
+  Verified end-to-end (build an image with metadata → `up --cache-image` →
+  container created, "skipping build and feature install"). Automatic coverage
+  of the happy-path/compose-guard is left for the runtime lane (currently blocked by disk
+  in CI, see below).
+- **T4.3 — deep-merge of `--override-config`. DONE (approved parity
+  divergence).** TS replaces the config with the override
+  (`readDocument(overrideConfigFile ?? configFile)`); Go now deep-merges the
+  override over the base (nested objects recursively; scalars/arrays replace),
+  so that an orchestrator can pass a partial override without restating the whole
+  devcontainer.json. With no readable base, the override stands alone (identical to TS).
+  **Deliberate divergence from the oracle.** Matrix impact: none — the only
+  override-config case (`up.missing-workspace-or-override-config`) is the error-path
+  (missing workspace+override), it does not exercise merge-vs-replace; contract+semantic
+  stay green. Unit tests of the helper (`deepMergeConfig`: nested, replace of
+  scalar/array, nil) and of the loader with a partial override.
 
-## Decisiones que deben quedar explícitas
+## Decisions that must be made explicit
 
-Decisiones ya tomadas (firmes):
+Decisions already taken (firm):
 
-- **Plataforma: sólo Linux** (amd64/arm64). Sin Windows ni macOS. → RW-010 cerrado.
-- **Runtime: sólo Docker.** Podman no soportado. → RW-009 cerrado.
-- **Compose: sólo v2** (`docker compose`). Compose v1 no soportado. → RW-009 cerrado.
-- **exec: terminal heredado** (`docker exec -it`), sin PTY propio. → RW-003 Branch A.
-- **`--log-file`: tee a archivo** (`io.MultiWriter(os.Stderr, file)`), cableado en los
-  comandos que exponen el flag. `--terminal-log-file` teea el mismo stream combinado
-  (el CLI tiene un solo stream, sin terminal auto-gestionado): divergencia documentada
-  del CLI TS (que escribe dos archivos con formatos distintos). → RW-014 cerrado.
-- **Imagen OCI: `ghcr.io/spin-stack/devcontainer-cli`** (source repo
-  `github.com/spin-stack/devcontainer-cli`). → RW-016 cerrado.
+- **Platform: Linux only** (amd64/arm64). No Windows or macOS. → RW-010 closed.
+- **Runtime: Docker only.** Podman not supported. → RW-009 closed.
+- **Compose: v2 only** (`docker compose`). Compose v1 not supported. → RW-009 closed.
+- **exec: inherited terminal** (`docker exec -it`), no own PTY. → RW-003 Branch A.
+- **`--log-file`: tee to file** (`io.MultiWriter(os.Stderr, file)`), wired in the
+  commands that expose the flag. `--terminal-log-file` tees the same combined stream
+  (the CLI has a single stream, no self-managed terminal): documented divergence
+  from the TS CLI (which writes two files with different formats). → RW-014 closed.
+- **OCI image: `ghcr.io/spin-stack/devcontainer-cli`** (source repo
+  `github.com/spin-stack/devcontainer-cli`). → RW-016 closed.
 
-Puntos que aún no deben permanecer ambiguos:
+Points that must no longer remain ambiguous:
 
-- fallback de legacy Features por GitHub Releases;
-- paridad byte-a-byte del tarball, hoy no alcanzable por `mtime`;
-- alcance de ACR/ECR en CI regular o programado (helpers sólo Linux: `secretservice`/`pass`).
+- legacy Features fallback via GitHub Releases;
+- byte-for-byte tarball parity, currently unattainable due to `mtime`;
+- scope of ACR/ECR in regular or scheduled CI (Linux-only helpers: `secretservice`/`pass`).
 
-Una decisión de no soportar un comportamiento cierra el ítem sólo si se documenta
-como divergencia deliberada, se retira la surface engañosa y existe un test del
-contrato elegido.
+A decision not to support a behavior closes the item only if it is documented
+as a deliberate divergence, the misleading surface is removed and a test of the
+chosen contract exists.

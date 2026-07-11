@@ -1,28 +1,28 @@
 # =============================================================================
-# @devcontainers/cli — Inventario completo de flags
-# Fuente: src/spec-node/devContainersSpecCLI.ts + featuresCLI/* + templatesCLI/*
-# Generado: 2026-04-10
-# Uso: Contrato de paridad para la migración a Go
+# @devcontainers/cli — Complete flags inventory
+# Source: src/spec-node/devContainersSpecCLI.ts + featuresCLI/* + templatesCLI/*
+# Generated: 2026-04-10
+# Usage: Parity contract for the Go migration
 # =============================================================================
 
-# Nota sobre convenciones:
+# Note on conventions:
 #   required: true   → yargs: required/demandOption
-#   array: true      → el flag puede repetirse (--flag a --flag b)
-#   hidden: true     → no aparece en --help (experimental/internal)
-#   implies: [x]     → requiere que se pase también --x
-#   alias: x         → forma corta
+#   array: true      → the flag can be repeated (--flag a --flag b)
+#   hidden: true     → does not appear in --help (experimental/internal)
+#   implies: [x]     → requires --x to be passed as well
+#   alias: x         → short form
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Yargs global config
 # ─────────────────────────────────────────────────────────────────────────────
 parser_configuration:
-  boolean_negation: false          # --no-<flag> deshabilitado (para soportar --no-cache)
-  halt_at_non_option: conditional  # Solo para 'exec' cuando no es --help
+  boolean_negation: false          # --no-<flag> disabled (to support --no-cache)
+  halt_at_non_option: conditional  # Only for 'exec' when it is not --help
   strict: true
   demand_command: true
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Validaciones globales (compartidas por múltiples comandos)
+# Global validations (shared by multiple commands)
 # ─────────────────────────────────────────────────────────────────────────────
 validations:
   id_label_format: "name=value"          # regex: /.+=.+/
@@ -30,7 +30,7 @@ validations:
   remote_env_format: "name=value"        # regex: /.+=.*/
 
 # =============================================================================
-# COMANDO: devcontainer up
+# COMMAND: devcontainer up
 # =============================================================================
 commands:
   up:
@@ -229,7 +229,7 @@ commands:
       - "remote-env must match name=value format"
 
   # ===========================================================================
-  # COMANDO: devcontainer set-up
+  # COMMAND: devcontainer set-up
   # ===========================================================================
   set-up:
     description: "Set up an existing container as a dev container"
@@ -307,7 +307,7 @@ commands:
       - "remote-env must match name=value format"
 
   # ===========================================================================
-  # COMANDO: devcontainer build
+  # COMMAND: devcontainer build
   # ===========================================================================
   build:
     description: "Build a dev container image"
@@ -402,7 +402,7 @@ commands:
         hidden: true
 
   # ===========================================================================
-  # COMANDO: devcontainer run-user-commands
+  # COMMAND: devcontainer run-user-commands
   # ===========================================================================
   run-user-commands:
     description: "Run user commands"
@@ -496,7 +496,7 @@ commands:
       - "One of --container-id, --id-label or --workspace-folder is required"
 
   # ===========================================================================
-  # COMANDO: devcontainer read-configuration
+  # COMMAND: devcontainer read-configuration
   # ===========================================================================
   read-configuration:
     description: "Read configuration"
@@ -567,11 +567,11 @@ commands:
       - "id-label must match name=value format"
       - "One of --container-id, --id-label or --workspace-folder is required"
     output_notes: >
-      read-configuration NO usa envolvente outcome. Emite directamente:
+      read-configuration does NOT use an outcome envelope. It emits directly:
       { configuration, workspace, featuresConfiguration, mergedConfiguration }
 
   # ===========================================================================
-  # COMANDO: devcontainer outdated
+  # COMMAND: devcontainer outdated
   # ===========================================================================
   outdated:
     description: "Show current and available versions"
@@ -612,11 +612,11 @@ commands:
         type: string
         description: "Terminal log file path."
     output_notes: >
-      --output-format text: text-table con columnas [Feature, Current, Wanted, Latest].
-      --output-format json: JSON con indentación si TTY.
+      --output-format text: text table with columns [Feature, Current, Wanted, Latest].
+      --output-format json: JSON with indentation when a TTY is attached.
 
   # ===========================================================================
-  # COMANDO: devcontainer upgrade
+  # COMMAND: devcontainer upgrade
   # ===========================================================================
   upgrade:
     description: "Upgrade lockfile"
@@ -663,7 +663,7 @@ commands:
       - "--target-version must match /^\\d+(\\.\\d+(\\.\\d+)?)?$/"
 
   # ===========================================================================
-  # COMANDO: devcontainer exec
+  # COMMAND: devcontainer exec
   # ===========================================================================
   exec:
     description: "Execute a command on a running dev container"
@@ -744,12 +744,12 @@ commands:
       - "remote-env must match name=value format"
       - "One of --container-id, --id-label or --workspace-folder is required"
     tty_notes: >
-      Si stdin y stdout son TTY (o log-format es json), usa PTY.
-      En ese caso, terminal dimensions se leen de process.stdout.columns/rows
-      y se escucha 'resize' event.
+      If stdin and stdout are TTYs (or log-format is json), a PTY is used.
+      In that case, terminal dimensions are read from process.stdout.columns/rows
+      and the 'resize' event is listened for.
 
   # ===========================================================================
-  # SUBCOMANDOS: devcontainer features *
+  # SUBCOMMANDS: devcontainer features *
   # ===========================================================================
   features:
     description: "Features commands"
@@ -757,7 +757,7 @@ commands:
 
       test:
         description: "Test Features"
-        positional: "[target] (deprecated — usar --project-folder)"
+        positional: "[target] (deprecated — use --project-folder)"
         handler: featuresTestHandler
         exit_codes: { success: 0, error: 1 }
         flags:
@@ -919,7 +919,7 @@ commands:
             default: info
 
   # ===========================================================================
-  # SUBCOMANDOS: devcontainer templates *
+  # SUBCOMMANDS: devcontainer templates *
   # ===========================================================================
   templates:
     description: "Templates commands"
@@ -1047,7 +1047,7 @@ commands:
         description: "Docker CLI path."
 
 # =============================================================================
-# RESUMEN JSON OUTPUT ENVELOPES
+# JSON OUTPUT ENVELOPES SUMMARY
 # =============================================================================
 json_output_envelopes:
   success_with_container:  # up
@@ -1064,7 +1064,7 @@ json_output_envelopes:
     fields: [configuration, workspace, featuresConfiguration, mergedConfiguration]
 
 # =============================================================================
-# ENVIRONMENT VARIABLES LEIDAS
+# ENVIRONMENT VARIABLES READ
 # =============================================================================
 environment_variables:
   - name: DOCKER_CONFIG

@@ -1,100 +1,100 @@
-# Estado de paridad — Go CLI vs devcontainers/cli 0.88
+# Parity status — Go CLI vs devcontainers/cli 0.88
 
-Estado **actual** de la paridad del CLI Go contra el oráculo TypeScript (submódulo
-`reference/`, v0.88.0). Este documento resume dónde estamos; el detalle pendiente
-vive en el backlog y la historia en `git log`.
+**Current** status of the Go CLI's parity against the TypeScript oracle (submodule
+`reference/`, v0.88.0). This document summarizes where we stand; the pending detail
+lives in the backlog and the history in `git log`.
 
-**Estado de release:** candidato con **corrida limpia lograda** contra el pin v0.88.0
+**Release status:** candidate with a **clean run achieved** against the v0.88.0 pin
 (oracle `f683c29`): parity contract 68/0/0, network 13/0/0, runtime **189 matched / 0
-failed / 0 inconclusive** + TestPublishParity, más lint/coverage/integration/e2e/build:cross;
-artefactos JSON por lane + coverage.out + reference-commit.txt guardados. Falta
-formalizarla en CI con `goreleaser`/`syft` instalados (RW-015/016) para declarar paridad
-completa; ver [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
+failed / 0 inconclusive** + TestPublishParity, plus lint/coverage/integration/e2e/build:cross;
+per-lane JSON artifacts + coverage.out + reference-commit.txt saved. What remains is
+formalizing it in CI with `goreleaser`/`syft` installed (RW-015/016) to declare full
+parity; see [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
 
-**arm64 runtime: experimental, sin soporte por ahora.** Los binarios cross-compilan a
-`linux/arm64`, pero correr contenedores arm64 (vía emulación QEMU/binfmt en hosts amd64)
-es experimental: los casos de paridad `arm64_required` se saltan por default
-(`skipped-arm64`, no afectan el gate) y sólo corren con `PARITY_ARM64=true`.
+**arm64 runtime: experimental, unsupported for now.** The binaries cross-compile to
+`linux/arm64`, but running arm64 containers (via QEMU/binfmt emulation on amd64 hosts)
+is experimental: the `arm64_required` parity cases are skipped by default
+(`skipped-arm64`, they do not affect the gate) and only run with `PARITY_ARM64=true`.
 
-**Alcance soportado (firme):** **sólo Linux** (amd64/arm64) y **sólo Docker**. Windows y
-macOS no son objetivos (sin runtime/E2E/release). **Podman no soportado**; sólo
-`docker compose` v2. La lógica cross-platform/Podman existente se conserva únicamente por
-paridad con el oráculo TS y no ofrece garantía. El trabajo pendiente por ítem vive en
+**Supported scope (firm):** **Linux only** (amd64/arm64) and **Docker only**. Windows and
+macOS are not targets (no runtime/E2E/release). **Podman is not supported**; only
+`docker compose` v2. The existing cross-platform/Podman logic is kept solely for
+parity with the TS oracle and offers no guarantee. The pending work per item lives in
 [REMAINING-WORK.md](REMAINING-WORK.md).
 
-El backlog detallado y priorizado se mantiene únicamente en
+The detailed and prioritized backlog is maintained solely in
 [REMAINING-WORK.md](REMAINING-WORK.md).
 
-## Resumen
+## Summary
 
-| Área | Estado |
+| Area | Status |
 |---|---|
-| Core: `up` / `build` / `exec` / `read-configuration` / `run-user-commands` / `set-up` | ✅ paridad, validado por la matriz runtime |
-| Comportamientos 0.88 (workspace-folder→cwd, metadata array, consistency, lockfile, …) | ✅ cerrados |
-| `outdated` / `upgrade` | ✅ byte-idéntico |
-| `features info` (manifest/tags/dependencies, texto + json) | ✅ byte-idéntico |
-| `features` / `templates` `generate-docs` | ✅ byte-idéntico |
-| `features package` → `devcontainer-collection.json` | ✅ byte-idéntico |
-| `features` / `templates` `resolve-dependencies` (grafo + installOrder) | ✅ idéntico (post-scrub de hashes) |
-| Features `dependsOn` transitivo durante instalación | ✅ resuelve, deduplica y ordena dependencias; ciclos abortan |
-| `features` / `templates` `publish` (push a registry OCI) | ✅ idéntico (test con `registry:3` vía testcontainers) |
-| `templates metadata` | ✅ byte-idéntico (orden de keys preservado) |
-| `features test` (build + run de scripts por feature) | 🟡 implementación endurecida; E2E A/B agregado, pendiente de ejecución Docker |
-| Seguridad: `disallowed-features` (blocklist del control-manifest) | ✅ cableado, envelope idéntico |
+| Core: `up` / `build` / `exec` / `read-configuration` / `run-user-commands` / `set-up` | ✅ parity, validated by the runtime matrix |
+| 0.88 behaviors (workspace-folder→cwd, metadata array, consistency, lockfile, …) | ✅ closed |
+| `outdated` / `upgrade` | ✅ byte-identical |
+| `features info` (manifest/tags/dependencies, text + json) | ✅ byte-identical |
+| `features` / `templates` `generate-docs` | ✅ byte-identical |
+| `features package` → `devcontainer-collection.json` | ✅ byte-identical |
+| `features` / `templates` `resolve-dependencies` (graph + installOrder) | ✅ identical (post hash scrub) |
+| Features transitive `dependsOn` during installation | ✅ resolves, dedupes, and orders dependencies; cycles abort |
+| `features` / `templates` `publish` (push to OCI registry) | ✅ identical (test with `registry:3` via testcontainers) |
+| `templates metadata` | ✅ byte-identical (key order preserved) |
+| `features test` (build + run of per-feature scripts) | 🟡 hardened implementation; A/B E2E added, pending Docker execution |
+| Security: `disallowed-features` (control-manifest blocklist) | ✅ wired, identical envelope |
 
-## Gates inmediatos
+## Immediate gates
 
-Este resumen no reemplaza el backlog. Los gates inmediatos antes de declarar
-paridad completa son:
+This summary does not replace the backlog. The immediate gates before declaring
+full parity are:
 
-1. **Validación y refinamientos de `features test`** — los errores de preparación ya
-   se distinguen de tests fallidos y escenarios omitidos, y existe un caso E2E A/B
-   (`features.test-single-scenario-success`). Falta ejecutarlo/promoverlo a `match`
-   en un runner con Docker/red. Tampoco genera todavía los tests
-   *autogenerados/randomizados* ni colorea la salida (ANSI).
-2. **Digest del tarball de `features package`** — **no es alcanzable** la paridad
-   byte-a-byte: los headers del tar incrustan `mtime` y node-tar/Go difieren en su
-   manejo (el propio TS es no-determinista). El contenido, el file-list y el
-   `collection.json` sí coinciden. No es un gap real de comportamiento.
-3. **Higiene de aislamiento en la matriz** — algunos casos compose son *flaky* bajo
-   ejecución paralela (comparten recursos docker); pasan aislados. Mejora de test, no
-   de producto.
-4. **Corrida limpia de release** — falta una ejecución CI sin `failed` ni
-   `inconclusive`, con los JSON de contract/network/runtime y el SHA del oráculo
-   guardados como artefactos. El workflow ya produce esos archivos.
+1. **Validation and refinements of `features test`** — preparation errors are now
+   distinguished from failed tests and skipped scenarios, and an A/B E2E case exists
+   (`features.test-single-scenario-success`). It still needs to be executed/promoted to `match`
+   on a runner with Docker/network. It also does not yet generate the
+   *autogenerated/randomized* tests nor colorize the output (ANSI).
+2. **Tarball digest of `features package`** — byte-for-byte parity is **not achievable**:
+   the tar headers embed `mtime` and node-tar/Go differ in how they handle it
+   (TS itself is non-deterministic). The content, the file-list, and the
+   `collection.json` do match. It is not a real behavior gap.
+3. **Isolation hygiene in the matrix** — some compose cases are *flaky* under
+   parallel execution (they share docker resources); they pass in isolation. A test
+   improvement, not a product one.
+4. **Clean release run** — a CI run without `failed` or `inconclusive` is still
+   missing, with the contract/network/runtime JSON and the oracle SHA saved as
+   artifacts. The workflow already produces those files.
 
-No hay divergencias de producto abiertas conocidas en los comandos core ni en los
-auxiliares cubiertos.
+There are no known open product divergences in the core commands nor in the
+auxiliary ones covered.
 
-## Cómo se valida
+## How it is validated
 
 - **`docs/migration/parity-matrix.yaml`** + **`internal/cli/parity_matrix_test.go`**
-  (`TestParityMatrix`): ~170 casos que corren el mismo comando por el binario Go y el
-  oráculo TS y comparan salida/estado. Lanes: `contract` (sin docker) y `runtime`
-  (`PARITY_LANE=all`). Cada caso documenta su intención en `notes:`.
-- El harness está **endurecido** contra falsos positivos:
-  - los casos `-success` fallan si Go no llega a exit 0 con TS en 0 (W1);
-  - Go siempre corre aunque TS se salte, y los skips se loguean con `[case=…]` (W6);
-  - la normalización no coerciona escalares JSON ni scrubbea de más (W3).
-  - cada corrida publica conteos observados de `matched`, `failed`,
-    `skipped-docker`, `skipped-network`, `inconclusive` y `not-selected`; no se
-    infiere cobertura a partir de que el paquete haya terminado verde;
-  - CI usa `PARITY_STRICT=true`: cualquier caso inconcluso en el lane seleccionado
-    hace fallar el gate. Los skips de capacidades deshabilitadas explícitamente se
-    reportan por separado.
+  (`TestParityMatrix`): ~170 cases that run the same command through the Go binary and the
+  TS oracle and compare output/status. Lanes: `contract` (no docker) and `runtime`
+  (`PARITY_LANE=all`). Each case documents its intent in `notes:`.
+- The harness is **hardened** against false positives:
+  - the `-success` cases fail if Go does not reach exit 0 with TS at 0 (W1);
+  - Go always runs even if TS is skipped, and the skips are logged with `[case=…]` (W6);
+  - normalization does not coerce JSON scalars nor over-scrub (W3).
+  - each run publishes observed counts of `matched`, `failed`,
+    `skipped-docker`, `skipped-network`, `inconclusive`, and `not-selected`; coverage is not
+    inferred from the package having finished green;
+  - CI uses `PARITY_STRICT=true`: any inconclusive case in the selected lane
+    fails the gate. The skips of explicitly disabled capabilities are
+    reported separately.
 
 ```sh
-task parity:contract  # contrato hermético
-task parity:semantic  # semántica sin Docker/red
-task parity:network   # casos que requieren red externa
-task parity:runtime   # matriz completa (requiere Docker)
+task parity:contract  # hermetic contract
+task parity:semantic  # semantics without Docker/network
+task parity:network   # cases that require external network
+task parity:runtime   # full matrix (requires Docker)
 ```
 
-## Mantener la paridad al evolucionar
+## Keeping parity as it evolves
 
-1. Al refactorizar Go, correr la matriz para confirmar que no se coló un cambio de
-   comportamiento no intencional.
-2. Al cambiar comportamiento a propósito, actualizar el caso de la matriz (o quitarlo)
-   — la matriz documenta las divergencias deliberadas.
-3. Para seguir una versión upstream nueva: bump del submódulo `reference/` y re-correr;
-   los fallos nuevos marcan lo que upstream movió.
+1. When refactoring Go, run the matrix to confirm that an unintentional behavior
+   change did not slip in.
+2. When changing behavior on purpose, update the matrix case (or remove it)
+   — the matrix documents the deliberate divergences.
+3. To track a new upstream version: bump the `reference/` submodule and re-run;
+   the new failures mark what upstream moved.

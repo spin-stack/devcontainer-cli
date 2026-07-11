@@ -28,8 +28,8 @@ jobs:
       - run: task build
       - run: ./devcontainer --version
 
-      # Convierte el perfil de Go (coverage.out) a Cobertura XML para la
-      # feature nativa de Code Quality de GitHub.
+      # Convert the Go coverage profile (coverage.out) to Cobertura XML for
+      # GitHub's native Code Quality feature.
       - name: Convert coverage to Cobertura XML
         run: |
           go install github.com/boumenot/gocover-cobertura@latest

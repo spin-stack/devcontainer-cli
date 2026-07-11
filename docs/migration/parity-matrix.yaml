@@ -1,7 +1,7 @@
 # =============================================================================
 # @devcontainers/cli — Parity Matrix TS ↔ Go
-# Fuente complementaria a cli-flags-inventory.yaml
-# Objetivo: reducir iteraciones separando paridad por lanes y por casos chicos
+# Complementary source to cli-flags-inventory.yaml
+# Goal: reduce iterations by separating parity by lanes and by small cases
 # =============================================================================
 
 meta:
@@ -11,13 +11,13 @@ meta:
     commands: [features-info, read-configuration, exec, run-user-commands, set-up, up, build]
   lanes:
     contract:
-      description: "Parseo, required args, enums, formatos de error, shape de salida"
+      description: "Parsing, required args, enums, error formats, output shape"
       docker_required: false
     semantic:
-      description: "Comportamiento lógico con fixtures o metadata controlada"
+      description: "Logical behavior with fixtures or controlled metadata"
       docker_required: mixed
     runtime:
-      description: "Flujos con Docker real, compose, lifecycle, buildx"
+      description: "Flows with real Docker, compose, lifecycle, buildx"
       docker_required: true
   statuses:
     - missing
@@ -30,23 +30,23 @@ execution_order:
   - phase: 1
     lane: contract
     commands: [features-info, read-configuration, exec, run-user-commands, set-up]
-    reason: "Mayor retorno por costo; detecta gaps de contrato sin ruido de Docker"
+    reason: "Highest return on cost; detects contract gaps without Docker noise"
   - phase: 2
     lane: contract
     commands: [up, build]
-    reason: "Cierra validaciones y envelopes antes de runtime"
+    reason: "Closes out validations and envelopes before runtime"
   - phase: 3
     lane: semantic
     commands: [features-info, read-configuration, exec, run-user-commands]
-    reason: "Detecta flags cableados parcialmente o semántica divergente"
+    reason: "Detects partially wired flags or divergent semantics"
   - phase: 4
     lane: runtime
     commands: [set-up, up]
-    reason: "Happy path y error path mínimos"
+    reason: "Minimal happy path and error path"
   - phase: 5
     lane: runtime
     commands: [build]
-    reason: "Mayor ruido de infraestructura; dejar último"
+    reason: "Highest infrastructure noise; leave for last"
 
 normalization:
   stdout_json:
@@ -74,7 +74,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: mode-validation
     current_status: match
-    notes: "Mantener como guardrail; antes faltaba en Go"
+    notes: "Keep as a guardrail; previously missing in Go"
 
   - id: features-info.manifest-json
     lane: contract
@@ -108,7 +108,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized, stderr_normalized]
     class: dependency-graph
     current_status: match
-    notes: "La salida normalizada ahora converge en la comparación A/B"
+    notes: "The normalized output now converges in the A/B comparison"
 
   - id: features-info.invalid-output-format
     lane: contract
@@ -150,7 +150,7 @@ initial_cases:
     class: parse-validation
     current_status: match
 
-  # --- Casos que fijan divergencias destapadas por la auditoría de cobertura ---
+  # --- Cases that pin down divergences uncovered by the coverage audit ---
   - id: up.invalid-workspace-mount-consistency
     lane: contract
     command: up
@@ -160,7 +160,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: enum-validation
     current_status: match
-    notes: "TS valida el enum yargs [consistent,cached,delegated]; Go antes pasaba el valor crudo a docker."
+    notes: "TS validates the yargs enum [consistent,cached,delegated]; Go previously passed the raw value to docker."
 
   - id: features-publish.invalid-log-level
     lane: contract
@@ -171,7 +171,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: enum-validation
     current_status: match
-    notes: "TS rechaza --log-level fuera de [info,debug,trace]; Go antes defaulteaba a Info y seguía."
+    notes: "TS rejects --log-level outside [info,debug,trace]; Go previously defaulted to Info and continued."
 
   - id: features.resolve-dependencies-no-features
     lane: contract
@@ -182,9 +182,9 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: parse-validation
     current_status: match
-    notes: "config sin features → TS error a stderr exit 1; Go antes imprimía {installOrder:[]} exit 0."
+    notes: "config with no features → TS errors to stderr exit 1; Go previously printed {installOrder:[]} exit 0."
 
-  # --- Wave A: casos nuevos (algunos destaparon divergencias, ya corregidas) ---
+  # --- Wave A: new cases (some uncovered divergences, now fixed) ---
   - id: features-publish.missing-required
     lane: contract
     command: features-publish
@@ -194,7 +194,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: required-args
     current_status: match
-    notes: "TS: 'Missing required argument: namespace'. Go emitía el phrasing de cobra (MarkFlagRequired); ahora publishCollection valida namespace vacío con el mismo mensaje."
+    notes: "TS: 'Missing required argument: namespace'. Go emitted the cobra phrasing (MarkFlagRequired); now publishCollection validates an empty namespace with the same message."
 
   - id: templates.publish-missing-namespace
     lane: contract
@@ -205,7 +205,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: required-args
     current_status: match
-    notes: "Idéntico a features-publish.missing-required: mensaje 'Missing required argument: namespace'."
+    notes: "Identical to features-publish.missing-required: message 'Missing required argument: namespace'."
 
   - id: up.invalid-default-user-env-probe
     lane: contract
@@ -216,7 +216,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: enum-validation
     current_status: match
-    notes: "TS rechaza el enum yargs; Go valida el mismo enum antes de tocar Docker."
+    notes: "TS rejects the yargs enum; Go validates the same enum before touching Docker."
 
   - id: build.compose-output-not-supported
     lane: contract
@@ -227,7 +227,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized, stderr_normalized]
     class: wired-flags
     current_status: match
-    notes: "compose + --output → TS lanza '--output not supported.'"
+    notes: "compose + --output → TS throws '--output not supported.'"
 
   - id: features.test-reject-global-scenarios-and-features
     lane: contract
@@ -238,7 +238,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: parse-validation
     current_status: match
-    notes: "Mutua-exclusión. Go emitía otro wording; ahora usa el del oráculo ('Cannot combine --global-scenarios-only and --features')."
+    notes: "Mutual exclusion. Go emitted different wording; now it uses the oracle's ('Cannot combine --global-scenarios-only and --features')."
 
   - id: features.test-reject-skip-scenarios-and-global-scenarios
     lane: contract
@@ -249,7 +249,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: parse-validation
     current_status: match
-    notes: "Go alineado al texto+orden del oráculo ('Cannot combine --skip-scenarios and --global-scenarios-only')."
+    notes: "Go aligned with the oracle's text+order ('Cannot combine --skip-scenarios and --global-scenarios-only')."
 
   - id: templates.apply-invalid-template-args-exit1
     lane: contract
@@ -260,7 +260,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: parse-validation
     current_status: match
-    notes: "Go emitía el detalle del parser; ahora mensaje fijo 'Invalid template arguments provided.' como TS."
+    notes: "Go emitted the parser detail; now a fixed message 'Invalid template arguments provided.' like TS."
 
   - id: set-up.invalid-remote-env
     lane: contract
@@ -271,9 +271,9 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: format-validation
     current_status: match
-    notes: "set-up no validaba --remote-env; ahora llama validateRemoteEnvs como sus comandos hermanos."
+    notes: "set-up did not validate --remote-env; now it calls validateRemoteEnvs like its sibling commands."
 
-  # --- Wave A batch 2: casos nuevos (6 divergencias más corregidas) ---
+  # --- Wave A batch 2: new cases (6 more divergences fixed) ---
   - id: upgrade.err-invalid-target-version-format
     lane: contract
     command: upgrade
@@ -283,7 +283,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: version-validation
     current_status: match
-    notes: "TS valida en yargs .check() antes del handler: --target-version debe ser x / x.y / x.y.z. 'abc' => exit 1 'Invalid version 'abc'.  Must be in the form of 'x', 'x.y', or 'x.y.z''. Go antes declaraba --feature/--target-version como hidden pero nunca los leia (upgrade normal, exit 0); ahora el RunE valida el formato con el mismo regex y texto."
+    notes: "TS validates in yargs .check() before the handler: --target-version must be x / x.y / x.y.z. 'abc' => exit 1 'Invalid version 'abc'.  Must be in the form of 'x', 'x.y', or 'x.y.z''. Go previously declared --feature/--target-version as hidden but never read them (normal upgrade, exit 0); now RunE validates the format with the same regex and text."
 
   - id: upgrade.err-feature-without-target-version
     lane: contract
@@ -294,7 +294,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: version-validation
     current_status: match
-    notes: "XOR de yargs .check(): --feature y --target-version deben usarse juntos. Solo --feature => exit 1 'The '--target-version' and '--feature' flag must be used together.'. Go ignoraba ambos flags; ahora el RunE aplica el XOR con el mismo mensaje."
+    notes: "XOR from yargs .check(): --feature and --target-version must be used together. Only --feature => exit 1 'The '--target-version' and '--feature' flag must be used together.'. Go ignored both flags; now RunE applies the XOR with the same message."
 
   - id: outdated.image-with-features-text
     lane: runtime
@@ -305,7 +305,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: outdated-runtime
     current_status: match
-    notes: "outdated --output-format text: la columna Feature es el userFeatureId completo sin tag (getFeatureIdWithoutVersion), las filas van en orden de insercion del config, y el formato es text-table de npm (anchos minimos, separador de 2 espacios, alineado a la izquierda, sin espacios finales). Go antes acortaba a los 2 ultimos segmentos con tag, ordenaba alfabeticamente (map) y padeaba a %-50s con espacios finales."
+    notes: "outdated --output-format text: the Feature column is the full userFeatureId without tag (getFeatureIdWithoutVersion), rows follow the config's insertion order, and the format is the npm text-table (minimum widths, 2-space separator, left-aligned, no trailing spaces). Go previously shortened to the last 2 segments with tag, sorted alphabetically (map), and padded to %-50s with trailing spaces."
 
   - id: features.package-single-feature-success
     lane: runtime
@@ -319,7 +319,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: collection-packaging
     current_status: match
-    notes: "--target apunta a una carpeta de UN solo feature (devcontainer-feature.json + install.sh directos). TS despacha packageSingleFeature (exit 0: tgz + collection de 1 elemento); Go iteraba sólo subdirectorios → colección vacía → 'Failed to package'. Fix: packageCollection detecta el metadata en la carpeta raíz y empaqueta como single."
+    notes: "--target points to a folder for a SINGLE feature (devcontainer-feature.json + install.sh directly). TS dispatches packageSingleFeature (exit 0: tgz + a 1-element collection); Go iterated only subdirectories → empty collection → 'Failed to package'. Fix: packageCollection detects the metadata in the root folder and packages it as single."
 
   - id: features.test-missing-src-test-folders
     lane: contract
@@ -330,7 +330,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: parse-validation
     current_status: match
-    notes: "project-folder sin src/ ni test/. TS imprime el banner y luego el error en STDOUT (chalk.red, prefijo '[-]') y sale 1; Go escribia el error a STDERR via logger y sin banner. Fix: banner antes del check + error a STDOUT con el texto exacto ('does not contain the required ''src'' and ''test'' folders.'). Ambos lados dejan STDERR vacio, por lo que extractErrorReason canoniza a '' en los dos y stderr_normalized matchea. No se asserta stdout_normalized: el banner TS lleva la version literal 'vX.Y.Z' que el normalizador no depura (necesitaria un version-scrub, wave B)."
+    notes: "project-folder with neither src/ nor test/. TS prints the banner and then the error to STDOUT (chalk.red, prefix '[-]') and exits 1; Go wrote the error to STDERR via the logger and without a banner. Fix: banner before the check + error to STDOUT with the exact text ('does not contain the required ''src'' and ''test'' folders.'). Both sides leave STDERR empty, so extractErrorReason canonicalizes to '' on both and stderr_normalized matches. stdout_normalized is not asserted: the TS banner carries the literal version 'vX.Y.Z' that the normalizer does not scrub (it would need a version-scrub, wave B)."
 
   - id: build.no-lockfile-frozen-lockfile-mutually-exclusive
     lane: contract
@@ -341,7 +341,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: parse-validation
     current_status: match
-    notes: "TS registra --no-lockfile/--frozen-lockfile públicos y rechaza las 3 combinaciones no-lockfile+frozen ('--no-lockfile and --frozen-lockfile are mutually exclusive.'). Go antes solo registraba los --experimental-* ocultos → 'unknown flag: --no-lockfile'."
+    notes: "TS registers --no-lockfile/--frozen-lockfile as public and rejects all 3 no-lockfile+frozen combinations ('--no-lockfile and --frozen-lockfile are mutually exclusive.'). Go previously registered only the hidden --experimental-* → 'unknown flag: --no-lockfile'."
 
   - id: exec.workspace-image-nonzero-exit
     lane: runtime
@@ -354,7 +354,7 @@ initial_cases:
     asserts: [exit_code]
     class: container-runtime
     current_status: match
-    notes: "exec propaga el exit code del comando remoto (sh -c 'exit 7' -> exit 7 en ambos CLIs). Solo se asserta exit_code: stdout vacio en ambos; el stderr difiere (Go emite banner + ruido de bash 'no job control', TS no)."
+    notes: "exec propagates the remote command's exit code (sh -c 'exit 7' -> exit 7 on both CLIs). Only exit_code is asserted: stdout is empty on both; stderr differs (Go emits a banner + bash noise 'no job control', TS does not)."
 
   - id: exec.container-not-found
     lane: runtime
@@ -365,7 +365,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: container-runtime
     current_status: match
-    notes: "Sin contenedor arriba: ambos CLIs fallan con 'Dev container not found.' exit 1. extractErrorReason normaliza el banner de Go y el stack trace de TS a la misma razon."
+    notes: "With no container running: both CLIs fail with 'Dev container not found.' exit 1. extractErrorReason normalizes Go's banner and TS's stack trace to the same reason."
 
   - id: templates.publish-collection-success
     lane: runtime
@@ -378,7 +378,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: templates-runtime
     current_status: match
-    notes: "publica la coleccion de templates (alpine, cpp, mytemplate, node-mongo) a un registry:3 LOCAL, uno por lado arrancado en setup_cmd con host 'localhost' (no 127.0.0.1) para que el cliente OCI de TS use HTTP plano. El puerto host aleatorio se captura via echo REGISTRY=localhost:PORT (reSetupEnv del harness lo inyecta en el env del ts_cmd). stdout = result-map JSON { id: {publishedTags:[1,1.0,1.0.0,latest], digest, version} }; el digest del tarball difiere entre lados (Go tar vs node-tar) pero se scrubbea a sha256:<HASH>, y las keys se ordenan por normalizeValue. Cada lado usa su propio registry fresco -> publishedTags deterministas."
+    notes: "publishes the template collection (alpine, cpp, mytemplate, node-mongo) to a LOCAL registry:3, one per side started in setup_cmd with host 'localhost' (not 127.0.0.1) so that the TS OCI client uses plain HTTP. The random host port is captured via echo REGISTRY=localhost:PORT (the harness reSetupEnv injects it into the ts_cmd env). stdout = result-map JSON { id: {publishedTags:[1,1.0,1.0.0,latest], digest, version} }; the tarball digest differs between sides (Go tar vs node-tar) but is scrubbed to sha256:<HASH>, and the keys are ordered by normalizeValue. Each side uses its own fresh registry -> deterministic publishedTags."
 
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
@@ -393,7 +393,7 @@ initial_cases:
     class: upgrade-runtime
     current_status: match
     compare_hashes: true
-    notes: "upgrade SIN --dry-run persiste el lockfile en disco (.devcontainer-lock.json junto al .devcontainer.json, getLockfilePath) y no emite JSON a stdout; el verify_cmd cat-ea el lockfile producido. Cada lado trabaja sobre una copia tmp aislada del fixture image-with-features. Ambos resuelven los features contra ghcr.io a los mismos digests (sha256 scrubbeado por normalizacion de todos modos)."
+    notes: "upgrade WITHOUT --dry-run persists the lockfile to disk (.devcontainer-lock.json next to .devcontainer.json, getLockfilePath) and does not emit JSON to stdout; the verify_cmd cats the produced lockfile. Each side works on an isolated tmp copy of the image-with-features fixture. Both resolve the features against ghcr.io to the same digests (sha256 scrubbed by normalization anyway)."
 
   - id: read-configuration.missing-required
     lane: contract
@@ -414,7 +414,7 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: enum-validation
     current_status: match
-    notes: "Alineado en Go con info|debug|trace"
+    notes: "Aligned in Go with info|debug|trace"
 
   - id: read-configuration.invalid-log-format
     lane: contract
@@ -458,7 +458,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: variable-substitution
     current_status: match
-    notes: "Substitución host cross-command (ningún comando la posee): ${localEnv:X} presente y ausente, ${localWorkspaceFolderBasename}."
+    notes: "Host substitution cross-command (no command owns it): ${localEnv:X} present and absent, ${localWorkspaceFolderBasename}."
 
   - id: read-configuration.compose-path-terminal
     lane: semantic
@@ -469,7 +469,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized, stderr_normalized]
     class: wired-flags
     current_status: match
-    notes: "Verificado con la matriz Go; requiere entorno con Docker/compose operativo para revalidaciones"
+    notes: "Verified with the Go matrix; requires an environment with operational Docker/compose for revalidations"
 
   - id: read-configuration.subfolder-config
     lane: semantic
@@ -570,7 +570,7 @@ initial_cases:
     asserts: [exit_code]
     class: wired-flags
     current_status: match
-    notes: "La comparación A/B actual no muestra divergencia observable para este contrato"
+    notes: "The current A/B comparison shows no observable divergence for this contract"
 
   - id: exec.terminal-columns-implies-rows
     lane: contract
@@ -853,7 +853,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized, stderr_normalized]
     class: wired-flags
     current_status: deferred-runtime
-    notes: "El TS intenta hacer docker pull antes de llegar a la validación discriminante; no es un caso contract hermético. Requiere Docker/red y debe promoverse a match sólo tras una comparación efectiva."
+    notes: "TS attempts a docker pull before reaching the discriminating validation; it is not a hermetic contract case. It requires Docker/network and should be promoted to match only after an effective comparison."
 
   - id: build.compose-platform-not-supported
     lane: contract
@@ -1046,7 +1046,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: lifecycle-runtime
     current_status: match
-    notes: "B9: en --log-format json el output del comando va como eventos `raw` en el log stream (stderr), no a stdout. stdout queda vacío en ambos (Go antes lo imprimía a stdout). No se aserta el stream (Go usa el SDK de Docker → menos eventos `Run:` que el TS)."
+    notes: "B9: with --log-format json the command's output goes as `raw` events in the log stream (stderr), not to stdout. stdout stays empty on both (Go previously printed it to stdout). The stream is not asserted (Go uses the Docker SDK → fewer `Run:` events than TS)."
 
   - id: exec.workspace-compose-success
     no_compose_isolation: true
@@ -1178,7 +1178,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: lifecycle-runtime
     current_status: match
-    notes: "Cerrado al preservar el comando fallido de lifecycle y emitir el envelope TS para hooks (`postCreateCommand from devcontainer.json failed.`)."
+    notes: "Closed out by preserving the failed lifecycle command and emitting the TS envelope for hooks (`postCreateCommand from devcontainer.json failed.`)."
 
   - id: run-user-commands.container-metadata-success
     lane: runtime
@@ -1229,7 +1229,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Desbloqueado al corregir el parser de docker events en el oracle TS (aceptar Action=start y JSON sin newline final)"
+    notes: "Unblocked by fixing the docker events parser in the TS oracle (accept Action=start and JSON without a trailing newline)"
 
   - id: up.image-reuses-base-image-success
     lane: runtime
@@ -1254,7 +1254,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.compose-image-without-features-success
     lane: runtime
@@ -1266,7 +1266,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.compose-labels-devcontainer-success
     lane: runtime
@@ -1279,7 +1279,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "B16: el container compose lleva los --id-label custom y el label devcontainer.metadata (antes Go no ponía labels devcontainer.* en compose → discovery/exec rotos). Verifica que el id-label del app service coincida y que el metadata label exista, en Go y TS."
+    notes: "B16: the compose container carries the custom --id-label and the devcontainer.metadata label (previously Go did not set devcontainer.* labels on compose → discovery/exec broken). Verifies that the app service's id-label matches and that the metadata label exists, in Go and TS."
 
   - id: up.app-port-success
     lane: runtime
@@ -1293,7 +1293,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "appPort → PortBindings (127.0.0.1:N:N para números, verbatim para strings). Antes Go no publicaba puertos."
+    notes: "appPort → PortBindings (127.0.0.1:N:N for numbers, verbatim for strings). Previously Go did not publish ports."
 
   - id: up.override-command-false-success
     lane: runtime
@@ -1307,7 +1307,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "overrideCommand:false → se appendan el entrypoint+cmd de la imagen (redis-server) al script keep-alive (exec \"$@\"). Antes Go descartaba el CMD de la imagen (sleep loop)."
+    notes: "overrideCommand:false → the image's entrypoint+cmd (redis-server) are appended to the keep-alive script (exec \"$@\"). Previously Go discarded the image's CMD (sleep loop)."
 
   - id: up.workspace-mount-custom-success
     lane: runtime
@@ -1321,7 +1321,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "workspaceMount custom respetado (antes Go siempre bindeaba el workspace-folder al default)."
+    notes: "custom workspaceMount respected (previously Go always bound the workspace-folder to the default)."
 
   - id: up.compose-dockerfile-without-features-success
     lane: runtime
@@ -1333,7 +1333,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.compose-image-without-features-minimal-reuses-base-image-success
     lane: runtime
@@ -1359,7 +1359,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.compose-with-name-devcontainer-env-success
     no_compose_isolation: true
@@ -1373,7 +1373,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.compose-with-name-custom-yaml-success
     no_compose_isolation: true
@@ -1386,7 +1386,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.compose-without-name-success
     no_compose_isolation: true
@@ -1399,7 +1399,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Pasa luego del fix en el oracle TS para docker events"
+    notes: "Passes after the fix in the TS oracle for docker events"
 
   - id: up.subfolder-config-success
     lane: runtime
@@ -1425,7 +1425,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Cerrado al alinear `configuration.configFilePath` y completar `mergedConfiguration` con campos del config (`image`, `runArgs`) en Go"
+    notes: "Closed out by aligning `configuration.configFilePath` and filling `mergedConfiguration` with config fields (`image`, `runArgs`) in Go"
 
   - id: up.image-omit-config-remote-env-from-metadata-success
     lane: runtime
@@ -1490,7 +1490,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Desbloqueado al fijar el setup del harness con `docker pull --platform linux/amd64 mongo:latest` antes del compose."
+    notes: "Unblocked by pinning the harness setup with `docker pull --platform linux/amd64 mongo:latest` before compose."
 
   - id: up.compose-dockerfile-with-features-omit-config-remote-env-from-metadata-success
     lane: runtime
@@ -1505,7 +1505,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Cerrado después de alinear la metadata de builds Dockerfile+features; el setup mantiene `docker pull --platform linux/amd64 mongo:latest` para evitar drift de plataforma en compose."
+    notes: "Closed out after aligning the metadata of Dockerfile+features builds; the setup keeps `docker pull --platform linux/amd64 mongo:latest` to avoid platform drift in compose."
 
   - id: up.compose-dockerfile-without-features-omit-config-remote-env-from-metadata-success
     lane: runtime
@@ -1662,7 +1662,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Cerrado al corregir el entrypoint compose generado por Go para que use saltos de línea reales y mantenga vivo el contenedor"
+    notes: "Closed out by fixing the compose entrypoint generated by Go so that it uses real line breaks and keeps the container alive"
 
   - id: up.compose-dockerfile-with-features-reuse-stopped-container-with-persisted-overrides-success
     no_compose_isolation: true
@@ -1679,7 +1679,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Reuse de container compose parado con overrides persistidos. La divergencia observada antes (TS fallaba el segundo `docker compose up --no-recreate`) era artefacto del setup con el path TS viejo; con el setup apuntando al submódulo TS y Go coinciden."
+    notes: "Reuse of a stopped compose container with persisted overrides. The divergence observed before (TS failed the second `docker compose up --no-recreate`) was an artifact of the setup with the old TS path; with the setup pointing to the TS submodule, Go and TS match."
 
   - id: up.compose-dockerfile-with-features-reuse-stopped-container-without-persisted-overrides-success
     no_compose_isolation: true
@@ -1696,7 +1696,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Cerrado como cobertura de re-run sin overrides persistidos. La aserción de reuso exacto del container ID era demasiado estricta: ambos lados pueden recrear."
+    notes: "Closed out as coverage of a re-run without persisted overrides. The assertion of exact container ID reuse was too strict: both sides may recreate."
 
   - id: up.compose-container-env-issue-success
     lane: runtime
@@ -1911,7 +1911,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness para alinear el builder con la imagen base local"
+    notes: "Passes in parity runtime by pinning DOCKER_DEFAULT_PLATFORM=linux/amd64 from the harness to align the builder with the local base image"
 
   - id: build.image-metadata-label-success
     lane: runtime
@@ -1986,7 +1986,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Cerrado como cobertura de ejecución `--no-cache` con features. La comparación de capas era demasiado estricta para buildx y fallaba en ambos lados."
+    notes: "Closed out as execution coverage of `--no-cache` with features. The layer comparison was too strict for buildx and failed on both sides."
 
   - id: build.compose-dockerfile-multi-image-success
     lane: runtime
@@ -2010,7 +2010,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+    notes: "Passes in parity runtime by pinning DOCKER_DEFAULT_PLATFORM=linux/amd64 from the harness"
 
   - id: build.image-multi-image-success
     lane: runtime
@@ -2023,7 +2023,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+    notes: "Passes in parity runtime by pinning DOCKER_DEFAULT_PLATFORM=linux/amd64 from the harness"
 
   - id: build.push-and-output-failure
     lane: runtime
@@ -2059,7 +2059,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+    notes: "Passes in parity runtime by pinning DOCKER_DEFAULT_PLATFORM=linux/amd64 from the harness"
 
   - id: build.subfolder-config-success
     lane: runtime
@@ -2073,7 +2073,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+    notes: "Passes in parity runtime by pinning DOCKER_DEFAULT_PLATFORM=linux/amd64 from the harness"
 
   - id: build.apply-build-options-success
     lane: runtime
@@ -2101,7 +2101,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Cerrado usando una fuente de cache válida (`ubuntu:latest`); el ref remoto inexistente bloqueaba TS antes de comparar Go."
+    notes: "Closed out using a valid cache source (`ubuntu:latest`); the nonexistent remote ref blocked TS before comparing Go."
 
   - id: build.image-metadata-container-env-success
     lane: runtime
@@ -2170,7 +2170,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Cerrado al alinear el nombre por defecto de builds `image` con features: sin `--image-name`, TS devuelve `<folder>-features`."
+    notes: "Closed out by aligning the default name of `image` builds with features: without `--image-name`, TS returns `<folder>-features`."
 
   - id: build.platform-supported-dockerfile-success
     lane: runtime
@@ -2183,7 +2183,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match
-    notes: "Cerrado al resolver correctamente la base image del target Dockerfile, preservar metadata base+config+features y comparar semántica del resultado en lugar de `docker inspect` completo."
+    notes: "Closed out by correctly resolving the base image of the Dockerfile target, preserving base+config+features metadata and comparing the result's semantics instead of a full `docker inspect`."
 
   - id: build.platform-supported-image-with-features-success
     lane: runtime
@@ -2209,10 +2209,10 @@ initial_cases:
     expect_infra_failure: true
     class: build-runtime
     current_status: match
-    notes: "Plataforma inválida → ambos exit 1 (el fallo ES la conducta esperada). El texto
-      del error es a nivel docker y env-específico (Go `docker build` 'no match for platform
-      in manifest'; TS `buildx` 'Command failed'), así que sólo se asevera exit_code. Con
-      expect_infra_failure el harness compara exit codes en vez de saltar por isInfraError."
+    notes: "Invalid platform → both exit 1 (the failure IS the expected behavior). The error text
+      is at the docker level and env-specific (Go `docker build` 'no match for platform
+      in manifest'; TS `buildx` 'Command failed'), so only exit_code is asserted. With
+      expect_infra_failure the harness compares exit codes instead of skipping via isInfraError."
 
   - id: build.compose-image-with-features-success
     lane: runtime
@@ -2240,7 +2240,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: templates-runtime
     current_status: match
-    notes: "templates apply extrae el tarball y aplica los archivos (antes {\"files\":null}); omite devcontainer-template.json/README/NOTES y aplica defaults de opciones + substitución ${templateOption:x}."
+    notes: "templates apply extracts the tarball and applies the files (previously {\"files\":null}); it omits devcontainer-template.json/README/NOTES and applies option defaults + ${templateOption:x} substitution."
 
   - id: outdated.image-with-features-success
     lane: runtime
@@ -2251,7 +2251,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: outdated-runtime
     current_status: match
-    notes: "outdated resuelve current/wanted/latest (+ wantedMajor/latestMajor) por feature; key = userFeatureId completo (con tag). Ambos lados consultan el mismo registry, así que latest coincide entre sí."
+    notes: "outdated resolves current/wanted/latest (+ wantedMajor/latestMajor) per feature; key = full userFeatureId (with tag). Both sides query the same registry, so latest matches between them."
 
   - id: upgrade.image-with-features-success
     lane: runtime
@@ -2262,7 +2262,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: upgrade-runtime
     current_status: match
-    notes: "upgrade --dry-run emite el lockfile a stdout; version = versión concreta resuelta (no el tag), resolved = resource@digest, integrity = digest."
+    notes: "upgrade --dry-run emits the lockfile to stdout; version = concrete resolved version (not the tag), resolved = resource@digest, integrity = digest."
 
   - id: features.generate-docs-success
     lane: runtime
@@ -2275,7 +2275,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: features-runtime
     current_status: match
-    notes: "generate-docs escribe README.md por feature (stdout vacío); el verify compara el contenido generado. Port fiel del template TS (columnas 'Options Id|Description|Type|Default Value' en orden de inserción, header deprecated/legacyIds, customizations, NOTES.md)."
+    notes: "generate-docs writes a README.md per feature (empty stdout); the verify compares the generated content. Faithful port of the TS template (columns 'Options Id|Description|Type|Default Value' in insertion order, deprecated/legacyIds header, customizations, NOTES.md)."
 
   - id: templates.generate-docs-success
     lane: runtime
@@ -2288,7 +2288,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: templates-runtime
     current_status: match
-    notes: "templates generate-docs usa TEMPLATE_README_TEMPLATE (sin Registry/Namespace/Version/Customizations)."
+    notes: "templates generate-docs uses TEMPLATE_README_TEMPLATE (without Registry/Namespace/Version/Customizations)."
 
   - id: features-info.manifest-text-success
     lane: runtime
@@ -2299,7 +2299,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: features-runtime
     current_status: match
-    notes: "info manifest (texto): caja ajustada al título (encloseStringInBox), y el manifest re-indentado desde bytes crudos preserva el orden de anotaciones (sha256 scrubbeado por normalización)."
+    notes: "info manifest (text): box fitted to the title (encloseStringInBox), and the manifest re-indented from raw bytes preserves the annotation order (sha256 scrubbed by normalization)."
 
   - id: features-info.tags-text-success
     lane: runtime
@@ -2310,7 +2310,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: features-runtime
     current_status: match
-    notes: "info tags (texto): tags unidos con '\\n   ' (primero flush, resto indentado 3). Ambos lados consultan el mismo registry."
+    notes: "info tags (text): tags joined with '\\n   ' (first flush, the rest indented by 3). Both sides query the same registry."
 
   - id: features.package-collection-success
     lane: runtime
@@ -2323,7 +2323,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: features-runtime
     current_status: match
-    notes: "features package genera devcontainer-collection.json ({sourceInformation, features:[…]}, 4-space) preservando el orden de keys del devcontainer-feature.json (orderedmap). El verify compara ese JSON; el digest del tarball puede diferir (encoding de header Go vs node-tar) pero el file-list coincide."
+    notes: "features package generates devcontainer-collection.json ({sourceInformation, features:[…]}, 4-space) preserving the key order of devcontainer-feature.json (orderedmap). The verify compares that JSON; the tarball digest may differ (Go header encoding vs node-tar) but the file-list matches."
 
   - id: features.resolve-dependencies-success
     lane: runtime
@@ -2336,7 +2336,7 @@ initial_cases:
     current_status: match
     compare_hashes: true
     compare_nulls: true
-    notes: "stdout = grafo mermaid + JSON installOrder. El mermaid se genera con roundPriority 0 (default TS) y alias del feature id (fallback a ref.ID cuando falta la annotation); los hashes de nodo se scrubbean por reMermaidNode. installOrder resuelto vía ComputeInstallationOrder."
+    notes: "stdout = mermaid graph + installOrder JSON. The mermaid is generated with roundPriority 0 (TS default) and feature id alias (fallback to ref.ID when the annotation is missing); node hashes are scrubbed by reMermaidNode. installOrder resolved via ComputeInstallationOrder."
 
   - id: templates.metadata-success
     lane: runtime
@@ -2347,7 +2347,7 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: templates-runtime
     current_status: match
-    notes: "templates metadata emite la annotation dev.containers.metadata compactada preservando el orden de keys de origen (json.Compact, no re-marshal que ordenaría). Ambos lados consultan el mismo registry."
+    notes: "templates metadata emits the dev.containers.metadata annotation compacted, preserving the source key order (json.Compact, not a re-marshal that would sort them). Both sides query the same registry."
 
   - id: features.test-single-scenario-success
     lane: runtime
@@ -2360,26 +2360,26 @@ initial_cases:
     asserts: [exit_code]
     class: features-runtime
     current_status: deferred-runtime
-    notes: "E2E comparativo de un scenario real: construye la feature local, crea container, ejecuta specific_color_scenario.sh, reporta resultado y limpia por label. asserts reducido a [exit_code]: el stdout de features-test es un stream ANSI verboso y no determinista (salida del script del escenario) que no es una superficie comparable byte a byte; el éxito/fallo se discrimina por exit_code. Debe promoverse a match únicamente después de una corrida con Docker/red (RW-018)."
+    notes: "Comparative E2E of a real scenario: builds the local feature, creates a container, runs specific_color_scenario.sh, reports the result and cleans up by label. asserts reduced to [exit_code]: the features-test stdout is a verbose, non-deterministic ANSI stream (the scenario script's output) that is not a byte-for-byte comparable surface; success/failure is discriminated by exit_code. Should be promoted to match only after a run with Docker/network (RW-018)."
 
 groups:
   mode-validation:
-    rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"
+    rationale: "Close a whole family of contract bugs with a single sweep"
   enum-validation:
-    rationale: "Alinea Cobra con yargs en flags choice"
+    rationale: "Aligns Cobra with yargs on choice flags"
   format-validation:
-    rationale: "Reduce divergencias tempranas y falsos positivos en runtime"
+    rationale: "Reduces early divergences and false positives in runtime"
   wired-flags:
-    rationale: "Detecta flags expuestos pero sin efecto"
+    rationale: "Detects flags that are exposed but have no effect"
   lifecycle-semantics:
-    rationale: "Aísla diferencias reales de comportamiento en hooks"
+    rationale: "Isolates real behavioral differences in hooks"
   dependency-graph:
-    rationale: "Captura la divergencia restante en features info dependencies"
+    rationale: "Captures the remaining divergence in features info dependencies"
   container-runtime:
-    rationale: "Compara comandos contra contenedores reales con configuración o metadata cargada"
+    rationale: "Compares commands against real containers with configuration or metadata loaded"
   lifecycle-runtime:
-    rationale: "Valida hooks reales y envelopes JSON sobre contenedores vivos"
+    rationale: "Validates real hooks and JSON envelopes over live containers"
   up-runtime:
-    rationale: "Cubre creación real de contenedor y compose project name"
+    rationale: "Covers real container creation and compose project name"
   build-runtime:
-    rationale: "Cubre builds reales, tagging y rutas compose/dockerfile"
+    rationale: "Covers real builds, tagging, and compose/dockerfile paths"
