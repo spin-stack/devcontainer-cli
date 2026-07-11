@@ -715,12 +715,13 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 	// Extend with features if any
 	if len(cfg.Features) > 0 {
 		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, imageName, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
-			FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
-			SkipFeatureAutoMapping: opts.skipFeatureAutoMapping,
-			Lockfile:               opts.experimentalLockfile,
-			FrozenLockfile:         opts.experimentalFrozenLockfile,
-			ConfigPath:             cfg.ConfigFilePath,
-			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
+			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
+			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
+			Lockfile:                    opts.experimentalLockfile,
+			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			ConfigPath:                  cfg.ConfigFilePath,
+			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 		})
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -754,12 +755,13 @@ func (r *upRunner) fromImage(cfg *config.DevContainerConfig, loadResult *config.
 	imageName := cfg.Image
 	if len(cfg.Features) > 0 {
 		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
-			FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
-			SkipFeatureAutoMapping: opts.skipFeatureAutoMapping,
-			Lockfile:               opts.experimentalLockfile,
-			FrozenLockfile:         opts.experimentalFrozenLockfile,
-			ConfigPath:             cfg.ConfigFilePath,
-			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
+			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
+			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
+			Lockfile:                    opts.experimentalLockfile,
+			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			ConfigPath:                  cfg.ConfigFilePath,
+			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 		})
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -1253,12 +1255,13 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 
 				logger.Write(fmt.Sprintf("Installing features on compose service %s...", cfg.Service), log.LevelInfo)
 				names, extErr := extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
-					FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
-					SkipFeatureAutoMapping: opts.skipFeatureAutoMapping,
-					Lockfile:               opts.experimentalLockfile,
-					FrozenLockfile:         opts.experimentalFrozenLockfile,
-					ConfigPath:             cfg.ConfigFilePath,
-					LockfileExcludeIDs:     opts.lockfileExcludeIDs,
+					OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
+					FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+					SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
+					Lockfile:                    opts.experimentalLockfile,
+					FrozenLockfile:              opts.experimentalFrozenLockfile,
+					ConfigPath:                  cfg.ConfigFilePath,
+					LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 				})
 				if extErr != nil {
 					return "", fmt.Errorf("install features on compose service: %w", extErr)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/features"
@@ -49,44 +50,25 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 
 			ociClient := oci.NewClient(logger, osEnvMap())
 
-			// Build FNodes from user features
-			var nodes []*features.FNode
-			for _, uf := range userFeatures {
-				resolvedID, _ := features.ResolveFeatureID(uf.UserFeatureID, false)
-				ref, err := oci.ParseRef(resolvedID)
-				if err != nil {
-					continue
-				}
+			// Read the lockfile (if any) so tarball/OCI resolution can pin digests.
+			var lockfile *features.Lockfile
+			if cfg.ConfigFilePath != "" {
+				lockfile, _, _ = features.ReadLockfile(cfg.ConfigFilePath)
+			}
+			basePath := filepath.Dir(cfg.ConfigFilePath)
 
-				manifest, err := ociClient.FetchManifest(ref, "")
-				if err != nil {
-					continue
-				}
-
-				node := &features.FNode{
-					Type:          "user-provided",
-					UserFeatureID: uf.UserFeatureID,
-					Options:       uf.Options,
-					FeatureSet: &features.FeatureSet{
-						SourceInfo: &features.OCISource{
-							Registry:       ref.Registry,
-							Namespace:      ref.Namespace,
-							ID:             ref.ID,
-							Resource:       ref.Resource,
-							Tag:            ref.Tag,
-							ManifestDigest: manifest.ContentDigest,
-							UserID:         uf.UserFeatureID,
-						},
-						Features:       []features.Feature{{ID: ref.ID, Version: ref.Tag, Value: uf.Options}},
-						ComputedDigest: manifest.ContentDigest,
-					},
-					DependsOn:     []*features.FNode{},
-					InstallsAfter: []*features.FNode{},
-				}
-				nodes = append(nodes, node)
+			// Build the dependency graph once (with dependency edges and
+			// overrideFeatureInstallOrder priorities), then derive both the mermaid
+			// diagram and the install order from it — the single-builder path
+			// (RW-002). The previous edge-less node list ignored transitive
+			// dependencies in the install order.
+			processFeature := newMetadataProcessFeature(ociClient, logger, basePath, lockfile)
+			graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, cfg.OverrideFeatureInstallOrder, lockfile)
+			if err != nil {
+				return err
 			}
 
-			order, err := features.ComputeInstallationOrder(logger, nodes, cfg.OverrideFeatureInstallOrder)
+			order, err := features.ComputeInstallationOrder(logger, graph, nil)
 			if err != nil {
 				return err
 			}
@@ -112,11 +94,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 
 			// The TS CLI prints the mermaid dependency graph to stdout before the
 			// install-order JSON.
-			rootIDs := make([]string, 0, len(userFeatures))
-			for _, uf := range userFeatures {
-				rootIDs = append(rootIDs, uf.UserFeatureID)
-			}
-			fmt.Fprintln(out.Stdout(), renderDependencyMermaid(ociClient, logger, rootIDs))
+			fmt.Fprintln(out.Stdout(), features.GenerateMermaidDiagram(graph))
 
 			data, _ := json.MarshalIndent(map[string]interface{}{"installOrder": entries}, "", "  ")
 			fmt.Fprintln(out.Stdout(), string(data))
