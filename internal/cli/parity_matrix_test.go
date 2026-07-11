@@ -62,6 +62,10 @@ type parityCase struct {
 	// Serial forces a case to run sequentially (no t.Parallel). Used for the few
 	// runtime cases that can't be isolated for parallel execution.
 	Serial bool `yaml:"serial"`
+	// ExpectTSFailure marks a documented divergence where the Go CLI is more
+	// correct: the TS oracle fails (non-infra) while Go succeeds. The test asserts
+	// that shape and flags us if TS's behavior ever changes. Document why in Notes.
+	ExpectTSFailure bool `yaml:"expect_ts_failure"`
 }
 
 type paritySideResult struct {
@@ -158,6 +162,17 @@ func TestParityMatrix(t *testing.T) {
 			}
 
 			asserts := setFrom(tc.Asserts)
+
+			// Documented divergences where the Go CLI is the more correct one: the TS
+			// oracle fails (non-infra) while Go succeeds. Assert exactly that shape so
+			// the divergence stays visible and the test flags us if TS ever changes.
+			if tc.ExpectTSFailure {
+				if tsRes.ExitCode != 0 && goRes.ExitCode == 0 {
+					t.Skipf("expected divergence (Go correct, TS fails exit %d): %s", tsRes.ExitCode, tc.Notes)
+					return
+				}
+				t.Fatalf("expect_ts_failure no longer holds (TS=%d Go=%d) — re-validate and drop the flag: %s", tsRes.ExitCode, goRes.ExitCode, tc.Notes)
+			}
 
 			// Skip when TS fails due to infra but Go succeeds; this is not a product mismatch.
 			if tsRes.ExitCode != 0 && goRes.ExitCode == 0 && tsStatus.Infra {
@@ -745,6 +760,13 @@ func parityEnv(caseID, side, repoRoot string, isolateCompose bool) map[string]st
 		"PARITY_CASE_ID":   sanitizeEnvValue(caseID),
 		"PARITY_SIDE":      side,
 		"PARITY_REPO_ROOT": repoRoot,
+		// Newer BuildKit attaches provenance/SBOM attestations by default, wrapping
+		// the feature-content image in an attestation manifest list. That breaks the
+		// TS CLI's `COPY --from=dev_containers_feature_content_source ...` feature
+		// build ("/tmp/build-features/<feat>: not found"). Disable default
+		// attestations for BOTH sides so the oracle builds the same way it did when
+		// these cases were validated — an environment artifact, not a product diff.
+		"BUILDX_NO_DEFAULT_ATTESTATIONS": "1",
 	}
 	if isolateCompose {
 		// Give each case its own compose project so parallel runtime cases that
