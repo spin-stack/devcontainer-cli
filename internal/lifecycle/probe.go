@@ -18,9 +18,17 @@ const (
 	ProbeLoginShell            UserEnvProbeStrategy = "loginShell"
 )
 
+// shellExec is the minimal shell-execution seam ProbeRemoteEnv needs: run a
+// command in the container and return its stdout, exit code, and error.
+// *ShellServer satisfies it; tests inject a fake to exercise the probe
+// hermetically (no Docker).
+type shellExec interface {
+	Exec(cmd string) (string, int, error)
+}
+
 // ProbeRemoteEnv runs a shell command in the container to capture environment variables.
 // If sessionDataFolder is provided, results are cached in a JSON file inside the container.
-func ProbeRemoteEnv(logger log.Log, shellServer *ShellServer, strategy UserEnvProbeStrategy, remoteUser string, sessionDataFolder ...string) (map[string]string, error) {
+func ProbeRemoteEnv(logger log.Log, shellServer shellExec, strategy UserEnvProbeStrategy, remoteUser string, sessionDataFolder ...string) (map[string]string, error) {
 	if strategy == ProbeNone || strategy == "" {
 		return map[string]string{}, nil
 	}
@@ -135,7 +143,7 @@ func isSbinPath(entry string) bool {
 // getUserShell returns the current user's login shell from /etc/passwd, or
 // /bin/sh as a fallback. The shell server already runs as the remoteUser
 // (docker exec -u), so no `su` is needed.
-func getUserShell(s *ShellServer) string {
+func getUserShell(s shellExec) string {
 	out, code, err := s.Exec(`getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7`)
 	if err == nil && code == 0 {
 		if sh := strings.TrimSpace(out); sh != "" {
@@ -145,7 +153,7 @@ func getUserShell(s *ShellServer) string {
 	return "/bin/sh"
 }
 
-func readEnvCache(s *ShellServer, strategy UserEnvProbeStrategy, sessionDataFolder string) map[string]string {
+func readEnvCache(s shellExec, strategy UserEnvProbeStrategy, sessionDataFolder string) map[string]string {
 	cachePath := fmt.Sprintf("%s/env-%s.json", sessionDataFolder, strategy)
 	stdout, code, err := s.Exec(fmt.Sprintf("cat '%s' 2>/dev/null", cachePath))
 	if err != nil || code != 0 || stdout == "" {
@@ -158,7 +166,7 @@ func readEnvCache(s *ShellServer, strategy UserEnvProbeStrategy, sessionDataFold
 	return env
 }
 
-func writeEnvCache(s *ShellServer, env map[string]string, strategy UserEnvProbeStrategy, sessionDataFolder string) {
+func writeEnvCache(s shellExec, env map[string]string, strategy UserEnvProbeStrategy, sessionDataFolder string) {
 	data, err := json.MarshalIndent(env, "", "\t")
 	if err != nil {
 		return
