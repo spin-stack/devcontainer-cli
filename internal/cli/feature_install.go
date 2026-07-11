@@ -624,6 +624,12 @@ func extendImageWithFeatures(
 		}
 	}
 
+	// Bridge the CLI credential chain for the push target / registry cache. The
+	// base here is the locally-built intermediate image, so it needs no auth.
+	authEnv, authCleanup := bridgeBuildAuth(logger, "", tags, buildOpts.CacheFrom, buildOpts.CacheTo)
+	defer authCleanup()
+	buildOpts.Env = authEnv
+
 	buildResult, err := dockerClient.Build(buildOpts)
 	if err != nil {
 		return nil, fmt.Errorf("build extended image: %w", err)

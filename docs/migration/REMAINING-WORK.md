@@ -336,13 +336,20 @@ con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
   del merge y del orden.
 - **T1.2 — `build --label`.** Ya funciona (`docker/client.go`), adelantado a
   upstream #930. Sin trabajo; registrado como capacidad presente.
-- **T2.1 — Puente de auth para `docker build`.** La cadena de credenciales del CLI
-  (`oci.getCredential`: `DEVCONTAINERS_OCI_AUTH`, docker config, cred helpers,
-  `GITHUB_TOKEN`) sólo aplica a las ops de registry del propio CLI, no al
-  subproceso `docker build` (pull de base privada / `--push` / `--cache-to`). Se
-  resolverán los registries referenciados por la build, se escribirá un
-  `DOCKER_CONFIG` temporal con `auths` y se pasará por env al subproceso; sin
-  credenciales resueltas no se crea nada (idéntico al comportamiento actual).
+- **T2.1 — Puente de auth para `docker build`. HECHO.** `oci.ResolveBuildAuth`
+  resuelve los registries referenciados por la build con la cadena del CLI
+  (`DEVCONTAINERS_OCI_AUTH` → docker config / cred helpers → `GITHUB_TOKEN`) y
+  escribe un `DOCKER_CONFIG` temporal self-contained (sólo `auths`; los tokens ya
+  vienen materializados de todas las fuentes, incl. el credsStore del usuario) que
+  se pasa por env (`BuildOptions.Env`) al subproceso. Sin credenciales resueltas
+  no crea nada (idéntico al comportamiento previo). Cableado en: build de
+  Dockerfile (`build`+`up`), extend-con-features (push/cache) e imagen-con-push.
+  Cubierto por unit tests (resolver + extractores de registry + cleanup).
+  - **Gap restante:** el pull de la base en configs *image-based* usa
+    `engine.PullImage` (no el subproceso de build), así que su auth va por otra
+    ruta (`oci` cliente propio) — cubierto para pull del CLI, no bridgeado porque
+    no lo necesita. Si en el futuro el pull de base necesitara el mismo puente,
+    reusar `oci.ResolveBuildAuth`.
 - **T3.1 — `--secrets-file` en `build`.** Hoy sólo en `up`/`run-user-commands`;
   passthrough a buildx `--secret`. Añadir al inventario de flags.
 - **T3.2 — `BUILDKIT_INLINE_CACHE=1` condicional.** Hoy hardcodeado

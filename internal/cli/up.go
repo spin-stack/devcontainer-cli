@@ -712,6 +712,12 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 		contextPath = filepath.Join(configDir, cfg.GetBuildContext())
 	}
 
+	upCacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
+	// Bridge the CLI credential chain to the build subprocess via a temporary
+	// DOCKER_CONFIG (private base pull / --cache-to).
+	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, []string{imageName}, upCacheFrom, opts.cacheTo)
+	defer authCleanup()
+
 	buildResult, err := dockerClient.Build(docker.BuildOptions{
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
@@ -719,11 +725,12 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 		Target:      stageName,
 		BuildArgs:   buildArgsFromConfig(cfg),
 		ExtraArgs:   buildOptionsFromConfig(cfg),
-		CacheFrom:   cacheFromForDockerfileBuild(opts.cacheFrom, cfg),
+		CacheFrom:   upCacheFrom,
 		Labels:      []string{fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel)},
 		NoCache:     opts.buildNoCache,
 		UseBuildx:   useBuildx,
 		CacheTo:     opts.cacheTo,
+		Env:         authEnv,
 	})
 	if err != nil {
 		return "", err

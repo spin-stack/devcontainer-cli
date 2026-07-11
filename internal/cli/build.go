@@ -322,13 +322,19 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		baseOutput, basePush = "", false
 	}
 
+	cacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
+	// Bridge the CLI credential chain to the build subprocess (private base pull /
+	// --push / --cache-to) via a temporary DOCKER_CONFIG.
+	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, imageNames, cacheFrom, opts.cacheTo)
+	defer authCleanup()
+
 	buildOpts := docker.BuildOptions{
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
 		Tags:        imageNames,
 		Target:      stageName,
 		BuildArgs:   buildArgs,
-		CacheFrom:   cacheFromForDockerfileBuild(opts.cacheFrom, cfg),
+		CacheFrom:   cacheFrom,
 		Labels:      allLabels,
 		NoCache:     opts.noCache,
 		ExtraArgs:   buildOptionsFromConfig(cfg),
@@ -337,6 +343,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		Push:        basePush,
 		Output:      baseOutput,
 		CacheTo:     opts.cacheTo,
+		Env:         authEnv,
 	}
 
 	result, err := dockerClient.Build(buildOpts)
@@ -489,6 +496,11 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 			return nil, fmt.Errorf("write temp Dockerfile: %w", err)
 		}
 
+		// Bridge auth for the push target / registry cache (base is local: cfg.Image
+		// was already pulled above via the engine).
+		authEnv, authCleanup := bridgeBuildAuth(logger, "", featureImageNames, opts.cacheFrom, opts.cacheTo)
+		defer authCleanup()
+
 		result, buildErr := dockerClient.Build(docker.BuildOptions{
 			Dockerfile:  dfPath,
 			ContextPath: tmpDir,
@@ -500,6 +512,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 			Output:      opts.output,
 			CacheFrom:   opts.cacheFrom,
 			CacheTo:     opts.cacheTo,
+			Env:         authEnv,
 		})
 		if buildErr != nil {
 			return nil, fmt.Errorf("build image: %w", buildErr)

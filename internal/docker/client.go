@@ -64,10 +64,31 @@ func (c *Client) Run(args ...string) (*ExecResult, error) {
 	}, nil
 }
 
-// Build runs `docker build` or `docker buildx build`.
+// Build runs `docker build` or `docker buildx build`. When opts.Env is set, those
+// entries are appended to the subprocess environment (used to point DOCKER_CONFIG
+// at a temporary credentials directory for private base-image pulls / --push /
+// --cache-to, without mutating the ambient environment).
 func (c *Client) Build(opts BuildOptions) (*ExecResult, error) {
 	args := c.buildArgs(opts)
+	if len(opts.Env) > 0 {
+		return c.runWithEnv(opts.Env, args...)
+	}
 	return c.Run(args...)
+}
+
+// runWithEnv is Run with extra environment entries appended for this invocation.
+func (c *Client) runWithEnv(extraEnv []string, args ...string) (*ExecResult, error) {
+	c.Log.Write(fmt.Sprintf("Run: %s %s", c.DockerPath, strings.Join(args, " ")), log.LevelTrace)
+
+	var r exec.Runner = exec.OSRunner{Env: append(append([]string{}, c.Env...), extraEnv...)}
+	if c.Runner != nil {
+		r = c.Runner // tests inject a fake; env is irrelevant there
+	}
+	stdout, stderr, exitCode, err := r.Run(context.Background(), c.DockerPath, args...)
+	if err != nil {
+		return nil, fmt.Errorf("exec docker: %w", err)
+	}
+	return &ExecResult{Stdout: stdout, Stderr: stderr, ExitCode: exitCode}, nil
 }
 
 // BuildOptions configures a docker build.
@@ -82,6 +103,7 @@ type BuildOptions struct {
 	NoCache     bool
 	Pull        bool
 	ExtraArgs   []string // additional --build-context, etc.
+	Env         []string // extra env for the subprocess (e.g. DOCKER_CONFIG=...)
 
 	// Buildx-specific
 	UseBuildx bool

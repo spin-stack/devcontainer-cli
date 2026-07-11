@@ -63,3 +63,21 @@ func TestRunPropagatesRunnerError(t *testing.T) {
 		t.Fatalf("result = %+v, want nil on runner error", res)
 	}
 }
+
+// TestBuildWithEnvRoutesThroughRunner proves Build honors opts.Env without
+// disturbing arg assembly (the DOCKER_CONFIG env only affects the real OSRunner;
+// an injected fake still receives the same args and returns its canned result).
+func TestBuildWithEnvRoutesThroughRunner(t *testing.T) {
+	fr := &fakeRunner{stdout: []byte("ok"), code: 0}
+	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
+	res, err := c.Build(BuildOptions{ContextPath: ".", Env: []string{"DOCKER_CONFIG=/tmp/x"}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if res.ExitCode != 0 || string(res.Stdout) != "ok" {
+		t.Fatalf("result = %+v", res)
+	}
+	if len(fr.gotArgs) == 0 || fr.gotArgs[0] != "build" {
+		t.Fatalf("args = %v, want a plain `build ...`", fr.gotArgs)
+	}
+}
