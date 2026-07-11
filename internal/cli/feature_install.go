@@ -44,7 +44,10 @@ type FeatureBuildOptions struct {
 	// used to locate the lockfile.
 	Lockfile       bool
 	FrozenLockfile bool
-	ConfigPath     string
+	// NoLockfile disables lockfile reading (pinning-on-read) and writing, matching
+	// TS --no-lockfile ("Disable lockfile generation and verification.").
+	NoLockfile bool
+	ConfigPath string
 	// LockfileExcludeIDs holds userFeatureIds supplied only via
 	// --additional-features; 0.88 (#11616) keeps these out of the lockfile.
 	LockfileExcludeIDs map[string]bool
@@ -480,7 +483,7 @@ func extendImageWithFeatures(
 	}
 	// Read the lockfile (if any) to pin feature resolution to recorded digests.
 	var lockfile *features.Lockfile
-	if fbOpts != nil && fbOpts.ConfigPath != "" {
+	if fbOpts != nil && fbOpts.ConfigPath != "" && !fbOpts.NoLockfile {
 		lockfile, _, _ = features.ReadLockfile(fbOpts.ConfigPath)
 	}
 	var overrideOrder []string
