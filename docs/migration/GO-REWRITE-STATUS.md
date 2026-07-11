@@ -16,16 +16,18 @@ historia de cómo llegamos — para eso está el `git log` y
 | `features` / `templates` `generate-docs` | ✅ byte-idéntico |
 | `features package` → `devcontainer-collection.json` | ✅ byte-idéntico |
 | `features` / `templates` `resolve-dependencies` (grafo + installOrder) | ✅ idéntico (post-scrub de hashes) |
+| `features publish` (push a registry OCI) | ✅ idéntico (test con `registry:3` vía testcontainers) |
 | Seguridad: `disallowed-features` (blocklist del control-manifest) | ✅ cableado, envelope idéntico |
 
 ## Qué falta
 
 Poco, y de bajo impacto:
 
-1. **Cobertura de `publish` / `test`** — `features publish`, `features test`,
-   `templates publish`, `templates metadata` no tienen casos de paridad todavía.
-   `publish` necesita un registry OCI local para un caso hermético; `features test`
-   levanta contenedores por escenario. La implementación existe; falta el harness.
+1. **Cobertura de `templates publish` / `features test` / `templates metadata`** —
+   `features publish` ya tiene test hermético (`TestFeaturesPublishParity`, levanta
+   `registry:3` con testcontainers-go); falta replicar el patrón a `templates publish`
+   y `templates metadata`, y cubrir `features test` (levanta contenedores por escenario).
+   La implementación existe; falta el harness.
 2. **Digest del tarball de `features package`** — **no es alcanzable** la paridad
    byte-a-byte: los headers del tar incrustan `mtime` y node-tar/Go difieren en su
    manejo (el propio TS es no-determinista). El contenido, el file-list y el

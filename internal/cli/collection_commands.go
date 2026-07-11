@@ -396,6 +396,7 @@ func publishCollection(targetFolder, registry, namespace, collectionType, logLev
 			failures++
 			return nil, false
 		}
+		pushResult.Version = version // TS reports the published version in the result
 		return pushResult, true
 	}
 

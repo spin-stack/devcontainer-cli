@@ -69,6 +69,7 @@ func GetSemanticTags(version string, publishedTags []string) (tags []string, ski
 type PushResult struct {
 	Digest        string   `json:"digest"`
 	PublishedTags []string `json:"publishedTags"`
+	Version       string   `json:"version,omitempty"`
 }
 
 // PushArtifact uploads a tarball as an OCI artifact to a registry via oras-go.
