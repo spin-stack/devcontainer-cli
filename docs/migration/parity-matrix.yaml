@@ -449,6 +449,17 @@ initial_cases:
     compare_hashes: true
     compare_nulls: true
 
+  - id: read-configuration.host-variable-substitution
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/varsub-host"
+    asserts: [exit_code, stdout_normalized]
+    class: variable-substitution
+    current_status: match
+    notes: "Substitución host cross-command (ningún comando la posee): ${localEnv:X} presente y ausente, ${localWorkspaceFolderBasename}."
+
   - id: read-configuration.compose-path-terminal
     lane: semantic
     command: read-configuration

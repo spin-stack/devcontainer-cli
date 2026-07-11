@@ -1,0 +1,8 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "containerEnv": {
+    "FROM_LOCAL_ENV": "${localEnv:HOME}",
+    "WS_BASENAME": "${localWorkspaceFolderBasename}",
+    "MISSING_ENV": "${localEnv:THIS_VAR_DOES_NOT_EXIST_XYZ}"
+  }
+}
