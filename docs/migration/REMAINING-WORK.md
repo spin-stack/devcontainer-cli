@@ -224,6 +224,44 @@ Medir y registrar por release:
 - comparación de tiempo/costo frente al CLI Node;
 - límites o regresiones aceptados.
 
+**Implementación:** `task metrics` (Taskfile) emite `artifacts/metrics.json` y el
+job `metrics` de `.github/workflows/release.yml` lo captura como artefacto. Usa
+`hyperfine` si está en el runner, con fallback a un loop `date +%s%N` promediado
+(`METRICS_RUNS`, default 30). El task es **no-gating** (`ignore_error: true`; el job
+usa `continue-on-error: true`).
+
+**Métricas concretas capturadas** (`metrics.json`):
+
+- `startup_ms.go_version` — media de `devcontainer --version`.
+- `startup_ms.go_read_configuration` — media de `read-configuration` sobre un
+  workspace mínimo image-based (sólo sustitución de variables, sin Docker).
+- `startup_ms.node_version` — media de `node devContainersSpecCLI.js --version`
+  (oráculo Node en `reference/dist/spec-node/`); `null` si el oráculo no está
+  compilado.
+- `sizes_bytes.local_binary` — binario del host (`task build`).
+- `sizes_bytes.linux_amd64_binary` / `linux_amd64_gzip` — binario release
+  linux/amd64 y su tamaño gzip-comprimido.
+- `sizes_bytes.linux_arm64_binary` / `linux_arm64_gzip` — ídem linux/arm64.
+- `timing_tool`, `runs`, `version`, `generated_at` — metadatos de la corrida.
+
+**Definición de aceptación (RW-017):** el ítem se considera cumplido cuando cada
+release produce `metrics.json` con todos los campos anteriores no nulos en un runner
+con Docker + oráculo compilado (Node A/B disponible), y las métricas quedan
+registradas en `GO-REWRITE-STATUS.md`.
+
+**Qué cuenta como regresión aceptada (registrada, NO gated):** estas métricas se
+**registran, no bloquean** el release. La línea base es la primera corrida limpia
+sobre el commit candidato de RW-018. Se anota como regresión —sin frenar el
+release— cualquiera de:
+
+- **startup:** `go_version` o `go_read_configuration` > 1.5× su base, o superando
+  al oráculo Node (`node_version`) en la misma corrida;
+- **tamaño de binario:** `linux_amd64_binary` o `linux_arm64_binary` > 1.2× su base;
+- **tamaño comprimido:** `linux_amd64_gzip` o `linux_arm64_gzip` > 1.2× su base.
+
+Cruzar estos umbrales exige una nota en `GO-REWRITE-STATUS.md` explicando la causa;
+**no** invalida el release (empaquetado, fuera del gate de paridad RW-018).
+
 ### RW-018 — Corrida limpia de paridad v0.88.0
 
 Ejecutar en el commit candidato:

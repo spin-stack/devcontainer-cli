@@ -3,7 +3,9 @@ version: 2
 before:
   hooks:
     - go mod tidy
-    - go test ./...
+    # NOTE: `go test ./...` is intentionally NOT run here. It would sweep the
+    # Docker/network parity suites and reference/node_modules. Gating lives in
+    # the CI / tag workflow (.github/workflows/release.yml), not the release hook.
 
 builds:
   - id: devcontainer
@@ -11,10 +13,9 @@ builds:
     binary: devcontainer
     env:
       - CGO_ENABLED=0
+    # Linux-only scope (amd64 + arm64). darwin and windows are not supported.
     goos:
       - linux
-      - darwin
-      - windows
     goarch:
       - amd64
       - arm64
@@ -26,13 +27,17 @@ builds:
 archives:
   - id: default
     format: tar.gz
-    format_overrides:
-      - goos: windows
-        format: zip
     name_template: "devcontainer_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
+
+# SBOM generation per archive. Requires `syft` on the runner
+# (the goreleaser-action installs it via anchore/sbom-action, or install it
+# manually: `curl -sSfL https://get.anchore.io/syft | sh`).
+sboms:
+  - id: archive
+    artifacts: archive
 
 changelog:
   sort: asc
@@ -52,7 +57,7 @@ release:
   header: |
     ## Dev Container CLI (Go)
 
-    This is the Go rewrite of the @devcontainers/cli.
+    This is the Go rewrite of the @devcontainers/cli. Supported platform: Linux (amd64, arm64).
 
     ### Installation
 
@@ -60,14 +65,14 @@ release:
 
     ```bash
     # Linux amd64
-    curl -Lo devcontainer https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_amd64.tar.gz
-    tar xzf devcontainer_{{.Version}}_linux_amd64.tar.gz
+    curl -Lo devcontainer.tar.gz https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_amd64.tar.gz
+    tar xzf devcontainer.tar.gz
     chmod +x devcontainer
     sudo mv devcontainer /usr/local/bin/
 
-    # macOS arm64 (Apple Silicon)
-    curl -Lo devcontainer https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_darwin_arm64.tar.gz
-    tar xzf devcontainer_{{.Version}}_darwin_arm64.tar.gz
+    # Linux arm64
+    curl -Lo devcontainer.tar.gz https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_arm64.tar.gz
+    tar xzf devcontainer.tar.gz
     chmod +x devcontainer
     sudo mv devcontainer /usr/local/bin/
     ```
