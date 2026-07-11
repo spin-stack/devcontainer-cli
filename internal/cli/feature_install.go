@@ -59,9 +59,28 @@ type fetchFeatureResult struct {
 
 // fetchFeatureSets fetches features from OCI and returns ordered FeatureSets.
 func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsRecursive(logger, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, map[string]bool{})
+}
+
+func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, resolved map[string]bool) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
+
+	// A dependency may be reached through multiple parents (or through a cycle).
+	// Process each user feature id once; the graph assembled below still retains
+	// every dependency edge, allowing ComputeInstallationOrder to report cycles.
+	pending := make(map[string]interface{}, len(featuresCfg))
+	for id, opts := range featuresCfg {
+		if !resolved[id] {
+			resolved[id] = true
+			pending[id] = opts
+		}
+	}
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	featuresCfg = pending
 
 	logger.Write(fmt.Sprintf("Installing %d feature(s)...", len(featuresCfg)), log.LevelInfo)
 
@@ -416,17 +435,52 @@ func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featur
 		return nil, nil
 	}
 
-	// Populate installsAfter soft-dependency edges from feature metadata so the
-	// topological sort orders features correctly. Without this the edges were
-	// empty and the order fell back to lexicographic (blocker B3, installsAfter —
-	// which almost every official feature declares).
+	// Resolve hard dependencies recursively. Each recursive fetch stages its
+	// artifacts in a separate temporary directory, so copy them into this call's
+	// directory before cleaning it up. This leaves callers with the original
+	// single-directory ownership contract.
+	dependencyCfg := map[string]interface{}{}
+	for _, set := range featureSets {
+		if len(set.Features) == 0 {
+			continue
+		}
+		for id, opts := range set.Features[0].DependsOn {
+			if !resolved[id] {
+				dependencyCfg[id] = opts
+			}
+		}
+	}
+	if len(dependencyCfg) > 0 {
+		deps, depErr := fetchFeatureSetsRecursive(logger, dependencyCfg, featuresBasePath, skipAutoMapping, lockfile, resolved)
+		if depErr != nil {
+			os.RemoveAll(tmpDir)
+			return nil, depErr
+		}
+		if deps != nil {
+			for _, set := range deps.FeatureSets {
+				if err := restageFeatureSet(set, tmpDir, len(featureSets)); err != nil {
+					os.RemoveAll(deps.TmpDir)
+					os.RemoveAll(tmpDir)
+					return nil, err
+				}
+				featureSets = append(featureSets, set)
+			}
+			os.RemoveAll(deps.TmpDir)
+		}
+	}
+
+	// Rebuild nodes after dependency expansion, then connect both hard and soft
+	// edges to the actual resolved nodes in the complete worklist.
+	fNodes = dependencyNodes(featureSets)
+	populateHardDepEdges(fNodes)
 	populateSoftDepEdges(fNodes)
 
 	// Apply dependency ordering
 	if len(fNodes) > 1 {
 		orderedSets, err := features.ComputeInstallationOrder(logger, fNodes, nil)
 		if err != nil {
-			logger.Write(fmt.Sprintf("Warning: could not compute install order: %v", err), log.LevelWarning)
+			os.RemoveAll(tmpDir)
+			return nil, fmt.Errorf("compute Feature install order: %w", err)
 		} else {
 			featureSets = orderedSets
 			logger.Write(fmt.Sprintf("Install order: %s", featureSetIDs(featureSets)), log.LevelTrace)
@@ -434,6 +488,57 @@ func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featur
 	}
 
 	return &fetchFeatureResult{FeatureSets: featureSets, TmpDir: tmpDir}, nil
+}
+
+func restageFeatureSet(set *features.FeatureSet, dstRoot string, index int) error {
+	if len(set.Features) == 0 || set.Features[0].CachePath == "" {
+		return nil
+	}
+	dst := filepath.Join(dstRoot, fmt.Sprintf("_dev_container_feature_%d", index))
+	if err := copyDir(set.Features[0].CachePath, dst); err != nil {
+		return fmt.Errorf("stage dependency %q: %w", set.SourceInfo.UserFeatureID(), err)
+	}
+	set.Features[0].CachePath = dst
+	set.Features[0].ConsecutiveId = fmt.Sprintf("dependency_%d", index)
+	return nil
+}
+
+func dependencyNodes(featureSets []*features.FeatureSet) []*features.FNode {
+	nodes := make([]*features.FNode, 0, len(featureSets))
+	for i, set := range featureSets {
+		if set == nil || set.SourceInfo == nil || len(set.Features) == 0 {
+			continue
+		}
+		feat := set.Features[0]
+		nodeType := "resolved"
+		if i == 0 || !strings.HasPrefix(feat.ConsecutiveId, "dependency_") {
+			nodeType = "user-provided"
+		}
+		nodes = append(nodes, &features.FNode{
+			Type: nodeType, UserFeatureID: set.SourceInfo.UserFeatureID(),
+			Options: feat.Value, FeatureSet: set,
+			DependsOn: []*features.FNode{}, InstallsAfter: []*features.FNode{},
+			FeatureIDAliases: append([]string{feat.ID}, feat.LegacyIds...),
+		})
+	}
+	return nodes
+}
+
+func populateHardDepEdges(nodes []*features.FNode) {
+	byID := make(map[string]*features.FNode, len(nodes))
+	for _, node := range nodes {
+		byID[node.UserFeatureID] = node
+	}
+	for _, node := range nodes {
+		if node.FeatureSet == nil || len(node.FeatureSet.Features) == 0 {
+			continue
+		}
+		for id := range node.FeatureSet.Features[0].DependsOn {
+			if dep := byID[id]; dep != nil {
+				node.DependsOn = append(node.DependsOn, dep)
+			}
+		}
+	}
 }
 
 // populateSoftDepEdges fills each node's installsAfter edges from its feature

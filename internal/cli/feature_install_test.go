@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/features"
@@ -63,6 +65,94 @@ func TestFetchFeatureSets_LocalFeature(t *testing.T) {
 	}
 	if got := set.Features[0].PostCreateCommand; got != "echo hello" {
 		t.Fatalf("postCreateCommand = %#v, want %q", got, "echo hello")
+	}
+}
+
+func TestFetchFeatureSets_ResolvesTransitiveDependsOn(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLocalFeature(t, baseDir, "feature-a", map[string]interface{}{
+		"./feature-b": map[string]interface{}{"channel": "beta"},
+	})
+	writeLocalFeature(t, baseDir, "feature-b", map[string]interface{}{
+		"./feature-c": true,
+	})
+	writeLocalFeature(t, baseDir, "feature-c", nil)
+
+	result, err := fetchFeatureSets(log.Null, map[string]interface{}{
+		"./feature-a": map[string]interface{}{},
+	}, baseDir, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(result.TmpDir)
+
+	got := featureSetIDs(result.FeatureSets)
+	want := "./feature-c → ./feature-b → ./feature-a"
+	if got != want {
+		t.Fatalf("install order = %s, want %s", got, want)
+	}
+	if gotOptions := result.FeatureSets[1].Features[0].UserOptions["channel"]; gotOptions != "beta" {
+		t.Fatalf("dependency options = %#v, want beta", gotOptions)
+	}
+	for _, set := range result.FeatureSets {
+		if _, err := os.Stat(set.Features[0].CachePath); err != nil {
+			t.Fatalf("staged dependency %q: %v", set.SourceInfo.UserFeatureID(), err)
+		}
+	}
+}
+
+func TestFetchFeatureSets_DeduplicatesSharedDependency(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLocalFeature(t, baseDir, "feature-a", map[string]interface{}{"./shared": true})
+	writeLocalFeature(t, baseDir, "feature-b", map[string]interface{}{"./shared": true})
+	writeLocalFeature(t, baseDir, "shared", nil)
+
+	result, err := fetchFeatureSets(log.Null, map[string]interface{}{
+		"./feature-a": true,
+		"./feature-b": true,
+	}, baseDir, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(result.TmpDir)
+	if len(result.FeatureSets) != 3 {
+		t.Fatalf("featureSets = %d, want 3", len(result.FeatureSets))
+	}
+	if got := featureSetIDs(result.FeatureSets); got != "./shared → ./feature-a → ./feature-b" {
+		t.Fatalf("install order = %s", got)
+	}
+}
+
+func TestFetchFeatureSets_ReportsDependsOnCycle(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLocalFeature(t, baseDir, "feature-a", map[string]interface{}{"./feature-b": true})
+	writeLocalFeature(t, baseDir, "feature-b", map[string]interface{}{"./feature-a": true})
+
+	_, err := fetchFeatureSets(log.Null, map[string]interface{}{"./feature-a": true}, baseDir, false, nil)
+	if err == nil || !strings.Contains(err.Error(), "circular dependency") {
+		t.Fatalf("error = %v, want circular dependency", err)
+	}
+}
+
+func writeLocalFeature(t *testing.T, baseDir, name string, dependsOn map[string]interface{}) {
+	t.Helper()
+	dir := filepath.Join(baseDir, name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	metadata := map[string]interface{}{"id": name, "version": "1.0.0"}
+	if dependsOn != nil {
+		metadata["dependsOn"] = dependsOn
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "devcontainer-feature.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "install.sh"), []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
 	}
 }
 

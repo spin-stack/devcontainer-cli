@@ -16,6 +16,7 @@ historia de cómo llegamos — para eso está el `git log` y
 | `features` / `templates` `generate-docs` | ✅ byte-idéntico |
 | `features package` → `devcontainer-collection.json` | ✅ byte-idéntico |
 | `features` / `templates` `resolve-dependencies` (grafo + installOrder) | ✅ idéntico (post-scrub de hashes) |
+| Features `dependsOn` transitivo durante instalación | ✅ resuelve, deduplica y ordena dependencias; ciclos abortan |
 | `features` / `templates` `publish` (push a registry OCI) | ✅ idéntico (test con `registry:3` vía testcontainers) |
 | `templates metadata` | ✅ byte-idéntico (orden de keys preservado) |
 | `features test` (build + run de scripts por feature) | ✅ corre y da resultados/REPORT como TS |
