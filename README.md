@@ -97,10 +97,10 @@ ldd  ./devcontainer        # → "not a dynamic executable"
 
 ```sh
 git submodule update --init reference
-task ts:install                 # yarn install in reference/
-task ts:compile                 # yarn compile in reference/ → reference/dist
-task parity:matrix:contract     # hermetic contract lane
-task parity:matrix:runtime      # runtime lane (requires Docker), ~5–6 min
+task reference          # install + compile the TypeScript oracle
+task parity:contract    # hermetic contract lane
+task parity:semantic    # semantic cases without Docker/network
+task parity:runtime     # complete matrix; requires Docker, ~5–6 min
 ```
 
 ## History

@@ -62,8 +62,9 @@ auxiliares cubiertos.
     reportan por separado.
 
 ```sh
-task parity                       # compare-parity.sh (read-configuration por fixture)
-PARITY_LANE=all task parity:matrix  # matriz completa (requiere docker)
+task parity:contract  # contrato hermético
+task parity:semantic  # semántica sin Docker/red
+task parity:runtime   # matriz completa (requiere Docker)
 ```
 
 ## Mantener la paridad al evolucionar

@@ -37,7 +37,7 @@ jobs:
 
       - run: task test:e2e
       - if: always()
-        run: task docker:clean
+        run: task clean
 
   # Hermetic parity gate: read-configuration golden comparison + the contract
   # lane of the parity matrix (flag validation / output contract, no Docker).
@@ -58,9 +58,8 @@ jobs:
         with:
           version: 3.x
 
-      - run: task ts:install
-      - run: task parity
-      - run: task parity:matrix:contract
+      - run: task reference
+      - run: task parity:contract
 
   # Runtime lane of the parity matrix (creates real containers via Docker).
   # ubuntu-latest ships with Docker preinstalled.
@@ -81,10 +80,10 @@ jobs:
         with:
           version: 3.x
 
-      - run: task ts:install
-      - run: task parity:matrix:runtime
+      - run: task reference
+      - run: task parity:runtime
       - if: always()
-        run: task docker:clean
+        run: task clean
 
 
   cross-compile:

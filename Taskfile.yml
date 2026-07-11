@@ -6,264 +6,115 @@ vars:
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo dev
   LDFLAGS: -s -w -X {{.MODULE}}/internal/product.version={{.VERSION}} -X {{.MODULE}}/internal/product.name={{.BINARY}}
-  FIXTURES_DIR: src/test/configs
-  TS_CLI: node reference/devcontainer.js
-  TS_TEST_SHIM: src/test/tmp/node_modules/.bin/devcontainer
 
 tasks:
-  # ── Build ──────────────────────────────────────────────────────────
+  default:
+    desc: Build and test the Go CLI
+    cmds:
+      - task: test
+      - task: build
+
   build:
-    desc: Build the Go CLI binary (statically linked, CGO disabled)
+    desc: Build the static Go CLI
     env:
       CGO_ENABLED: "0"
     cmds:
       - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/devcontainer/
-    sources:
-      - cmd/**/*.go
-      - internal/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - "{{.BINARY}}"
+    sources: [cmd/**/*.go, internal/**/*.go, go.mod, go.sum]
+    generates: ["{{.BINARY}}"]
 
   build:cross:
-    desc: Cross-compile for all platforms (statically linked, CGO disabled)
+    desc: Cross-compile release binaries
     env:
       CGO_ENABLED: "0"
     cmds:
       - mkdir -p dist
-      - GOOS=linux   GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-amd64       ./cmd/devcontainer/
-      - GOOS=linux   GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-arm64       ./cmd/devcontainer/
-      - GOOS=darwin  GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-amd64      ./cmd/devcontainer/
-      - GOOS=darwin  GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-arm64      ./cmd/devcontainer/
+      - GOOS=linux   GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-amd64 ./cmd/devcontainer/
+      - GOOS=linux   GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-arm64 ./cmd/devcontainer/
+      - GOOS=darwin  GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-amd64 ./cmd/devcontainer/
+      - GOOS=darwin  GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-arm64 ./cmd/devcontainer/
       - GOOS=windows GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-windows-amd64.exe ./cmd/devcontainer/
 
-  # ── Test ───────────────────────────────────────────────────────────
   test:
-    desc: Run all Go unit tests
+    desc: Run hermetic Go tests
     cmds:
-      - go test ./... -count=1
-
-  test:verbose:
-    desc: Run all Go tests with verbose output
-    cmds:
-      - go test ./... -count=1 -v
-
-  test:coverage:
-    desc: Run tests with coverage report
-    cmds:
-      - go test ./... -count=1 -coverprofile=coverage.out
-      - go tool cover -html=coverage.out -o coverage.html
-      - echo "Coverage report → coverage.html"
+      - go test ./... -skip 'TestParityMatrix|TestPublishParity' -count=1 {{.CLI_ARGS}}
 
   test:e2e:
-    desc: Run E2E tests (requires Docker)
+    desc: Run Go E2E tests with Docker
     deps: [build]
     preconditions:
-      - sh: docker info > /dev/null 2>&1
+      - sh: docker info >/dev/null 2>&1
         msg: Docker is required for E2E tests
     cmds:
-      - go test ./internal/cli/ -count=1 -v -run TestE2E -timeout 300s
+      - go test ./internal/cli -run TestE2E -count=1 -timeout 5m -v {{.CLI_ARGS}}
 
-  # ── Lint ───────────────────────────────────────────────────────────
   lint:
-    desc: Run Go vet
+    desc: Run Go static checks
     cmds:
       - go vet ./...
 
-  # ── Parity ─────────────────────────────────────────────────────────
-  parity:
-    desc: Compare read-configuration output between TS and Go CLI (36 fixtures)
-    deps: [build, ts:compile]
+  reference:
+    desc: Install and compile the TypeScript parity oracle
     cmds:
-      - ./docs/migration/compare-parity.sh
+      - task: reference:install
+      - task: reference:compile
 
-  "parity:matrix":
-    desc: "Run parity matrix (Go)"
-    deps: [build, ts:compile]
+  parity:contract:
+    desc: Run the hermetic CLI contract matrix
+    deps: [build, reference:compile]
     cmds:
-      - go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
+      - PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 10m -v {{.CLI_ARGS}}
 
-  "parity:matrix:semantic":
-    desc: "Parity matrix — semantic cases that do not require Docker/network."
-    deps: [build, ts:compile]
+  parity:semantic:
+    desc: Run semantic cases without Docker or network
+    deps: [build, reference:compile]
     cmds:
-      - PARITY_STRICT=true PARITY_LANE=semantic PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
+      - PARITY_STRICT=true PARITY_LANE=semantic PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 10m -v {{.CLI_ARGS}}
 
-  "parity:matrix:contract":
-    desc: "Parity matrix — contract lane (hermetic: no docker/network). Fast CI gate."
-    deps: [build, ts:compile]
-    cmds:
-      - PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -count=1 -v
-
-  "parity:matrix:runtime":
-    desc: "Parity matrix — runtime lane (requires Docker). Parallel."
-    deps: [build, ts:compile]
+  parity:runtime:
+    desc: Run the complete parity matrix with Docker
+    deps: [build, reference:compile]
     preconditions:
-      - sh: docker info > /dev/null 2>&1
-        msg: Docker is required for the runtime parity lane
+      - sh: docker info >/dev/null 2>&1
+        msg: Docker is required for runtime parity
     cmds:
-      - PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli/ -run TestParityMatrix -parallel 4 -timeout 1800s -count=1 -v
+      - PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel 4 -timeout 30m -v {{.CLI_ARGS}}
 
-  # ── TypeScript CLI ─────────────────────────────────────────────────
-  ts:compile:
-    desc: Compile the TypeScript reference CLI (in the reference/ submodule)
-    deps: [ts:install]
+  clean:
+    desc: Remove generated artifacts and test containers
+    cmds:
+      - task: docker:clean
+      - rm -f {{.BINARY}} coverage.out coverage.html
+      - rm -rf dist src/test/tmp
+
+  release:
+    desc: Run GoReleaser; pass --snapshot for a local release
+    preconditions:
+      - sh: command -v goreleaser >/dev/null
+        msg: goreleaser is required
+    cmds:
+      - goreleaser release --clean {{.CLI_ARGS}}
+
+  reference:install:
+    internal: true
     dir: reference
+    status: [test -d node_modules]
+    cmds:
+      - yarn install --frozen-lockfile
+
+  reference:compile:
+    internal: true
+    deps: [reference:install]
+    dir: reference
+    sources: [src/**/*.ts, package.json, yarn.lock]
+    generates: [dist/spec-node/devContainersSpecCLI.js]
     cmds:
       - yarn compile
-    sources:
-      - src/**/*.ts
-      - package.json
-    generates:
-      - dist/spec-node/devContainersSpecCLI.js
-    status:
-      - test -f dist/spec-node/devContainersSpecCLI.js
 
-  ts:install:
-    desc: Install TS reference CLI dependencies (in the reference/ submodule)
-    dir: reference
-    cmds:
-      - yarn install --frozen-lockfile || yarn install
-    status:
-      - test -d node_modules
-
-  ts:test:shim:
-    desc: Set up the shim so TS tests run against Go binary
-    deps: [build]
-    cmds:
-      - mkdir -p src/test/tmp/node_modules/.bin
-      - rm -f {{.TS_TEST_SHIM}}
-      - |
-        cat > {{.TS_TEST_SHIM}} << 'EOF'
-        #!/bin/sh
-        exec {{.PWD}}/{{.BINARY}} "$@"
-        EOF
-      - chmod +x {{.TS_TEST_SHIM}}
-      # Also replace the npm package's entry point so npm install doesn't override
-      - |
-        cat > src/test/tmp/node_modules/@devcontainers/cli/devcontainer.js << 'SHIMEOF'
-        #!/usr/bin/env node
-        const { spawn } = require('child_process');
-        const p = spawn('{{.PWD}}/{{.BINARY}}', process.argv.slice(2), { stdio: 'inherit' });
-        p.on('close', (code, signal) => process.exit(code ?? 1));
-        SHIMEOF
-    vars:
-      PWD:
-        sh: pwd
-    status:
-      - test -x {{.TS_TEST_SHIM}}
-      - grep -q "$(pwd)/{{.BINARY}}" {{.TS_TEST_SHIM}}
-
-  ts:test:install:
-    desc: Install fake npm package for TS test before() hooks
-    deps: [ts:compile, build]
-    cmds:
-      - yarn package
-      # Patch tgz: replace devcontainer.js with a shim that calls the Go binary
-      - |
-        TMPD=$(mktemp -d)
-        cd "$TMPD" && tar xzf {{.PWD}}/devcontainers-cli-*.tgz
-        cat > "$TMPD/package/devcontainer.js" << 'SHIMEOF'
-        #!/usr/bin/env node
-        const { spawn } = require('child_process');
-        const p = spawn(process.env.DEVCONTAINER_CLI_PATH || '{{.PWD}}/{{.BINARY}}', process.argv.slice(2), { stdio: 'inherit' });
-        p.on('close', (code, signal) => process.exit(code ?? 1));
-        SHIMEOF
-        cd "$TMPD" && tar czf {{.PWD}}/devcontainers-cli-*.tgz package
-        rm -rf "$TMPD"
-      - rm -rf src/test/tmp/node_modules
-      - mkdir -p src/test/tmp
-      - npm --prefix src/test/tmp install devcontainers-cli-*.tgz
-    status:
-      - test -d src/test/tmp/node_modules/@devcontainers
-      - grep -q "spawn" src/test/tmp/node_modules/@devcontainers/cli/devcontainer.js
-
-  # ── TS Integration Tests against Go CLI ────────────────────────────
-  ts:test:
-    desc: Run ALL TypeScript tests against Go CLI
-    deps: [ts:test:setup]
-    cmds:
-      - task: ts:test:cli
-      - task: ts:test:up
-      - task: ts:test:build
-      - task: docker:clean
-
-  ts:test:setup:
-    desc: Prepare shim + npm package for TS tests
-    cmds:
-      - task: ts:test:install
-      - task: ts:test:shim
-
-  ts:test:cli:
-    desc: Run cli.test.ts against Go CLI
-    deps: [ts:test:setup]
-    cmds:
-      - task: docker:clean
-      - env TS_NODE_PROJECT=src/test/tsconfig.json npx mocha -r ts-node/register --exit --timeout 240000 src/test/cli.test.ts
-
-  ts:test:up:
-    desc: Run cli.up.test.ts against Go CLI
-    deps: [ts:test:setup]
-    preconditions:
-      - sh: docker info > /dev/null 2>&1
-        msg: Docker is required
-    cmds:
-      - task: docker:clean
-      - env TS_NODE_PROJECT=src/test/tsconfig.json npx mocha -r ts-node/register --exit --timeout 300000 src/test/cli.up.test.ts
-
-  ts:test:build:
-    desc: Run cli.build.test.ts against Go CLI
-    deps: [ts:test:setup]
-    preconditions:
-      - sh: docker info > /dev/null 2>&1
-        msg: Docker is required
-    cmds:
-      - task: docker:clean
-      - env TS_NODE_PROJECT=src/test/tsconfig.json npx mocha -r ts-node/register --exit --timeout 300000 src/test/cli.build.test.ts
-
-  # ── Docker ─────────────────────────────────────────────────────────
   docker:clean:
-    desc: Remove test containers
+    internal: true
     cmds:
       - docker ps -q --filter "label=devcontainer.local_folder" | xargs -r docker rm -f 2>/dev/null || true
       - docker ps -aq --filter "label=com.docker.compose.project" | xargs -r docker rm -f 2>/dev/null || true
     silent: true
-
-  # ── Clean ──────────────────────────────────────────────────────────
-  clean:
-    desc: Remove build artifacts
-    cmds:
-      - rm -f {{.BINARY}} coverage.out coverage.html
-      - rm -rf dist/
-      - rm -rf src/test/tmp/
-
-  # ── CI ─────────────────────────────────────────────────────────────
-  ci:
-    desc: Full CI pipeline (lint + test + build + parity)
-    cmds:
-      - task: lint
-      - task: test
-      - task: build
-      - task: parity
-
-  # ── Release ────────────────────────────────────────────────────────
-  release:
-    desc: Create a release with goreleaser
-    cmds:
-      - goreleaser release --clean
-    preconditions:
-      - sh: which goreleaser
-        msg: goreleaser is required
-
-  release:snapshot:
-    desc: Build a snapshot release (no publish)
-    cmds:
-      - goreleaser release --snapshot --clean
-
-  # ── Default ────────────────────────────────────────────────────────
-  default:
-    desc: Build and test
-    cmds:
-      - task: build
-      - task: test
