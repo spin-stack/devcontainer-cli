@@ -35,6 +35,17 @@ func TestStrictParityError(t *testing.T) {
 	}
 }
 
+func TestMatchesFilter_NetworkOnly(t *testing.T) {
+	t.Setenv("PARITY_NETWORK_ONLY", "true")
+	t.Setenv("PARITY_LANE", "all")
+	if matchesFilter(parityCase{ID: "local", Lane: "contract"}) {
+		t.Fatal("non-network case selected by network-only filter")
+	}
+	if !matchesFilter(parityCase{ID: "remote", Lane: "runtime", NetworkRequired: true}) {
+		t.Fatal("network case was not selected")
+	}
+}
+
 func TestNormalizeOutput_ExtractsEmbeddedJSON(t *testing.T) {
 	raw := "[2026-04-17T02:07:14.225Z] @devcontainers/cli 0.74.0\n" +
 		`{"outcome":"error","message":"boom","description":"boom"}`

@@ -19,7 +19,8 @@ jobs:
           version: 3.x
 
       - run: task lint
-      - run: task test
+      - run: task test:unit
+      - run: task test:integration
       - run: task build
       - run: ./devcontainer --version
 
@@ -60,6 +61,7 @@ jobs:
 
       - run: task reference
       - run: task parity:contract
+      - run: task parity:network
 
   # Runtime lane of the parity matrix (creates real containers via Docker).
   # ubuntu-latest ships with Docker preinstalled.

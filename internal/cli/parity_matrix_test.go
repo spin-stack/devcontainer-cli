@@ -1003,6 +1003,9 @@ func isDockerAvailable() bool {
 }
 
 func matchesFilter(tc parityCase) bool {
+	if os.Getenv("PARITY_NETWORK_ONLY") == "true" && !tc.NetworkRequired {
+		return false
+	}
 	return selected(tc.Lane, os.Getenv("PARITY_LANE")) &&
 		selected(tc.Priority, os.Getenv("PARITY_PRIORITY")) &&
 		selected(tc.Command, os.Getenv("PARITY_COMMAND")) &&

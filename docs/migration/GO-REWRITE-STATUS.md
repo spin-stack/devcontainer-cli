@@ -64,6 +64,7 @@ auxiliares cubiertos.
 ```sh
 task parity:contract  # contrato hermético
 task parity:semantic  # semántica sin Docker/red
+task parity:network   # casos que requieren red externa
 task parity:runtime   # matriz completa (requiere Docker)
 ```
 

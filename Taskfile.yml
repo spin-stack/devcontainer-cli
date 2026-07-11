@@ -11,7 +11,8 @@ tasks:
   default:
     desc: Build and test the Go CLI
     cmds:
-      - task: test
+      - task: test:unit
+      - task: test:integration
       - task: build
 
   build:
@@ -35,10 +36,15 @@ tasks:
       - GOOS=darwin  GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-arm64 ./cmd/devcontainer/
       - GOOS=windows GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-windows-amd64.exe ./cmd/devcontainer/
 
-  test:
-    desc: Run hermetic Go tests
+  test:unit:
+    desc: Run hermetic unit tests
     cmds:
-      - go test ./... -skip 'TestParityMatrix|TestPublishParity' -count=1 {{.CLI_ARGS}}
+      - go test ./cmd/... ./internal/... -skip 'TestClient|TestE2E|TestParityMatrix|TestPublishParity' -count=1 {{.CLI_ARGS}}
+
+  test:integration:
+    desc: Run local HTTP integration tests
+    cmds:
+      - go test ./internal/httpx -run TestClient -count=1 {{.CLI_ARGS}}
 
   test:e2e:
     desc: Run Go E2E tests with Docker
@@ -52,7 +58,7 @@ tasks:
   lint:
     desc: Run Go static checks
     cmds:
-      - go vet ./...
+      - go vet ./cmd/... ./internal/...
 
   reference:
     desc: Install and compile the TypeScript parity oracle
@@ -72,6 +78,12 @@ tasks:
     cmds:
       - PARITY_STRICT=true PARITY_LANE=semantic PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 10m -v {{.CLI_ARGS}}
 
+  parity:network:
+    desc: Run parity cases that require external network access
+    deps: [build, reference:compile]
+    cmds:
+      - PARITY_STRICT=true PARITY_LANE=all PARITY_NETWORK_ONLY=true PARITY_SKIP_DOCKER=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 15m -v {{.CLI_ARGS}}
+
   parity:runtime:
     desc: Run the complete parity matrix with Docker
     deps: [build, reference:compile]
@@ -80,6 +92,7 @@ tasks:
         msg: Docker is required for runtime parity
     cmds:
       - PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel 4 -timeout 30m -v {{.CLI_ARGS}}
+      - go test ./internal/cli -run TestPublishParity -count=1 -timeout 10m -v
 
   clean:
     desc: Remove generated artifacts and test containers

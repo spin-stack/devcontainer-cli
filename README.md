@@ -48,8 +48,10 @@ this repo as a git submodule.
 - **`docs/migration/GO-REWRITE-STATUS.md`** is the current parity status: what is
   covered and what remains (not a changelog — that lives in `git log`).
 
-The test **skips automatically** when the reference isn't compiled (`reference/dist`
-absent), so `go test ./...` stays green without the submodule.
+Unit, integration and parity tests are separate workflows. `task test:unit` only
+targets `cmd/` and `internal/`, so it neither discovers packages under
+`reference/node_modules` nor runs the TypeScript oracle, Docker, listeners or the
+network. Parity tasks compile the reference explicitly.
 
 ### Maintaining parity as we evolve
 
@@ -81,7 +83,8 @@ reference/           git submodule → devcontainers/cli @ v0.88.0 (parity oracl
 
 ```sh
 task build          # statically-linked ./devcontainer (CGO_ENABLED=0)
-task test           # go unit tests
+task test:unit      # hermetic Go unit tests
+task test:integration # local HTTP integration tests
 task lint           # go vet
 task build:cross    # static binaries for linux/darwin/windows × amd64/arm64
 ```
@@ -100,6 +103,7 @@ git submodule update --init reference
 task reference          # install + compile the TypeScript oracle
 task parity:contract    # hermetic contract lane
 task parity:semantic    # semantic cases without Docker/network
+task parity:network     # cases that require external network access
 task parity:runtime     # complete matrix; requires Docker, ~5–6 min
 ```
 
