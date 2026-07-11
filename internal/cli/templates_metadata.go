@@ -56,14 +56,22 @@ func runTemplatesMetadata(templateID, logLevel string) error {
 		return fmt.Errorf("template resolved to %q but does not contain metadata", manifest.CanonicalID)
 	}
 
-	// Emit the metadata compacted but with its source key order preserved (like the
-	// TS JSON.stringify of the parsed annotation); re-marshaling a Go map would sort.
-	var buf bytes.Buffer
-	if err := json.Compact(&buf, []byte(metadataJSON)); err != nil {
+	compacted, err := compactTemplateMetadata(metadataJSON)
+	if err != nil {
 		fmt.Fprintln(os.Stdout, "{}")
 		return fmt.Errorf("template %q has invalid metadata: %w", templateID, err)
 	}
-	fmt.Fprintln(os.Stdout, buf.String())
+	fmt.Fprintln(os.Stdout, compacted)
 
 	return nil
+}
+
+// compactTemplateMetadata matches JSON.stringify(JSON.parse(annotation)): it
+// removes insignificant whitespace while retaining the source object's key order.
+func compactTemplateMetadata(metadataJSON string) (string, error) {
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, []byte(metadataJSON)); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
