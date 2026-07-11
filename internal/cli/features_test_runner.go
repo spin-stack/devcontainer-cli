@@ -381,8 +381,15 @@ func runGlobalTests(logger log.Log, collectionFolder, filter, baseImage, remoteU
 
 func upTestContainer(workspaceFolder string, quiet bool) (string, error) {
 	// Tag the container so cleanupTestContainers (which filters on this label)
-	// can remove it — otherwise every test run leaks a container.
-	args := []string{"up", "--workspace-folder", workspaceFolder, "--skip-post-create", "--log-level", "info", "--id-label", "devcontainer.is_test_run=true"}
+	// can remove it — otherwise every test run leaks a container. A second,
+	// per-workspace label keeps each autotest/scenario container distinct: `up`
+	// matches an existing container by --id-label, so without a unique label the
+	// scenario up would reuse (and fail to start) the autotest's container.
+	args := []string{
+		"up", "--workspace-folder", workspaceFolder, "--skip-post-create", "--log-level", "info",
+		"--id-label", "devcontainer.is_test_run=true",
+		"--id-label", "devcontainer.test_id=" + filepath.Base(workspaceFolder),
+	}
 	if quiet {
 		args = append(args, "--log-level", "error")
 	}
