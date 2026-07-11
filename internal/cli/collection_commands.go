@@ -17,6 +17,7 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/pfs"
+	"github.com/iancoleman/orderedmap"
 	"github.com/spf13/cobra"
 )
 
@@ -272,7 +273,10 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 	}
 
 	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
-	var collection []map[string]interface{}
+	// orderedmap preserves each metadata file's key order so the emitted
+	// collection matches the TS CLI (which spreads the parsed JSON verbatim) rather
+	// than the alphabetical order a plain Go map would produce.
+	var collection []*orderedmap.OrderedMap
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -286,8 +290,19 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 		}
 
 		data, _ := os.ReadFile(metaPath)
-		var meta map[string]interface{}
-		jsonc.Unmarshal(data, &meta)
+		std, stripErr := jsonc.StripComments(data)
+		if stripErr != nil {
+			continue
+		}
+		meta := orderedmap.New()
+		if err := json.Unmarshal(std, meta); err != nil {
+			continue
+		}
+		// TS skips (with an error) any feature/template missing id, version or name.
+		if !hasNonEmptyString(meta, "id") || !hasNonEmptyString(meta, "version") || !hasNonEmptyString(meta, "name") {
+			logger.Write(fmt.Sprintf("%s '%s' is missing one of the following required properties in its %s: 'id', 'version', 'name'.", collectionType, entry.Name(), metadataFile), log.LevelError)
+			continue
+		}
 
 		// Create tarball
 		archiveName := fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, entry.Name())
@@ -300,13 +315,17 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 		collection = append(collection, meta)
 	}
 
-	// Write collection metadata. sourceInformation marks the CLI as the
-	// producer, matching the TS CLI's devcontainer-collection.json.
-	collMeta := map[string]interface{}{
-		"sourceInformation":                map[string]interface{}{"source": "devcontainer-cli"},
-		fmt.Sprintf("%ss", collectionType): collection,
+	if len(collection) == 0 {
+		logger.Write(fmt.Sprintf("Failed to package %ss", collectionType), log.LevelError)
+		return &coreerrors.ExitCodeError{Code: 1}
 	}
-	collData, _ := json.MarshalIndent(collMeta, "", "  ")
+
+	// Write collection metadata: sourceInformation first, then the features/templates
+	// array — JSON.stringify(collection, null, 4) in TS, so 4-space indentation.
+	collMeta := orderedmap.New()
+	collMeta.Set("sourceInformation", map[string]string{"source": "devcontainer-cli"})
+	collMeta.Set(fmt.Sprintf("%ss", collectionType), collection)
+	collData, _ := json.MarshalIndent(collMeta, "", "    ")
 	collPath := filepath.Join(outputDir, "devcontainer-collection.json")
 	os.WriteFile(collPath, collData, 0644)
 
@@ -614,6 +633,17 @@ func generateDocsHeader(meta map[string]interface{}) string {
 	return h
 }
 
+// hasNonEmptyString reports whether an orderedmap has a non-empty string at key,
+// mirroring the JS truthiness check (`!metadata.id`).
+func hasNonEmptyString(m *orderedmap.OrderedMap, key string) bool {
+	v, ok := m.Get(key)
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	return ok && s != ""
+}
+
 // jsTruthyString mirrors JS `value || fallback` for string cells: an empty or
 // non-string value falls back.
 func jsTruthyString(v interface{}, fallback string) string {
@@ -623,7 +653,7 @@ func jsTruthyString(v interface{}, fallback string) string {
 	return fallback
 }
 
-// defaultCell mirrors TS `val.default !== '' ? val.default : '-'`: an empty string
+// defaultCell mirrors TS `val.default !== ” ? val.default : '-'`: an empty string
 // becomes "-", an absent default renders "undefined", everything else prints as JS
 // would interpolate it.
 func defaultCell(ov map[string]interface{}) string {

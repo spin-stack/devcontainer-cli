@@ -2044,6 +2044,19 @@ initial_cases:
     current_status: match
     notes: "info tags (texto): tags unidos con '\\n   ' (primero flush, resto indentado 3). Ambos lados consultan el mismo registry."
 
+  - id: features.package-collection-success
+    lane: runtime
+    command: features
+    priority: p1
+    ts_cmd: "features package ${PKG_DIR} -o ${PKG_DIR}/out -f"
+    setup_cmd: "PKG_DIR=/tmp/parity-pkg-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $PKG_DIR; cp -R reference/src/test/container-features/example-v2-features-sets/simple/src $PKG_DIR; echo PKG_DIR=$PKG_DIR"
+    verify_cmd: "cat ${PKG_DIR}/out/devcontainer-collection.json"
+    cleanup_cmd: "rm -rf /tmp/parity-pkg-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "features package genera devcontainer-collection.json ({sourceInformation, features:[…]}, 4-space) preservando el orden de keys del devcontainer-feature.json (orderedmap). El verify compara ese JSON; el digest del tarball puede diferir (encoding de header Go vs node-tar) pero el file-list coincide."
+
 groups:
   mode-validation:
     rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"
