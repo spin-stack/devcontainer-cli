@@ -1,5 +1,11 @@
 version: 2
 
+# Versioning: CalVer YYYYMMDD.<build>. Tagged releases use the git tag verbatim
+# (tag as e.g. `20260711.01`). Snapshots derive the version from the build date +
+# BUILD_NUMBER (defaults to 01), so nightly/CI snapshots are calver too.
+snapshot:
+  version_template: '{{ .Now.Format "20060102" }}.{{ envOrDefault "BUILD_NUMBER" "01" }}'
+
 before:
   hooks:
     - go mod tidy
@@ -86,7 +92,7 @@ release:
     name: devcontainer-cli
   draft: true
   prerelease: auto
-  name_template: "Go CLI v{{.Version}}"
+  name_template: "Go CLI {{.Version}}"
   header: |
     ## Dev Container CLI (Go)
 

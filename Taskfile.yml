@@ -3,8 +3,10 @@ version: "3"
 vars:
   BINARY: devcontainer
   MODULE: github.com/devcontainers/cli
+  # CalVer: YYYYMMDD.<build>. BUILD_NUMBER (e.g. a daily counter or CI run number)
+  # defaults to 01 for local builds. Tagged releases use the git tag verbatim.
   VERSION:
-    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+    sh: echo "$(git describe --tags --exact-match 2>/dev/null || echo "$(date -u +%Y%m%d).${BUILD_NUMBER:-01}")"
   LDFLAGS: -s -w -X {{.MODULE}}/internal/product.version={{.VERSION}} -X {{.MODULE}}/internal/product.name={{.BINARY}}
 
 tasks:
