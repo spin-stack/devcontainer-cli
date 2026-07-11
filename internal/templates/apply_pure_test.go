@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/pfs"
 )
 
 func TestEscapeJSONPointer(t *testing.T) {
@@ -47,7 +48,7 @@ func TestApplyOptionDefaults(t *testing.T) {
 	}`), 0644)
 
 	// User provided imageVariant → kept; others filled from defaults (or skipped).
-	got := applyOptionDefaults(dir, map[string]string{"imageVariant": "bullseye"}, log.Null)
+	got := applyOptionDefaults(pfs.OSFS{}, dir, map[string]string{"imageVariant": "bullseye"}, log.Null)
 	if got["imageVariant"] != "bullseye" {
 		t.Errorf("imageVariant = %q (user value should win)", got["imageVariant"])
 	}
@@ -62,7 +63,7 @@ func TestApplyOptionDefaults(t *testing.T) {
 func TestApplyOptionDefaults_NoMetadata(t *testing.T) {
 	// Missing devcontainer-template.json → returns the user options unchanged.
 	dir := t.TempDir()
-	got := applyOptionDefaults(dir, map[string]string{"a": "b"}, log.Null)
+	got := applyOptionDefaults(pfs.OSFS{}, dir, map[string]string{"a": "b"}, log.Null)
 	if len(got) != 1 || got["a"] != "b" {
 		t.Errorf("got %v", got)
 	}

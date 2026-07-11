@@ -79,6 +79,7 @@ const (
 // runFeaturesTestCommand implements the features test runner.
 // It creates temporary projects, spins up containers, and runs test scripts.
 func runFeaturesTestCommand(
+	out Output,
 	logger log.Log,
 	collectionFolder string,
 	featuresList []string,
@@ -101,10 +102,10 @@ func runFeaturesTestCommand(
 		return 1
 	}
 
-	fmt.Println("┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐")
-	fmt.Println("|    Dev Container Features      |")
-	fmt.Println("└ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘")
-	fmt.Println()
+	fmt.Fprintln(out.Stdout(), "┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐")
+	fmt.Fprintln(out.Stdout(), "|    Dev Container Features      |")
+	fmt.Fprintln(out.Stdout(), "└ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘")
+	fmt.Fprintln(out.Stdout())
 
 	var results []testResult
 
@@ -162,7 +163,7 @@ func runFeaturesTestCommand(
 		cleanupTestContainers(logger)
 	}
 
-	return reportTestResults(results)
+	return reportTestResults(out, results)
 }
 
 func runAutoTests(logger log.Log, collectionFolder string, features []string, baseImage, remoteUser string, quiet bool) []testResult {
@@ -441,27 +442,27 @@ func cleanupTestContainers(logger log.Log) {
 	}
 }
 
-func reportTestResults(results []testResult) int {
-	fmt.Println()
+func reportTestResults(out Output, results []testResult) int {
+	fmt.Fprintln(out.Stdout())
 	// Format matches the TS test report: `${prefix} ${msg}` with a leading-space
 	// prefix on the header and ✅/❌ prefixes on the result lines.
-	fmt.Println("  ================== TEST REPORT ==================")
+	fmt.Fprintln(out.Stdout(), "  ================== TEST REPORT ==================")
 	allPassed := true
 	for _, r := range results {
 		switch r.Status {
 		case testPassed:
-			fmt.Printf("✅ Passed:      '%s'\n", r.Name)
+			fmt.Fprintf(out.Stdout(), "✅ Passed:      '%s'\n", r.Name)
 		case testSkipped:
-			fmt.Printf("⚪ Skipped:     '%s' (%s)\n", r.Name, r.Detail)
+			fmt.Fprintf(out.Stdout(), "⚪ Skipped:     '%s' (%s)\n", r.Name, r.Detail)
 		case testError:
-			fmt.Printf("❌ Error:       '%s' (%s)\n", r.Name, r.Detail)
+			fmt.Fprintf(out.Stdout(), "❌ Error:       '%s' (%s)\n", r.Name, r.Detail)
 			allPassed = false
 		default:
-			fmt.Printf("❌ Failed:      '%s'\n", r.Name)
+			fmt.Fprintf(out.Stdout(), "❌ Failed:      '%s'\n", r.Name)
 			allPassed = false
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(out.Stdout())
 	if allPassed {
 		return 0
 	}

@@ -49,7 +49,7 @@ func newReadConfigurationCmd() *cobra.Command {
 		Use:   "read-configuration",
 		Short: "Read configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReadConfiguration(cmd.Context(), &opts)
+			return runReadConfiguration(cmd.Context(), outputFor(cmd), &opts)
 		},
 	}
 
@@ -79,7 +79,7 @@ func newReadConfigurationCmd() *cobra.Command {
 	return cmd
 }
 
-func runReadConfiguration(ctx context.Context, opts *readConfigOpts) error {
+func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return err
 	}
@@ -248,7 +248,7 @@ func runReadConfiguration(ctx context.Context, opts *readConfigOpts) error {
 	needsFeaturesConfig := opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 	if needsFeaturesConfig && result != nil && len(result.Config.Features) > 0 {
 		lgr := log.New(log.Options{Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: os.Stderr, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
-		featResult, featErr := fetchFeatureSets(lgr, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
+		featResult, featErr := fetchFeatureSets(lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if featErr == nil && featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
 			output["featuresConfiguration"] = map[string]interface{}{
@@ -285,7 +285,7 @@ func runReadConfiguration(ctx context.Context, opts *readConfigOpts) error {
 				}
 			}
 			if len(result.Config.Features) > 0 {
-				if fr, ferr := fetchFeatureSets(lgr, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil); ferr == nil && fr != nil {
+				if fr, ferr := fetchFeatureSets(lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil); ferr == nil && fr != nil {
 					defer os.RemoveAll(fr.TmpDir)
 					for _, fs := range fr.FeatureSets {
 						entries = append(entries, featureMetadataEntry(fs, false))
@@ -348,7 +348,7 @@ func runReadConfiguration(ctx context.Context, opts *readConfigOpts) error {
 		return fmt.Errorf("marshal output: %w", err)
 	}
 
-	fmt.Fprintln(os.Stdout, string(data))
+	fmt.Fprintln(out.Stdout(), string(data))
 	return nil
 }
 

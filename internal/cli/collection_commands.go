@@ -209,6 +209,7 @@ func realFeaturesTestCmd() *cobra.Command {
 			})
 
 			exitCode := runFeaturesTestCommand(
+				outputFor(cmd),
 				logger,
 				resolvePath(target),
 				featuresList,
@@ -333,7 +334,21 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 	return nil
 }
 
+// publishCollection wires the real OCI registry and process stdout, then
+// delegates to publishCollectionWith. Tests call publishCollectionWith directly
+// with a fake oci.Registry and a capturing Output to drive the partial-publish
+// error path hermetically.
 func publishCollection(targetFolder, registry, namespace, collectionType, logLevelStr string) error {
+	logger := log.New(log.Options{
+		Level:  log.MapLogLevel(logLevelStr),
+		Format: "text",
+		Writer: os.Stderr,
+	})
+	reg := oci.NewClient(logger, osEnvMap())
+	return publishCollectionWith(OSOutput(), reg, targetFolder, registry, namespace, collectionType, logLevelStr)
+}
+
+func publishCollectionWith(out Output, reg oci.Registry, targetFolder, registry, namespace, collectionType, logLevelStr string) error {
 	logger := log.New(log.Options{
 		Level:  log.MapLogLevel(logLevelStr),
 		Format: "text",
@@ -364,7 +379,7 @@ func publishCollection(targetFolder, registry, namespace, collectionType, logLev
 	itemsKey := fmt.Sprintf("%ss", collectionType)
 	items, _ := collMeta[itemsKey].([]interface{})
 
-	ociClient := oci.NewClient(logger, osEnvMap())
+	ociClient := reg
 
 	result := make(map[string]interface{})
 	failures := 0
@@ -449,8 +464,8 @@ func publishCollection(targetFolder, registry, namespace, collectionType, logLev
 		}
 	}
 
-	out, _ := json.Marshal(result)
-	fmt.Fprintln(os.Stdout, string(out))
+	data, _ := json.Marshal(result)
+	fmt.Fprintln(out.Stdout(), string(data))
 
 	if failures > 0 {
 		return fmt.Errorf("%d %s publish operation(s) failed", failures, collectionType)

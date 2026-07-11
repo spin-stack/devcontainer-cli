@@ -1,12 +1,11 @@
 package docker
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
+	"github.com/devcontainers/cli/internal/exec"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -16,6 +15,9 @@ type Client struct {
 	DockerPath string
 	Env        []string
 	Log        log.Log
+	// Runner is the seam over process execution. When nil, a default OS-backed
+	// runner is used. Tests inject a fake to avoid shelling out.
+	Runner exec.Runner
 }
 
 // NewClient creates a Docker CLI client.
@@ -37,32 +39,27 @@ type ExecResult struct {
 	ExitCode int
 }
 
+// runner returns the configured Runner, or a default OS-backed one carrying the
+// client's Env.
+func (c *Client) runner() exec.Runner {
+	if c.Runner != nil {
+		return c.Runner
+	}
+	return exec.OSRunner{Env: c.Env}
+}
+
 // Run executes a docker command and captures output.
 func (c *Client) Run(args ...string) (*ExecResult, error) {
 	c.Log.Write(fmt.Sprintf("Run: %s %s", c.DockerPath, strings.Join(args, " ")), log.LevelTrace)
 
-	cmd := exec.Command(c.DockerPath, args...)
-	if len(c.Env) > 0 {
-		cmd.Env = append(os.Environ(), c.Env...)
-	}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	exitCode := 0
+	stdout, stderr, exitCode, err := c.runner().Run(context.Background(), c.DockerPath, args...)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			return nil, fmt.Errorf("exec docker: %w", err)
-		}
+		return nil, fmt.Errorf("exec docker: %w", err)
 	}
 
 	return &ExecResult{
-		Stdout:   stdout.Bytes(),
-		Stderr:   stderr.Bytes(),
+		Stdout:   stdout,
+		Stderr:   stderr,
 		ExitCode: exitCode,
 	}, nil
 }

@@ -46,7 +46,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 		Use:   "run-user-commands",
 		Short: "Run user commands",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUserCommands(cmd.Context(), &opts)
+			return runUserCommands(cmd.Context(), outputFor(cmd), &opts)
 		},
 	}
 
@@ -84,12 +84,12 @@ func newRunUserCommandsCmd() *cobra.Command {
 	return cmd
 }
 
-func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
+func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
@@ -104,11 +104,11 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 		{"default-user-env-probe", opts.defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
 	} {
 		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return writeValidationError(err.Error())
+			return writeValidationError(out, err.Error())
 		}
 	}
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 
 	logger := log.New(log.Options{
@@ -130,7 +130,7 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 		ws := resolvePath(opts.workspaceFolder)
 		loadResult, loadErr = config.LoadDevContainerConfig(ws, opts.configPath, opts.overrideConfig)
 		if loadErr != nil {
-			return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 				Description: loadErr.Error(),
 			}))
 		}
@@ -138,7 +138,7 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Docker engine: %v", err))
 	}
 	defer engine.Close()
 
@@ -158,7 +158,7 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 	}
 
 	if containerID == "" {
-		return writeErrorResult("Dev container not found.")
+		return writeErrorResult(out, "Dev container not found.")
 	}
 
 	// Load config from --workspace-folder or --config
@@ -184,7 +184,7 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 	// Read metadata from container
 	inspect, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Failed to inspect container: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
 	}
 
 	// Build merged config. With a config loaded, read the image's metadata
@@ -245,7 +245,7 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 
 	shellServer, err := lifecycle.NewShellServer(opts.dockerPath, containerID, remoteUser, logger, mergedRemoteEnv...)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Failed to start shell server: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Failed to start shell server: %v", err))
 	}
 	defer shellServer.Close()
 
@@ -276,18 +276,18 @@ func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 		var cmdErr *lifecycle.CommandError
 		if errors.As(hookErr, &hook) && errors.As(hookErr, &cmdErr) {
 			description := fmt.Sprintf("%s from devcontainer.json failed.", hook.Phase)
-			return writeErrorJSON(coreerrors.ErrorOutput{
+			return writeErrorJSON(out, coreerrors.ErrorOutput{
 				Outcome:     "error",
 				Message:     cmdErr.Error(),
 				Description: description,
 			})
 		}
-		return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 			Description: fmt.Sprintf("An error occurred running user commands: %v", hookErr),
 		}))
 	}
 
-	return writeSuccessJSON(map[string]interface{}{
+	return writeSuccessJSON(out, map[string]interface{}{
 		"outcome": "success",
 		"result":  "done",
 	})

@@ -30,7 +30,7 @@ func realFeaturesInfoCmd() *cobra.Command {
 				return fmt.Errorf("Invalid mode %q. Choose from: manifest, tags, dependencies, verbose", mode)
 			}
 			featureID := args[1]
-			return runFeaturesInfo(mode, featureID, logLevel, outputFormat)
+			return runFeaturesInfo(outputFor(cmd), mode, featureID, logLevel, outputFormat)
 		},
 	}
 
@@ -40,7 +40,7 @@ func realFeaturesInfoCmd() *cobra.Command {
 	return cmd
 }
 
-func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
+func runFeaturesInfo(out Output, mode, featureID, logLevel, outputFormat string) error {
 	for _, v := range []struct {
 		flag, val string
 		choices   []string
@@ -62,7 +62,7 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 	ref, err := oci.ParseRef(featureID)
 	if err != nil {
 		if outputFormat == "json" {
-			fmt.Fprintln(os.Stdout, "{}")
+			fmt.Fprintln(out.Stdout(), "{}")
 		}
 		return fmt.Errorf("Failed to parse Feature identifier %q", featureID)
 	}
@@ -77,26 +77,26 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 		manifest, err := client.FetchManifest(ref, "")
 		if err != nil {
 			if outputFormat == "json" {
-				fmt.Fprintln(os.Stdout, "{}")
+				fmt.Fprintln(out.Stdout(), "{}")
 			}
 			return fmt.Errorf("No manifest found. If authentication is required, please login.")
 		}
 
 		if outputFormat == "text" {
-			fmt.Println(encloseStringInBox("Manifest"))
+			fmt.Fprintln(out.Stdout(), encloseStringInBox("Manifest"))
 			// Re-indent the raw manifest bytes so the key order matches the fetched
 			// document (TS prints the object as-is); MarshalIndent of the struct/map
 			// would sort keys and reorder annotations.
 			var buf bytes.Buffer
 			if json.Indent(&buf, manifest.ManifestBytes, "", "  ") == nil {
-				fmt.Println(buf.String())
+				fmt.Fprintln(out.Stdout(), buf.String())
 			} else {
 				data, _ := json.MarshalIndent(manifest.Manifest, "", "  ")
-				fmt.Println(string(data))
+				fmt.Fprintln(out.Stdout(), string(data))
 			}
-			fmt.Println()
-			fmt.Println(encloseStringInBox("Canonical Identifier"))
-			fmt.Printf("%s\n\n", manifest.CanonicalID)
+			fmt.Fprintln(out.Stdout())
+			fmt.Fprintln(out.Stdout(), encloseStringInBox("Canonical Identifier"))
+			fmt.Fprintf(out.Stdout(), "%s\n\n", manifest.CanonicalID)
 		} else {
 			jsonOutput["manifest"] = manifest.Manifest
 			jsonOutput["canonicalId"] = manifest.CanonicalID
@@ -107,8 +107,8 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 	// the mermaid dependency graph (built by the shared renderer).
 	if (mode == "dependencies" || mode == "verbose") && outputFormat == "text" {
 		logger.Write(fmt.Sprintf("Building dependency graph for '%s'...", featureID), log.LevelInfo)
-		fmt.Println(encloseStringInBox("Dependency Tree (Render with https://mermaid.live/)"))
-		fmt.Println(renderDependencyMermaid(client, logger, []string{featureID}))
+		fmt.Fprintln(out.Stdout(), encloseStringInBox("Dependency Tree (Render with https://mermaid.live/)"))
+		fmt.Fprintln(out.Stdout(), renderDependencyMermaid(client, logger, []string{featureID}))
 	}
 
 	// Tags
@@ -116,15 +116,15 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 		tags, err := client.GetPublishedTags(ref)
 		if err != nil || len(tags) == 0 {
 			if outputFormat == "json" {
-				fmt.Fprintln(os.Stdout, "{}")
+				fmt.Fprintln(out.Stdout(), "{}")
 			}
 			return fmt.Errorf("No published versions found for feature %q", ref.Resource)
 		}
 
 		if outputFormat == "text" {
-			fmt.Println(encloseStringInBox("Published Tags"))
+			fmt.Fprintln(out.Stdout(), encloseStringInBox("Published Tags"))
 			// TS joins with "\n   ": the first tag is flush, the rest indented by 3.
-			fmt.Println(strings.Join(tags, "\n   "))
+			fmt.Fprintln(out.Stdout(), strings.Join(tags, "\n   "))
 		} else {
 			jsonOutput["publishedTags"] = tags
 		}
@@ -132,7 +132,7 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 
 	if outputFormat == "json" {
 		data, _ := json.MarshalIndent(jsonOutput, "", "    ")
-		fmt.Fprintln(os.Stdout, string(data))
+		fmt.Fprintln(out.Stdout(), string(data))
 	}
 
 	return nil

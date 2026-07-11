@@ -134,7 +134,7 @@ func TestFetchFeatureSets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			baseDir := t.TempDir()
 			tt.setup(t, baseDir)
-			result, err := fetchFeatureSets(log.Null, tt.entries, baseDir, false, nil)
+			result, err := fetchFeatureSets(log.Null, nil, tt.entries, baseDir, false, nil)
 			if result != nil && result.TmpDir != "" {
 				defer os.RemoveAll(result.TmpDir)
 			}

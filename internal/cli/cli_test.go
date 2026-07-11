@@ -127,19 +127,13 @@ func TestReadConfiguration_AllFixtures(t *testing.T) {
 			continue
 		}
 
-		old := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
+		// Capture stdout via the cli.Output seam (cmd.SetOut) instead of swapping
+		// the global os.Stdout, which is racy across parallel tests.
+		var buf bytes.Buffer
 		root := NewRootCommand()
+		root.SetOut(&buf)
 		root.SetArgs([]string{"read-configuration", "--workspace-folder", dir})
 		err := root.Execute()
-
-		w.Close()
-		os.Stdout = old
-
-		var buf bytes.Buffer
-		buf.ReadFrom(r)
 
 		if err != nil {
 			t.Errorf("FAIL %s: %v", entry.Name(), err)

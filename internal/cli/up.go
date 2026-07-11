@@ -75,6 +75,7 @@ type upOpts struct {
 // reattach path (set once BuildKit detection has run).
 type upRunner struct {
 	ctx    context.Context
+	out    Output
 	log    log.Log
 	docker *docker.Client
 	engine *docker.EngineClient
@@ -88,7 +89,7 @@ func newUpCmd() *cobra.Command {
 		Use:   "up",
 		Short: "Create and run dev container",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUp(cmd.Context(), &opts)
+			return runUp(cmd.Context(), outputFor(cmd), &opts)
 		},
 	}
 
@@ -142,15 +143,15 @@ func newUpCmd() *cobra.Command {
 	return cmd
 }
 
-func runUp(ctx context.Context, opts *upOpts) error {
+func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 	if err := validateMounts(opts.mounts); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 	for _, v := range []struct {
 		flag, val string
@@ -164,11 +165,11 @@ func runUp(ctx context.Context, opts *upOpts) error {
 		{"update-remote-user-uid-default", opts.updateRemoteUserUIDDefault, []string{"on", "off", "never"}},
 	} {
 		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return writeValidationError(err.Error())
+			return writeValidationError(out, err.Error())
 		}
 	}
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
-		return writeValidationError(err.Error())
+		return writeValidationError(out, err.Error())
 	}
 	// 0.88: default --workspace-folder to the current directory when neither
 	// --workspace-folder, --id-label nor --override-config is given.
@@ -201,11 +202,11 @@ func runUp(ctx context.Context, opts *upOpts) error {
 	// Engine SDK client for container/image operations
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Docker engine: %v", err))
 	}
 	defer engine.Close()
 
-	run := &upRunner{ctx: ctx, log: logger, engine: engine, opts: opts}
+	run := &upRunner{ctx: ctx, out: out, log: logger, engine: engine, opts: opts}
 
 	// When --id-label is provided, use those labels directly for container lookup.
 	// Otherwise, derive labels from workspace folder + config file path.
@@ -230,7 +231,7 @@ func runUp(ctx context.Context, opts *upOpts) error {
 			if inspErr == nil && inspectResp.State != nil && !inspectResp.State.Running {
 				logger.Write("Starting existing container...", log.LevelInfo)
 				if startErr := engine.StartContainer(ctx, containerID); startErr != nil {
-					return writeErrorResult(fmt.Sprintf("Failed to start container: %v", startErr))
+					return writeErrorResult(out, fmt.Sprintf("Failed to start container: %v", startErr))
 				}
 			}
 
@@ -245,21 +246,21 @@ func runUp(ctx context.Context, opts *upOpts) error {
 		}
 
 		if opts.expectExistingContainer {
-			return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 				Description: "The expected container does not exist.",
 			}))
 		}
 
 		// No existing container found with --id-label, fall through to config-based creation.
 		if workspaceFolder == "" {
-			return writeErrorResult("No dev container config and no workspace found.")
+			return writeErrorResult(out, "No dev container config and no workspace found.")
 		}
 	}
 
 	// Load config — requires workspaceFolder (guaranteed non-empty at this point)
 	loadResult, err := config.LoadDevContainerConfig(workspaceFolder, configPath, overridePath)
 	if err != nil {
-		return writeErrorResult(err.Error())
+		return writeErrorResult(out, err.Error())
 	}
 	cfg := loadResult.Config
 
@@ -267,11 +268,11 @@ func runUp(ctx context.Context, opts *upOpts) error {
 	var mergeErr error
 	opts.lockfileExcludeIDs, mergeErr = mergeAdditionalFeatures(cfg, opts.additionalFeatures)
 	if mergeErr != nil {
-		return writeErrorResult(mergeErr.Error())
+		return writeErrorResult(out, mergeErr.Error())
 	}
 
 	if derr := enforceDisallowedFeatures(cfg, logger); derr != nil {
-		return writeErrorJSON(coreerrors.ToErrorOutput(derr))
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
 	}
 
 	// Run initializeCommand on the host (before container creation).
@@ -279,7 +280,7 @@ func runUp(ctx context.Context, opts *upOpts) error {
 	// throws a ContainerError). Swallowing it produced silently-broken setups.
 	if !cfg.InitializeCommand.IsEmpty() {
 		if err := lifecycle.RunInitializeCommand(logger, &cfg.InitializeCommand, workspaceFolder); err != nil {
-			return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 				Description: "The initializeCommand in the devcontainer.json failed.",
 			}))
 		}
@@ -325,11 +326,11 @@ func runUp(ctx context.Context, opts *upOpts) error {
 		if inspErr == nil && inspectResp.State != nil && !inspectResp.State.Running {
 			logger.Write("Starting existing container...", log.LevelInfo)
 			if startErr := engine.StartContainer(ctx, containerID); startErr != nil {
-				return writeErrorResult(fmt.Sprintf("Failed to start container: %v", startErr))
+				return writeErrorResult(out, fmt.Sprintf("Failed to start container: %v", startErr))
 			}
 		}
 	} else if len(existingIDs) == 0 && opts.expectExistingContainer && !cfg.IsComposeConfig() {
-		return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 			Description: "The expected container does not exist.",
 		}))
 	} else {
@@ -347,7 +348,7 @@ func runUp(ctx context.Context, opts *upOpts) error {
 			containerID, err = run.fromImage(cfg, loadResult, workspaceFolder, idLabels, useBuildx)
 		}
 		if err != nil {
-			return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 				Description: fmt.Sprintf("An error occurred setting up the container: %v", err),
 			}))
 		}
@@ -356,7 +357,7 @@ func runUp(ctx context.Context, opts *upOpts) error {
 	// Get container info
 	inspectResp, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Failed to inspect container: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
 	}
 
 	// Determine remote user: config → container metadata → image metadata →
@@ -399,7 +400,7 @@ func runUp(ctx context.Context, opts *upOpts) error {
 	// error outcome (matching the TS CLI), instead of reporting success.
 	if !opts.skipPostCreate {
 		if lcErr := run.runLifecycleForUp(containerID, cfg, remoteWorkspaceFolder, remoteUser); lcErr != nil {
-			return writeErrorJSON(coreerrors.ToErrorOutput(lcErr))
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(lcErr))
 		}
 	}
 
@@ -502,16 +503,16 @@ func runUp(ctx context.Context, opts *upOpts) error {
 		}
 	}
 
-	return writeSuccessJSON(result)
+	return writeSuccessJSON(out, result)
 }
 
 // finishUp produces the JSON result for an existing container found via --id-label
 // (no config/loadResult available). cfg and loadResult may be nil.
 func (r *upRunner) finishUp(containerID string, cfg *config.DevContainerConfig, loadResult *config.LoadResult) error {
-	ctx, logger, engine := r.ctx, r.log, r.engine
+	ctx, out, logger, engine := r.ctx, r.out, r.log, r.engine
 	inspectResp, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Failed to inspect container: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
 	}
 
 	remoteUser := ""
@@ -548,7 +549,7 @@ func (r *upRunner) finishUp(containerID string, cfg *config.DevContainerConfig, 
 		"remoteWorkspaceFolder": remoteWorkspaceFolder,
 	}
 
-	return writeSuccessJSON(result)
+	return writeSuccessJSON(out, result)
 }
 
 // runReattachLifecycle runs lifecycle hooks when reattaching to an existing
@@ -1075,7 +1076,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 		}
 
 		// Fetch and resolve features
-		fetchResult, fetchErr := fetchFeatureSets(logger, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
+		fetchResult, fetchErr := fetchFeatureSets(logger, nil, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if fetchErr != nil {
 			return "", fetchErr
 		}
