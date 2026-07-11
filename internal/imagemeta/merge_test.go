@@ -7,139 +7,158 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-func TestMergeConfiguration_Scalars_LastWins(t *testing.T) {
-	entries := []Entry{
-		{RemoteUser: "base-user", ContainerUser: "base-container", ShutdownAction: "stopContainer"},
-		{RemoteUser: "feature-user"},
-		{RemoteUser: "config-user", UserEnvProbe: "loginInteractiveShell", RunArgs: []string{"-e", "A=B"}},
-	}
-	m := MergeConfiguration(entries)
-
-	if m.RemoteUser != "config-user" {
-		t.Errorf("remoteUser = %q, want 'config-user' (last wins)", m.RemoteUser)
-	}
-	if m.ContainerUser != "base-container" {
-		t.Errorf("containerUser = %q, want 'base-container' (only set in first)", m.ContainerUser)
-	}
-	if m.UserEnvProbe != "loginInteractiveShell" {
-		t.Errorf("userEnvProbe = %q", m.UserEnvProbe)
-	}
-	if m.ShutdownAction != "stopContainer" {
-		t.Errorf("shutdownAction = %q, want 'stopContainer'", m.ShutdownAction)
-	}
-	if len(m.RunArgs) != 2 || m.RunArgs[0] != "-e" || m.RunArgs[1] != "A=B" {
-		t.Errorf("runArgs = %#v", m.RunArgs)
-	}
-}
-
-func TestMergeConfiguration_LifecycleHooks_Concatenated(t *testing.T) {
-	entries := []Entry{
-		{OnCreateCommand: "echo base", PostCreateCommand: "setup-base"},
-		{OnCreateCommand: "echo feature", PostStartCommand: "start-feature"},
-		{OnCreateCommand: "echo config", PostCreateCommand: "setup-config"},
-	}
-	m := MergeConfiguration(entries)
-
-	if len(m.OnCreateCommands) != 3 {
-		t.Errorf("onCreateCommands len = %d, want 3", len(m.OnCreateCommands))
-	}
-	if len(m.PostCreateCommands) != 2 {
-		t.Errorf("postCreateCommands len = %d, want 2", len(m.PostCreateCommands))
-	}
-	if len(m.PostStartCommands) != 1 {
-		t.Errorf("postStartCommands len = %d, want 1", len(m.PostStartCommands))
-	}
-}
-
-func TestMergeConfiguration_Arrays_Union(t *testing.T) {
-	entries := []Entry{
-		{CapAdd: []string{"SYS_PTRACE"}},
-		{CapAdd: []string{"SYS_PTRACE", "NET_ADMIN"}},
-		{SecurityOpt: []string{"seccomp=unconfined"}},
-	}
-	m := MergeConfiguration(entries)
-
-	if len(m.CapAdd) != 2 {
-		t.Errorf("capAdd len = %d, want 2 (deduplicated)", len(m.CapAdd))
-	}
-	if len(m.SecurityOpt) != 1 {
-		t.Errorf("securityOpt len = %d", len(m.SecurityOpt))
-	}
-}
-
-func TestMergeConfiguration_Maps_Merged(t *testing.T) {
-	entries := []Entry{
-		{ContainerEnv: map[string]string{"A": "1", "B": "2"}},
-		{ContainerEnv: map[string]string{"B": "overridden", "C": "3"}},
-	}
-	m := MergeConfiguration(entries)
-
-	if m.ContainerEnv["A"] != "1" {
-		t.Errorf("A = %q", m.ContainerEnv["A"])
-	}
-	if m.ContainerEnv["B"] != "overridden" {
-		t.Errorf("B = %q, want 'overridden'", m.ContainerEnv["B"])
-	}
-	if m.ContainerEnv["C"] != "3" {
-		t.Errorf("C = %q", m.ContainerEnv["C"])
-	}
-}
-
-func TestMergeConfiguration_Empty(t *testing.T) {
-	m := MergeConfiguration(nil)
-	if m.RemoteUser != "" {
-		t.Errorf("remoteUser = %q, want empty", m.RemoteUser)
-	}
-	if len(m.OnCreateCommands) != 0 {
-		t.Errorf("onCreateCommands should be empty")
-	}
-}
-
-func TestMergeConfiguration_BoolPointers(t *testing.T) {
+func TestMergeConfiguration(t *testing.T) {
 	trueVal := true
 	falseVal := false
-	entries := []Entry{
-		{Init: &trueVal},
-		{Privileged: &falseVal},
-	}
-	m := MergeConfiguration(entries)
 
-	if m.Init == nil || !*m.Init {
-		t.Error("init should be true")
+	tests := []struct {
+		name    string
+		entries []Entry
+		check   func(t *testing.T, m *MergedConfig)
+	}{
+		{
+			name: "Scalars_LastWins",
+			entries: []Entry{
+				{RemoteUser: "base-user", ContainerUser: "base-container", ShutdownAction: "stopContainer"},
+				{RemoteUser: "feature-user"},
+				{RemoteUser: "config-user", UserEnvProbe: "loginInteractiveShell", RunArgs: []string{"-e", "A=B"}},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				if m.RemoteUser != "config-user" {
+					t.Errorf("remoteUser = %q, want 'config-user' (last wins)", m.RemoteUser)
+				}
+				if m.ContainerUser != "base-container" {
+					t.Errorf("containerUser = %q, want 'base-container' (only set in first)", m.ContainerUser)
+				}
+				if m.UserEnvProbe != "loginInteractiveShell" {
+					t.Errorf("userEnvProbe = %q", m.UserEnvProbe)
+				}
+				if m.ShutdownAction != "stopContainer" {
+					t.Errorf("shutdownAction = %q, want 'stopContainer'", m.ShutdownAction)
+				}
+				if len(m.RunArgs) != 2 || m.RunArgs[0] != "-e" || m.RunArgs[1] != "A=B" {
+					t.Errorf("runArgs = %#v", m.RunArgs)
+				}
+			},
+		},
+		{
+			name: "LifecycleHooks_Concatenated",
+			entries: []Entry{
+				{OnCreateCommand: "echo base", PostCreateCommand: "setup-base"},
+				{OnCreateCommand: "echo feature", PostStartCommand: "start-feature"},
+				{OnCreateCommand: "echo config", PostCreateCommand: "setup-config"},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				if len(m.OnCreateCommands) != 3 {
+					t.Errorf("onCreateCommands len = %d, want 3", len(m.OnCreateCommands))
+				}
+				if len(m.PostCreateCommands) != 2 {
+					t.Errorf("postCreateCommands len = %d, want 2", len(m.PostCreateCommands))
+				}
+				if len(m.PostStartCommands) != 1 {
+					t.Errorf("postStartCommands len = %d, want 1", len(m.PostStartCommands))
+				}
+			},
+		},
+		{
+			name: "Arrays_Union",
+			entries: []Entry{
+				{CapAdd: []string{"SYS_PTRACE"}},
+				{CapAdd: []string{"SYS_PTRACE", "NET_ADMIN"}},
+				{SecurityOpt: []string{"seccomp=unconfined"}},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				if len(m.CapAdd) != 2 {
+					t.Errorf("capAdd len = %d, want 2 (deduplicated)", len(m.CapAdd))
+				}
+				if len(m.SecurityOpt) != 1 {
+					t.Errorf("securityOpt len = %d", len(m.SecurityOpt))
+				}
+			},
+		},
+		{
+			name: "Maps_Merged",
+			entries: []Entry{
+				{ContainerEnv: map[string]string{"A": "1", "B": "2"}},
+				{ContainerEnv: map[string]string{"B": "overridden", "C": "3"}},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				if m.ContainerEnv["A"] != "1" {
+					t.Errorf("A = %q", m.ContainerEnv["A"])
+				}
+				if m.ContainerEnv["B"] != "overridden" {
+					t.Errorf("B = %q, want 'overridden'", m.ContainerEnv["B"])
+				}
+				if m.ContainerEnv["C"] != "3" {
+					t.Errorf("C = %q", m.ContainerEnv["C"])
+				}
+			},
+		},
+		{
+			name:    "Empty",
+			entries: nil,
+			check: func(t *testing.T, m *MergedConfig) {
+				if m.RemoteUser != "" {
+					t.Errorf("remoteUser = %q, want empty", m.RemoteUser)
+				}
+				if len(m.OnCreateCommands) != 0 {
+					t.Errorf("onCreateCommands should be empty")
+				}
+			},
+		},
+		{
+			name: "BoolPointers",
+			entries: []Entry{
+				{Init: &trueVal},
+				{Privileged: &falseVal},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				if m.Init == nil || !*m.Init {
+					t.Error("init should be true")
+				}
+				if m.Privileged == nil || *m.Privileged {
+					t.Error("privileged should be false")
+				}
+			},
+		},
+		{
+			name: "InitPrivileged_OR",
+			// A later entry with init:false must NOT override an earlier init:true (OR).
+			entries: []Entry{
+				{Init: &trueVal, Privileged: &falseVal},
+				{Init: &falseVal, Privileged: &trueVal},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				if m.Init == nil || !*m.Init {
+					t.Error("init should be true (OR across entries)")
+				}
+				if m.Privileged == nil || !*m.Privileged {
+					t.Error("privileged should be true (OR across entries)")
+				}
+			},
+		},
+		{
+			name: "Customizations_ArraysByKey",
+			// Each entry's customizations[key] is collected into an array, matching TS,
+			// so no feature's settings/extensions are clobbered.
+			entries: []Entry{
+				{Customizations: map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"a"}}}},
+				{Customizations: map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"b"}}}},
+			},
+			check: func(t *testing.T, m *MergedConfig) {
+				vscode := m.Customizations["vscode"]
+				if len(vscode) != 2 {
+					t.Fatalf("customizations.vscode should have 2 entries, got %d", len(vscode))
+				}
+			},
+		},
 	}
-	if m.Privileged == nil || *m.Privileged {
-		t.Error("privileged should be false")
-	}
-}
 
-func TestMergeConfiguration_InitPrivileged_OR(t *testing.T) {
-	trueVal := true
-	falseVal := false
-	// A later entry with init:false must NOT override an earlier init:true (OR).
-	entries := []Entry{
-		{Init: &trueVal, Privileged: &falseVal},
-		{Init: &falseVal, Privileged: &trueVal},
-	}
-	m := MergeConfiguration(entries)
-	if m.Init == nil || !*m.Init {
-		t.Error("init should be true (OR across entries)")
-	}
-	if m.Privileged == nil || !*m.Privileged {
-		t.Error("privileged should be true (OR across entries)")
-	}
-}
-
-func TestMergeConfiguration_Customizations_ArraysByKey(t *testing.T) {
-	// Each entry's customizations[key] is collected into an array, matching TS,
-	// so no feature's settings/extensions are clobbered.
-	entries := []Entry{
-		{Customizations: map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"a"}}}},
-		{Customizations: map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"b"}}}},
-	}
-	m := MergeConfiguration(entries)
-	vscode := m.Customizations["vscode"]
-	if len(vscode) != 2 {
-		t.Fatalf("customizations.vscode should have 2 entries, got %d", len(vscode))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := MergeConfiguration(tt.entries)
+			tt.check(t, m)
+		})
 	}
 }
 
