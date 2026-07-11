@@ -191,9 +191,18 @@ flags, aliases, tipos, defaults, hidden y validaciones; fallar CI ante drift.
 
 ### RW-014 — Completar contratos de HTTP y host
 
-**Trabajo:** integración de proxy real, redirects, CA custom, cancelación y errores
-de proceso/filesystem multiplataforma. Evaluar interfaces pequeñas en RW-011 en vez
-de una abstracción `CLIHost` monolítica.
+**Hecho:** transporte HTTP compartido (`httpx.NewTransport`) usado por **todos** los
+paths (httpx, OCI/oras vía `retry.NewTransport`, y descarga de tarballs). Honra
+`HTTP(S)_PROXY`/`NO_PROXY` leyendo el entorno **fresco por request**
+(`golang.org/x/net/http/httpproxy`, sin el `sync.Once` de `http.ProxyFromEnvironment`)
+y carga CA extra (`NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`) — antes el path OCI y el de
+descarga no cargaban la CA, por lo que un proxy con intercepción TLS rompía los pulls
+(síntoma: "no respeta el proxy"). Tests herméticos de selección de proxy, ruteo real y
+confianza de CA end-to-end.
+
+**Trabajo restante:** redirects (política `CheckRedirect`), cancelación por contexto en
+`httpx.Do` (`http.NewRequestWithContext`) y errores de proceso/filesystem
+multiplataforma, apoyándose en los seams pequeños de RW-011.
 
 ## P3 — Release y operación
 

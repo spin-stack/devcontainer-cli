@@ -40,8 +40,14 @@ func (c *Client) repository(ref *Ref) (*remote.Repository, error) {
 	if cache == nil {
 		cache = auth.NewCache()
 	}
+	// Use the shared proxy/CA-aware retrying client. Fall back to the oras default
+	// for a zero-value Client (e.g. a test that constructs &Client{} directly).
+	httpClient := c.retryClient
+	if httpClient == nil {
+		httpClient = retry.DefaultClient
+	}
 	repo.Client = &auth.Client{
-		Client: retry.DefaultClient,
+		Client: httpClient,
 		Cache:  cache,
 		Credential: func(_ context.Context, host string) (auth.Credential, error) {
 			cred := getCredential(c.env, host, c.log)

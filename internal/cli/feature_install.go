@@ -16,6 +16,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/httpx"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
@@ -741,7 +742,7 @@ func extractUserOptions(v interface{}) map[string]interface{} {
 
 // downloadFeatureTarball fetches a Feature published as a direct HTTP(S) tarball.
 func downloadFeatureTarball(url string) ([]byte, error) {
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Transport: httpx.NewTransport(), Timeout: 60 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err

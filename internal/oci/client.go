@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
 	orascontent "oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/retry"
 
+	"github.com/devcontainers/cli/internal/httpx"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -23,15 +26,21 @@ type Client struct {
 	// follows) instead of re-running the 401→WWW-Authenticate→token loop each
 	// time. auth.Cache is safe for concurrent use.
 	authCache auth.Cache
+	// retryClient is the oras retrying HTTP client wired to the shared transport
+	// (httpx.NewTransport): it honors HTTP(S)_PROXY/NO_PROXY and loads extra CA
+	// certs (NODE_EXTRA_CA_CERTS/SSL_CERT_FILE), so registry access behaves like
+	// the plain httpx path — including behind a TLS-intercepting proxy.
+	retryClient *http.Client
 }
 
-// NewClient creates an OCI client. Transport, auth and retries are handled by
-// oras-go (see repository()).
+// NewClient creates an OCI client. Auth and retries are handled by oras-go (see
+// repository()); the HTTP transport is the shared proxy/CA-aware transport.
 func NewClient(logger log.Log, env map[string]string) *Client {
 	return &Client{
-		log:       logger,
-		env:       env,
-		authCache: auth.NewCache(),
+		log:         logger,
+		env:         env,
+		authCache:   auth.NewCache(),
+		retryClient: &http.Client{Transport: retry.NewTransport(httpx.NewTransport())},
 	}
 }
 
