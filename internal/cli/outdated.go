@@ -23,6 +23,8 @@ func newOutdatedCmd() *cobra.Command {
 		outputFormat    string
 		logLevel        string
 		logFormat       string
+		logFile         string
+		terminalLogFile string
 	)
 
 	cmd := &cobra.Command{
@@ -33,7 +35,7 @@ func newOutdatedCmd() *cobra.Command {
 			if workspaceFolder == "" {
 				workspaceFolder, _ = os.Getwd()
 			}
-			return runOutdated(outputFor(cmd), workspaceFolder, configPath, outputFormat, logLevel, logFormat)
+			return runOutdated(outputFor(cmd), workspaceFolder, configPath, outputFormat, logLevel, logFormat, logFile, terminalLogFile)
 		},
 	}
 
@@ -47,7 +49,7 @@ func newOutdatedCmd() *cobra.Command {
 	f.Int("terminal-columns", 0, "")
 	f.Int("terminal-rows", 0, "")
 
-	addLogFileFlags(cmd)
+	addLogFileFlags(cmd, &logFile, &terminalLogFile)
 	return cmd
 }
 
@@ -114,11 +116,17 @@ func majorOf(v string) string {
 	return fmt.Sprintf("%d", parsed.Major())
 }
 
-func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevelStr, logFormatStr string) error {
+func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevelStr, logFormatStr, logFile, terminalLogFile string) error {
+	logDst, closeLog, logErr := logWriter(logFile, terminalLogFile)
+	if logErr != nil {
+		return fmt.Errorf("open log file: %w", logErr)
+	}
+	defer closeLog()
+
 	logger := log.New(log.Options{
 		Level:  log.MapLogLevel(logLevelStr),
 		Format: logFormatStr,
-		Writer: os.Stderr,
+		Writer: logDst,
 	})
 
 	ws := resolvePath(workspaceFolder)
@@ -217,6 +225,8 @@ func newUpgradeCmd() *cobra.Command {
 		dockerPath      string
 		composePath     string
 		logLevel        string
+		logFile         string
+		terminalLogFile string
 		dryRun          bool
 	)
 
@@ -235,10 +245,16 @@ func newUpgradeCmd() *cobra.Command {
 				cp = resolvePath(configPath)
 			}
 
+			logDst, closeLog, logErr := logWriter(logFile, terminalLogFile)
+			if logErr != nil {
+				return fmt.Errorf("open log file: %w", logErr)
+			}
+			defer closeLog()
+
 			logger := log.New(log.Options{
 				Level:  log.MapLogLevel(logLevel),
 				Format: "text",
-				Writer: os.Stderr,
+				Writer: logDst,
 			})
 
 			loadResult, err := config.LoadDevContainerConfig(ws, cp, "")
@@ -292,7 +308,7 @@ func newUpgradeCmd() *cobra.Command {
 	_ = dockerPath
 	_ = composePath
 
-	addLogFileFlags(cmd)
+	addLogFileFlags(cmd, &logFile, &terminalLogFile)
 	return cmd
 }
 

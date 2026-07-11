@@ -21,8 +21,8 @@ Un ítem sólo se considera cerrado cuando:
 ## Estado (al día)
 
 Cerrados o hechos: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009, RW-010, RW-011,
-RW-013, RW-015, RW-017. Parciales (falta cola de evidencia o CI con secrets): RW-005,
-RW-006, RW-008, RW-014. **Pendientes reales:** **RW-012** (cobertura), **RW-016**
+RW-013, RW-014, RW-015, RW-017. Parciales (falta cola de evidencia o CI con secrets):
+RW-005, RW-006, RW-008. **Pendientes reales:** **RW-012** (cobertura), **RW-016**
 (imagen OCI) y **RW-018** (corrida limpia — gate final).
 
 ## P0 — Paridad funcional
@@ -126,7 +126,7 @@ RW-011, ya disponibles):
 bugs reales de `hidden`/alias (`skip-feature-auto-mapping` y experimentales en
 `up`/`run-user-commands`/`exec`; `-f`/`-v` + hidden en `upgrade`).
 
-### RW-014 — Completar contratos de HTTP y host — 🟡 PARCIAL
+### RW-014 — Completar contratos de HTTP y host — ✅ HECHO
 
 **Hecho:** transporte HTTP compartido (`httpx.NewTransport`) usado por **todos** los
 paths (httpx, OCI/oras vía `retry.NewTransport`, y descarga de tarballs). Honra
@@ -137,13 +137,35 @@ descarga no cargaban la CA, por lo que un proxy con intercepción TLS rompía lo
 (síntoma: "no respeta el proxy"). Tests herméticos de selección de proxy, ruteo real y
 confianza de CA end-to-end.
 
-**Trabajo restante:** redirects (política `CheckRedirect`), cancelación por contexto en
-`httpx.Do` (`http.NewRequestWithContext`) y errores de proceso/filesystem
-multiplataforma, apoyándose en los seams pequeños de RW-011. Además, los flags
-`--log-file`/`--terminal-log-file` se aceptan por paridad de superficie pero **no
-están cableados** para escribir logs a archivo (el stub muerto `setupLogFile` fue
-eliminado); falta implementarlos (tee de stderr al archivo) o marcarlos como no
-soportados.
+**Contexto y redirects en `httpx.Do`:** la firma pasó a `Do(ctx, opts)`
+(`http.NewRequestWithContext`), así una cancelación/deadline de contexto aborta la
+request (el único caller, `GetControlManifest` → `enforceDisallowedFeatures`, propaga
+el `ctx` del comando). Se expone `Client.SetCheckRedirect` para instalar una política
+de redirects (el default de Go sigue hasta 10 saltos). Tests herméticos con `httptest`:
+cadena de redirects multi-salto seguida entera, `ErrUseLastResponse` corta la cadena, y
+contexto cancelado / con deadline aborta la request.
+
+**log-file (tee a archivo, implementado):** `--log-file` está cableado — cuando se
+setea, el writer del logger pasa a ser `io.MultiWriter(os.Stderr, file)` (helper
+`logWriter` en `internal/cli/logfile.go`), con cierre del archivo vía `defer`. Cableado
+en los comandos que exponen el flag según el inventario de paridad: `up`, `set-up`,
+`run-user-commands`, `read-configuration`, `outdated`, `upgrade` y `exec` (`build` **no**
+lo expone en v0.88.0, así que se deja fuera). Un error al abrir el archivo se reporta
+(no se descartan logs en silencio) y cae de vuelta a `os.Stderr`. Test hermético
+(`logfile_test.go`) que asegura que una línea de log aterriza en el archivo.
+
+**`--terminal-log-file` (divergencia documentada):** en v0.88.0 el flag distingue el
+stream terminal (con ANSI) del plano; el CLI Go mantiene **un solo stream de log** sin
+PTY/terminal auto-gestionado (RW-003 Rama A: `exec` hereda la terminal), así que no hay
+un stream terminal-formateado distinto que capturar. Por eso `--terminal-log-file`
+también se teea al mismo stream combinado (nunca es un agujero negro), documentando que
+ambos flags capturan la misma salida (sin ANSI). Divergencia deliberada del CLI TS, que
+produce dos archivos con formatos distintos.
+
+**Errores de proceso/filesystem:** tests herméticos de propagación apoyados en los seams
+de RW-011 — `docker.Client.Run` envuelve y propaga un fallo del `exec.Runner`
+(binario-no-encontrado/cancelado) en vez de fingir éxito, y `templates.mergeFeatures`
+propaga un fallo de `ReadFile` del `pfs.FS` inyectado.
 
 ## P3 — Release y operación
 
@@ -211,10 +233,13 @@ Decisiones ya tomadas (firmes):
 - **Runtime: sólo Docker.** Podman no soportado. → RW-009 cerrado.
 - **Compose: sólo v2** (`docker compose`). Compose v1 no soportado. → RW-009 cerrado.
 - **exec: terminal heredado** (`docker exec -it`), sin PTY propio. → RW-003 Branch A.
+- **`--log-file`: tee a archivo** (`io.MultiWriter(os.Stderr, file)`), cableado en los
+  comandos que exponen el flag. `--terminal-log-file` teea el mismo stream combinado
+  (el CLI tiene un solo stream, sin terminal auto-gestionado): divergencia documentada
+  del CLI TS (que escribe dos archivos con formatos distintos). → RW-014 cerrado.
 
 Puntos que aún no deben permanecer ambiguos:
 
-- `--log-file`/`--terminal-log-file`: implementar (tee a archivo) o marcar no soportado (RW-014);
 - nombre/registry de la imagen OCI del CLI (RW-016);
 - fallback de legacy Features por GitHub Releases;
 - paridad byte-a-byte del tarball, hoy no alcanzable por `mtime`;

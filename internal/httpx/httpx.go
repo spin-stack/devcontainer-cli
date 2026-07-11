@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -86,13 +87,26 @@ func New(version string) *Client {
 	}
 }
 
-// Do executes an HTTP request and returns the response.
-func (c *Client) Do(opts RequestOptions) (*Response, error) {
+// SetCheckRedirect installs a redirect policy on the underlying http.Client. The
+// policy receives the pending request and the chain of requests already made, and
+// returning http.ErrUseLastResponse stops following redirects (returning the last
+// response). When left unset the Go default is used (follow up to 10 redirects).
+func (c *Client) SetCheckRedirect(policy func(req *http.Request, via []*http.Request) error) {
+	c.inner.CheckRedirect = policy
+}
+
+// Do executes an HTTP request bound to ctx and returns the response. A cancelled
+// or deadline-exceeded ctx aborts the request. Redirects are followed per the
+// client's CheckRedirect policy (the Go default unless SetCheckRedirect was used).
+func (c *Client) Do(ctx context.Context, opts RequestOptions) (*Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if opts.Method == "" {
 		opts.Method = "GET"
 	}
 
-	req, err := http.NewRequest(opts.Method, opts.URL, opts.Body)
+	req, err := http.NewRequestWithContext(ctx, opts.Method, opts.URL, opts.Body)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

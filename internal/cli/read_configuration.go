@@ -33,6 +33,8 @@ type readConfigOpts struct {
 	includeMergedCfg       bool
 	logLevel               string
 	logFormat              string
+	logFile                string
+	terminalLogFile        string
 	containerID            string
 	idLabels               []string
 	dockerPath             string
@@ -75,7 +77,7 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
 
-	addLogFileFlags(cmd)
+	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
 }
 
@@ -98,6 +100,12 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return err
 	}
+
+	logDst, closeLog, logErr := logWriter(opts.logFile, opts.terminalLogFile)
+	if logErr != nil {
+		return fmt.Errorf("open log file: %w", logErr)
+	}
+	defer closeLog()
 
 	workspaceFolder := opts.workspaceFolder
 	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
@@ -189,7 +197,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	// Find container for containerEnv substitution
-	lgr := log.New(log.Options{Version: cliVersion(), Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: os.Stderr, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
+	lgr := log.New(log.Options{Version: cliVersion(), Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
 	engine, engineErr := docker.NewEngineClient(lgr)
 	if engineErr != nil {
 		// Non-fatal: container lookup features won't work but config can still be read.
@@ -247,7 +255,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	// Include features configuration if requested (or needed for merged config without container)
 	needsFeaturesConfig := opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 	if needsFeaturesConfig && result != nil && len(result.Config.Features) > 0 {
-		lgr := log.New(log.Options{Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: os.Stderr, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
+		lgr := log.New(log.Options{Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
 		featResult, featErr := fetchFeatureSets(lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if featErr == nil && featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)

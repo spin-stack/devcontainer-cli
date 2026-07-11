@@ -1,6 +1,7 @@
 package features
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -42,8 +43,9 @@ const (
 	cacheTimeoutDuration = 5 * time.Minute
 )
 
-// GetControlManifest fetches the control manifest with 5-minute caching.
-func GetControlManifest(cacheFolder string, httpClient *httpx.Client, logger log.Log) *ControlManifest {
+// GetControlManifest fetches the control manifest with 5-minute caching. The
+// fetch is bound to ctx so a cancelled command aborts the (network) request.
+func GetControlManifest(ctx context.Context, cacheFolder string, httpClient *httpx.Client, logger log.Log) *ControlManifest {
 	cachePath := filepath.Join(cacheFolder, controlManifestFile)
 
 	// Check cache
@@ -58,7 +60,7 @@ func GetControlManifest(cacheFolder string, httpClient *httpx.Client, logger log
 	}
 
 	// Fetch fresh
-	resp, err := httpClient.Do(httpx.RequestOptions{
+	resp, err := httpClient.Do(ctx, httpx.RequestOptions{
 		URL: controlManifestURL,
 		Headers: map[string]string{
 			"Accept": "application/json",

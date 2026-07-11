@@ -29,6 +29,8 @@ type execOpts struct {
 	idLabels            []string
 	logLevel            string
 	logFormat           string
+	logFile             string
+	terminalLogFile     string
 	remoteEnvs          []string
 	terminalColumns     int
 	terminalRows        int
@@ -102,7 +104,7 @@ func newExecCmd() *cobra.Command {
 	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
 	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
 
-	addLogFileFlags(cmd)
+	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
 }
 
@@ -132,11 +134,17 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		return err
 	}
 
+	logDst, closeLog, logErr := logWriter(opts.logFile, opts.terminalLogFile)
+	if logErr != nil {
+		return fmt.Errorf("open log file: %w", logErr)
+	}
+	defer closeLog()
+
 	logger := log.New(log.Options{
 		Version:    cliVersion(),
 		Level:      log.MapLogLevel(opts.logLevel),
 		Format:     opts.logFormat,
-		Writer:     os.Stderr,
+		Writer:     logDst,
 		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
 	})
 

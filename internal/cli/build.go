@@ -141,7 +141,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		return writeErrorResult(out, err.Error())
 	}
 
-	if derr := enforceDisallowedFeatures(cfg, logger); derr != nil {
+	if derr := enforceDisallowedFeatures(ctx, cfg, logger); derr != nil {
 		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
 	}
 
