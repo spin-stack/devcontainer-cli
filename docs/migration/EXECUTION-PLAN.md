@@ -6,6 +6,13 @@ agentes**. Cada plan parte de la verdad de campo verificada contra el código Go
 oráculo TS (`reference/` v0.88.0), no de la descripción del backlog. Donde el backlog
 estaba desactualizado, se anota la corrección.
 
+> **Estado (al día):** la mayoría de los tracks de este plan ya se ejecutaron y
+> viven en `main`. Hecho/cerrado: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009,
+> RW-010, RW-011, RW-013, RW-015, RW-017. Parciales: RW-005, RW-006, RW-008, RW-014.
+> **Pendientes reales:** RW-012, RW-016, RW-018. El estado autoritativo por ítem vive
+> en [`REMAINING-WORK.md`](REMAINING-WORK.md); esta guía se conserva por el grafo de
+> dependencias y el esquema de paralelización de abajo.
+
 Convención de esfuerzo: **S** ≤ ½ día · **M** 1–2 días · **L** ≥ 3 días.
 
 ---

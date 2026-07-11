@@ -18,145 +18,82 @@ Un ítem sólo se considera cerrado cuando:
 4. CI ejecuta el test en el lane correcto;
 5. la matriz y este documento se actualizan con evidencia, no anticipadamente.
 
+## Estado (al día)
+
+Cerrados o hechos: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009, RW-010, RW-011,
+RW-013, RW-015, RW-017. Parciales (falta cola de evidencia o CI con secrets): RW-005,
+RW-006, RW-008, RW-014. **Pendientes reales:** **RW-012** (cobertura), **RW-016**
+(imagen OCI) y **RW-018** (corrida limpia — gate final).
+
 ## P0 — Paridad funcional
 
-### RW-001 — Aplicar `overrideFeatureInstallOrder` en `up` y `build`
+### RW-001 — `overrideFeatureInstallOrder` en `up`/`build` — ✅ HECHO
+`cfg.OverrideFeatureInstallOrder` se cablea hasta el builder unificado; rechaza
+entradas inválidas como TS. Tests en `internal/features/graph_test.go`.
 
-**Estado actual:** `features.ComputeInstallationOrder` soporta prioridades, pero el
-path real de instalación lo invoca con `nil`. `resolve-dependencies` y la
-instalación no consumen exactamente la misma configuración.
+### RW-002 — Unificar el grafo de Features — ✅ HECHO
+`features.BuildDependencyGraph` (seam `processFeature`) alimenta instalación,
+`resolve-dependencies` y mermaid; arregla el bug de `resolve-dependencies` que
+construía nodos **sin aristas**. Tests herméticos con stub en memoria.
 
-**Trabajo:**
+### RW-003 — Contrato PTY/señales de `exec` — ✅ HECHO
+`exec` usa `docker exec -it` heredado (equivalente al fallback sin node-pty de TS);
+el código PTY muerto fue borrado; contrato `128+N` endurecido para el caso del
+proceso host señalado. Decisión registrada en [`EXECUTION-PLAN.md`](EXECUTION-PLAN.md)
+(RW-003 Branch A).
 
-- transportar `config.overrideFeatureInstallOrder` hasta `fetchFeatureSets`;
-- aplicar prioridades después de expandir `dependsOn`;
-- verificar interacción con dependencias transitivas, aliases y features locales;
-- rechazar entradas del override que TS rechaza.
+### RW-004 — `--docker-compose-path` — ✅ HECHO
+Cableado end-to-end en `build` (único comando que faltaba; `up` ya lo tenía). Los
+otros comandos con el flag no ejecutan compose (attach por labels), igual que TS. Test
+discriminante en `internal/cli/build_compose_path_test.go`.
 
-**Aceptación:** test hermético de orden discriminante y caso A/B en `build` o `up`.
-
-### RW-002 — Unificar el grafo de Features
-
-**Estado actual:** instalación y `features resolve-dependencies` construyen grafos
-separados (`feature_install.go` y `feature_deps.go`). Esto permite divergencias en
-deduplicación, aliases, opciones y ciclos.
-
-**Trabajo:**
-
-- crear un resolver compartido con nodos, edges, source identity y metadata;
-- usarlo para instalación, lockfile, install order y render Mermaid;
-- deduplicar por identidad OCI/digest/aliases, no sólo por string de entrada;
-- conservar opciones de la primera feature equivalente como lo hace TS.
-
-**Aceptación:** una misma fixture produce grafo, lockfile e instalación coherentes;
-tests de diamond dependency, tags equivalentes, legacy alias y ciclo.
-
-### RW-003 — Resolver el contrato PTY/señales de `exec`
-
-**Estado actual:** `ExecWithPTY` existe y tiene tests aislados, pero cero callers.
-`exec` hereda el terminal de `docker exec -it`; `terminal-columns/rows` sólo llegan
-al logger y no hay forwarding explícito de señales ni contrato `128+signal`.
-
-**Trabajo:**
-
-- decidir y documentar si el PTY propio es necesario para paridad v0.88.0;
-- si lo es, cablearlo en Unix, aplicar dimensiones iniciales y `SIGWINCH`;
-- propagar señales y exit code `128+N`;
-- definir Windows: ConPTY, fallback no interactivo o limitación soportada;
-- eliminar código PTY muerto si se demuestra que la herencia directa es equivalente.
-
-**Aceptación:** E2E interactivo Unix, E2E piped, resize, señal y comportamiento
-Windows documentado y probado en CI.
-
-### RW-004 — Cablear completamente `--docker-compose-path`
-
-**Estado actual:** algunos comandos registran el flag pero no lo almacenan o no lo
-entregan a `NewComposeClient`; `up` sí tiene un path más completo.
-
-**Trabajo:** revisar `build`, `read-configuration`, `exec`,
-`run-user-commands`, `outdated` y `set-up`; eliminar flags que el TS no usa o
-cablearlos de extremo a extremo.
-
-**Aceptación:** tests con un wrapper Compose discriminante para cada comando que
-expone el flag.
-
-### RW-005 — Cerrar casos diferidos de la matriz
-
-Casos actuales:
-
-- `build.buildkit-never-platform-failure`;
-- `features.test-single-scenario-success`.
-
-**Aceptación:** ejecución efectiva con Docker/red, `matched` observado y cambio de
-`current_status` basado en el JSON artefactado.
+### RW-005 — Casos diferidos de la matriz — 🟡 PARCIAL
+El assert de `features.test-single-scenario-success` se redujo a `[exit_code]` (su
+stdout es ANSI no determinista, no comparable). **Pendiente:** la promoción
+*evidence-based* de ambos casos (`build.buildkit-never-platform-failure` y el de
+features-test) — correr con Docker/red en amd64 y flipear `current_status → match` a
+partir del JSON artefactado. **Se ejecuta dentro de RW-018.**
 
 ## P1 — Compatibilidad de datos y plataformas
 
-### RW-006 — Interoperabilidad explícita de metadata TS ↔ Go
+### RW-006 — Interop metadata TS↔Go — 🟡 HECHO (hermético)
+Test de round-trip Go y de invariancia de whitespace (comparando JSON parseado, no
+bytes) en `internal/cli/metadata_interop_test.go`. **Pendiente:** la mitad TS→Go
+(construir con el oráculo TS, leer con Go) está *skip-guarded* hasta tener el oráculo
+compilado → se valida en RW-018.
 
-**Trabajo:** construir una imagen con TS y leerla con Go; construir con Go y leerla
-con TS. Comparar label array, merge, lifecycle, customizations, mounts, ports y
-usuarios.
+### RW-007 — OCI image indexes por plataforma — ✅ HECHO (retirado)
+Los tipos muertos `ImageIndex`/`ImageIndexEntry`/`Platform` y
+`OCIImageIndexMediaType` fueron retirados. v0.88.0 sólo usa resolución de índices en
+`inspectImageInRegistry` (no portado). Decisión en [`EXECUTION-PLAN.md`](EXECUTION-PLAN.md):
+si se porta ese path, implementar vía oras, no con structs a mano.
 
-**Aceptación:** E2E bidireccional contra la misma imagen exportada o registry local.
+### RW-008 — Registries y credenciales reales — 🟡 HECHO (hermético)
+Loop 401→bearer→pull/push contra `registry:3` con htpasswd, protocolo de credential
+helper con fake en PATH, `secretservice` fijado (no el `secret` erróneo de TS), y
+cache de auth compartido en `oci.Client`. Tests en `internal/oci/`. **Pendiente:** la
+matriz cloud real (ACR identity/refresh, ECR helper, GHCR autenticado) **gated por
+secrets** en CI, no bloqueante. Helpers sólo Linux (`secretservice`/`pass`).
 
-### RW-007 — Resolver OCI image indexes por plataforma
+### RW-009 — Podman y Compose v1 — ✅ CERRADO: no soportado
+El CLI Go soporta **sólo Docker** y **sólo `docker compose` v2**. Podman y Compose v1
+**no se soportan** — divergencia deliberada, sin garantía ni test de paridad.
 
-**Estado actual:** existen los tipos `ImageIndex`/`ImageIndexEntry`, pero no una
-operación de selección por OS/arquitectura/variant.
-
-**Trabajo:** confirmar si v0.88.0 aún requiere esta operación en Features/Templates;
-implementar selección y digest verification o retirar los tipos muertos con una
-decisión documentada.
-
-**Aceptación:** fixture OCI multi-platform local con amd64, arm64 y arm64/v8.
-
-### RW-008 — Validar registries y credenciales reales
-
-**Trabajo:**
-
-- ACR con identity/refresh token;
-- ECR con helper/login estándar;
-- GHCR autenticado;
-- helpers `pass`/`secretservice`, `osxkeychain` y `wincred` por plataforma;
-- comprobar reutilización de auth cache entre operaciones relacionadas.
-
-**Aceptación:** matriz de integración protegida por secrets, sin imprimir secretos,
-con pull, tags y push.
-
-### RW-009 — Podman y Compose v1 — CERRADO: no soportado
-
-**Decisión (firme):** el CLI Go soporta **sólo Docker** y **sólo `docker compose` v2**.
-Podman y Compose v1 **no se soportan** — divergencia deliberada. Ninguna lógica de
-detección de Podman ofrece garantía ni test de paridad; es best-effort no soportado.
-
-**Trabajo restante:** sólo documentación (nota en `GO-REWRITE-STATUS.md`) y retirar
-cualquier flag/mensaje que insinúe soporte de Podman.
-
-### RW-010 — Paths y ejecución Windows — CERRADO: no soportado
-
-**Decisión (firme):** el CLI Go se soporta **sólo en Linux** (amd64/arm64). Windows y
-macOS **no** son objetivos: sin runtime, sin E2E, sin release, sin lane `windows-latest`,
-sin ConPTY. La lógica `platform="win32"` se conserva sólo por paridad con el oráculo TS.
-
-**Trabajo restante:** sólo documentación ("sólo Linux" en README + `GO-REWRITE-STATUS.md`).
+### RW-010 — Paths y ejecución Windows — ✅ CERRADO: no soportado
+El CLI Go se soporta **sólo en Linux** (amd64/arm64). Windows y macOS no son
+objetivos: sin runtime/E2E/release/lane `windows-latest`/ConPTY. La lógica
+`platform="win32"` se conserva sólo por paridad con el oráculo TS.
 
 ## P2 — Calidad orientada a riesgo
 
-### RW-011 — Introducir seams para efectos externos
+### RW-011 — Seams para efectos externos — ✅ HECHO
+Cuatro interfaces pequeñas (`cli.Output`, `oci.Registry`, `exec.Runner`, `pfs.FS`),
+sin `CLIHost` monolítico. Tests con fakes (publish parcial, runner). Decisión en
+[`EXECUTION-PLAN.md`](EXECUTION-PLAN.md).
 
-**Motivo:** CLI y Templates dependen directamente de `os.Stdout`, `os/exec`, Docker
-y un `*oci.Client` concreto, lo que impide probar errores parciales herméticamente.
+### RW-012 — Cobertura de paths críticos — ❌ PENDIENTE
 
-**Trabajo:** interfaces pequeñas para process runner, OCI operations, filesystem,
-clock y output; evitar una abstracción `CLIHost` monolítica salvo que aporte valor.
-
-**Aceptación:** tests sin Docker para propagación de errores, cancelación y cleanup
-en `build/up/exec/templates apply/publish`.
-
-### RW-012 — Cobertura de paths críticos
-
-Baseline unitario aproximado:
+Baseline unitario aproximado (previo a RW-011; algunos números ya mejoraron):
 
 | Paquete | Cobertura |
 |---|---:|
@@ -169,27 +106,27 @@ Baseline unitario aproximado:
 | imagemeta | 74.3% |
 | config | 78.6% |
 
-No se exige subir números mediante tests triviales. Prioridad:
+No se exige subir números mediante tests triviales. Prioridad (apoyada en los seams de
+RW-011, ya disponibles):
 
 - errores entre capas y cancelación;
 - cleanup tras fallos parciales;
-- publish parcial;
-- auth/retries OCI;
-- shell server y user env probe real;
-- templates con workspace parcialmente escrito;
+- publish parcial (fake `oci.Registry`);
+- auth/retries OCI (registry httptest);
+- shell server y user env probe real (extraer un `shellExec` inyectable);
+- templates con workspace parcialmente escrito (fake `pfs.FS` con `WriteFile` que falla);
 - Docker/Compose argument construction.
 
 **Aceptación:** cada incremento cubre un riesgo nombrado. El objetivo de referencia de
 80% por paquete se mantiene como dirección, no como sustituto de paridad E2E.
 
-### RW-013 — Validar inventario de flags automáticamente
+### RW-013 — Validar inventario de flags automáticamente — ✅ HECHO
+`TestFlagInventoryParity` camina el árbol Cobra y lo diffea contra
+`cli-flags-inventory.yaml` (0 drift; CI falla ante drift). Además destapó y corrigió
+bugs reales de `hidden`/alias (`skip-feature-auto-mapping` y experimentales en
+`up`/`run-user-commands`/`exec`; `-f`/`-v` + hidden en `upgrade`).
 
-**Trabajo:** comparar `cli-flags-inventory.yaml` con el árbol Cobra para comandos,
-flags, aliases, tipos, defaults, hidden y validaciones; fallar CI ante drift.
-
-**Aceptación:** test generado/reflectivo sin listas duplicadas escritas a mano.
-
-### RW-014 — Completar contratos de HTTP y host
+### RW-014 — Completar contratos de HTTP y host — 🟡 PARCIAL
 
 **Hecho:** transporte HTTP compartido (`httpx.NewTransport`) usado por **todos** los
 paths (httpx, OCI/oras vía `retry.NewTransport`, y descarga de tarballs). Honra
@@ -210,88 +147,61 @@ soportados.
 
 ## P3 — Release y operación
 
-### RW-015 — Corregir pipeline GoReleaser
+### RW-015 — Pipeline GoReleaser — ✅ HECHO
+`.goreleaser.yml` sin `go test ./...` en el hook, matriz reducida a Linux
+(amd64/arm64), bloque `sboms:`, y workflow `release.yml` por tag que corre los gates
+de CI y produce draft release con checksums/SBOM. **Nota:** `goreleaser`/`syft` no
+están instalados localmente, así que la config no fue verificada con
+`task release -- --snapshot`; se valida en un runner con las herramientas (RW-018).
 
-**Estado actual:** `.goreleaser.yml` ejecuta `go test ./...`, lo que vuelve a mezclar
-unit, paridad y paquetes accidentales bajo `reference/node_modules`.
+### RW-016 — Distribuir imagen OCI del CLI — ❌ PENDIENTE
 
-**Trabajo:** usar los mismos gates que CI, validar cinco targets y agregar un workflow
-por tag que genere draft release con checksums/SBOM.
+**Trabajo:** imagen mínima multi-arch (linux/amd64+arm64) con el binario estático
+(`distroless/static:nonroot`, que incluye CA certs), labels OCI (`version`/`source`/
+`revision`), provenance/SBOM, y smoke test `docker run <image> --version`. Preferible
+vía `dockers:`/`docker_manifests:` de GoReleaser (reusa los binarios ya construidos).
 
-**Aceptación:** `task release -- --snapshot` pasa en limpio y el workflow por tag
-produce artefactos sin publicar hasta aprobación.
-
-### RW-016 — Distribuir imagen OCI del CLI
-
-**Trabajo:** imagen mínima multi-arch con el binario estático, provenance/SBOM,
-version label y smoke test; publicar bajo el nombre acordado.
+**Decisión abierta:** nombre/registry de la imagen (probable `ghcr.io/devcontainers/cli`).
 
 **Aceptación:** `docker run <image> --version`, amd64/arm64, digest artefactado.
 
-### RW-017 — Métricas de rendimiento y distribución
+### RW-017 — Métricas de rendimiento y distribución — ✅ HECHO
 
-Medir y registrar por release:
+`task metrics` (Taskfile) emite `artifacts/metrics.json` y el job `metrics` de
+`.github/workflows/release.yml` lo captura como artefacto. Usa `hyperfine` si está en
+el runner, con fallback a un loop `date +%s%N` promediado (`METRICS_RUNS`, default
+30). El task es **no-gating** (`ignore_error: true`; el job usa `continue-on-error`).
 
-- startup del comando local;
-- tamaño de binarios y archivos comprimidos;
-- comparación de tiempo/costo frente al CLI Node;
-- límites o regresiones aceptados.
+**Métricas capturadas** (`metrics.json`): `startup_ms.{go_version,go_read_configuration,
+node_version}`; `sizes_bytes.{local_binary,linux_amd64_binary,linux_amd64_gzip,
+linux_arm64_binary,linux_arm64_gzip}`; metadatos `timing_tool/runs/version/generated_at`.
 
-**Implementación:** `task metrics` (Taskfile) emite `artifacts/metrics.json` y el
-job `metrics` de `.github/workflows/release.yml` lo captura como artefacto. Usa
-`hyperfine` si está en el runner, con fallback a un loop `date +%s%N` promediado
-(`METRICS_RUNS`, default 30). El task es **no-gating** (`ignore_error: true`; el job
-usa `continue-on-error: true`).
+**Aceptación:** cada release produce `metrics.json` con todos los campos no nulos en un
+runner con Docker + oráculo Node compilado, registrado en `GO-REWRITE-STATUS.md`.
 
-**Métricas concretas capturadas** (`metrics.json`):
+**Regresión aceptada (registrada, NO gated):** base = primera corrida limpia sobre el
+commit candidato de RW-018. Se anota —sin frenar el release— startup > 1.5× base o peor
+que el oráculo Node, binario > 1.2× base, o gzip > 1.2× base. Cruzar el umbral exige
+una nota en `GO-REWRITE-STATUS.md`; no invalida el release.
 
-- `startup_ms.go_version` — media de `devcontainer --version`.
-- `startup_ms.go_read_configuration` — media de `read-configuration` sobre un
-  workspace mínimo image-based (sólo sustitución de variables, sin Docker).
-- `startup_ms.node_version` — media de `node devContainersSpecCLI.js --version`
-  (oráculo Node en `reference/dist/spec-node/`); `null` si el oráculo no está
-  compilado.
-- `sizes_bytes.local_binary` — binario del host (`task build`).
-- `sizes_bytes.linux_amd64_binary` / `linux_amd64_gzip` — binario release
-  linux/amd64 y su tamaño gzip-comprimido.
-- `sizes_bytes.linux_arm64_binary` / `linux_arm64_gzip` — ídem linux/arm64.
-- `timing_tool`, `runs`, `version`, `generated_at` — metadatos de la corrida.
+### RW-018 — Corrida limpia de paridad v0.88.0 — ❌ PENDIENTE (gate final)
 
-**Definición de aceptación (RW-017):** el ítem se considera cumplido cuando cada
-release produce `metrics.json` con todos los campos anteriores no nulos en un runner
-con Docker + oráculo compilado (Node A/B disponible), y las métricas quedan
-registradas en `GO-REWRITE-STATUS.md`.
-
-**Qué cuenta como regresión aceptada (registrada, NO gated):** estas métricas se
-**registran, no bloquean** el release. La línea base es la primera corrida limpia
-sobre el commit candidato de RW-018. Se anota como regresión —sin frenar el
-release— cualquiera de:
-
-- **startup:** `go_version` o `go_read_configuration` > 1.5× su base, o superando
-  al oráculo Node (`node_version`) en la misma corrida;
-- **tamaño de binario:** `linux_amd64_binary` o `linux_arm64_binary` > 1.2× su base;
-- **tamaño comprimido:** `linux_amd64_gzip` o `linux_arm64_gzip` > 1.2× su base.
-
-Cruzar estos umbrales exige una nota en `GO-REWRITE-STATUS.md` explicando la causa;
-**no** invalida el release (empaquetado, fuera del gate de paridad RW-018).
-
-### RW-018 — Corrida limpia de paridad v0.88.0
-
-Ejecutar en el commit candidato:
+Ejecutar en el commit candidato, en un runner con Docker + red + oráculo compilado:
 
 ```sh
-task lint
-task coverage
-task test:integration
-task test:e2e
-task parity:contract
-task parity:network
-task parity:runtime
+task lint && task coverage && task test:integration && task test:e2e
+task reference
+task parity:contract && task parity:network && task parity:runtime
 task build:cross
 ```
 
+Incluye resolver las colas de otros ítems: promover los diferidos de **RW-005**
+(evidence-based), correr la mitad TS→Go de **RW-006**, y verificar `task release --
+--snapshot` de **RW-015** con `goreleaser`/`syft` instalados.
+
 **Aceptación:** cero `failed`, cero `inconclusive`, deferred resueltos, SHA del
-oráculo y JSON de cada lane guardados, checklist completa.
+oráculo y JSON de cada lane guardados, checklist completa. Bloqueado por RW-012
+(alimenta `task coverage`) y por las colas de RW-005/006.
 
 ## Decisiones que deben quedar explícitas
 
@@ -304,8 +214,10 @@ Decisiones ya tomadas (firmes):
 
 Puntos que aún no deben permanecer ambiguos:
 
+- `--log-file`/`--terminal-log-file`: implementar (tee a archivo) o marcar no soportado (RW-014);
+- nombre/registry de la imagen OCI del CLI (RW-016);
 - fallback de legacy Features por GitHub Releases;
-- paridad byte-a-byte del tarball, que hoy se considera no alcanzable por `mtime`;
+- paridad byte-a-byte del tarball, hoy no alcanzable por `mtime`;
 - alcance de ACR/ECR en CI regular o programado (helpers sólo Linux: `secretservice`/`pass`).
 
 Una decisión de no soportar un comportamiento cierra el ítem sólo si se documenta
