@@ -38,6 +38,8 @@ type buildOpts struct {
 	skipPersistCustoms         bool
 	experimentalLockfile       bool
 	experimentalFrozenLockfile bool
+	noLockfile                 bool
+	frozenLockfile             bool
 	// lockfileExcludeIDs is populated after merging --additional-features; it lists
 	// userFeatureIds supplied only via that flag, which 0.88 keeps out of the lockfile.
 	lockfileExcludeIDs map[string]bool
@@ -76,6 +78,8 @@ func newBuildCmd() *cobra.Command {
 	f.BoolVar(&opts.skipPersistCustoms, "skip-persisting-customizations-from-features", false, "")
 	f.BoolVar(&opts.experimentalLockfile, "experimental-lockfile", false, "")
 	f.BoolVar(&opts.experimentalFrozenLockfile, "experimental-frozen-lockfile", false, "")
+	f.BoolVar(&opts.noLockfile, "no-lockfile", false, "Disable lockfile generation and verification.")
+	f.BoolVar(&opts.frozenLockfile, "frozen-lockfile", false, "Ensure lockfile exists and remains unchanged; fail otherwise.")
 	f.Bool("omit-syntax-directive", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
 	cmd.Flags().MarkHidden("skip-persisting-customizations-from-features")
@@ -113,6 +117,23 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 			return writeValidationError(out, err.Error())
 		}
 	}
+
+	// --no-lockfile is mutually exclusive with every frozen/write lockfile flag
+	// (TS devContainersSpecCLI check for the build command).
+	if opts.noLockfile {
+		switch {
+		case opts.frozenLockfile:
+			return writeValidationError(out, "--no-lockfile and --frozen-lockfile are mutually exclusive.")
+		case opts.experimentalFrozenLockfile:
+			return writeValidationError(out, "--no-lockfile and --experimental-frozen-lockfile are mutually exclusive.")
+		case opts.experimentalLockfile:
+			return writeValidationError(out, "--no-lockfile and --experimental-lockfile are mutually exclusive.")
+		}
+	}
+
+	// TS folds the deprecated --experimental-frozen-lockfile into --frozen-lockfile
+	// (effectiveFrozenLockfile = frozenLockfile || experimentalFrozenLockfile).
+	opts.experimentalFrozenLockfile = opts.experimentalFrozenLockfile || opts.frozenLockfile
 
 	// Resolve paths
 	workspaceFolder := resolvePath(opts.workspaceFolder)
@@ -340,6 +361,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 			Lockfile:                    opts.experimentalLockfile,
 			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			NoLockfile:              opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 			SkipPersistCustoms:          opts.skipPersistCustoms,
@@ -408,6 +430,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 			Lockfile:                    opts.experimentalLockfile,
 			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			NoLockfile:              opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 			SkipPersistCustoms:          opts.skipPersistCustoms,
@@ -439,6 +462,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 				SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 				Lockfile:                    opts.experimentalLockfile,
 				FrozenLockfile:              opts.experimentalFrozenLockfile,
+				NoLockfile:              opts.noLockfile,
 				ConfigPath:                  cfg.ConfigFilePath,
 				LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 				SkipPersistCustoms:          opts.skipPersistCustoms,
@@ -661,6 +685,7 @@ func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx boo
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 			Lockfile:                    opts.experimentalLockfile,
 			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			NoLockfile:              opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 			SkipPersistCustoms:          opts.skipPersistCustoms,
