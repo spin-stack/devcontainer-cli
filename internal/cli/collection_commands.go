@@ -759,6 +759,10 @@ func createTarArchive(archivePath, sourceDir string) error {
 		if err != nil {
 			return err
 		}
+		// node-tar (the TS CLI) does not record user/group names, so leave them
+		// empty for a closer byte match.
+		header.Uname = ""
+		header.Gname = ""
 		// Root as "./", children as "./<rel>" with forward slashes; directories
 		// keep a trailing slash.
 		if relPath == "." {

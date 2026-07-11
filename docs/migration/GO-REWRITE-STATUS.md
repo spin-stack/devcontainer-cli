@@ -535,12 +535,15 @@ Resultado matriz endurecida: 0 fallos de producto reales; los compose flaky pasa
   vía `github.com/iancoleman/orderedmap` (sourceInformation primero, 4-space indent), + validación
   id/version/name. Byte-idéntico a TS. Caso: `features.package-collection-success`.
 
-### Backlog restante (menor impacto / mayor esfuerzo)
-- `features package` **tarball digest**: el file-list coincide; solo el encoding del header del tar (Go
-  `archive/tar` vs node-tar: `%07o`+NUL vs `%06o`+space, gname) difiere → digest de layer distinto. Solo
-  afecta reproducibilidad bit-a-bit entre CLIs en `publish`; el contenido es correcto. Bajo impacto.
-- `features resolve-dependencies` / `features info dependencies`: Go no resuelve deps transitivas (FNodes sin
-  dependsOn/installsAfter en `features_resolve_deps.go`) + grafo mermaid. El **formato mermaid es trivial**
-  (~15 líneas, Go ya lo genera); el trabajo real es portar `buildDependencyGraph` (fetch recursivo de
-  dependsOn/installsAfter). No requiere librería de mermaid.
-- Cobertura pendiente: `features publish/test`, `templates publish/metadata` (publish requiere registry local).
+- ✅ **`features resolve-dependencies` / `features info dependencies`**: grafo mermaid emitido vía
+  `renderDependencyMermaid` compartido (BFS de dependsOn/installsAfter, roundPriority 0, alias del feature id
+  con fallback a ref.ID). Idéntico a TS tras scrub de hashes de nodo. Casos:
+  `features.resolve-dependencies-success`.
+
+### Backlog restante (mínimo)
+- `features package` **tarball digest**: **byte-paridad imposible** — los headers del tar incrustan `mtime` y
+  node-tar/Go difieren en su manejo (el propio TS es no-determinista aquí). Cerrado lo cerrable: se limpian
+  `uname`/`gname` (node-tar no los graba) y el file-list + `collection.json` coinciden. El digest de layer
+  diverge por diseño; sin impacto de contenido.
+- Cobertura pendiente: `features publish/test`, `templates publish/metadata` (publish requiere un registry
+  OCI local para un caso hermético).
