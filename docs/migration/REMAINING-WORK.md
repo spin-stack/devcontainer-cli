@@ -282,12 +282,15 @@ La auditoría de cobertura marcó que una matriz "verde" sobreestima paridad. Es
   caja cuyo ancho depende del largo de la versión, así que no matchea ni scrubbeando.
   Requiere strippear el banner entero por payoff cosmético (features-test/features-info
   verbose ya pasan por exit_code/stderr).
-- **Pendiente — cobertura cross-command**: casos que aíslen substitución de variables
-  (`localEnv`/`containerEnv`/`devcontainerId`) y precedencia del merge de metadata-label
-  (hoy los casos usan una sola fuente). Estilo wave A (pueden destapar divergencias).
+- **Hecho — cobertura cross-command**: substitución de variables — `${devcontainerId}`
+  pinneado por unit test al algoritmo TS (el harness no puede cazarlo: cada lado usa
+  id-labels distintos), `${localEnv:X}`/`${localWorkspaceFolderBasename}` en
+  `read-configuration.host-variable-substitution`. Merge de metadata-label ya cubierto y
+  `match`: `container-metadata-success` (base-image label) + `features-configuration`
+  (multi-feature, con `compare_nulls`).
 - **Pendiente — masking de secrets**: assert de que los valores secretos se enmascaran
   en la salida; bloqueado por el gap de entorno que deja los casos `*-secrets`
-  inconclusive (ambos lados fallan).
+  inconclusive (ambos lados fallan — ver abajo).
 
 ## Decisiones que deben quedar explícitas
 
