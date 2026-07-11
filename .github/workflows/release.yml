@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Hermetic gates — the same task targets CI runs on every push/PR.
+  # The release is blocked unless these pass.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task lint
+      - run: task coverage
+      - run: task test:integration
+      - run: task reference
+      - run: task parity:contract
+      - run: task parity:network
+
+  # Runtime lane (real Docker containers). ubuntu-latest ships Docker.
+  gate-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task reference
+      - run: task test:e2e
+      - run: task parity:runtime
+      - if: always()
+        run: task clean
+
+  goreleaser:
+    runs-on: ubuntu-latest
+    needs: [gate, gate-runtime]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # syft powers the sboms: block in .goreleaser.yml.
+      - uses: anchore/sbom-action/download-syft@v0
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Non-gating: perf/distribution metrics recorded per release, never blocks.
+  metrics:
+    runs-on: ubuntu-latest
+    needs: [goreleaser]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task build:cross
+      - run: task reference
+      - run: task metrics
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metrics
+          path: artifacts/metrics.json
+          if-no-files-found: warn

@@ -30,11 +30,9 @@ tasks:
       CGO_ENABLED: "0"
     cmds:
       - mkdir -p dist
+      # Linux-only scope: only linux/amd64 + linux/arm64 are supported targets.
       - GOOS=linux   GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-amd64 ./cmd/devcontainer/
       - GOOS=linux   GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-arm64 ./cmd/devcontainer/
-      - GOOS=darwin  GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-amd64 ./cmd/devcontainer/
-      - GOOS=darwin  GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-darwin-arm64 ./cmd/devcontainer/
-      - GOOS=windows GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-windows-amd64.exe ./cmd/devcontainer/
 
   test:unit:
     desc: Run hermetic unit tests
@@ -114,6 +112,105 @@ tasks:
         msg: goreleaser is required
     cmds:
       - goreleaser release --clean {{.CLI_ARGS}}
+
+  metrics:
+    desc: "Perf/distribution metrics (non-gating): Go startup vs Node oracle + artifact sizes -> artifacts/metrics.json"
+    deps: [build]
+    vars:
+      ORACLE: reference/dist/spec-node/devContainersSpecCLI.js
+    cmds:
+      # Non-gating: never fail the caller. All measurement is best-effort.
+      - cmd: |
+          set -u
+          out={{.ROOT_DIR}}/artifacts/metrics.json
+          mkdir -p {{.ROOT_DIR}}/artifacts
+          bin={{.ROOT_DIR}}/{{.BINARY}}
+          oracle={{.ROOT_DIR}}/{{.ORACLE}}
+          runs="${METRICS_RUNS:-30}"
+
+          # Portable byte size of a file (Linux stat -c; BSD/mac stat -f fallback).
+          fsize() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1" 2>/dev/null || echo null; }
+
+          # Mean wall-clock ms for a command over N runs.
+          # Uses hyperfine when present (JSON mean, seconds->ms); otherwise a
+          # portable `date +%s%N` loop averaged over the runs.
+          have_hyperfine=0
+          command -v hyperfine >/dev/null 2>&1 && have_hyperfine=1
+
+          time_cmd() {
+            # args: label, then the command
+            _label="$1"; shift
+            if [ "$have_hyperfine" = "1" ]; then
+              _hf=$(hyperfine --warmup 3 --runs "$runs" --shell=none --export-json /dev/stdout "$*" 2>/dev/null \
+                | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const j=JSON.parse(d);process.stdout.write(String(j.results[0].mean*1000))}catch(e){process.stdout.write("null")}})' 2>/dev/null)
+              [ -n "$_hf" ] && echo "$_hf" || echo null
+            else
+              # warmup
+              "$@" >/dev/null 2>&1 || true
+              _start=$(date +%s%N)
+              _i=0
+              while [ "$_i" -lt "$runs" ]; do "$@" >/dev/null 2>&1 || true; _i=$((_i+1)); done
+              _end=$(date +%s%N)
+              # (end-start) ns / runs / 1e6 -> ms mean
+              awk -v s="$_start" -v e="$_end" -v n="$runs" 'BEGIN{printf "%.3f",(e-s)/n/1000000}'
+            fi
+          }
+
+          echo "metrics: timing tool = $([ "$have_hyperfine" = 1 ] && echo hyperfine || echo date-loop), runs=$runs"
+
+          go_version_ms=$(time_cmd go_version "$bin" --version)
+
+          # read-configuration no-op against a minimal image-based workspace
+          # (variable substitution only; no Docker involved).
+          ws=$(mktemp -d)
+          mkdir -p "$ws/.devcontainer"
+          printf '{"image":"mcr.microsoft.com/devcontainers/base:ubuntu"}\n' > "$ws/.devcontainer/devcontainer.json"
+          go_readcfg_ms=$(time_cmd go_readcfg "$bin" read-configuration --workspace-folder "$ws")
+
+          node_version_ms=null
+          if [ -f "$oracle" ] && command -v node >/dev/null 2>&1; then
+            node_version_ms=$(time_cmd node_version node "$oracle" --version)
+          else
+            echo "metrics: node oracle not found at $oracle (run 'task reference') — skipping Node A/B"
+          fi
+          rm -rf "$ws"
+
+          # Sizes: local binary + cross-compiled dist binaries + gzip-compressed size.
+          bin_size=$(fsize "$bin")
+          la_bin=null; la_gz=null; lr_bin=null; lr_gz=null
+          if [ -f {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-amd64 ]; then
+            la_bin=$(fsize {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-amd64)
+            la_gz=$(gzip -c {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-amd64 | wc -c | tr -d ' ')
+          fi
+          if [ -f {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-arm64 ]; then
+            lr_bin=$(fsize {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-arm64)
+            lr_gz=$(gzip -c {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-arm64 | wc -c | tr -d ' ')
+          fi
+          [ "$la_bin" = null ] && echo "metrics: dist binaries absent — run 'task build:cross' for release sizes"
+
+          cat > "$out" <<EOF
+          {
+            "version": "{{.VERSION}}",
+            "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "timing_tool": "$([ "$have_hyperfine" = 1 ] && echo hyperfine || echo date-loop)",
+            "runs": $runs,
+            "startup_ms": {
+              "go_version": $go_version_ms,
+              "go_read_configuration": $go_readcfg_ms,
+              "node_version": $node_version_ms
+            },
+            "sizes_bytes": {
+              "local_binary": $bin_size,
+              "linux_amd64_binary": $la_bin,
+              "linux_amd64_gzip": $la_gz,
+              "linux_arm64_binary": $lr_bin,
+              "linux_arm64_gzip": $lr_gz
+            }
+          }
+          EOF
+          echo "metrics: wrote $out"
+          cat "$out"
+        ignore_error: true
 
   reference:install:
     internal: true
