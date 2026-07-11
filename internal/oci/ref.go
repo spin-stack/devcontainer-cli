@@ -12,7 +12,6 @@ const (
 	TarLayerMediaType        = "application/vnd.devcontainers.layer.v1+tar"
 	CollectionLayerMediaType = "application/vnd.devcontainers.collection.layer.v1+json"
 	OCIManifestMediaType     = "application/vnd.oci.image.manifest.v1+json"
-	OCIImageIndexMediaType   = "application/vnd.oci.image.index.v1+json"
 )
 
 var (

@@ -33,9 +33,16 @@ func (c *Client) repository(ref *Ref) (*remote.Repository, error) {
 	}
 	// Local/insecure registries (localhost, 127.0.0.1) speak plain HTTP.
 	repo.PlainHTTP = isLocalRegistry(ref.Registry)
+	// Reuse the client-level auth cache across operations. Fall back to a
+	// per-repository cache if the client was constructed without one (e.g. a
+	// zero-value Client in a test), so repository() never wires a nil cache.
+	cache := c.authCache
+	if cache == nil {
+		cache = auth.NewCache()
+	}
 	repo.Client = &auth.Client{
 		Client: retry.DefaultClient,
-		Cache:  auth.NewCache(),
+		Cache:  cache,
 		Credential: func(_ context.Context, host string) (auth.Credential, error) {
 			cred := getCredential(c.env, host, c.log)
 			if cred == nil {

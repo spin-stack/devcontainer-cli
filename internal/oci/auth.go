@@ -120,24 +120,41 @@ func getCredentialFromDockerConfig(env map[string]string, registry string, logge
 }
 
 func tryPlatformDefaultHelper(registry string, logger log.Log) *credential {
-	var helper string
-	switch runtime.GOOS {
-	case "darwin":
-		helper = "osxkeychain"
-	case "windows":
-		helper = "wincred"
-	case "linux":
-		if pathExists("pass") {
-			helper = "pass"
-		} else {
-			helper = "secretservice"
-		}
-	}
+	helper := defaultCredentialHelperName()
 	if helper == "" {
 		return nil
 	}
 	logger.Write(fmt.Sprintf("[httpOci] Trying platform default credential helper %q", helper), log.LevelTrace)
 	return getCredentialFromHelper(registry, helper, logger)
+}
+
+// defaultCredentialHelperName returns the docker credential helper the current
+// platform defaults to (i.e. the suffix of docker-credential-<name>). Scope is
+// Linux-only for this rewrite; darwin/windows names are kept for parity with the
+// TS surface but are not a supported target.
+//
+// RW-008 divergence: on Linux the libsecret helper is `secretservice`
+// (docker-credential-secretservice). The TS CLI names it `secret`, which is
+// wrong — no such binary exists — so Go keeps the correct `secretservice`.
+func defaultCredentialHelperName() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "osxkeychain"
+	case "windows":
+		return "wincred"
+	case "linux":
+		return linuxDefaultHelperName(pathExists("pass"))
+	}
+	return ""
+}
+
+// linuxDefaultHelperName picks the Linux default helper: `pass` when the pass
+// store is installed, otherwise the libsecret-backed `secretservice`.
+func linuxDefaultHelperName(passAvailable bool) string {
+	if passAvailable {
+		return "pass"
+	}
+	return "secretservice"
 }
 
 type credHelperResult struct {
