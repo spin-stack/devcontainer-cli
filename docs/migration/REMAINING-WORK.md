@@ -265,6 +265,30 @@ Incluye resolver las colas de otros ítems: promover los diferidos de **RW-005**
 oráculo y JSON de cada lane guardados, checklist completa. Bloqueado por RW-012
 (alimenta `task coverage`) y por las colas de RW-005/006.
 
+## Endurecimiento del harness (wave B — falsos-verdes de la auditoría)
+
+La auditoría de cobertura marcó que una matriz "verde" sobreestima paridad. Estado:
+
+- **Hecho — verificación de digests** (`compare_hashes: true`): el scrub global
+  `sha256/hex→<HASH>` ocultaba digests deterministas y comparables; ahora se comparan
+  en resolve-dependencies / read-configuration.features-configuration / lockfile.
+- **Hecho — null vs absent** (`compare_nulls: true`): `normalizeValue` dropeaba los
+  null; ahora los casos-envelope los comparan.
+- **Descartado — stderr exacto**: `extractErrorReason` ya canoniza sólo el *formato*
+  (tokens que preservan flag/value/choices/arg-name) y compara el *wording* verbatim en
+  el fallback (así se cazaron las divergencias de features-test). Un assert de texto
+  exacto forzaría a Go a imitar el framing de Node/yargs — contraproducente.
+- **Diferido — banner de versión**: Go reporta git-hash y TS semver; el banner es una
+  caja cuyo ancho depende del largo de la versión, así que no matchea ni scrubbeando.
+  Requiere strippear el banner entero por payoff cosmético (features-test/features-info
+  verbose ya pasan por exit_code/stderr).
+- **Pendiente — cobertura cross-command**: casos que aíslen substitución de variables
+  (`localEnv`/`containerEnv`/`devcontainerId`) y precedencia del merge de metadata-label
+  (hoy los casos usan una sola fuente). Estilo wave A (pueden destapar divergencias).
+- **Pendiente — masking de secrets**: assert de que los valores secretos se enmascaran
+  en la salida; bloqueado por el gap de entorno que deja los casos `*-secrets`
+  inconclusive (ambos lados fallan).
+
 ## Decisiones que deben quedar explícitas
 
 Decisiones ya tomadas (firmes):
