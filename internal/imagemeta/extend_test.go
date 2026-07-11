@@ -7,128 +7,168 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 )
 
-func TestGenerateExtendImageBuild_NoFeatures(t *testing.T) {
-	metadata := []Entry{{ID: "test", RemoteUser: "vscode"}}
-	info := GenerateExtendImageBuild("ubuntu:22.04", nil, metadata, "vscode", "vscode", false, nil)
-
-	if info.OverrideTarget != "dev_containers_target_stage" {
-		t.Errorf("target = %q", info.OverrideTarget)
-	}
-	if info.BuildArgs["_DEV_CONTAINERS_BASE_IMAGE"] != "ubuntu:22.04" {
-		t.Errorf("build arg = %q", info.BuildArgs["_DEV_CONTAINERS_BASE_IMAGE"])
-	}
-	if !strings.Contains(info.DockerfileContent, "devcontainer.metadata") {
-		t.Error("should contain metadata label")
-	}
-	if !strings.Contains(info.DockerfileContent, "dev_containers_target_stage") {
-		t.Error("should contain target stage")
-	}
-}
-
-func TestGenerateExtendImageBuild_WithFeatures(t *testing.T) {
-	featureSets := []*features.FeatureSet{
+func TestGenerateExtendImageBuild(t *testing.T) {
+	tests := []struct {
+		name          string
+		baseImage     string
+		featureSets   []*features.FeatureSet
+		metadata      []Entry
+		containerUser string
+		remoteUser    string
+		useBuildKit   bool
+		check         func(t *testing.T, info *ExtendImageBuildInfo)
+	}{
 		{
-			SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
-			Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+			name:          "NoFeatures",
+			baseImage:     "ubuntu:22.04",
+			featureSets:   nil,
+			metadata:      []Entry{{ID: "test", RemoteUser: "vscode"}},
+			containerUser: "vscode",
+			remoteUser:    "vscode",
+			useBuildKit:   false,
+			check: func(t *testing.T, info *ExtendImageBuildInfo) {
+				if info.OverrideTarget != "dev_containers_target_stage" {
+					t.Errorf("target = %q", info.OverrideTarget)
+				}
+				if info.BuildArgs["_DEV_CONTAINERS_BASE_IMAGE"] != "ubuntu:22.04" {
+					t.Errorf("build arg = %q", info.BuildArgs["_DEV_CONTAINERS_BASE_IMAGE"])
+				}
+				if !strings.Contains(info.DockerfileContent, "devcontainer.metadata") {
+					t.Error("should contain metadata label")
+				}
+				if !strings.Contains(info.DockerfileContent, "dev_containers_target_stage") {
+					t.Error("should contain target stage")
+				}
+			},
 		},
 		{
-			SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/node:1"},
-			Features:   []features.Feature{{ID: "node", Version: "18", Value: "18"}},
+			name:      "WithFeatures",
+			baseImage: "ubuntu:22.04",
+			featureSets: []*features.FeatureSet{
+				{
+					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
+					Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+				},
+				{
+					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/node:1"},
+					Features:   []features.Feature{{ID: "node", Version: "18", Value: "18"}},
+				},
+			},
+			metadata:      []Entry{{ID: "go"}, {ID: "node"}},
+			containerUser: "vscode",
+			remoteUser:    "vscode",
+			useBuildKit:   true,
+			check: func(t *testing.T, info *ExtendImageBuildInfo) {
+				df := info.DockerfileContent
+
+				// Should have install scripts for both features
+				if !strings.Contains(df, "_dev_container_feature_0/install.sh") {
+					t.Error("missing feature 0 install")
+				}
+				if !strings.Contains(df, "_dev_container_feature_1/install.sh") {
+					t.Error("missing feature 1 install")
+				}
+
+				// Should have USER root
+				if !strings.Contains(df, "USER root") {
+					t.Error("should switch to root for install")
+				}
+
+				// Should restore user
+				if !strings.Contains(df, "USER vscode") {
+					t.Error("should restore user after install")
+				}
+
+				// Build-only env vars should be scoped to RUN, not persisted as final ENV.
+				if strings.Contains(df, "\nENV _CONTAINER_USER=") {
+					t.Error("should not persist _CONTAINER_USER as ENV")
+				}
+				if strings.Contains(df, "\nENV _REMOTE_USER=") {
+					t.Error("should not persist _REMOTE_USER as ENV")
+				}
+				if !strings.Contains(df, "_CONTAINER_USER='vscode' _REMOTE_USER='vscode'") {
+					t.Error("missing scoped feature install env vars")
+				}
+
+				// Should have metadata label
+				if !strings.Contains(df, "devcontainer.metadata") {
+					t.Error("missing metadata label")
+				}
+
+				// BuildKit context
+				if _, ok := info.BuildKitContexts["dev_containers_feature_content_source"]; !ok {
+					t.Error("missing BuildKit context")
+				}
+			},
 		},
-	}
-	metadata := []Entry{{ID: "go"}, {ID: "node"}}
-
-	info := GenerateExtendImageBuild("ubuntu:22.04", featureSets, metadata, "vscode", "vscode", true, nil)
-
-	df := info.DockerfileContent
-
-	// Should have install scripts for both features
-	if !strings.Contains(df, "_dev_container_feature_0/install.sh") {
-		t.Error("missing feature 0 install")
-	}
-	if !strings.Contains(df, "_dev_container_feature_1/install.sh") {
-		t.Error("missing feature 1 install")
-	}
-
-	// Should have USER root
-	if !strings.Contains(df, "USER root") {
-		t.Error("should switch to root for install")
-	}
-
-	// Should restore user
-	if !strings.Contains(df, "USER vscode") {
-		t.Error("should restore user after install")
-	}
-
-	// Build-only env vars should be scoped to RUN, not persisted as final ENV.
-	if strings.Contains(df, "\nENV _CONTAINER_USER=") {
-		t.Error("should not persist _CONTAINER_USER as ENV")
-	}
-	if strings.Contains(df, "\nENV _REMOTE_USER=") {
-		t.Error("should not persist _REMOTE_USER as ENV")
-	}
-	if !strings.Contains(df, "_CONTAINER_USER='vscode' _REMOTE_USER='vscode'") {
-		t.Error("missing scoped feature install env vars")
-	}
-
-	// Should have metadata label
-	if !strings.Contains(df, "devcontainer.metadata") {
-		t.Error("missing metadata label")
-	}
-
-	// BuildKit context
-	if _, ok := info.BuildKitContexts["dev_containers_feature_content_source"]; !ok {
-		t.Error("missing BuildKit context")
-	}
-}
-
-func TestGenerateExtendImageBuild_FeatureEnvScopedToInstall(t *testing.T) {
-	// Regression for B1: feature option env vars (and _REMOTE_USER/_CONTAINER_USER)
-	// must apply to install.sh, not to the preceding chmod. In POSIX sh,
-	// `KEY=v chmod ... && install.sh` scopes KEY to chmod only, so the options
-	// never reach install.sh.
-	featureSets := []*features.FeatureSet{
 		{
-			SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
-			Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+			name: "FeatureEnvScopedToInstall",
+			// Regression for B1: feature option env vars (and _REMOTE_USER/_CONTAINER_USER)
+			// must apply to install.sh, not to the preceding chmod. In POSIX sh,
+			// `KEY=v chmod ... && install.sh` scopes KEY to chmod only, so the options
+			// never reach install.sh.
+			baseImage: "ubuntu:22.04",
+			featureSets: []*features.FeatureSet{
+				{
+					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
+					Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+				},
+			},
+			metadata:      []Entry{{ID: "go"}},
+			containerUser: "vscode",
+			remoteUser:    "node",
+			useBuildKit:   true,
+			check: func(t *testing.T, info *ExtendImageBuildInfo) {
+				df := info.DockerfileContent
+
+				// Env assignments must sit between "&&" and install.sh (applied to install.sh).
+				if !strings.Contains(df, "&& _CONTAINER_USER='vscode' _REMOTE_USER='node'") {
+					t.Errorf("feature env not applied to install.sh:\n%s", df)
+				}
+				// And must NOT prefix the chmod (the original bug).
+				if strings.Contains(df, "_REMOTE_USER='node' chmod") {
+					t.Errorf("feature env wrongly scoped to chmod:\n%s", df)
+				}
+			},
 		},
-	}
-	metadata := []Entry{{ID: "go"}}
-	df := GenerateExtendImageBuild("ubuntu:22.04", featureSets, metadata, "vscode", "node", true, nil).DockerfileContent
-
-	// Env assignments must sit between "&&" and install.sh (applied to install.sh).
-	if !strings.Contains(df, "&& _CONTAINER_USER='vscode' _REMOTE_USER='node'") {
-		t.Errorf("feature env not applied to install.sh:\n%s", df)
-	}
-	// And must NOT prefix the chmod (the original bug).
-	if strings.Contains(df, "_REMOTE_USER='node' chmod") {
-		t.Errorf("feature env wrongly scoped to chmod:\n%s", df)
-	}
-}
-
-func TestGenerateExtendImageBuild_RootUser(t *testing.T) {
-	featureSets := []*features.FeatureSet{
 		{
-			SourceInfo: &features.OCISource{UserID: "feat"},
-			Features:   []features.Feature{{ID: "feat"}},
+			name:      "RootUser",
+			baseImage: "ubuntu",
+			featureSets: []*features.FeatureSet{
+				{
+					SourceInfo: &features.OCISource{UserID: "feat"},
+					Features:   []features.Feature{{ID: "feat"}},
+				},
+			},
+			metadata:      nil,
+			containerUser: "root",
+			remoteUser:    "root",
+			useBuildKit:   false,
+			check: func(t *testing.T, info *ExtendImageBuildInfo) {
+				df := info.DockerfileContent
+
+				// Should NOT have USER root → USER root (redundant)
+				// Already root, so no "USER root" restore needed
+				lines := strings.Split(df, "\n")
+				userCount := 0
+				for _, l := range lines {
+					if strings.HasPrefix(strings.TrimSpace(l), "USER ") {
+						userCount++
+					}
+				}
+				// Should have exactly 1 USER root (for the install), and NOT restore
+				if userCount != 1 {
+					t.Errorf("expected 1 USER statement, got %d", userCount)
+				}
+			},
 		},
 	}
 
-	info := GenerateExtendImageBuild("ubuntu", featureSets, nil, "root", "root", false, nil)
-	df := info.DockerfileContent
-
-	// Should NOT have USER root → USER root (redundant)
-	// Already root, so no "USER root" restore needed
-	lines := strings.Split(df, "\n")
-	userCount := 0
-	for _, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "USER ") {
-			userCount++
-		}
-	}
-	// Should have exactly 1 USER root (for the install), and NOT restore
-	if userCount != 1 {
-		t.Errorf("expected 1 USER statement, got %d", userCount)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := GenerateExtendImageBuild(tt.baseImage, tt.featureSets, tt.metadata, tt.containerUser, tt.remoteUser, tt.useBuildKit, nil)
+			tt.check(t, info)
+		})
 	}
 }
 

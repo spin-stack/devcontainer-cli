@@ -13,66 +13,47 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-func TestRootCommand_Version(t *testing.T) {
-	root := NewRootCommand()
-	root.SetArgs([]string{"--version"})
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Execute()
-	// Bare version output (like the TS CLI), no "<name> version" prefix.
-	got := strings.TrimSpace(buf.String())
-	if got == "" || strings.Contains(got, " ") {
-		t.Errorf("expected bare version output, got %q", buf.String())
-	}
-}
-
-func TestRootCommand_Help(t *testing.T) {
-	root := NewRootCommand()
-	root.SetArgs([]string{"--help"})
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Execute()
-	out := buf.String()
-
-	// All commands should be listed
-	commands := []string{"build", "up", "exec", "read-configuration", "set-up",
-		"run-user-commands", "outdated", "upgrade", "features", "templates"}
-	for _, cmd := range commands {
-		if !strings.Contains(out, cmd) {
-			t.Errorf("help output missing command %q", cmd)
+func TestRootCommand(t *testing.T) {
+	containsAll := func(items ...string) func(*testing.T, string) {
+		return func(t *testing.T, out string) {
+			for _, it := range items {
+				if !strings.Contains(out, it) {
+					t.Errorf("output missing %q", it)
+				}
+			}
 		}
 	}
-}
 
-func TestRootCommand_FeaturesHelp(t *testing.T) {
-	root := NewRootCommand()
-	root.SetArgs([]string{"features", "--help"})
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Execute()
-	out := buf.String()
-
-	subcommands := []string{"test", "package", "publish", "info", "resolve-dependencies", "generate-docs"}
-	for _, sub := range subcommands {
-		if !strings.Contains(out, sub) {
-			t.Errorf("features help missing subcommand %q", sub)
-		}
+	tests := []struct {
+		name  string
+		args  []string
+		check func(t *testing.T, out string)
+	}{
+		{"version is bare", []string{"--version"}, func(t *testing.T, out string) {
+			// Bare version output (like the TS CLI), no "<name> version" prefix.
+			got := strings.TrimSpace(out)
+			if got == "" || strings.Contains(got, " ") {
+				t.Errorf("expected bare version output, got %q", out)
+			}
+		}},
+		{"help lists commands", []string{"--help"}, containsAll(
+			"build", "up", "exec", "read-configuration", "set-up",
+			"run-user-commands", "outdated", "upgrade", "features", "templates")},
+		{"features help lists subcommands", []string{"features", "--help"}, containsAll(
+			"test", "package", "publish", "info", "resolve-dependencies", "generate-docs")},
+		{"templates help lists subcommands", []string{"templates", "--help"}, containsAll(
+			"apply", "publish", "metadata", "generate-docs")},
 	}
-}
 
-func TestRootCommand_TemplatesHelp(t *testing.T) {
-	root := NewRootCommand()
-	root.SetArgs([]string{"templates", "--help"})
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Execute()
-	out := buf.String()
-
-	subcommands := []string{"apply", "publish", "metadata", "generate-docs"}
-	for _, sub := range subcommands {
-		if !strings.Contains(out, sub) {
-			t.Errorf("templates help missing subcommand %q", sub)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := NewRootCommand()
+			root.SetArgs(tt.args)
+			var buf bytes.Buffer
+			root.SetOut(&buf)
+			root.Execute()
+			tt.check(t, buf.String())
+		})
 	}
 }
 

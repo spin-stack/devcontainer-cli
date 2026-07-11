@@ -215,110 +215,126 @@ func TestListContainers(t *testing.T) {
 	}
 }
 
-func TestRemoveContainer_Success(t *testing.T) {
-	api := &mockAPI{
-		containerRemoveFn: func(_ context.Context, _ string, _ container.RemoveOptions) error {
-			return nil
+func TestRemoveContainer(t *testing.T) {
+	// Each case shares the same call shape (increment counter, return an error
+	// derived from the current call count) but varies the retry-driving events
+	// stream, so a per-case remove/events closure keeps the mock setup honest.
+	tests := []struct {
+		name string
+		// remove receives the running call count (after increment) and returns
+		// the error the mock should surface for that call.
+		remove func(calls int) error
+		// events, when non-nil, overrides the default (closed-channel) events
+		// stream to drive retry/destroy behavior.
+		events    func(ctx context.Context, opts events.ListOptions) (<-chan events.Message, <-chan error)
+		wantCalls int
+	}{
+		{
+			name:      "Success",
+			remove:    func(_ int) error { return nil },
+			wantCalls: 1,
 		},
-	}
-	e := newTestEngine(api)
-	if err := e.RemoveContainer(context.Background(), "abc"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestRemoveContainer_RetryOnAlreadyInProgress(t *testing.T) {
-	calls := 0
-	api := &mockAPI{
-		containerRemoveFn: func(_ context.Context, _ string, _ container.RemoveOptions) error {
-			calls++
-			if calls <= 2 {
+		{
+			name: "RetryOnAlreadyInProgress",
+			remove: func(calls int) error {
+				if calls <= 2 {
+					return errors.New("removal of container xyz is already in progress")
+				}
+				return nil
+			},
+			events: func(_ context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
+				ch := make(chan events.Message)
+				errCh := make(chan error, 1)
+				// Don't send any events — let it timeout and retry
+				return ch, errCh
+			},
+			wantCalls: 3,
+		},
+		{
+			name: "DestroyEventStopsRetry",
+			remove: func(_ int) error {
 				return errors.New("removal of container xyz is already in progress")
+			},
+			events: func(_ context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
+				ch := make(chan events.Message, 1)
+				errCh := make(chan error, 1)
+				// Immediately send destroy event
+				ch <- events.Message{Action: events.ActionDestroy}
+				return ch, errCh
+			},
+			// Called remove once, got "already in progress", then the destroy event stopped the retry.
+			wantCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			api := &mockAPI{
+				containerRemoveFn: func(_ context.Context, _ string, _ container.RemoveOptions) error {
+					calls++
+					return tt.remove(calls)
+				},
 			}
-			return nil
-		},
-		eventsFn: func(_ context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
-			ch := make(chan events.Message)
-			errCh := make(chan error, 1)
-			// Don't send any events — let it timeout and retry
-			return ch, errCh
-		},
-	}
-	e := newTestEngine(api)
-	if err := e.RemoveContainer(context.Background(), "xyz"); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 3 {
-		t.Errorf("remove called %d times, want 3", calls)
+			if tt.events != nil {
+				api.eventsFn = tt.events
+			}
+			e := newTestEngine(api)
+			if err := e.RemoveContainer(context.Background(), "xyz"); err != nil {
+				t.Fatal(err)
+			}
+			if calls != tt.wantCalls {
+				t.Errorf("remove called %d times, want %d", calls, tt.wantCalls)
+			}
+		})
 	}
 }
 
-func TestRemoveContainer_DestroyEventStopsRetry(t *testing.T) {
-	calls := 0
-	api := &mockAPI{
-		containerRemoveFn: func(_ context.Context, _ string, _ container.RemoveOptions) error {
-			calls++
-			return errors.New("removal of container xyz is already in progress")
-		},
-		eventsFn: func(_ context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
-			ch := make(chan events.Message, 1)
-			errCh := make(chan error, 1)
-			// Immediately send destroy event
-			ch <- events.Message{Action: events.ActionDestroy}
-			return ch, errCh
-		},
-	}
-	e := newTestEngine(api)
-	if err := e.RemoveContainer(context.Background(), "xyz"); err != nil {
-		t.Fatal(err)
-	}
-	// Should have called remove once, then got "already in progress", then got the destroy event
-	if calls != 1 {
-		t.Errorf("remove called %d times, want 1", calls)
-	}
-}
-
-func TestIsPodman_Docker(t *testing.T) {
-	api := &mockAPI{
-		serverVersionFn: func(_ context.Context) (types.Version, error) {
-			return types.Version{
+func TestIsPodman(t *testing.T) {
+	tests := []struct {
+		name    string
+		version types.Version
+		err     error
+		want    bool
+	}{
+		{
+			name: "Docker",
+			version: types.Version{
 				Components: []types.ComponentVersion{
 					{Name: "Engine", Version: "24.0.0"},
 				},
-			}, nil
+			},
+			want: false,
 		},
-	}
-	e := newTestEngine(api)
-	if e.IsPodman(context.Background()) {
-		t.Error("expected false for Docker")
-	}
-}
-
-func TestIsPodman_Podman(t *testing.T) {
-	api := &mockAPI{
-		serverVersionFn: func(_ context.Context) (types.Version, error) {
-			return types.Version{
+		{
+			name: "Podman",
+			version: types.Version{
 				Components: []types.ComponentVersion{
 					{Name: "Podman", Version: "4.0.0"},
 				},
-			}, nil
+			},
+			want: true,
+		},
+		{
+			name:    "Error",
+			version: types.Version{},
+			err:     errors.New("connection refused"),
+			want:    false,
 		},
 	}
-	e := newTestEngine(api)
-	if !e.IsPodman(context.Background()) {
-		t.Error("expected true for Podman")
-	}
-}
 
-func TestIsPodman_Error(t *testing.T) {
-	api := &mockAPI{
-		serverVersionFn: func(_ context.Context) (types.Version, error) {
-			return types.Version{}, errors.New("connection refused")
-		},
-	}
-	e := newTestEngine(api)
-	if e.IsPodman(context.Background()) {
-		t.Error("expected false on error")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &mockAPI{
+				serverVersionFn: func(_ context.Context) (types.Version, error) {
+					return tt.version, tt.err
+				},
+			}
+			e := newTestEngine(api)
+			if got := e.IsPodman(context.Background()); got != tt.want {
+				t.Errorf("IsPodman() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

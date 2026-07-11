@@ -1,159 +1,127 @@
 package docker
 
 import (
-	"strings"
+	"reflect"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
 )
 
-func TestBuildArgs_Simple(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		Dockerfile:  "Dockerfile",
-		ContextPath: "/project",
-		Tags:        []string{"myimage:latest"},
-	})
-
-	if args[0] != "build" {
-		t.Errorf("expected 'build', got %q", args[0])
+func TestBuildArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		opts BuildOptions
+		want []string
+	}{
+		{
+			name: "Simple",
+			opts: BuildOptions{
+				Dockerfile:  "Dockerfile",
+				ContextPath: "/project",
+				Tags:        []string{"myimage:latest"},
+			},
+			want: []string{"build", "-f", "Dockerfile", "-t", "myimage:latest", "/project"},
+		},
+		{
+			name: "Buildx",
+			opts: BuildOptions{
+				UseBuildx:   true,
+				Platform:    "linux/amd64",
+				Push:        false,
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+				Tags:        []string{"img:1"},
+			},
+			want: []string{"buildx", "build", "--platform", "linux/amd64", "--load", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "-t", "img:1", "."},
+		},
+		{
+			name: "BuildxPush",
+			opts: BuildOptions{
+				UseBuildx:   true,
+				Push:        true,
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			// --push present, --load absent
+			want: []string{"buildx", "build", "--push", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "."},
+		},
+		{
+			name: "BuildxOutput",
+			opts: BuildOptions{
+				UseBuildx:   true,
+				Output:      "type=docker",
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			// --output present, --load absent
+			want: []string{"buildx", "build", "--output", "type=docker", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "."},
+		},
+		{
+			name: "CacheTo",
+			opts: BuildOptions{
+				UseBuildx:   true,
+				CacheTo:     "type=registry,ref=cache",
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			want: []string{"buildx", "build", "--load", "--cache-to", "type=registry,ref=cache", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "."},
+		},
+		{
+			name: "NoCache",
+			opts: BuildOptions{
+				NoCache:     true,
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			want: []string{"build", "-f", "Dockerfile", "--no-cache", "."},
+		},
+		{
+			name: "NoCacheBuildx",
+			opts: BuildOptions{
+				UseBuildx:   true,
+				NoCache:     true,
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			want: []string{"buildx", "build", "--load", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "--no-cache", "--pull", "."},
+		},
+		{
+			name: "Labels",
+			opts: BuildOptions{
+				Labels:      []string{"key1=val1", "key2=val2"},
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			want: []string{"build", "-f", "Dockerfile", "--label", "key1=val1", "--label", "key2=val2", "."},
+		},
+		{
+			name: "Target",
+			opts: BuildOptions{
+				Target:      "dev",
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			want: []string{"build", "-f", "Dockerfile", "--target", "dev", "."},
+		},
+		{
+			name: "BuildArgMap",
+			opts: BuildOptions{
+				BuildArgs:   map[string]string{"NODE_VERSION": "18"},
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+			},
+			want: []string{"build", "-f", "Dockerfile", "--build-arg", "NODE_VERSION=18", "."},
+		},
 	}
-	assertContains(t, args, "-f", "Dockerfile")
-	assertContains(t, args, "-t", "myimage:latest")
-	if args[len(args)-1] != "/project" {
-		t.Errorf("last arg should be context path, got %q", args[len(args)-1])
-	}
-}
 
-func TestBuildArgs_Buildx(t *testing.T) {
 	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		UseBuildx:   true,
-		Platform:    "linux/amd64",
-		Push:        false,
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-		Tags:        []string{"img:1"},
-	})
-
-	if args[0] != "buildx" || args[1] != "build" {
-		t.Errorf("expected 'buildx build', got %v", args[:2])
-	}
-	assertContains(t, args, "--platform", "linux/amd64")
-	assertContains(t, args, "--load")
-	assertContains(t, args, "--build-arg", "BUILDKIT_INLINE_CACHE=1")
-}
-
-func TestBuildArgs_BuildxPush(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		UseBuildx:   true,
-		Push:        true,
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--push")
-	// --load should NOT be present when --push is
-	for _, a := range args {
-		if a == "--load" {
-			t.Error("--load should not be present with --push")
-		}
-	}
-}
-
-func TestBuildArgs_BuildxOutput(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		UseBuildx:   true,
-		Output:      "type=docker",
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--output", "type=docker")
-	for _, a := range args {
-		if a == "--load" {
-			t.Error("--load should not be present with --output")
-		}
-	}
-}
-
-func TestBuildArgs_CacheTo(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		UseBuildx:   true,
-		CacheTo:     "type=registry,ref=cache",
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--cache-to", "type=registry,ref=cache")
-}
-
-func TestBuildArgs_NoCache(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		NoCache:     true,
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--no-cache")
-}
-
-func TestBuildArgs_NoCacheBuildx(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		UseBuildx:   true,
-		NoCache:     true,
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--no-cache")
-	assertContains(t, args, "--pull")
-}
-
-func TestBuildArgs_Labels(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		Labels:      []string{"key1=val1", "key2=val2"},
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--label", "key1=val1")
-	assertContains(t, args, "--label", "key2=val2")
-}
-
-func TestBuildArgs_Target(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		Target:      "dev",
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	assertContains(t, args, "--target", "dev")
-}
-
-func TestBuildArgs_BuildArgMap(t *testing.T) {
-	c := NewClient("docker", nil, log.Null)
-	args := c.buildArgs(BuildOptions{
-		BuildArgs:   map[string]string{"NODE_VERSION": "18"},
-		Dockerfile:  "Dockerfile",
-		ContextPath: ".",
-	})
-
-	found := false
-	for _, a := range args {
-		if strings.Contains(a, "NODE_VERSION=18") {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("expected build arg NODE_VERSION=18")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := c.buildArgs(tt.opts)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("buildArgs() =\n  %v\nwant\n  %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -162,19 +130,4 @@ func TestNewClient_DefaultPath(t *testing.T) {
 	if c.DockerPath != "docker" {
 		t.Errorf("default path = %q", c.DockerPath)
 	}
-}
-
-func assertContains(t *testing.T, args []string, values ...string) {
-	t.Helper()
-	for i, arg := range args {
-		if arg == values[0] {
-			if len(values) == 1 {
-				return
-			}
-			if i+1 < len(args) && args[i+1] == values[1] {
-				return
-			}
-		}
-	}
-	t.Errorf("args %v does not contain %v", args, values)
 }
