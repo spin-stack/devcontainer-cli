@@ -63,8 +63,10 @@ func ReadMetadataFromLabels(labels map[string]string, logger log.Log) []Entry {
 }
 
 // GenerateMetadataLabel serializes entries to the compact JSON label format.
-// Matches the TS getDevcontainerMetadataLabel: a single entry is written as a
-// bare object, multiple entries as an array (empty → "").
+// Matches the TS getDevcontainerMetadataLabel as of 0.88 (#1199): entries are
+// ALWAYS written as a JSON array — even for a single entry — and an empty slice
+// yields "". ReadMetadataFromLabels still accepts a bare object for backward
+// compatibility with labels written by older tooling.
 func GenerateMetadataLabel(entries []Entry) string {
 	if len(entries) == 0 {
 		return ""

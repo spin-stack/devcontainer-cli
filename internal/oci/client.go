@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	orascontent "oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/registry/remote/auth"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -16,14 +17,21 @@ import (
 type Client struct {
 	log log.Log
 	env map[string]string
+	// authCache is shared across every repository() built by this client so that
+	// a bearer token / auth challenge negotiated for one operation (e.g. a push)
+	// is reused by related operations (e.g. the tag list or manifest fetch that
+	// follows) instead of re-running the 401→WWW-Authenticate→token loop each
+	// time. auth.Cache is safe for concurrent use.
+	authCache auth.Cache
 }
 
 // NewClient creates an OCI client. Transport, auth and retries are handled by
 // oras-go (see repository()).
 func NewClient(logger log.Log, env map[string]string) *Client {
 	return &Client{
-		log: logger,
-		env: env,
+		log:       logger,
+		env:       env,
+		authCache: auth.NewCache(),
 	}
 }
 
