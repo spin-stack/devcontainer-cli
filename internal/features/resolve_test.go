@@ -29,45 +29,85 @@ func TestClassifyFeatureID(t *testing.T) {
 	}
 }
 
-func TestResolveFeatureID_OCI(t *testing.T) {
-	id, mapped := ResolveFeatureID("ghcr.io/devcontainers/features/go:1", false)
-	if id != "ghcr.io/devcontainers/features/go:1" {
-		t.Errorf("id = %q", id)
+func TestResolveFeatureID(t *testing.T) {
+	tests := []struct {
+		name            string
+		id              string
+		skipAutoMapping bool
+		wantID          string
+		wantMapped      bool
+	}{
+		{
+			name:       "OCI",
+			id:         "ghcr.io/devcontainers/features/go:1",
+			wantID:     "ghcr.io/devcontainers/features/go:1",
+			wantMapped: false,
+		},
+		{
+			// A migrated legacy shorthand pins :1 (versionBackwardComp).
+			name:       "LegacyMigratedPinsV1",
+			id:         "git",
+			wantID:     "ghcr.io/devcontainers/features/git:1",
+			wantMapped: true,
+		},
+		{
+			// golang → go, pinned :1.
+			name:       "LegacyRenamed_golang",
+			id:         "golang",
+			wantID:     "ghcr.io/devcontainers/features/go:1",
+			wantMapped: true,
+		},
+		{
+			// common → common-utils, pinned :1.
+			name:       "LegacyRenamed_common",
+			id:         "common",
+			wantID:     "ghcr.io/devcontainers/features/common-utils:1",
+			wantMapped: true,
+		},
+		{
+			// An explicit version tag is honored instead of the :1 pin.
+			name:       "LegacyWithVersion",
+			id:         "node:18",
+			wantID:     "ghcr.io/devcontainers/features/node:18",
+			wantMapped: true,
+		},
+		{
+			name:            "SkipAutoMapping",
+			id:              "go",
+			skipAutoMapping: true,
+			wantID:          "go",
+			wantMapped:      false,
+		},
+		{
+			// unknown shorthand should be auto-mapped to ghcr.io/devcontainers/features/.
+			name:       "LegacyUnknown",
+			id:         "my-custom-feature",
+			wantID:     "ghcr.io/devcontainers/features/my-custom-feature:1",
+			wantMapped: true,
+		},
+		{
+			name:       "LocalPath",
+			id:         "./local-feature",
+			wantID:     "./local-feature",
+			wantMapped: false,
+		},
+		{
+			name:       "Tarball",
+			id:         "https://example.com/feature.tgz",
+			wantID:     "https://example.com/feature.tgz",
+			wantMapped: false,
+		},
 	}
-	if mapped {
-		t.Error("OCI features should not be mapped")
-	}
-}
-
-func TestResolveFeatureID_LegacyMigratedPinsV1(t *testing.T) {
-	// A migrated legacy shorthand pins :1 (versionBackwardComp).
-	id, mapped := ResolveFeatureID("git", false)
-	if id != "ghcr.io/devcontainers/features/git:1" {
-		t.Errorf("id = %q", id)
-	}
-	if !mapped {
-		t.Error("should be mapped")
-	}
-}
-
-func TestResolveFeatureID_LegacyRenamed(t *testing.T) {
-	// golang → go, common → common-utils, pinned :1.
-	if id, _ := ResolveFeatureID("golang", false); id != "ghcr.io/devcontainers/features/go:1" {
-		t.Errorf("golang = %q", id)
-	}
-	if id, _ := ResolveFeatureID("common", false); id != "ghcr.io/devcontainers/features/common-utils:1" {
-		t.Errorf("common = %q", id)
-	}
-}
-
-func TestResolveFeatureID_LegacyWithVersion(t *testing.T) {
-	// An explicit version tag is honored instead of the :1 pin.
-	id, mapped := ResolveFeatureID("node:18", false)
-	if id != "ghcr.io/devcontainers/features/node:18" {
-		t.Errorf("id = %q", id)
-	}
-	if !mapped {
-		t.Error("should be mapped")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, mapped := ResolveFeatureID(tt.id, tt.skipAutoMapping)
+			if id != tt.wantID {
+				t.Errorf("id = %q, want %q", id, tt.wantID)
+			}
+			if mapped != tt.wantMapped {
+				t.Errorf("mapped = %v, want %v", mapped, tt.wantMapped)
+			}
+		})
 	}
 }
 
@@ -85,46 +125,6 @@ func TestDeprecatedFeatureIntoOptions(t *testing.T) {
 		if !IsKnownLegacyFeature(name) {
 			t.Errorf("%s should be a known legacy feature", name)
 		}
-	}
-}
-
-func TestResolveFeatureID_SkipAutoMapping(t *testing.T) {
-	id, mapped := ResolveFeatureID("go", true)
-	if id != "go" {
-		t.Errorf("id = %q (should not be mapped)", id)
-	}
-	if mapped {
-		t.Error("should not be mapped when skipAutoMapping is true")
-	}
-}
-
-func TestResolveFeatureID_LegacyUnknown(t *testing.T) {
-	id, mapped := ResolveFeatureID("my-custom-feature", false)
-	if id != "ghcr.io/devcontainers/features/my-custom-feature:1" {
-		t.Errorf("id = %q", id)
-	}
-	if !mapped {
-		t.Error("unknown shorthand should be auto-mapped to ghcr.io/devcontainers/features/")
-	}
-}
-
-func TestResolveFeatureID_LocalPath(t *testing.T) {
-	id, mapped := ResolveFeatureID("./local-feature", false)
-	if id != "./local-feature" {
-		t.Errorf("id = %q", id)
-	}
-	if mapped {
-		t.Error("local paths should not be mapped")
-	}
-}
-
-func TestResolveFeatureID_Tarball(t *testing.T) {
-	id, mapped := ResolveFeatureID("https://example.com/feature.tgz", false)
-	if id != "https://example.com/feature.tgz" {
-		t.Errorf("id = %q", id)
-	}
-	if mapped {
-		t.Error("tarballs should not be mapped")
 	}
 }
 
