@@ -2022,6 +2022,28 @@ initial_cases:
     current_status: match
     notes: "templates generate-docs usa TEMPLATE_README_TEMPLATE (sin Registry/Namespace/Version/Customizations)."
 
+  - id: features-info.manifest-text-success
+    lane: runtime
+    command: features-info
+    priority: p1
+    network_required: true
+    ts_cmd: "features info manifest ghcr.io/devcontainers/features/node:2.1.0"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "info manifest (texto): caja ajustada al título (encloseStringInBox), y el manifest re-indentado desde bytes crudos preserva el orden de anotaciones (sha256 scrubbeado por normalización)."
+
+  - id: features-info.tags-text-success
+    lane: runtime
+    command: features-info
+    priority: p1
+    network_required: true
+    ts_cmd: "features info tags ghcr.io/devcontainers/features/node"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "info tags (texto): tags unidos con '\\n   ' (primero flush, resto indentado 3). Ambos lados consultan el mismo registry."
+
 groups:
   mode-validation:
     rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"
