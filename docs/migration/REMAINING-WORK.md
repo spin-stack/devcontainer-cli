@@ -363,10 +363,14 @@ con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
   (`isBuildxCacheToInline`: `/type\s*=\s*inline/i`). Replicado en
   `docker.buildArgs` (cubre Dockerfile + features + imagen). Unit tests del helper
   y del ensamblado de args.
-- **T4.1 — `read-configuration --cache-key`.** Hash determinista
-  content-addressed de `{devcontainer.json normalizado + Dockerfile + contexto +
-  digests base/features + proxy env}` para prebuild-reuse sin re-implementar el
-  hashing. Go-only (sin oráculo) → tests de determinismo/estabilidad.
+- **T4.1 — `read-configuration --cache-key`. HECHO (Go-only, aditivo).** sha256
+  sobre `{config normalizada + Dockerfile + contexto + lockfile (digests resueltos
+  si existe) + proxy env}`. Hermético (sin red). Aditivo: default off → output
+  byte-idéntico a TS; con el flag agrega el campo `cacheKey`. En el inventario
+  como divergencia. Unit tests de formato, determinismo y sensibilidad al cambio
+  (image, Dockerfile, proxy; ignora env no-proxy). **Limitación:** refs de feature
+  no pinneadas hashean por tag; pinnear (@sha256 o lockfile commiteado) para que
+  la key siga los bits exactos.
 - **T4.2 — `--cache-image` / image-override que saltee feature-install.** Evita el
   clone-and-mutate del config para apuntar a una imagen prebuildeada. Mayor
   alcance; evaluar tras T4.1.

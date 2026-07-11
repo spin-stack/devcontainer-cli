@@ -42,6 +42,7 @@ type readConfigOpts struct {
 	skipFeatureAutoMapping bool
 	terminalColumns        int
 	terminalRows           int
+	cacheKey               bool
 }
 
 func newReadConfigurationCmd() *cobra.Command {
@@ -76,6 +77,10 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
 	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
+	// Go-only: emit a deterministic content-addressed cache key alongside the
+	// configuration (for prebuild reuse by external orchestrators). Additive — the
+	// default output is unchanged from TS.
+	f.BoolVar(&opts.cacheKey, "cache-key", false, "Also emit a deterministic content-addressed cache key for the configuration.")
 
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
@@ -235,6 +240,15 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 
 	output := map[string]interface{}{
 		"configuration": cfgMap,
+	}
+
+	// Go-only: deterministic content-addressed cache key (additive; off by default).
+	if opts.cacheKey && result != nil {
+		key, keyErr := computeCacheKey(result, proxyEnvFromEnviron())
+		if keyErr != nil {
+			return fmt.Errorf("compute cache key: %w", keyErr)
+		}
+		output["cacheKey"] = key
 	}
 
 	if result != nil && result.WorkspaceConfig != nil {

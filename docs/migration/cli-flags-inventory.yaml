@@ -552,6 +552,12 @@ commands:
       terminal-log-file:
         type: string
         description: "Terminal log file path."
+      # Go-only divergence: TS read-configuration has no --cache-key. Additive —
+      # when set, adds a `cacheKey` field to the output; default output unchanged.
+      cache-key:
+        type: boolean
+        default: false
+        description: "Also emit a deterministic content-addressed cache key for the configuration."
     custom_checks:
       - "id-label must match name=value format"
       - "One of --container-id, --id-label or --workspace-folder is required"
