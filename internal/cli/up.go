@@ -955,6 +955,57 @@ func labelsToMap(labels []string) map[string]string {
 	return m
 }
 
+// resolveComposeProjectName computes the compose project name following the TS
+// CLI resolution chain: 1. COMPOSE_PROJECT_NAME env, 2. .env
+// COMPOSE_PROJECT_NAME, 3. name: from the compose config, 4. directory-based
+// fallback.
+func resolveComposeProjectName(cfg *config.DevContainerConfig, env map[string]string, composeFiles []string, composeClient *docker.ComposeClient) string {
+	newNames := composeClient.UsesNewProjectNames()
+
+	// 1. COMPOSE_PROJECT_NAME env
+	if envName, ok := env["COMPOSE_PROJECT_NAME"]; ok && envName != "" {
+		return docker.ToProjectName(envName, newNames)
+	}
+
+	// 2. .env file (already handled by config.GetDockerComposeFilePaths, but check here too)
+	configDir := filepath.Dir(cfg.ConfigFilePath)
+	if data, err := os.ReadFile(filepath.Join(configDir, ".env")); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "COMPOSE_PROJECT_NAME=") {
+				val := strings.TrimSpace(strings.TrimPrefix(line, "COMPOSE_PROJECT_NAME="))
+				if val != "" {
+					return docker.ToProjectName(val, newNames)
+				}
+			}
+		}
+	}
+
+	// 3. name: from compose config (via docker compose config)
+	if composeConfig, configErr := composeClient.Config(composeFiles, ""); configErr == nil {
+		if name, ok := composeConfig["name"].(string); ok && name != "" {
+			if name != "devcontainer" {
+				return docker.ToProjectName(name, newNames)
+			}
+			// "devcontainer" might be the default from docker compose config.
+			// Check if it's explicitly in any compose file.
+			for i := len(composeFiles) - 1; i >= 0; i-- {
+				raw, readErr := os.ReadFile(composeFiles[i])
+				if readErr == nil && strings.Contains(string(raw), "name:") {
+					return docker.ToProjectName(name, newNames)
+				}
+			}
+		}
+	}
+
+	// 4. Directory-based fallback
+	workingDir := filepath.Dir(composeFiles[0])
+	if filepath.Base(configDir) == ".devcontainer" {
+		return docker.ToProjectName(filepath.Base(filepath.Dir(configDir))+"_devcontainer", newNames)
+	}
+	return docker.ToProjectName(filepath.Base(workingDir), newNames)
+}
+
 func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
@@ -974,68 +1025,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 		return "", fmt.Errorf("compose client: %w", err)
 	}
 
-	// Compute project name following TS resolution chain:
-	// 1. COMPOSE_PROJECT_NAME env, 2. .env COMPOSE_PROJECT_NAME,
-	// 3. name: from compose YAML, 4. directory-based fallback
-	newNames := composeClient.UsesNewProjectNames()
-	projectName := ""
-
-	// 1. COMPOSE_PROJECT_NAME env
-	if envName, ok := env["COMPOSE_PROJECT_NAME"]; ok && envName != "" {
-		projectName = docker.ToProjectName(envName, newNames)
-	}
-
-	// 2. .env file (already handled by config.GetDockerComposeFilePaths, but check here too)
-	if projectName == "" {
-		configDir := filepath.Dir(cfg.ConfigFilePath)
-		envFilePath := filepath.Join(configDir, ".env")
-		if data, err := os.ReadFile(envFilePath); err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "COMPOSE_PROJECT_NAME=") {
-					val := strings.TrimPrefix(line, "COMPOSE_PROJECT_NAME=")
-					val = strings.TrimSpace(val)
-					if val != "" {
-						projectName = docker.ToProjectName(val, newNames)
-					}
-				}
-			}
-		}
-	}
-
-	// 3. name: from compose config (via docker compose config)
-	if projectName == "" {
-		composeConfig, configErr := composeClient.Config(composeFiles, "")
-		if configErr == nil {
-			if name, ok := composeConfig["name"].(string); ok && name != "" {
-				if name != "devcontainer" {
-					projectName = docker.ToProjectName(name, newNames)
-				} else {
-					// "devcontainer" might be the default from docker compose config.
-					// Check if it's explicitly in any compose file.
-					for i := len(composeFiles) - 1; i >= 0; i-- {
-						raw, readErr := os.ReadFile(composeFiles[i])
-						if readErr == nil && strings.Contains(string(raw), "name:") {
-							projectName = docker.ToProjectName(name, newNames)
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// 4. Directory-based fallback
-	if projectName == "" {
-		configDir := filepath.Dir(cfg.ConfigFilePath)
-		workingDir := filepath.Dir(composeFiles[0])
-		if filepath.Base(configDir) == ".devcontainer" {
-			projectName = docker.ToProjectName(filepath.Base(filepath.Dir(configDir))+"_devcontainer", newNames)
-		} else {
-			projectName = docker.ToProjectName(filepath.Base(workingDir), newNames)
-		}
-	}
-
+	projectName := resolveComposeProjectName(cfg, env, composeFiles, composeClient)
 	logger.Write(fmt.Sprintf("Compose project: %s, service: %s", projectName, cfg.Service), log.LevelInfo)
 
 	// Check for existing compose container (skip build if it exists)
