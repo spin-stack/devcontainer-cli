@@ -45,8 +45,8 @@ this repo as a git submodule.
   - **contract** — hermetic (flag/output contract, no Docker), fast.
   - **runtime** — creates real containers/images (needs Docker); parallel, isolated
     per case (unique `--id-label` / `COMPOSE_PROJECT_NAME` / `BUILDX_BUILDER`).
-- **`docs/migration/GO-REWRITE-STATUS.md`** is the living log: every closed
-  divergence lists the fix and how it was verified against the TS CLI.
+- **`docs/migration/GO-REWRITE-STATUS.md`** is the current parity status: what is
+  covered and what remains (not a changelog — that lives in `git log`).
 
 The test **skips automatically** when the reference isn't compiled (`reference/dist`
 absent), so `go test ./...` stays green without the submodule.
@@ -55,8 +55,8 @@ absent), so `go test ./...` stays green without the submodule.
 
 1. When streamlining/refactoring the Go code, run the parity matrix to confirm no
    *unintended* behavior change slipped in.
-2. When we *intentionally* change behavior, update the matrix case (or remove it) and
-   note it in `GO-REWRITE-STATUS.md` — the matrix documents deliberate divergences.
+2. When we *intentionally* change behavior, update the matrix case (or remove it) —
+   the matrix documents deliberate divergences.
 3. To track a newer upstream, bump the `reference/` submodule to the new tag and
    re-run the matrix; new failures show where upstream moved (features/behavior added
    after the last validated version).
