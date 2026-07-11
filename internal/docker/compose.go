@@ -1,14 +1,15 @@
 package docker
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
+	osexec "os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/devcontainers/cli/internal/exec"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -20,6 +21,9 @@ type ComposeClient struct {
 	Version []int // parsed version e.g. [2, 24, 0]
 	Env     []string
 	Log     log.Log
+	// Runner is the seam over process execution. When nil, a default OS-backed
+	// runner is used.
+	Runner exec.Runner
 }
 
 // NewComposeClient detects the compose CLI and returns a client.
@@ -32,7 +36,7 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 	}
 
 	// Try docker compose (v2) first
-	if out, err := exec.Command(dockerPath, "compose", "version", "--short").Output(); err == nil {
+	if out, err := osexec.Command(dockerPath, "compose", "version", "--short").Output(); err == nil {
 		version := strings.TrimSpace(string(out))
 		return &ComposeClient{
 			Command: []string{dockerPath, "compose"},
@@ -44,7 +48,7 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 	}
 
 	// Fall back to docker-compose (v1)
-	if out, err := exec.Command(composePath, "version", "--short").Output(); err == nil {
+	if out, err := osexec.Command(composePath, "version", "--short").Output(); err == nil {
 		version := strings.TrimSpace(string(out))
 		return &ComposeClient{
 			Command: []string{composePath},
@@ -69,29 +73,19 @@ func (c *ComposeClient) Run(args ...string) (*ExecResult, error) {
 	runLine := fmt.Sprintf("Run: %s %s", c.Command[0], strings.Join(fullArgs, " "))
 	startTS := c.Log.Start(runLine, log.LevelDebug)
 
-	cmd := exec.Command(c.Command[0], fullArgs...)
-	if len(c.Env) > 0 {
-		cmd.Env = append(os.Environ(), c.Env...)
+	runner := c.Runner
+	if runner == nil {
+		runner = exec.OSRunner{Env: c.Env}
 	}
-
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	stdout, stderr, exitCode, err := runner.Run(context.Background(), c.Command[0], fullArgs...)
 	c.Log.Stop(runLine, startTS, log.LevelDebug)
-	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			return nil, fmt.Errorf("exec compose: %w", err)
-		}
+		return nil, fmt.Errorf("exec compose: %w", err)
 	}
 
 	return &ExecResult{
-		Stdout:   []byte(stdout.String()),
-		Stderr:   []byte(stderr.String()),
+		Stdout:   stdout,
+		Stderr:   stderr,
 		ExitCode: exitCode,
 	}, nil
 }

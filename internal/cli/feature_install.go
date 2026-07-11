@@ -58,11 +58,12 @@ type fetchFeatureResult struct {
 }
 
 // fetchFeatureSets fetches features from OCI and returns ordered FeatureSets.
-func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsRecursive(logger, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, map[string]bool{})
+// reg is the registry seam; pass nil for the default OCI client.
+func fetchFeatureSets(logger log.Log, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsRecursive(logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, map[string]bool{})
 }
 
-func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, resolved map[string]bool) (*fetchFeatureResult, error) {
+func fetchFeatureSetsRecursive(logger log.Log, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, resolved map[string]bool) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
@@ -84,8 +85,10 @@ func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{
 
 	logger.Write(fmt.Sprintf("Installing %d feature(s)...", len(featuresCfg)), log.LevelInfo)
 
-	env := osEnvMap()
-	ociClient := oci.NewClient(logger, env)
+	ociClient := reg
+	if ociClient == nil {
+		ociClient = oci.NewClient(logger, osEnvMap())
+	}
 
 	tmpDir, err := os.MkdirTemp("", "devcontainer-features-")
 	if err != nil {
@@ -451,7 +454,7 @@ func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{
 		}
 	}
 	if len(dependencyCfg) > 0 {
-		deps, depErr := fetchFeatureSetsRecursive(logger, dependencyCfg, featuresBasePath, skipAutoMapping, lockfile, resolved)
+		deps, depErr := fetchFeatureSetsRecursive(logger, ociClient, dependencyCfg, featuresBasePath, skipAutoMapping, lockfile, resolved)
 		if depErr != nil {
 			os.RemoveAll(tmpDir)
 			return nil, depErr
@@ -609,7 +612,7 @@ func extendImageWithFeatures(
 	if fbOpts != nil && fbOpts.ConfigPath != "" {
 		lockfile, _, _ = features.ReadLockfile(fbOpts.ConfigPath)
 	}
-	result, err := fetchFeatureSets(logger, featuresCfg, featuresBasePath, skipAutoMap, lockfile)
+	result, err := fetchFeatureSets(logger, nil, featuresCfg, featuresBasePath, skipAutoMap, lockfile)
 	if err != nil {
 		return nil, err
 	}

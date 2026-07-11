@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/pfs"
 )
 
 func TestMergeFeatures_PreservesJSONC(t *testing.T) {
@@ -26,7 +27,7 @@ func TestMergeFeatures_PreservesJSONC(t *testing.T) {
 		{ID: "ghcr.io/devcontainers/features/node:1", Options: map[string]interface{}{"version": "20"}},
 		{ID: "ghcr.io/devcontainers/features/git:1"},
 	}
-	if err := mergeFeatures(dir, feats, log.Null); err != nil {
+	if err := mergeFeatures(pfs.OSFS{}, dir, feats, log.Null); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,7 +73,7 @@ func TestMergeFeatures_SkipsExisting(t *testing.T) {
 	feats := []TemplateFeatureOption{
 		{ID: "ghcr.io/devcontainers/features/node:1", Options: map[string]interface{}{"version": "20"}},
 	}
-	if err := mergeFeatures(dir, feats, log.Null); err != nil {
+	if err := mergeFeatures(pfs.OSFS{}, dir, feats, log.Null); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := os.ReadFile(cfgPath)

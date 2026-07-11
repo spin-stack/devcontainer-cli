@@ -22,6 +22,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 		Use:   "resolve-dependencies",
 		Short: "Read and resolve dependency graph from a configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := outputFor(cmd)
 			// 0.88: workspace-folder defaults to cwd when not provided.
 			if workspaceFolder == "" {
 				workspaceFolder, _ = os.Getwd()
@@ -42,7 +43,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			cfg := loadResult.Config
 			userFeatures := features.UserFeaturesToArray(cfg.Features)
 			if len(userFeatures) == 0 {
-				fmt.Fprintln(os.Stdout, `{"installOrder":[]}`)
+				fmt.Fprintln(out.Stdout(), `{"installOrder":[]}`)
 				return nil
 			}
 
@@ -115,10 +116,10 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			for _, uf := range userFeatures {
 				rootIDs = append(rootIDs, uf.UserFeatureID)
 			}
-			fmt.Fprintln(os.Stdout, renderDependencyMermaid(ociClient, logger, rootIDs))
+			fmt.Fprintln(out.Stdout(), renderDependencyMermaid(ociClient, logger, rootIDs))
 
-			out, _ := json.MarshalIndent(map[string]interface{}{"installOrder": entries}, "", "  ")
-			fmt.Fprintln(os.Stdout, string(out))
+			data, _ := json.MarshalIndent(map[string]interface{}{"installOrder": entries}, "", "  ")
+			fmt.Fprintln(out.Stdout(), string(data))
 			return nil
 		},
 	}

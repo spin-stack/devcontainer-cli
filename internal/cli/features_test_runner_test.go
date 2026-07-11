@@ -50,13 +50,13 @@ func TestRunScenarioTests_ReportsMissingScriptAsSkipped(t *testing.T) {
 	if len(results) != 1 || results[0].Status != testSkipped {
 		t.Fatalf("results = %#v, want one skipped scenario", results)
 	}
-	if exit := reportTestResults(results); exit != 0 {
+	if exit := reportTestResults(OSOutput(), results); exit != 0 {
 		t.Fatalf("skipped scenario exit = %d, want 0", exit)
 	}
 }
 
 func TestReportTestResults_ErrorsFailCommand(t *testing.T) {
-	if exit := reportTestResults([]testResult{{Name: "setup", Status: testError, Detail: "boom"}}); exit != 1 {
+	if exit := reportTestResults(OSOutput(), []testResult{{Name: "setup", Status: testError, Detail: "boom"}}); exit != 1 {
 		t.Fatalf("exit = %d, want 1", exit)
 	}
 }

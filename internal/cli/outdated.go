@@ -33,7 +33,7 @@ func newOutdatedCmd() *cobra.Command {
 			if workspaceFolder == "" {
 				workspaceFolder, _ = os.Getwd()
 			}
-			return runOutdated(workspaceFolder, configPath, outputFormat, logLevel, logFormat)
+			return runOutdated(outputFor(cmd), workspaceFolder, configPath, outputFormat, logLevel, logFormat)
 		},
 	}
 
@@ -87,7 +87,7 @@ func highestSatisfyingTag(versions []*semver.Version, tag string) string {
 
 // resolvePublishedVersions fetches and returns a feature ref's published semver
 // tags, sorted ascending.
-func resolvePublishedVersions(ociClient *oci.Client, ref *oci.Ref) []*semver.Version {
+func resolvePublishedVersions(ociClient oci.Registry, ref *oci.Ref) []*semver.Version {
 	tags, err := ociClient.GetPublishedTags(ref)
 	if err != nil {
 		return nil
@@ -114,7 +114,7 @@ func majorOf(v string) string {
 	return fmt.Sprintf("%d", parsed.Major())
 }
 
-func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logFormatStr string) error {
+func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevelStr, logFormatStr string) error {
 	logger := log.New(log.Options{
 		Level:  log.MapLogLevel(logLevelStr),
 		Format: logFormatStr,
@@ -135,9 +135,9 @@ func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logForm
 	cfg := loadResult.Config
 	if cfg.Features == nil || len(cfg.Features) == 0 {
 		if outputFormat == "json" {
-			fmt.Fprintln(os.Stdout, `{"features":{}}`)
+			fmt.Fprintln(out.Stdout(), `{"features":{}}`)
 		} else {
-			fmt.Println("No features configured.")
+			fmt.Fprintln(out.Stdout(), "No features configured.")
 		}
 		return nil
 	}
@@ -185,9 +185,9 @@ func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logForm
 	}
 
 	if outputFormat == "json" {
-		out := map[string]interface{}{"features": result}
-		data, _ := json.MarshalIndent(out, "", "  ")
-		fmt.Fprintln(os.Stdout, string(data))
+		payload := map[string]interface{}{"features": result}
+		data, _ := json.MarshalIndent(payload, "", "  ")
+		fmt.Fprintln(out.Stdout(), string(data))
 	} else {
 		// Text table
 		ids := make([]string, 0, len(result))
@@ -195,7 +195,7 @@ func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logForm
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		fmt.Printf("%-50s %-12s %-12s %-12s\n", "Feature", "Current", "Wanted", "Latest")
+		fmt.Fprintf(out.Stdout(), "%-50s %-12s %-12s %-12s\n", "Feature", "Current", "Wanted", "Latest")
 		for _, id := range ids {
 			e := result[id]
 			// Shorten display ID
@@ -203,7 +203,7 @@ func runOutdated(workspaceFolder, configPath, outputFormat, logLevelStr, logForm
 			if parts := strings.Split(display, "/"); len(parts) > 2 {
 				display = strings.Join(parts[len(parts)-2:], "/")
 			}
-			fmt.Printf("%-50s %-12s %-12s %-12s\n", display, e.Current, e.Wanted, e.Latest)
+			fmt.Fprintf(out.Stdout(), "%-50s %-12s %-12s %-12s\n", display, e.Current, e.Wanted, e.Latest)
 		}
 	}
 
@@ -264,7 +264,7 @@ func newUpgradeCmd() *cobra.Command {
 
 			if dryRun {
 				data, _ := json.MarshalIndent(lf, "", "  ")
-				fmt.Fprintln(os.Stdout, string(data))
+				fmt.Fprintln(outputFor(cmd).Stdout(), string(data))
 				return nil
 			}
 
@@ -294,7 +294,7 @@ func newUpgradeCmd() *cobra.Command {
 	return cmd
 }
 
-func resolveFeatureSets(cfg *config.DevContainerConfig, ociClient *oci.Client, logger log.Log) []*features.FeatureSet {
+func resolveFeatureSets(cfg *config.DevContainerConfig, ociClient oci.Registry, logger log.Log) []*features.FeatureSet {
 	if cfg.Features == nil {
 		return nil
 	}

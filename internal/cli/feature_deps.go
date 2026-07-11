@@ -18,7 +18,7 @@ import (
 // priority when overrideFeatureInstallOrder is set. Node hashes are internally
 // consistent (an edge points at the target node's own hash); they need not match
 // the TS hash byte-for-byte because the parity harness scrubs them.
-func renderDependencyMermaid(client *oci.Client, logger log.Log, roots []string) string {
+func renderDependencyMermaid(client oci.Registry, logger log.Log, roots []string) string {
 	type depNode struct {
 		id            string
 		aliases       []string

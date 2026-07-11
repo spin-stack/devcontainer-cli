@@ -39,8 +39,9 @@ func newSetUpCmd() *cobra.Command {
 		Use:   "set-up",
 		Short: "Set up an existing container as a dev container",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := outputFor(cmd)
 			if containerID == "" {
-				return writeValidationError("Missing required argument: --container-id")
+				return writeValidationError(out, "Missing required argument: --container-id")
 			}
 			for _, v := range []struct {
 				flag, val string
@@ -51,11 +52,11 @@ func newSetUpCmd() *cobra.Command {
 				{"default-user-env-probe", defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
 			} {
 				if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-					return writeValidationError(err.Error())
+					return writeValidationError(out, err.Error())
 				}
 			}
 			if err := validateTerminalImplications(terminalColumns, terminalRows); err != nil {
-				return writeValidationError(err.Error())
+				return writeValidationError(out, err.Error())
 			}
 
 			logger := log.New(log.Options{
@@ -69,13 +70,13 @@ func newSetUpCmd() *cobra.Command {
 			ctx := cmd.Context()
 			engine, err := docker.NewEngineClient(logger)
 			if err != nil {
-				return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))
+				return writeErrorResult(out, fmt.Sprintf("Docker engine: %v", err))
 			}
 			defer engine.Close()
 
 			inspect, err := engine.InspectContainer(ctx, containerID)
 			if err != nil {
-				return writeErrorResult("Dev container not found.")
+				return writeErrorResult(out, "Dev container not found.")
 			}
 
 			// Get containerEnv from running container
@@ -136,7 +137,7 @@ func newSetUpCmd() *cobra.Command {
 
 			shellServer, err := lifecycle.NewShellServer(dockerPath, containerID, remoteUser, logger, mergedRemoteEnv...)
 			if err != nil {
-				return writeErrorResult(fmt.Sprintf("Failed to start shell: %v", err))
+				return writeErrorResult(out, fmt.Sprintf("Failed to start shell: %v", err))
 			}
 			defer shellServer.Close()
 
@@ -155,7 +156,7 @@ func newSetUpCmd() *cobra.Command {
 					SkipNonBlocking: skipNonBlocking,
 				})
 				if hookErr != nil {
-					return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+					return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 						Description: fmt.Sprintf("An error occurred running user commands: %v", hookErr),
 					}))
 				}
@@ -216,7 +217,7 @@ func newSetUpCmd() *cobra.Command {
 				result["mergedConfiguration"] = substituted
 			}
 
-			return writeSuccessJSON(result)
+			return writeSuccessJSON(out, result)
 		},
 	}
 

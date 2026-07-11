@@ -49,7 +49,7 @@ func newBuildCmd() *cobra.Command {
 		Use:   "build [path]",
 		Short: "Build a dev container image",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBuild(cmd.Context(), &opts)
+			return runBuild(cmd.Context(), outputFor(cmd), &opts)
 		},
 	}
 
@@ -95,7 +95,7 @@ type buildRunner struct {
 	opts   *buildOpts
 }
 
-func runBuild(ctx context.Context, opts *buildOpts) error {
+func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	// 0.88: --workspace-folder defaults to the current directory when not given.
 	if opts.workspaceFolder == "" {
 		opts.workspaceFolder, _ = os.Getwd()
@@ -109,7 +109,7 @@ func runBuild(ctx context.Context, opts *buildOpts) error {
 		{"buildkit", opts.buildkit, []string{"auto", "never"}},
 	} {
 		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return writeValidationError(err.Error())
+			return writeValidationError(out, err.Error())
 		}
 	}
 
@@ -131,17 +131,17 @@ func runBuild(ctx context.Context, opts *buildOpts) error {
 	// Load config
 	loadResult, err := config.LoadDevContainerConfig(workspaceFolder, configPath, "")
 	if err != nil {
-		return writeErrorResult(err.Error())
+		return writeErrorResult(out, err.Error())
 	}
 	cfg := loadResult.Config
 
 	opts.lockfileExcludeIDs, err = mergeAdditionalFeatures(cfg, opts.additionalFeatures)
 	if err != nil {
-		return writeErrorResult(err.Error())
+		return writeErrorResult(out, err.Error())
 	}
 
 	if derr := enforceDisallowedFeatures(cfg, logger); derr != nil {
-		return writeErrorJSON(coreerrors.ToErrorOutput(derr))
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
 	}
 
 	// Setup Docker clients
@@ -149,7 +149,7 @@ func runBuild(ctx context.Context, opts *buildOpts) error {
 
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
-		return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))
+		return writeErrorResult(out, fmt.Sprintf("Docker engine: %v", err))
 	}
 	defer engine.Close()
 
@@ -164,22 +164,22 @@ func runBuild(ctx context.Context, opts *buildOpts) error {
 
 	// Validate buildx-only flags
 	if (opts.platform != "" || opts.push) && !useBuildx {
-		return writeErrorResult("--platform or --push require BuildKit enabled.")
+		return writeErrorResult(out, "--platform or --push require BuildKit enabled.")
 	}
 	if opts.output != "" && opts.push {
-		return writeErrorResult("--push true cannot be used with --output.")
+		return writeErrorResult(out, "--push true cannot be used with --output.")
 	}
 
 	// Validate compose-incompatible flags
 	if cfg.IsComposeConfig() {
 		if opts.platform != "" || opts.push {
-			return writeErrorResult("--platform or --push not supported.")
+			return writeErrorResult(out, "--platform or --push not supported.")
 		}
 		if opts.output != "" {
-			return writeErrorResult("--output not supported.")
+			return writeErrorResult(out, "--output not supported.")
 		}
 		if opts.cacheTo != "" {
-			return writeErrorResult("--cache-to not supported.")
+			return writeErrorResult(out, "--cache-to not supported.")
 		}
 	}
 
@@ -196,14 +196,14 @@ func runBuild(ctx context.Context, opts *buildOpts) error {
 
 	if err != nil {
 		if isUserFacingBuildError(err) {
-			return writeErrorResult(err.Error())
+			return writeErrorResult(out, err.Error())
 		}
-		return writeErrorJSON(coreerrors.ToErrorOutput(&coreerrors.ContainerError{
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 			Description: fmt.Sprintf("An error occurred building the container: %v", err),
 		}))
 	}
 
-	return writeSuccessJSON(map[string]interface{}{
+	return writeSuccessJSON(out, map[string]interface{}{
 		"outcome":   "success",
 		"imageName": imageNameResult,
 	})
@@ -553,14 +553,14 @@ func buildOptionsFromConfig(cfg *config.DevContainerConfig) []string {
 	return cfg.Build.Options
 }
 
-func writeSuccessJSON(data map[string]interface{}) error {
-	out, _ := json.Marshal(data)
-	fmt.Fprintln(os.Stdout, string(out))
+func writeSuccessJSON(out Output, data map[string]interface{}) error {
+	b, _ := json.Marshal(data)
+	fmt.Fprintln(out.Stdout(), string(b))
 	return nil
 }
 
-func writeErrorResult(description string) error {
-	return writeErrorJSON(coreerrors.ErrorOutput{
+func writeErrorResult(out Output, description string) error {
+	return writeErrorJSON(out, coreerrors.ErrorOutput{
 		Outcome:     "error",
 		Message:     description,
 		Description: description,
@@ -572,14 +572,14 @@ func writeErrorResult(description string) error {
 // envelope). Reserved for the validation phase (flag parsing, enum checks,
 // required args, format/implication checks) that runs before any runtime work.
 // Runtime failures keep using writeErrorResult (JSON envelope on stdout).
-func writeValidationError(message string) error {
-	fmt.Fprintln(os.Stderr, message)
+func writeValidationError(out Output, message string) error {
+	fmt.Fprintln(out.Stderr(), message)
 	return &coreerrors.ExitCodeError{Code: 1, Err: fmt.Errorf("%s", message)}
 }
 
-func writeErrorJSON(errOutput coreerrors.ErrorOutput) error {
-	out, _ := json.Marshal(errOutput)
-	fmt.Fprintln(os.Stdout, string(out))
+func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
+	b, _ := json.Marshal(errOutput)
+	fmt.Fprintln(out.Stdout(), string(b))
 	return &coreerrors.ExitCodeError{Code: 1, Err: fmt.Errorf("%s", errOutput.Description)}
 }
 
