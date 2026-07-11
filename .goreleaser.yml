@@ -39,6 +39,67 @@ sboms:
   - id: archive
     artifacts: archive
 
+# Multi-arch OCI images. GoReleaser reuses the binaries built above (one image
+# per arch, matched by goos/goarch + ids) and feeds them to ./Dockerfile, which
+# COPYs the binary onto distroless/static:nonroot. Requires buildx on the runner
+# (docker/setup-buildx-action) and a GHCR login; images are pushed on the tag
+# release run only (see .github/workflows/release.yml).
+#
+# NOTE on attestations: buildx `--provenance`/`--sbom` flags are intentionally
+# NOT set here. They turn each single-arch image into an OCI index, which the
+# classic `docker manifest create` used by `docker_manifests:` below cannot nest
+# ("... is a manifest list", exit 1 — verified empirically). Image-level SBOM and
+# keyless signing/provenance are produced in the release workflow with syft +
+# cosign against the pushed manifest digest. The `sboms:` block above still emits
+# a syft SBOM of the archive (the exact binary shipped in the image).
+dockers:
+  - id: amd64
+    goos: linux
+    goarch: amd64
+    ids:
+      - devcontainer
+    dockerfile: Dockerfile
+    use: buildx
+    image_templates:
+      - "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=REVISION={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.title=devcontainer-cli"
+      - "--label=org.opencontainers.image.source=https://github.com/spin-stack/devcontainer-cli"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+  - id: arm64
+    goos: linux
+    goarch: arm64
+    ids:
+      - devcontainer
+    dockerfile: Dockerfile
+    use: buildx
+    image_templates:
+      - "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=REVISION={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.title=devcontainer-cli"
+      - "--label=org.opencontainers.image.source=https://github.com/spin-stack/devcontainer-cli"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}-amd64"
+      - "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/spin-stack/devcontainer-cli:latest"
+    image_templates:
+      - "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}-amd64"
+      - "ghcr.io/spin-stack/devcontainer-cli:{{ .Version }}-arm64"
+
 changelog:
   sort: asc
   filters:
