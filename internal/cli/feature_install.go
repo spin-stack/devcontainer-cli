@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devcontainers/cli/internal/core/log"
-	"github.com/devcontainers/cli/internal/core/pfs"
 	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
+	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
+	"github.com/devcontainers/cli/internal/pfs"
 )
 
 // FeatureBuildOptions holds extra build options to thread through feature install.

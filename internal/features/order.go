@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // FNode is a node in the feature dependency graph.

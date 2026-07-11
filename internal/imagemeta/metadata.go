@@ -3,7 +3,7 @@ package imagemeta
 import (
 	"encoding/json"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // MetadataLabel is the Docker label key used to persist devcontainer metadata.

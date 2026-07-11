@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 	"github.com/spf13/cobra"
 )
 

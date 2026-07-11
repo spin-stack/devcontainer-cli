@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	coreerrors "github.com/devcontainers/cli/internal/core/errors"
-	"github.com/devcontainers/cli/internal/core/product"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
+	"github.com/devcontainers/cli/internal/product"
 	"github.com/spf13/cobra"
 )
 

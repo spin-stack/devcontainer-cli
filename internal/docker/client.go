@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // Client wraps the Docker CLI binary. It shells out to `docker` rather

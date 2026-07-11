@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/imagemeta"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 func TestRootCommand_Version(t *testing.T) {

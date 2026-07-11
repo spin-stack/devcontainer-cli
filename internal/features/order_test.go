@@ -3,7 +3,7 @@ package features
 import (
 	"testing"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 func makeOCINode(id, registry, namespace, featureID string, deps ...*FNode) *FNode {

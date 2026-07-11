@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/devcontainers/cli/internal/core/jsonc"
+	"github.com/devcontainers/cli/internal/jsonc"
 )
 
 func TestDevContainerConfig_ImageVariant(t *testing.T) {

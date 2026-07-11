@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // EOT is the End-Of-Transmission marker used to delimit command output.

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 func TestFetchFeatureSets_LocalFeature(t *testing.T) {

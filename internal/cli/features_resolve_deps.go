@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/spf13/cobra"
 )

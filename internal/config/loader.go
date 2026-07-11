@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/core/jsonc"
-	"github.com/devcontainers/cli/internal/core/pfs"
+	"github.com/devcontainers/cli/internal/jsonc"
+	"github.com/devcontainers/cli/internal/pfs"
 )
 
 // ConfigNotFoundError is returned when no devcontainer.json can be discovered.

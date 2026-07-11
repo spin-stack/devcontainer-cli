@@ -5,7 +5,7 @@ vars:
   MODULE: github.com/devcontainers/cli
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo dev
-  LDFLAGS: -s -w -X {{.MODULE}}/internal/core/product.version={{.VERSION}} -X {{.MODULE}}/internal/core/product.name={{.BINARY}}
+  LDFLAGS: -s -w -X {{.MODULE}}/internal/product.version={{.VERSION}} -X {{.MODULE}}/internal/product.name={{.BINARY}}
   FIXTURES_DIR: src/test/configs
   TS_CLI: node reference/devcontainer.js
   TS_TEST_SHIM: src/test/tmp/node_modules/.bin/devcontainer

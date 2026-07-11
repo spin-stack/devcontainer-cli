@@ -178,7 +178,7 @@ func TestLogLevelFilter_TerminalVsJSON(t *testing.T) {
 	// Terminal handler filters by --log-level (like the TS CLI): at info,
 	// debug/trace lines are dropped; at debug, debug shows; trace shows all.
 	cases := []struct {
-		min                       LogLevel
+		min                            LogLevel
 		wantInfo, wantDebug, wantTrace bool
 	}{
 		{LevelInfo, true, false, false},

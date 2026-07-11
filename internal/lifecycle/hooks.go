@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/imagemeta"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // Phase represents a lifecycle command phase.

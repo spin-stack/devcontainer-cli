@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // RunInitializeCommand executes the initializeCommand on the host machine.

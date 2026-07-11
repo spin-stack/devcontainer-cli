@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/devcontainers/cli/internal/core/log"
-	"github.com/devcontainers/cli/internal/core/pfs"
+	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/pfs"
 )
 
 // UpdateRemoteUserUID builds and runs a temporary image that remaps

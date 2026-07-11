@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/core/log"
-	"github.com/devcontainers/cli/internal/core/product"
 	"github.com/devcontainers/cli/internal/docker"
+	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/product"
 	dockermount "github.com/docker/docker/api/types/mount"
 	"github.com/tailscale/hujson"
 )

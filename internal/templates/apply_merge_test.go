@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 func TestMergeFeatures_PreservesJSONC(t *testing.T) {

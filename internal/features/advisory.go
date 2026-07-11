@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devcontainers/cli/internal/core/httpx"
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/httpx"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // DisallowedFeature describes a blocked feature.

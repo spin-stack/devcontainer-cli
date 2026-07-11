@@ -8,7 +8,7 @@ import (
 
 	orascontent "oras.land/oras-go/v2/content"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // Client performs OCI registry operations (pull manifest, download blob, list

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // ComposeClient wraps Docker Compose CLI (v1 or v2).

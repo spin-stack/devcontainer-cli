@@ -10,8 +10,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/core/jsonc"
-	"github.com/devcontainers/cli/internal/core/log"
+	"github.com/devcontainers/cli/internal/jsonc"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 // credential holds resolved auth for a registry.

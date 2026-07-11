@@ -12,12 +12,12 @@ import (
 	dockermount "github.com/docker/docker/api/types/mount"
 
 	"github.com/devcontainers/cli/internal/config"
-	coreerrors "github.com/devcontainers/cli/internal/core/errors"
-	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/docker"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/lifecycle"
+	"github.com/devcontainers/cli/internal/log"
 	"github.com/spf13/cobra"
 )
 

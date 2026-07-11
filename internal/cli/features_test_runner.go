@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/core/jsonc"
-	"github.com/devcontainers/cli/internal/core/log"
-	"github.com/devcontainers/cli/internal/core/pfs"
+	"github.com/devcontainers/cli/internal/jsonc"
+	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/pfs"
 )
 
 // testLibraryScript is the bash test helper library that provides check() and reportResults().

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/imagemeta"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 type mockExecutor struct {
