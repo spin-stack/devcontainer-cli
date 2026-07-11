@@ -288,9 +288,11 @@ La auditoría de cobertura marcó que una matriz "verde" sobreestima paridad. Es
   `read-configuration.host-variable-substitution`. Merge de metadata-label ya cubierto y
   `match`: `container-metadata-success` (base-image label) + `features-configuration`
   (multi-feature, con `compare_nulls`).
-- **Pendiente — masking de secrets**: assert de que los valores secretos se enmascaran
-  en la salida; bloqueado por el gap de entorno que deja los casos `*-secrets`
-  inconclusive (ambos lados fallan — ver abajo).
+- **Hecho — masking de secrets**: la redacción del logger (`********`, paridad TS
+  `maskSecrets`) está unit-testeada (`log.TestSecretMasking`: valor, substring, vacío), y
+  los casos `up`/`run-user-commands.workspace-secrets-success` (antes inconclusive por un
+  fixture-path faltante, ya corregido) corren con `--log-level trace` + secrets y matchean
+  — verificado 0 leaks del valor crudo en la salida de ambos lados.
 
 ## Decisiones que deben quedar explícitas
 
