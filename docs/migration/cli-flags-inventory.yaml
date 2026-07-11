@@ -131,6 +131,11 @@ commands:
         type: boolean
         default: false
         description: "Stop after onCreateCommand and updateContentCommand."
+      # Go-only divergence: TS up has no --cache-image. Starts from a prebuilt
+      # image (features baked in), skipping build + feature install.
+      cache-image:
+        type: string
+        description: "Start from this prebuilt image, skipping build and feature install (not for Compose configs)."
       user-data-folder:
         type: string
         description: "Host path to a directory that is intended to be persisted and share state between sessions."

@@ -41,6 +41,7 @@ type upOpts struct {
 	skipNonBlocking             bool
 	skipPostAttach              bool
 	prebuild                    bool
+	cacheImage                  string
 	buildkit                    string
 	idLabels                    []string
 	mounts                      []string
@@ -109,6 +110,10 @@ func newUpCmd() *cobra.Command {
 	f.BoolVar(&opts.skipNonBlocking, "skip-non-blocking-commands", false, "Stop after waitFor command.")
 	f.BoolVar(&opts.skipPostAttach, "skip-post-attach", false, "Skip postAttachCommand.")
 	f.BoolVar(&opts.prebuild, "prebuild", false, "Stop after updateContentCommand.")
+	// Go-only: start from a prebuilt image (features already baked in) instead of
+	// building + installing features. The image's devcontainer.metadata label
+	// supplies the merged configuration.
+	f.StringVar(&opts.cacheImage, "cache-image", "", "Start from this prebuilt image, skipping build and feature install (not for Compose configs).")
 	f.StringVar(&opts.buildkit, "buildkit", "auto", "BuildKit mode.")
 	f.StringArrayVar(&opts.idLabels, "id-label", nil, "Id label(s).")
 	f.StringArrayVar(&opts.mounts, "mount", nil, "Additional mount(s).")
@@ -362,7 +367,12 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		// the app service fails when a dependency it shares a network namespace
 		// with (e.g. db via `network_mode: service:db`) is stopped. upFromCompose
 		// handles the existing-container and expect-existing-container cases.
-		if cfg.IsDockerfileConfig() {
+		if opts.cacheImage != "" {
+			if cfg.IsComposeConfig() {
+				return writeValidationError(out, "--cache-image is not supported with a Docker Compose configuration.")
+			}
+			containerID, err = run.fromCacheImage(cfg, loadResult, workspaceFolder, idLabels)
+		} else if cfg.IsDockerfileConfig() {
 			containerID, err = run.fromDockerfile(cfg, loadResult, workspaceFolder, idLabels, useBuildx)
 		} else if cfg.IsComposeConfig() {
 			containerID, err = run.fromCompose(cfg, loadResult, workspaceFolder, idLabels, useBuildx)
@@ -803,6 +813,28 @@ func (r *upRunner) fromImage(cfg *config.DevContainerConfig, loadResult *config.
 	imageName = r.maybeUpdateRemoteUserUID(imageName, cfg.RemoteUser, cfg)
 
 	return r.runContainer(imageName, cfg, loadResult, workspaceFolder, idLabels)
+}
+
+// fromCacheImage starts the container from a prebuilt image (--cache-image),
+// skipping the image build and feature installation entirely. The prebuilt image
+// is expected to already carry the features and a devcontainer.metadata label
+// (produced by an earlier build of the same configuration), so the merged
+// configuration is recovered from that label the same way as a plain image-based
+// config. remoteUser/mounts/lifecycle still come from devcontainer.json.
+func (r *upRunner) fromCacheImage(cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
+	ctx, logger, engine := r.ctx, r.log, r.engine
+	image := r.opts.cacheImage
+
+	if _, err := engine.InspectImage(ctx, image); err != nil {
+		logger.Write(fmt.Sprintf("Pulling cache image %s...", image), log.LevelInfo)
+		if pullErr := engine.PullImage(ctx, image); pullErr != nil {
+			return "", fmt.Errorf("failed to pull cache image %q: %w", image, pullErr)
+		}
+	}
+	logger.Write(fmt.Sprintf("Using prebuilt cache image %s; skipping build and feature install", image), log.LevelInfo)
+
+	image = r.maybeUpdateRemoteUserUID(image, cfg.RemoteUser, cfg)
+	return r.runContainer(image, cfg, loadResult, workspaceFolder, idLabels)
 }
 
 // maybeUpdateRemoteUserUID rebuilds imageName with the remote user's UID/GID
