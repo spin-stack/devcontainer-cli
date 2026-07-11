@@ -47,6 +47,9 @@ type FeatureBuildOptions struct {
 	// LockfileExcludeIDs holds userFeatureIds supplied only via
 	// --additional-features; 0.88 (#11616) keeps these out of the lockfile.
 	LockfileExcludeIDs map[string]bool
+	// OverrideFeatureInstallOrder is cfg.overrideFeatureInstallOrder, threaded
+	// into the dependency graph builder so install order honors it (RW-001).
+	OverrideFeatureInstallOrder []string
 }
 
 // extendImageWithFeatures fetches features from OCI, generates the extended
@@ -57,247 +60,239 @@ type fetchFeatureResult struct {
 	TmpDir      string // caller must os.RemoveAll when done
 }
 
-// fetchFeatureSets fetches features from OCI and returns ordered FeatureSets.
+// fetchFeatureSets fetches features and returns them in install order.
 func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsRecursive(logger, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, map[string]bool{})
+	return fetchFeatureSetsWithOrder(logger, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
 }
 
-func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, resolved map[string]bool) (*fetchFeatureResult, error) {
+// fetchFeatureSetsWithOrder resolves the feature dependency graph through the
+// unified features.BuildDependencyGraph builder (RW-002), applying
+// overrideFeatureInstallOrder (RW-001) and returning the FeatureSets in install
+// order. Each returned FeatureSet's content is staged under the returned TmpDir
+// at _dev_container_feature_<installOrderIndex>, matching the generated
+// Dockerfile's COPY paths.
+func fetchFeatureSetsWithOrder(logger log.Log, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
 
-	// A dependency may be reached through multiple parents (or through a cycle).
-	// Process each user feature id once; the graph assembled below still retains
-	// every dependency edge, allowing ComputeInstallationOrder to report cycles.
-	pending := make(map[string]interface{}, len(featuresCfg))
-	for id, opts := range featuresCfg {
-		if !resolved[id] {
-			resolved[id] = true
-			pending[id] = opts
-		}
-	}
-	if len(pending) == 0 {
-		return nil, nil
-	}
-	featuresCfg = pending
+	// Deterministic user-feature order (Go maps iterate randomly).
+	userFeatures := features.UserFeaturesToArray(featuresCfg)
+	sort.Slice(userFeatures, func(i, j int) bool {
+		return userFeatures[i].UserFeatureID < userFeatures[j].UserFeatureID
+	})
 
-	logger.Write(fmt.Sprintf("Installing %d feature(s)...", len(featuresCfg)), log.LevelInfo)
+	logger.Write(fmt.Sprintf("Installing %d feature(s)...", len(userFeatures)), log.LevelInfo)
 
-	env := osEnvMap()
-	ociClient := oci.NewClient(logger, env)
+	ociClient := oci.NewClient(logger, osEnvMap())
 
 	tmpDir, err := os.MkdirTemp("", "devcontainer-features-")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
 
-	// Sort feature IDs for stable ordering (Go maps iterate randomly)
-	featureIDs := make([]string, 0, len(featuresCfg))
-	for id := range featuresCfg {
-		featureIDs = append(featureIDs, id)
+	// processFeature is the injected seam (TS processFeature): given a node's
+	// UserFeatureID + Options, fetch/extract the feature and read its metadata
+	// (annotation-first, blob-fallback for OCI). Each call stages content in its
+	// own directory; the final install-order index dictates the real directory
+	// name, applied later by realignFeatureDirs.
+	stageIdx := 0
+	nextStageDir := func() string {
+		dir := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_stage_%d", stageIdx))
+		stageIdx++
+		return dir
 	}
-	sort.Strings(featureIDs)
 
-	var featureSets []*features.FeatureSet
-	var fNodes []*features.FNode
-	for _, id := range featureIDs {
-		opts := featuresCfg[id]
-		srcType := features.ClassifyFeatureID(id)
-		if srcType == features.SourceLegacyShorthand {
-			name := id
-			if idx := strings.LastIndex(id, ":"); idx > 0 {
-				name = id[:idx]
-			}
-			if !features.IsKnownLegacyFeature(name) {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf(msgLegacyFeature, id)
-			}
-			// gradle/maven/jupyterlab folded into java/python with an option
-			// (installGradle, ...) — matching the TS deprecatedFeaturesIntoOptions.
-			if m, ok := features.DeprecatedFeatureIntoOptions[name]; ok {
-				logger.Write(fmt.Sprintf("(!) WARNING: Falling back to the deprecated '%s' Feature. It is now part of the '%s' Feature.", name, m.MapTo), log.LevelWarning)
-				id = fmt.Sprintf("ghcr.io/devcontainers/features/%s:1", m.MapTo)
-				opts = addFeatureOption(opts, m.Option)
-				srcType = features.ClassifyFeatureID(id)
-			}
+	processFeature := func(node *features.FNode) (*features.FeatureSet, error) {
+		return processInstallFeature(logger, ociClient, node, featuresBasePath, skipAutoMapping, lockfile, nextStageDir)
+	}
+
+	graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, overrideOrder, lockfile)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, err
+	}
+	if len(graph) == 0 {
+		os.RemoveAll(tmpDir)
+		return nil, nil
+	}
+
+	orderedSets, err := features.ComputeInstallationOrder(logger, graph, nil)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("compute Feature install order: %w", err)
+	}
+
+	if err := realignFeatureDirs(tmpDir, orderedSets); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, err
+	}
+
+	logger.Write(fmt.Sprintf("Install order: %s", featureSetIDs(orderedSets)), log.LevelTrace)
+	return &fetchFeatureResult{FeatureSets: orderedSets, TmpDir: tmpDir}, nil
+}
+
+// processInstallFeature is the install-path implementation of the processFeature
+// seam. It resolves and extracts a single feature (local / direct-tarball / OCI)
+// into a staging directory and returns a FeatureSet whose Features[0] carries the
+// feature metadata, so the graph builder can expand its dependencies.
+func processInstallFeature(
+	logger log.Log,
+	ociClient *oci.Client,
+	node *features.FNode,
+	featuresBasePath string,
+	skipAutoMapping bool,
+	lockfile *features.Lockfile,
+	nextStageDir func() string,
+) (*features.FeatureSet, error) {
+	id := node.UserFeatureID
+	opts := node.Options
+	srcType := features.ClassifyFeatureID(id)
+
+	if srcType == features.SourceLegacyShorthand {
+		name := id
+		if idx := strings.LastIndex(id, ":"); idx > 0 {
+			name = id[:idx]
+		}
+		if !features.IsKnownLegacyFeature(name) {
+			return nil, fmt.Errorf(msgLegacyFeature, id)
+		}
+		// gradle/maven/jupyterlab folded into java/python with an option
+		// (installGradle, ...) — matching the TS deprecatedFeaturesIntoOptions.
+		if m, ok := features.DeprecatedFeatureIntoOptions[name]; ok {
+			logger.Write(fmt.Sprintf("(!) WARNING: Falling back to the deprecated '%s' Feature. It is now part of the '%s' Feature.", name, m.MapTo), log.LevelWarning)
+			id = fmt.Sprintf("ghcr.io/devcontainers/features/%s:1", m.MapTo)
+			opts = addFeatureOption(opts, m.Option)
+			srcType = features.ClassifyFeatureID(id)
+		}
+	}
+
+	switch srcType {
+	case features.SourceLocalPath:
+		resolvedPath := id
+		if !filepath.IsAbs(resolvedPath) {
+			resolvedPath = filepath.Join(featuresBasePath, resolvedPath)
+		}
+		resolvedPath = filepath.Clean(resolvedPath)
+
+		info, statErr := os.Stat(resolvedPath)
+		if statErr != nil || !info.IsDir() {
+			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  Local Feature path '%s' not found.", id, resolvedPath)
 		}
 
-		if srcType == features.SourceLocalPath {
-			resolvedPath := id
-			if !filepath.IsAbs(resolvedPath) {
-				resolvedPath = filepath.Join(featuresBasePath, resolvedPath)
-			}
-			resolvedPath = filepath.Clean(resolvedPath)
-
-			info, statErr := os.Stat(resolvedPath)
-			if statErr != nil || !info.IsDir() {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  Local Feature path '%s' not found.", id, resolvedPath)
-			}
-
-			featureIdx := len(featureSets)
-			featureDir := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_%d", featureIdx))
-			if err := copyDir(resolvedPath, featureDir); err != nil {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("copy local feature %q: %w", id, err)
-			}
-
-			var featureMetaFromFile features.Feature
-			featureJSONPath := filepath.Join(featureDir, "devcontainer-feature.json")
-			metaData, readErr := os.ReadFile(featureJSONPath)
-			if readErr != nil {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("read local feature %q metadata: %w", id, readErr)
-			}
-			// devcontainer-feature.json is JSONC (comments/trailing commas allowed).
-			if err := jsonc.Unmarshal(metaData, &featureMetaFromFile); err != nil {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("parse local feature %q metadata: %w", id, err)
-			}
-
-			consecutiveID := fmt.Sprintf("local_%d", featureIdx)
-			feat := features.Feature{
-				ID:                   id,
-				Version:              featureMetaFromFile.Version,
-				Name:                 featureMetaFromFile.Name,
-				Description:          featureMetaFromFile.Description,
-				DocumentationURL:     featureMetaFromFile.DocumentationURL,
-				Value:                opts,
-				UserOptions:          extractUserOptions(opts),
-				Options:              featureMetaFromFile.Options,
-				DependsOn:            featureMetaFromFile.DependsOn,
-				InstallsAfter:        featureMetaFromFile.InstallsAfter,
-				LegacyIds:            featureMetaFromFile.LegacyIds,
-				ContainerEnv:         featureMetaFromFile.ContainerEnv,
-				Mounts:               featureMetaFromFile.Mounts,
-				Init:                 featureMetaFromFile.Init,
-				Privileged:           featureMetaFromFile.Privileged,
-				CapAdd:               featureMetaFromFile.CapAdd,
-				SecurityOpt:          featureMetaFromFile.SecurityOpt,
-				Entrypoint:           featureMetaFromFile.Entrypoint,
-				OnCreateCommand:      featureMetaFromFile.OnCreateCommand,
-				UpdateContentCommand: featureMetaFromFile.UpdateContentCommand,
-				PostCreateCommand:    featureMetaFromFile.PostCreateCommand,
-				PostStartCommand:     featureMetaFromFile.PostStartCommand,
-				PostAttachCommand:    featureMetaFromFile.PostAttachCommand,
-				Customizations:       featureMetaFromFile.Customizations,
-				Included:             true,
-				ConsecutiveId:        consecutiveID,
-				CachePath:            featureDir,
-			}
-
-			set := &features.FeatureSet{
-				SourceInfo: &features.LocalSource{
-					LocalPath:    id,
-					ResolvedPath: resolvedPath,
-					UserID:       id,
-				},
-				Features:        []features.Feature{feat},
-				InternalVersion: "2",
-			}
-			featureSets = append(featureSets, set)
-
-			node := &features.FNode{
-				Type:          "user-provided",
-				UserFeatureID: id,
-				Options:       opts,
-				FeatureSet:    set,
-				DependsOn:     []*features.FNode{},
-				InstallsAfter: []*features.FNode{},
-			}
-			if len(featureMetaFromFile.LegacyIds) > 0 {
-				node.FeatureIDAliases = append([]string{id}, featureMetaFromFile.LegacyIds...)
-			}
-			fNodes = append(fNodes, node)
-			continue
+		featureDir := nextStageDir()
+		if err := copyDir(resolvedPath, featureDir); err != nil {
+			return nil, fmt.Errorf("copy local feature %q: %w", id, err)
 		}
 
-		if srcType == features.SourceDirectTarball {
-			featureIdx := len(featureSets)
-			featureDir := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_%d", featureIdx))
-			pfs.MkdirAll(featureDir)
-
-			logger.Write(fmt.Sprintf("Fetching feature tarball %s...", id), log.LevelInfo)
-			blobData, dlErr := downloadFeatureTarball(id)
-			if dlErr != nil {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, dlErr)
-			}
-			tgzPath := filepath.Join(featureDir, "feature.tgz")
-			if err := pfs.WriteFile(tgzPath, blobData); err != nil {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("write feature tarball: %w", err)
-			}
-			if err := extractTarGz(tgzPath, featureDir); err != nil {
-				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("extract feature %q: %w", id, err)
-			}
-
-			var featureMetaFromFile features.Feature
-			if metaData, readErr := os.ReadFile(filepath.Join(featureDir, "devcontainer-feature.json")); readErr == nil {
-				json.Unmarshal(metaData, &featureMetaFromFile)
-			}
-			featID := featureMetaFromFile.ID
-			if featID == "" {
-				featID = fmt.Sprintf("tarball_%d", featureIdx)
-			}
-
-			feat := features.Feature{
-				ID:                   featID,
-				Version:              featureMetaFromFile.Version,
-				Name:                 featureMetaFromFile.Name,
-				Description:          featureMetaFromFile.Description,
-				DocumentationURL:     featureMetaFromFile.DocumentationURL,
-				Value:                opts,
-				UserOptions:          extractUserOptions(opts),
-				Options:              featureMetaFromFile.Options,
-				DependsOn:            featureMetaFromFile.DependsOn,
-				InstallsAfter:        featureMetaFromFile.InstallsAfter,
-				ContainerEnv:         featureMetaFromFile.ContainerEnv,
-				Mounts:               featureMetaFromFile.Mounts,
-				Init:                 featureMetaFromFile.Init,
-				Privileged:           featureMetaFromFile.Privileged,
-				CapAdd:               featureMetaFromFile.CapAdd,
-				SecurityOpt:          featureMetaFromFile.SecurityOpt,
-				Entrypoint:           featureMetaFromFile.Entrypoint,
-				OnCreateCommand:      featureMetaFromFile.OnCreateCommand,
-				UpdateContentCommand: featureMetaFromFile.UpdateContentCommand,
-				PostCreateCommand:    featureMetaFromFile.PostCreateCommand,
-				PostStartCommand:     featureMetaFromFile.PostStartCommand,
-				PostAttachCommand:    featureMetaFromFile.PostAttachCommand,
-				Customizations:       featureMetaFromFile.Customizations,
-				Included:             true,
-				ConsecutiveId:        fmt.Sprintf("%s_%d", featID, featureIdx),
-				CachePath:            featureDir,
-			}
-
-			set := &features.FeatureSet{
-				SourceInfo:      &features.TarballSource{TarballURI: id, UserID: id},
-				Features:        []features.Feature{feat},
-				InternalVersion: "2",
-			}
-			featureSets = append(featureSets, set)
-
-			node := &features.FNode{
-				Type:          "user-provided",
-				UserFeatureID: id,
-				Options:       opts,
-				FeatureSet:    set,
-				DependsOn:     []*features.FNode{},
-				InstallsAfter: []*features.FNode{},
-			}
-			if len(featureMetaFromFile.LegacyIds) > 0 {
-				node.FeatureIDAliases = append([]string{id}, featureMetaFromFile.LegacyIds...)
-			}
-			fNodes = append(fNodes, node)
-			continue
+		var m features.Feature
+		metaData, readErr := os.ReadFile(filepath.Join(featureDir, "devcontainer-feature.json"))
+		if readErr != nil {
+			return nil, fmt.Errorf("read local feature %q metadata: %w", id, readErr)
+		}
+		// devcontainer-feature.json is JSONC (comments/trailing commas allowed).
+		if err := jsonc.Unmarshal(metaData, &m); err != nil {
+			return nil, fmt.Errorf("parse local feature %q metadata: %w", id, err)
 		}
 
+		feat := features.Feature{
+			ID:                   id,
+			Version:              m.Version,
+			Name:                 m.Name,
+			Description:          m.Description,
+			DocumentationURL:     m.DocumentationURL,
+			Value:                opts,
+			UserOptions:          extractUserOptions(opts),
+			Options:              m.Options,
+			DependsOn:            m.DependsOn,
+			InstallsAfter:        m.InstallsAfter,
+			LegacyIds:            m.LegacyIds,
+			ContainerEnv:         m.ContainerEnv,
+			Mounts:               m.Mounts,
+			Init:                 m.Init,
+			Privileged:           m.Privileged,
+			CapAdd:               m.CapAdd,
+			SecurityOpt:          m.SecurityOpt,
+			Entrypoint:           m.Entrypoint,
+			OnCreateCommand:      m.OnCreateCommand,
+			UpdateContentCommand: m.UpdateContentCommand,
+			PostCreateCommand:    m.PostCreateCommand,
+			PostStartCommand:     m.PostStartCommand,
+			PostAttachCommand:    m.PostAttachCommand,
+			Customizations:       m.Customizations,
+			Included:             true,
+			CachePath:            featureDir,
+		}
+		return &features.FeatureSet{
+			SourceInfo:      &features.LocalSource{LocalPath: id, ResolvedPath: resolvedPath, UserID: id},
+			Features:        []features.Feature{feat},
+			InternalVersion: "2",
+		}, nil
+
+	case features.SourceDirectTarball:
+		featureDir := nextStageDir()
+		pfs.MkdirAll(featureDir)
+
+		logger.Write(fmt.Sprintf("Fetching feature tarball %s...", id), log.LevelInfo)
+		blobData, dlErr := downloadFeatureTarball(id)
+		if dlErr != nil {
+			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, dlErr)
+		}
+		tgzPath := filepath.Join(featureDir, "feature.tgz")
+		if err := pfs.WriteFile(tgzPath, blobData); err != nil {
+			return nil, fmt.Errorf("write feature tarball: %w", err)
+		}
+		if err := extractTarGz(tgzPath, featureDir); err != nil {
+			return nil, fmt.Errorf("extract feature %q: %w", id, err)
+		}
+
+		var m features.Feature
+		if metaData, readErr := os.ReadFile(filepath.Join(featureDir, "devcontainer-feature.json")); readErr == nil {
+			json.Unmarshal(metaData, &m)
+		}
+		featID := m.ID
+		if featID == "" {
+			featID = filepath.Base(featureDir)
+		}
+
+		feat := features.Feature{
+			ID:                   featID,
+			Version:              m.Version,
+			Name:                 m.Name,
+			Description:          m.Description,
+			DocumentationURL:     m.DocumentationURL,
+			Value:                opts,
+			UserOptions:          extractUserOptions(opts),
+			Options:              m.Options,
+			DependsOn:            m.DependsOn,
+			InstallsAfter:        m.InstallsAfter,
+			LegacyIds:            m.LegacyIds,
+			ContainerEnv:         m.ContainerEnv,
+			Mounts:               m.Mounts,
+			Init:                 m.Init,
+			Privileged:           m.Privileged,
+			CapAdd:               m.CapAdd,
+			SecurityOpt:          m.SecurityOpt,
+			Entrypoint:           m.Entrypoint,
+			OnCreateCommand:      m.OnCreateCommand,
+			UpdateContentCommand: m.UpdateContentCommand,
+			PostCreateCommand:    m.PostCreateCommand,
+			PostStartCommand:     m.PostStartCommand,
+			PostAttachCommand:    m.PostAttachCommand,
+			Customizations:       m.Customizations,
+			Included:             true,
+			CachePath:            featureDir,
+		}
+		return &features.FeatureSet{
+			SourceInfo:      &features.TarballSource{TarballURI: id, UserID: id},
+			Features:        []features.Feature{feat},
+			InternalVersion: "2",
+		}, nil
+
+	default: // OCI (and legacy shorthand resolved to OCI)
 		resolvedID, _ := features.ResolveFeatureID(id, skipAutoMapping)
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
-			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
 		}
 
@@ -315,64 +310,62 @@ func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{
 
 		manifest, err := ociClient.FetchManifest(ref, "")
 		if err != nil {
-			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  You may not have permission to access this Feature, or may not be logged in.  If the issue persists, report this to the Feature author.", id)
 		}
-
 		if len(manifest.Manifest.Layers) == 0 {
-			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  The Feature manifest has no layers.", id)
 		}
 
 		layer := manifest.Manifest.Layers[0]
 		blobData, err := ociClient.FetchBlob(ref, layer.Digest)
 		if err != nil {
-			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("fetch feature %q blob: %w", id, err)
 		}
 
-		featureIdx := len(featureSets)
-		featureDir := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_%d", featureIdx))
+		featureDir := nextStageDir()
 		pfs.MkdirAll(featureDir)
-
 		tgzPath := filepath.Join(featureDir, "feature.tgz")
 		if err := pfs.WriteFile(tgzPath, blobData); err != nil {
-			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("write feature tarball: %w", err)
 		}
 		if err := extractTarGz(tgzPath, featureDir); err != nil {
-			os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("extract feature %q: %w", id, err)
 		}
 		logger.Write(fmt.Sprintf("Extracted feature %s (%d bytes)", ref.ID, len(blobData)), log.LevelTrace)
 
-		var featureMetaFromFile features.Feature
-		featureJSONPath := filepath.Join(featureDir, "devcontainer-feature.json")
-		if metaData, readErr := os.ReadFile(featureJSONPath); readErr == nil {
-			json.Unmarshal(metaData, &featureMetaFromFile)
+		// Blob-fallback metadata: the extracted devcontainer-feature.json.
+		var m features.Feature
+		if metaData, readErr := os.ReadFile(filepath.Join(featureDir, "devcontainer-feature.json")); readErr == nil {
+			json.Unmarshal(metaData, &m)
 		}
-
-		consecutiveID := fmt.Sprintf("%s_%d", ref.ID, featureIdx)
 
 		feat := features.Feature{
 			ID:               ref.ID,
-			Version:          featureMetaFromFile.Version,
-			Name:             featureMetaFromFile.Name,
-			Description:      featureMetaFromFile.Description,
-			DocumentationURL: featureMetaFromFile.DocumentationURL,
+			Version:          m.Version,
+			Name:             m.Name,
+			Description:      m.Description,
+			DocumentationURL: m.DocumentationURL,
 			Value:            opts,
 			UserOptions:      extractUserOptions(opts),
-			Options:          featureMetaFromFile.Options,
-			ContainerEnv:     featureMetaFromFile.ContainerEnv,
+			Options:          m.Options,
+			DependsOn:        m.DependsOn,
+			InstallsAfter:    m.InstallsAfter,
+			LegacyIds:        m.LegacyIds,
+			ContainerEnv:     m.ContainerEnv,
+			Init:             m.Init,
+			Privileged:       m.Privileged,
+			CapAdd:           m.CapAdd,
+			SecurityOpt:      m.SecurityOpt,
+			Entrypoint:       m.Entrypoint,
+			Mounts:           m.Mounts,
+			Customizations:   m.Customizations,
 			Included:         true,
-			ConsecutiveId:    consecutiveID,
 			CachePath:        featureDir,
 		}
 		if feat.Version == "" {
 			feat.Version = ref.Tag
 		}
 
-		// Strip version from user ID for userFeatureIdWithoutVersion
 		userIDNoVer := id
 		if idx := strings.LastIndex(id, ":"); idx > 0 {
 			userIDNoVer = id[:idx]
@@ -399,190 +392,64 @@ func fetchFeatureSetsRecursive(logger log.Log, featuresCfg map[string]interface{
 			ComputedDigest:  manifest.ContentDigest,
 			InternalVersion: "2",
 		}
-		featureSets = append(featureSets, set)
 
-		node := &features.FNode{
-			Type: "user-provided", UserFeatureID: id, Options: opts,
-			FeatureSet: set, DependsOn: []*features.FNode{}, InstallsAfter: []*features.FNode{},
-		}
-
+		// Annotation-first metadata: overrides the blob-derived dependency fields.
 		if manifest.Manifest.Annotations != nil {
 			if metaJSON, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok {
-				var featureMeta features.Feature
-				if json.Unmarshal([]byte(metaJSON), &featureMeta) == nil {
-					set.Features[0].LegacyIds = featureMeta.LegacyIds
-					set.Features[0].DependsOn = featureMeta.DependsOn
-					set.Features[0].InstallsAfter = featureMeta.InstallsAfter
-					set.Features[0].Options = featureMeta.Options
-					set.Features[0].Init = featureMeta.Init
-					set.Features[0].Privileged = featureMeta.Privileged
-					set.Features[0].CapAdd = featureMeta.CapAdd
-					set.Features[0].SecurityOpt = featureMeta.SecurityOpt
-					set.Features[0].Entrypoint = featureMeta.Entrypoint
-					set.Features[0].Mounts = featureMeta.Mounts
-					set.Features[0].Customizations = featureMeta.Customizations
-					if featureMeta.LegacyIds != nil {
-						node.FeatureIDAliases = append([]string{ref.ID}, featureMeta.LegacyIds...)
-					}
+				var am features.Feature
+				if json.Unmarshal([]byte(metaJSON), &am) == nil {
+					set.Features[0].LegacyIds = am.LegacyIds
+					set.Features[0].DependsOn = am.DependsOn
+					set.Features[0].InstallsAfter = am.InstallsAfter
+					set.Features[0].Options = am.Options
+					set.Features[0].Init = am.Init
+					set.Features[0].Privileged = am.Privileged
+					set.Features[0].CapAdd = am.CapAdd
+					set.Features[0].SecurityOpt = am.SecurityOpt
+					set.Features[0].Entrypoint = am.Entrypoint
+					set.Features[0].Mounts = am.Mounts
+					set.Features[0].Customizations = am.Customizations
 				}
 			}
 		}
-		fNodes = append(fNodes, node)
+		return set, nil
 	}
-
-	if len(featureSets) == 0 {
-		os.RemoveAll(tmpDir)
-		return nil, nil
-	}
-
-	// Resolve hard dependencies recursively. Each recursive fetch stages its
-	// artifacts in a separate temporary directory, so copy them into this call's
-	// directory before cleaning it up. This leaves callers with the original
-	// single-directory ownership contract.
-	dependencyCfg := map[string]interface{}{}
-	for _, set := range featureSets {
-		if len(set.Features) == 0 {
-			continue
-		}
-		for id, opts := range set.Features[0].DependsOn {
-			if !resolved[id] {
-				dependencyCfg[id] = opts
-			}
-		}
-	}
-	if len(dependencyCfg) > 0 {
-		deps, depErr := fetchFeatureSetsRecursive(logger, dependencyCfg, featuresBasePath, skipAutoMapping, lockfile, resolved)
-		if depErr != nil {
-			os.RemoveAll(tmpDir)
-			return nil, depErr
-		}
-		if deps != nil {
-			for _, set := range deps.FeatureSets {
-				if err := restageFeatureSet(set, tmpDir, len(featureSets)); err != nil {
-					os.RemoveAll(deps.TmpDir)
-					os.RemoveAll(tmpDir)
-					return nil, err
-				}
-				featureSets = append(featureSets, set)
-			}
-			os.RemoveAll(deps.TmpDir)
-		}
-	}
-
-	// Rebuild nodes after dependency expansion, then connect both hard and soft
-	// edges to the actual resolved nodes in the complete worklist.
-	fNodes = dependencyNodes(featureSets)
-	populateHardDepEdges(fNodes)
-	populateSoftDepEdges(fNodes)
-
-	// Apply dependency ordering
-	if len(fNodes) > 1 {
-		orderedSets, err := features.ComputeInstallationOrder(logger, fNodes, nil)
-		if err != nil {
-			os.RemoveAll(tmpDir)
-			return nil, fmt.Errorf("compute Feature install order: %w", err)
-		} else {
-			featureSets = orderedSets
-			logger.Write(fmt.Sprintf("Install order: %s", featureSetIDs(featureSets)), log.LevelTrace)
-		}
-	}
-
-	return &fetchFeatureResult{FeatureSets: featureSets, TmpDir: tmpDir}, nil
 }
 
-func restageFeatureSet(set *features.FeatureSet, dstRoot string, index int) error {
-	if len(set.Features) == 0 || set.Features[0].CachePath == "" {
-		return nil
+// realignFeatureDirs renames each ordered FeatureSet's staging directory to
+// _dev_container_feature_<installOrderIndex> under tmpDir, so the generated
+// Dockerfile's `COPY _dev_container_feature_<i>` resolves to the right content.
+// Orphaned staging directories (duplicates and soft-dependency probes that are
+// not installed) are removed so they don't bloat the build context.
+func realignFeatureDirs(tmpDir string, sets []*features.FeatureSet) error {
+	keep := make(map[string]bool, len(sets))
+	for i, set := range sets {
+		if len(set.Features) == 0 || set.Features[0].CachePath == "" {
+			continue
+		}
+		src := set.Features[0].CachePath
+		dst := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_%d", i))
+		if src != dst {
+			os.RemoveAll(dst)
+			if err := os.Rename(src, dst); err != nil {
+				if cpErr := copyDir(src, dst); cpErr != nil {
+					return fmt.Errorf("stage feature %d: %w", i, cpErr)
+				}
+				os.RemoveAll(src)
+			}
+			set.Features[0].CachePath = dst
+		}
+		set.Features[0].ConsecutiveId = fmt.Sprintf("_dev_container_feature_%d", i)
+		keep[dst] = true
 	}
-	dst := filepath.Join(dstRoot, fmt.Sprintf("_dev_container_feature_%d", index))
-	if err := copyDir(set.Features[0].CachePath, dst); err != nil {
-		return fmt.Errorf("stage dependency %q: %w", set.SourceInfo.UserFeatureID(), err)
+	// Remove any leftover staging directories.
+	entries, _ := os.ReadDir(tmpDir)
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "_dev_container_feature_stage_") {
+			os.RemoveAll(filepath.Join(tmpDir, e.Name()))
+		}
 	}
-	set.Features[0].CachePath = dst
-	set.Features[0].ConsecutiveId = fmt.Sprintf("dependency_%d", index)
 	return nil
-}
-
-func dependencyNodes(featureSets []*features.FeatureSet) []*features.FNode {
-	nodes := make([]*features.FNode, 0, len(featureSets))
-	for i, set := range featureSets {
-		if set == nil || set.SourceInfo == nil || len(set.Features) == 0 {
-			continue
-		}
-		feat := set.Features[0]
-		nodeType := "resolved"
-		if i == 0 || !strings.HasPrefix(feat.ConsecutiveId, "dependency_") {
-			nodeType = "user-provided"
-		}
-		nodes = append(nodes, &features.FNode{
-			Type: nodeType, UserFeatureID: set.SourceInfo.UserFeatureID(),
-			Options: feat.Value, FeatureSet: set,
-			DependsOn: []*features.FNode{}, InstallsAfter: []*features.FNode{},
-			FeatureIDAliases: append([]string{feat.ID}, feat.LegacyIds...),
-		})
-	}
-	return nodes
-}
-
-func populateHardDepEdges(nodes []*features.FNode) {
-	byID := make(map[string]*features.FNode, len(nodes))
-	for _, node := range nodes {
-		byID[node.UserFeatureID] = node
-	}
-	for _, node := range nodes {
-		if node.FeatureSet == nil || len(node.FeatureSet.Features) == 0 {
-			continue
-		}
-		for id := range node.FeatureSet.Features[0].DependsOn {
-			if dep := byID[id]; dep != nil {
-				node.DependsOn = append(node.DependsOn, dep)
-			}
-		}
-	}
-}
-
-// populateSoftDepEdges fills each node's installsAfter edges from its feature
-// metadata. ComputeInstallationOrder prunes edges that don't match any installed
-// feature, so unresolved soft-deps are harmless.
-func populateSoftDepEdges(nodes []*features.FNode) {
-	for _, node := range nodes {
-		if node.FeatureSet == nil || len(node.FeatureSet.Features) == 0 {
-			continue
-		}
-		for _, iaID := range node.FeatureSet.Features[0].InstallsAfter {
-			if dep := installsAfterSoftDep(iaID); dep != nil {
-				node.InstallsAfter = append(node.InstallsAfter, dep)
-			}
-		}
-	}
-}
-
-// installsAfterSoftDep builds a soft-dependency FNode from an installsAfter ID
-// without fetching it — only the OCI resource is needed to match against the
-// features actually being installed. Local/tarball soft-deps are skipped.
-func installsAfterSoftDep(id string) *features.FNode {
-	resolvedID := id
-	switch features.ClassifyFeatureID(id) {
-	case features.SourceOCI:
-	case features.SourceLegacyShorthand:
-		resolvedID, _ = features.ResolveFeatureID(id, false)
-	default:
-		return nil
-	}
-	ref, err := oci.ParseRef(resolvedID)
-	if err != nil {
-		return nil
-	}
-	return &features.FNode{
-		Type:          "resolved",
-		UserFeatureID: id,
-		FeatureSet: &features.FeatureSet{
-			SourceInfo: &features.OCISource{
-				Type: "oci", Registry: ref.Registry, Namespace: ref.Namespace,
-				ID: ref.ID, Resource: ref.Resource, Tag: ref.Tag,
-			},
-		},
-	}
 }
 
 // extendImageWithFeatures fetches features from OCI, generates the extended
@@ -609,7 +476,11 @@ func extendImageWithFeatures(
 	if fbOpts != nil && fbOpts.ConfigPath != "" {
 		lockfile, _, _ = features.ReadLockfile(fbOpts.ConfigPath)
 	}
-	result, err := fetchFeatureSets(logger, featuresCfg, featuresBasePath, skipAutoMap, lockfile)
+	var overrideOrder []string
+	if fbOpts != nil {
+		overrideOrder = fbOpts.OverrideFeatureInstallOrder
+	}
+	result, err := fetchFeatureSetsWithOrder(logger, featuresCfg, featuresBasePath, skipAutoMap, lockfile, overrideOrder)
 	if err != nil {
 		return nil, err
 	}

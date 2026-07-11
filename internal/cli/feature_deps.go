@@ -3,115 +3,200 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
+	"os"
+	"path/filepath"
 
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// renderDependencyMermaid builds the feature dependency graph for the given root
-// feature ids (BFS over each feature's dependsOn, plus installsAfter edges that
-// land on a worklist member) and renders it in the TS generateMermaidDiagram
-// format. roundPriority is 0 for every node — the TS CLI only assigns a non-zero
-// priority when overrideFeatureInstallOrder is set. Node hashes are internally
-// consistent (an edge points at the target node's own hash); they need not match
-// the TS hash byte-for-byte because the parity harness scrubs them.
+// renderDependencyMermaid resolves the dependency graph rooted at the given
+// feature ids through the unified features.BuildDependencyGraph builder and
+// renders it as a mermaid flowchart (TS generateMermaidDiagram). It is used by
+// `features info` (single OCI root). Node hashes are internally consistent but
+// need not match the TS hashes byte-for-byte — the parity harness scrubs them.
 func renderDependencyMermaid(client *oci.Client, logger log.Log, roots []string) string {
-	type depNode struct {
-		id            string
-		aliases       []string
-		dependsOn     []string
-		installsAfter []string
-	}
-
-	visited := map[string]bool{}
-	var nodes []depNode
-	queue := append([]string{}, roots...)
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		if visited[current] {
-			continue
-		}
-		visited[current] = true
-
-		logger.Write(fmt.Sprintf("Resolving Feature dependencies for '%s'...", current), log.LevelInfo)
-
-		ref, err := oci.ParseRef(current)
-		if err != nil {
-			continue
-		}
-		manifest, err := client.FetchManifest(ref, "")
-		if err != nil || manifest.Manifest == nil {
-			continue
-		}
-		var meta features.Feature
-		if mj, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok {
-			json.Unmarshal([]byte(mj), &meta)
-		}
-
-		node := depNode{id: current}
-		// The first alias is the feature's own id. TS reads it from the feature
-		// metadata; when a feature's manifest omits the dev.containers.metadata
-		// annotation, fall back to the ref's feature name (last path segment), which
-		// is the same value.
-		featureID := meta.ID
-		if featureID == "" {
-			featureID = ref.ID
-		}
-		if featureID != "" {
-			node.aliases = append(node.aliases, featureID)
-		}
-		node.aliases = append(node.aliases, meta.LegacyIds...)
-		for depID := range meta.DependsOn {
-			node.dependsOn = append(node.dependsOn, depID)
-			if !visited[depID] {
-				queue = append(queue, depID)
-			}
-		}
-		sort.Strings(node.dependsOn)
-		node.installsAfter = meta.InstallsAfter
-		nodes = append(nodes, node)
-	}
-
-	inWorklist := map[string]bool{}
-	aliasByID := map[string][]string{}
-	for _, n := range nodes {
-		inWorklist[n.id] = true
-		aliasByID[n.id] = n.aliases
-	}
-
-	hashOf := func(id string, aliases []string) string {
-		b, _ := json.Marshal(map[string]interface{}{
-			"type":             "user-provided",
-			"userFeatureId":    id,
-			"options":          map[string]interface{}{},
-			"roundPriority":    0,
-			"featureIdAliases": aliases,
+	userFeatures := make([]features.DevContainerFeature, 0, len(roots))
+	for _, r := range roots {
+		userFeatures = append(userFeatures, features.DevContainerFeature{
+			UserFeatureID: r,
+			Options:       map[string]interface{}{},
 		})
-		return mermaidHash(b)
 	}
+	graph, err := features.BuildDependencyGraph(logger, newMetadataProcessFeature(client, logger, "", nil), userFeatures, nil, nil)
+	if err != nil {
+		logger.Write(fmt.Sprintf("Could not build dependency graph: %v", err), log.LevelTrace)
+		return "flowchart\n"
+	}
+	return features.GenerateMermaidDiagram(graph)
+}
 
-	var sb strings.Builder
-	sb.WriteString("flowchart\n")
-	for _, n := range nodes {
-		nID := hashOf(n.id, n.aliases)
-		aliasStr := ""
-		if len(n.aliases) > 0 {
-			aliasStr = fmt.Sprintf("<br>aliases: %s", strings.Join(n.aliases, ", "))
-		}
-		fmt.Fprintf(&sb, "%s[%s<br/><0>%s]\n", nID, n.id, aliasStr)
-		for _, depID := range n.dependsOn {
-			fmt.Fprintf(&sb, "%s --> %s\n", nID, hashOf(depID, aliasByID[depID]))
-		}
-		for _, afterID := range n.installsAfter {
-			if inWorklist[afterID] {
-				fmt.Fprintf(&sb, "%s -.-> %s\n", nID, hashOf(afterID, aliasByID[afterID]))
+// newMetadataProcessFeature returns a read-only processFeature seam that resolves
+// a feature only far enough to read its dependency metadata (id, legacyIds,
+// dependsOn, installsAfter). It does not stage install content, so it is cheap
+// enough for the resolve-dependencies and mermaid consumers. OCI metadata is read
+// annotation-first with a blob fallback, matching the TS getOCIFeatureMetadata.
+func newMetadataProcessFeature(client *oci.Client, logger log.Log, basePath string, lockfile *features.Lockfile) features.ProcessFeature {
+	return func(node *features.FNode) (*features.FeatureSet, error) {
+		id := node.UserFeatureID
+		srcType := features.ClassifyFeatureID(id)
+
+		switch srcType {
+		case features.SourceLocalPath:
+			resolvedPath := id
+			if !filepath.IsAbs(resolvedPath) {
+				resolvedPath = filepath.Join(basePath, resolvedPath)
 			}
+			resolvedPath = filepath.Clean(resolvedPath)
+			meta, err := readLocalFeatureMetadata(resolvedPath)
+			if err != nil {
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+			}
+			meta.Value = node.Options
+			if meta.ID == "" {
+				meta.ID = id
+			}
+			return &features.FeatureSet{
+				SourceInfo: &features.LocalSource{LocalPath: id, ResolvedPath: resolvedPath, UserID: id},
+				Features:   []features.Feature{meta},
+			}, nil
+
+		case features.SourceDirectTarball:
+			meta, err := readTarballFeatureMetadata(id)
+			if err != nil {
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+			}
+			meta.Value = node.Options
+			return &features.FeatureSet{
+				SourceInfo: &features.TarballSource{TarballURI: id, UserID: id},
+				Features:   []features.Feature{meta},
+			}, nil
+
+		default: // OCI (and legacy shorthand resolved to OCI)
+			resolvedID, _ := features.ResolveFeatureID(id, false)
+			ref, err := oci.ParseRef(resolvedID)
+			if err != nil {
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+			}
+			if lockfile != nil {
+				if entry, ok := lockfile.Features[id]; ok && entry.Integrity != "" {
+					if pinned, perr := oci.ParseRef(ref.Resource + "@" + entry.Integrity); perr == nil {
+						ref = pinned
+					}
+				}
+			}
+			logger.Write(fmt.Sprintf("Resolving Feature dependencies for '%s'...", id), log.LevelInfo)
+
+			manifest, err := client.FetchManifest(ref, "")
+			if err != nil || manifest.Manifest == nil {
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  You may not have permission to access this Feature, or may not be logged in.", id)
+			}
+
+			meta := readOCIFeatureMetadata(client, ref, manifest)
+			meta.ID = ref.ID
+			if annoID := ociAnnotationID(manifest); annoID != "" {
+				meta.ID = annoID
+			}
+			meta.Value = node.Options
+
+			return &features.FeatureSet{
+				SourceInfo: &features.OCISource{
+					Type:     "oci",
+					Registry: ref.Registry, Namespace: ref.Namespace,
+					ID: ref.ID, Resource: ref.Resource, Tag: ref.Tag,
+					ManifestDigest: manifest.ContentDigest, UserID: id,
+					Manifest: manifest.Manifest,
+				},
+				Features:       []features.Feature{meta},
+				ComputedDigest: manifest.ContentDigest,
+			}, nil
 		}
 	}
-	return sb.String()
+}
+
+// readOCIFeatureMetadata reads a feature's metadata annotation-first, falling
+// back to the extracted devcontainer-feature.json blob when the manifest omits
+// the dev.containers.metadata annotation (TS getOCIFeatureMetadata).
+func readOCIFeatureMetadata(client *oci.Client, ref *oci.Ref, manifest *oci.ManifestContainer) features.Feature {
+	if mj, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok && mj != "" {
+		var meta features.Feature
+		json.Unmarshal([]byte(mj), &meta)
+		return meta
+	}
+	// Blob fallback: fetch and extract the layer to read devcontainer-feature.json.
+	if len(manifest.Manifest.Layers) == 0 {
+		return features.Feature{}
+	}
+	blobData, err := client.FetchBlob(ref, manifest.Manifest.Layers[0].Digest)
+	if err != nil {
+		return features.Feature{}
+	}
+	tmp, err := os.MkdirTemp("", "devcontainer-feature-meta-")
+	if err != nil {
+		return features.Feature{}
+	}
+	defer os.RemoveAll(tmp)
+	tgz := filepath.Join(tmp, "feature.tgz")
+	if err := os.WriteFile(tgz, blobData, 0644); err != nil {
+		return features.Feature{}
+	}
+	if err := extractTarGz(tgz, tmp); err != nil {
+		return features.Feature{}
+	}
+	var meta features.Feature
+	if data, err := os.ReadFile(filepath.Join(tmp, "devcontainer-feature.json")); err == nil {
+		json.Unmarshal(data, &meta)
+	}
+	return meta
+}
+
+func ociAnnotationID(manifest *oci.ManifestContainer) string {
+	if mj, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok && mj != "" {
+		var meta features.Feature
+		if json.Unmarshal([]byte(mj), &meta) == nil {
+			return meta.ID
+		}
+	}
+	return ""
+}
+
+func readLocalFeatureMetadata(dir string) (features.Feature, error) {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return features.Feature{}, fmt.Errorf("Local Feature path '%s' not found.", dir)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "devcontainer-feature.json"))
+	if err != nil {
+		return features.Feature{}, err
+	}
+	var meta features.Feature
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return features.Feature{}, err
+	}
+	return meta, nil
+}
+
+func readTarballFeatureMetadata(url string) (features.Feature, error) {
+	blobData, err := downloadFeatureTarball(url)
+	if err != nil {
+		return features.Feature{}, err
+	}
+	tmp, err := os.MkdirTemp("", "devcontainer-feature-meta-")
+	if err != nil {
+		return features.Feature{}, err
+	}
+	defer os.RemoveAll(tmp)
+	tgz := filepath.Join(tmp, "feature.tgz")
+	if err := os.WriteFile(tgz, blobData, 0644); err != nil {
+		return features.Feature{}, err
+	}
+	if err := extractTarGz(tgz, tmp); err != nil {
+		return features.Feature{}, err
+	}
+	var meta features.Feature
+	if data, err := os.ReadFile(filepath.Join(tmp, "devcontainer-feature.json")); err == nil {
+		json.Unmarshal(data, &meta)
+	}
+	return meta, nil
 }

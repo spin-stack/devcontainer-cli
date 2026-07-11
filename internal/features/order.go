@@ -252,8 +252,10 @@ func compareNodes(a, b *FNode) int {
 	switch as := aSrc.(type) {
 	case *OCISource:
 		bs := bSrc.(*OCISource)
-		// Short-circuit if digests + options match
-		if as.ManifestDigest == bs.ManifestDigest && as.ManifestDigest != "" {
+		// Short-circuit if digests AND options match (dedup identity is
+		// resource+options, not the input string).
+		if as.ManifestDigest == bs.ManifestDigest && as.ManifestDigest != "" &&
+			optionsCompareTo(a.Options, b.Options) == 0 {
 			return 0
 		}
 		// Compare by resource (accounting for aliases)
@@ -262,21 +264,133 @@ func compareNodes(a, b *FNode) int {
 		if c := strings.Compare(aRes, bRes); c != 0 {
 			return c
 		}
-		if as.Tag != bs.Tag {
+		if as.Tag != "" && bs.Tag != "" && as.Tag != bs.Tag {
 			return strings.Compare(as.Tag, bs.Tag)
+		}
+		if c := optionsCompareTo(a.Options, b.Options); c != 0 {
+			return c
 		}
 		return strings.Compare(as.ManifestDigest, bs.ManifestDigest)
 
 	case *LocalSource:
 		bs := bSrc.(*LocalSource)
-		return strings.Compare(as.ResolvedPath, bs.ResolvedPath)
+		if c := strings.Compare(as.ResolvedPath, bs.ResolvedPath); c != 0 {
+			return c
+		}
+		return optionsCompareTo(a.Options, b.Options)
 
 	case *TarballSource:
 		bs := bSrc.(*TarballSource)
-		return strings.Compare(as.TarballURI, bs.TarballURI)
+		if c := strings.Compare(as.TarballURI, bs.TarballURI); c != 0 {
+			return c
+		}
+		return optionsCompareTo(a.Options, b.Options)
 
 	default:
-		return strings.Compare(aSrc.UserFeatureID(), bSrc.UserFeatureID())
+		if c := strings.Compare(aSrc.UserFeatureID(), bSrc.UserFeatureID()); c != 0 {
+			return c
+		}
+		return optionsCompareTo(a.Options, b.Options)
+	}
+}
+
+// optionsCompareTo compares two feature option values (string | bool |
+// map[string]interface{}), porting the TS optionsCompareTo. It underpins the
+// resource+options dedup identity so two references to the same Feature with
+// different options are treated as distinct.
+func optionsCompareTo(a, b interface{}) int {
+	as, aStr := a.(string)
+	bs, bStr := b.(string)
+	if aStr && bStr {
+		return strings.Compare(as, bs)
+	}
+
+	ab, aBool := a.(bool)
+	bb, bBool := b.(bool)
+	if aBool && bBool {
+		return boolCompare(ab, bb)
+	}
+
+	am, aMap := a.(map[string]interface{})
+	bm, bMap := b.(map[string]interface{})
+	if aMap && bMap {
+		if len(am) != len(bm) {
+			return len(am) - len(bm)
+		}
+		aKeys := make([]string, 0, len(am))
+		for k := range am {
+			aKeys = append(aKeys, k)
+		}
+		bKeys := make([]string, 0, len(bm))
+		for k := range bm {
+			bKeys = append(bKeys, k)
+		}
+		sort.Strings(aKeys)
+		sort.Strings(bKeys)
+		for i := range aKeys {
+			if aKeys[i] != bKeys[i] {
+				return strings.Compare(aKeys[i], bKeys[i])
+			}
+			av := am[aKeys[i]]
+			bv := bm[bKeys[i]]
+			avs, avStr := av.(string)
+			bvs, bvStr := bv.(string)
+			if avStr && bvStr {
+				if c := strings.Compare(avs, bvs); c != 0 {
+					return c
+				}
+			}
+			avb, avBool := av.(bool)
+			bvb, bvBool := bv.(bool)
+			if avBool && bvBool {
+				if c := boolCompare(avb, bvb); c != 0 {
+					return c
+				}
+			}
+			// TS treats a missing/undefined value as sorting after a present one.
+			if av == nil || bv == nil {
+				if c := undefinedCompare(av, bv); c != 0 {
+					return c
+				}
+			}
+		}
+		return 0
+	}
+
+	return strings.Compare(typeName(a), typeName(b))
+}
+
+func boolCompare(a, b bool) int {
+	if a == b {
+		return 0
+	}
+	if a {
+		return 1
+	}
+	return -1
+}
+
+func undefinedCompare(a, b interface{}) int {
+	if a == b {
+		return 0
+	}
+	if a == nil {
+		return 1
+	}
+	return -1
+}
+
+// typeName mirrors the JS `typeof` used by optionsCompareTo's final fallback.
+func typeName(v interface{}) string {
+	switch v.(type) {
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case nil:
+		return "undefined"
+	default:
+		return "object"
 	}
 }
 
