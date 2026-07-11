@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch: {}
 
 jobs:
   lint-and-test:
@@ -133,9 +134,11 @@ jobs:
         run: task clean
 
   # Experimental, NON-gating: arm64 runtime via QEMU emulation. arm64 runtime is
-  # unsupported for now, so its cases are skipped-arm64 in the gate above; this job
-  # exercises them opt-in (PARITY_ARM64=true) without blocking the build.
+  # unsupported for now, so its cases are skipped-arm64 in the gate above. This job
+  # is SLOW (QEMU) and only runs on a manual trigger (workflow_dispatch), not on
+  # every push/PR — enable it when validating arm64.
   parity-runtime-arm64-experimental:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: lint-and-test
     continue-on-error: true
