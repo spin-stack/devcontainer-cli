@@ -45,34 +45,26 @@ func TestGenerateDocs_FeatureReadme(t *testing.T) {
 	}
 	readme := string(got)
 
-	// Heading is "name (id)".
-	if !strings.Contains(readme, "# My Tool (mytool)") {
-		t.Errorf("missing/incorrect heading:\n%s", readme)
-	}
-	// Usage snippet uses the major version.
-	if !strings.Contains(readme, `"ghcr.io/owner/repo/mytool:1": {}`) {
-		t.Error("usage snippet should pin the major version :1")
-	}
-	// Options table header matches TS columns.
-	if !strings.Contains(readme, "| Options Id | Description | Type | Default Value |") {
-		t.Error("options table header does not match TS columns")
-	}
-	// Insertion order preserved: zeta row before alpha row.
+	// The insertion-order guarantee is a positional check, kept separate: the zeta
+	// row must precede the alpha row (a sorted map would flip them).
 	zeta := strings.Index(readme, "| zeta |")
 	alpha := strings.Index(readme, "| alpha |")
 	if zeta < 0 || alpha < 0 || zeta > alpha {
-		t.Errorf("option order not preserved (zeta=%d alpha=%d)", zeta, alpha)
+		t.Errorf("option insertion order not preserved (zeta=%d alpha=%d)", zeta, alpha)
 	}
-	// A boolean default renders as "true"; an absent default renders "undefined".
-	if !strings.Contains(readme, "| alpha | Alpha opt. | boolean | true |") {
-		t.Error("boolean default row incorrect")
+
+	wants := []struct{ desc, sub string }{
+		{"heading is 'name (id)'", "# My Tool (mytool)"},
+		{"usage snippet pins the major version", `"ghcr.io/owner/repo/mytool:1": {}`},
+		{"options table uses the TS columns", "| Options Id | Description | Type | Default Value |"},
+		{"boolean default renders 'true'", "| alpha | Alpha opt. | boolean | true |"},
+		{"absent default renders '-'/'undefined'", "| noDefault | - | string | undefined |"},
+		{"footer has the github blob URL", "https://github.com/owner/repo/blob/main/"},
 	}
-	if !strings.Contains(readme, "| noDefault | - | string | undefined |") {
-		t.Error("absent-default row should render type '-'/'undefined' like TS")
-	}
-	// Footer references the config with the github blob URL.
-	if !strings.Contains(readme, "https://github.com/owner/repo/blob/main/") {
-		t.Error("footer github URL missing")
+	for _, w := range wants {
+		if !strings.Contains(readme, w.sub) {
+			t.Errorf("%s: missing %q\n--- README ---\n%s", w.desc, w.sub, readme)
+		}
 	}
 }
 

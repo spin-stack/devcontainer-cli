@@ -5,160 +5,87 @@ import (
 	"testing"
 )
 
-func TestCheckAdvisories_Match(t *testing.T) {
-	manifest := &ControlManifest{
-		FeatureAdvisories: []FeatureAdvisory{
-			{
+func TestCheckAdvisories(t *testing.T) {
+	// One advisory on the go feature, active for [introduced, fixed). Vary the
+	// installed version and assert whether it is flagged.
+	tests := []struct {
+		name        string
+		introduced  string
+		fixed       string
+		version     string
+		wantResults int
+	}{
+		{"version in affected range", "1.0.0", "1.2.0", "1.1.0", 1},
+		{"version at/after the fix", "1.0.0", "1.2.0", "1.3.0", 0},
+		{"version before introduction", "1.5.0", "1.6.0", "1.4.0", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := &ControlManifest{FeatureAdvisories: []FeatureAdvisory{{
 				FeatureID:           "ghcr.io/devcontainers/features/go",
-				IntroducedInVersion: "1.0.0",
-				FixedInVersion:      "1.2.0",
-				Description:         "security issue",
-			},
-		},
-	}
-
-	featureSets := []*FeatureSet{
-		{
-			SourceInfo: &OCISource{
-				Registry:  "ghcr.io",
-				Namespace: "devcontainers/features",
-				ID:        "go",
-			},
-			Features: []Feature{{Version: "1.1.0"}},
-		},
-	}
-
-	results := CheckAdvisories(manifest, featureSets)
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-	if results[0].FeatureID != "ghcr.io/devcontainers/features/go" {
-		t.Errorf("featureID = %q", results[0].FeatureID)
-	}
-	if len(results[0].Advisories) != 1 {
-		t.Errorf("advisories = %d", len(results[0].Advisories))
-	}
-}
-
-func TestCheckAdvisories_NoMatch_VersionFixed(t *testing.T) {
-	manifest := &ControlManifest{
-		FeatureAdvisories: []FeatureAdvisory{
-			{
-				FeatureID:           "ghcr.io/devcontainers/features/go",
-				IntroducedInVersion: "1.0.0",
-				FixedInVersion:      "1.2.0",
-				Description:         "fixed issue",
-			},
-		},
-	}
-
-	featureSets := []*FeatureSet{
-		{
-			SourceInfo: &OCISource{
-				Registry:  "ghcr.io",
-				Namespace: "devcontainers/features",
-				ID:        "go",
-			},
-			Features: []Feature{{Version: "1.3.0"}}, // After fix
-		},
-	}
-
-	results := CheckAdvisories(manifest, featureSets)
-	if len(results) != 0 {
-		t.Errorf("expected 0 results for fixed version, got %d", len(results))
-	}
-}
-
-func TestCheckAdvisories_NoMatch_VersionBefore(t *testing.T) {
-	manifest := &ControlManifest{
-		FeatureAdvisories: []FeatureAdvisory{
-			{
-				FeatureID:           "ghcr.io/devcontainers/features/go",
-				IntroducedInVersion: "1.5.0",
-				FixedInVersion:      "1.6.0",
+				IntroducedInVersion: tt.introduced,
+				FixedInVersion:      tt.fixed,
 				Description:         "issue",
-			},
-		},
-	}
+			}}}
+			featureSets := []*FeatureSet{{
+				SourceInfo: &OCISource{Registry: "ghcr.io", Namespace: "devcontainers/features", ID: "go"},
+				Features:   []Feature{{Version: tt.version}},
+			}}
 
-	featureSets := []*FeatureSet{
-		{
-			SourceInfo: &OCISource{
-				Registry:  "ghcr.io",
-				Namespace: "devcontainers/features",
-				ID:        "go",
-			},
-			Features: []Feature{{Version: "1.4.0"}}, // Before introduction
-		},
-	}
-
-	results := CheckAdvisories(manifest, featureSets)
-	if len(results) != 0 {
-		t.Errorf("expected 0 results for version before introduction, got %d", len(results))
+			results := CheckAdvisories(manifest, featureSets)
+			if len(results) != tt.wantResults {
+				t.Fatalf("results = %d, want %d", len(results), tt.wantResults)
+			}
+			if tt.wantResults > 0 {
+				if results[0].FeatureID != "ghcr.io/devcontainers/features/go" || len(results[0].Advisories) != 1 {
+					t.Errorf("unexpected result: %+v", results[0])
+				}
+			}
+		})
 	}
 }
 
-func TestEnsureNoDisallowedFeatures_Allowed(t *testing.T) {
-	manifest := &ControlManifest{
-		DisallowedFeatures: []DisallowedFeature{
-			{FeatureIDPrefix: "ghcr.io/bad/"},
-		},
+func TestEnsureNoDisallowedFeatures(t *testing.T) {
+	const docURL = "https://example.com"
+	// A prefix only matches on a separator boundary (/ : @) or exact length, like TS,
+	// so it must not block a feature that merely shares the prefix's characters. When
+	// blocked, the returned *DisallowedFeatureError carries the id and doc URL.
+	tests := []struct {
+		name        string
+		prefix      string
+		docURL      string
+		featureID   string
+		wantBlocked bool
+	}{
+		{"unrelated feature allowed", "ghcr.io/bad/", "", "ghcr.io/good/features/go:1", false},
+		{"exact-prefix version blocked", "ghcr.io/bad/features/evil", docURL, "ghcr.io/bad/features/evil:1", true},
+		{"boundary: exact match", "ghcr.io/acme/features/tool", "", "ghcr.io/acme/features/tool", true},
+		{"boundary: ':' separator", "ghcr.io/acme/features/tool", "", "ghcr.io/acme/features/tool:1", true},
+		{"boundary: '@' separator", "ghcr.io/acme/features/tool", "", "ghcr.io/acme/features/tool@sha256:x", true},
+		{"boundary: shared chars not blocked", "ghcr.io/acme/features/tool", "", "ghcr.io/acme/features/toolkit:1", false},
+		{"boundary: suffix not blocked", "ghcr.io/acme/features/tool", "", "ghcr.io/acme/features/tooling", false},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := &ControlManifest{DisallowedFeatures: []DisallowedFeature{
+				{FeatureIDPrefix: tt.prefix, DocumentationURL: tt.docURL},
+			}}
+			err := EnsureNoDisallowedFeatures(manifest, map[string]interface{}{tt.featureID: true}, nil)
 
-	features := map[string]interface{}{
-		"ghcr.io/good/features/go:1": map[string]interface{}{},
-	}
-
-	err := EnsureNoDisallowedFeatures(manifest, features, nil)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestEnsureNoDisallowedFeatures_Blocked(t *testing.T) {
-	manifest := &ControlManifest{
-		DisallowedFeatures: []DisallowedFeature{
-			{FeatureIDPrefix: "ghcr.io/bad/features/evil", DocumentationURL: "https://example.com"},
-		},
-	}
-
-	features := map[string]interface{}{
-		"ghcr.io/bad/features/evil:1": true,
-	}
-
-	err := EnsureNoDisallowedFeatures(manifest, features, nil)
-	if err == nil {
-		t.Fatal("expected error for disallowed feature")
-	}
-	var dfe *DisallowedFeatureError
-	if !errors.As(err, &dfe) {
-		t.Fatalf("expected *DisallowedFeatureError, got %T", err)
-	}
-	if dfe.FeatureID != "ghcr.io/bad/features/evil:1" || dfe.DocumentationURL != "https://example.com" {
-		t.Errorf("unexpected error fields: %+v", dfe)
-	}
-}
-
-// A prefix only matches on a separator boundary (/ : @) or exact length, like TS —
-// it must not block an unrelated feature that merely shares the prefix's characters.
-func TestEnsureNoDisallowedFeatures_PrefixBoundary(t *testing.T) {
-	manifest := &ControlManifest{
-		DisallowedFeatures: []DisallowedFeature{
-			{FeatureIDPrefix: "ghcr.io/acme/features/tool"},
-		},
-	}
-	cases := map[string]bool{
-		"ghcr.io/acme/features/tool":         true,  // exact
-		"ghcr.io/acme/features/tool:1":       true,  // ':' boundary
-		"ghcr.io/acme/features/tool@sha256:x": true, // '@' boundary
-		"ghcr.io/acme/features/toolkit:1":    false, // shares chars, no boundary
-		"ghcr.io/acme/features/tooling":      false,
-	}
-	for id, wantBlocked := range cases {
-		err := EnsureNoDisallowedFeatures(manifest, map[string]interface{}{id: true}, nil)
-		if (err != nil) != wantBlocked {
-			t.Errorf("%q: blocked=%v, want %v", id, err != nil, wantBlocked)
-		}
+			if (err != nil) != tt.wantBlocked {
+				t.Fatalf("blocked=%v, want %v (err=%v)", err != nil, tt.wantBlocked, err)
+			}
+			if !tt.wantBlocked {
+				return
+			}
+			var dfe *DisallowedFeatureError
+			if !errors.As(err, &dfe) {
+				t.Fatalf("expected *DisallowedFeatureError, got %T", err)
+			}
+			if dfe.FeatureID != tt.featureID || dfe.DocumentationURL != tt.docURL {
+				t.Errorf("error fields = {%q, %q}, want {%q, %q}", dfe.FeatureID, dfe.DocumentationURL, tt.featureID, tt.docURL)
+			}
+		})
 	}
 }
 
