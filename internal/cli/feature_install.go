@@ -17,6 +17,7 @@ import (
 	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/pfs"
@@ -130,7 +131,8 @@ func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featur
 				os.RemoveAll(tmpDir)
 				return nil, fmt.Errorf("read local feature %q metadata: %w", id, readErr)
 			}
-			if err := json.Unmarshal(metaData, &featureMetaFromFile); err != nil {
+			// devcontainer-feature.json is JSONC (comments/trailing commas allowed).
+			if err := jsonc.Unmarshal(metaData, &featureMetaFromFile); err != nil {
 				os.RemoveAll(tmpDir)
 				return nil, fmt.Errorf("parse local feature %q metadata: %w", id, err)
 			}
