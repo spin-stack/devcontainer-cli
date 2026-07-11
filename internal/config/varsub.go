@@ -204,12 +204,6 @@ func winBasename(p string) string {
 	return p
 }
 
-// sortedMap creates an ordered map representation for deterministic JSON.
-type orderedEntry struct {
-	Key   string
-	Value string
-}
-
 func sortedMap(keys []string, m map[string]string) map[string]string {
 	// json.Marshal on map[string]string sorts keys by default in Go
 	result := make(map[string]string, len(keys))

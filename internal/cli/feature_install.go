@@ -767,16 +767,6 @@ func addFeatureOption(opts interface{}, key string) map[string]interface{} {
 	return m
 }
 
-// normalizeFeatureValue converts map options to true (the main value).
-// Individual options are handled separately as per-option ENV vars.
-// Matches TS getFeatureMainValue behavior.
-func normalizeFeatureValue(v interface{}) interface{} {
-	if _, ok := v.(map[string]interface{}); ok {
-		return true // Maps (option objects) → main value is true
-	}
-	return v
-}
-
 func featureSetIDs(sets []*features.FeatureSet) string {
 	ids := make([]string, len(sets))
 	for i, s := range sets {

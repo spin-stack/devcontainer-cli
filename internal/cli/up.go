@@ -952,16 +952,6 @@ func (r *upRunner) runContainer(imageName string, cfg *config.DevContainerConfig
 	return containerID, nil
 }
 
-// labelsToMap converts label strings ("k=v") to a map.
-func labelsToMap(labels []string) map[string]string {
-	m := make(map[string]string, len(labels))
-	for _, l := range labels {
-		k, v, _ := strings.Cut(l, "=")
-		m[k] = v
-	}
-	return m
-}
-
 // resolveComposeProjectName computes the compose project name following the TS
 // CLI resolution chain: 1. COMPOSE_PROJECT_NAME env, 2. .env
 // COMPOSE_PROJECT_NAME, 3. name: from the compose config, 4. directory-based

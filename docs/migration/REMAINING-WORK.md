@@ -202,7 +202,11 @@ confianza de CA end-to-end.
 
 **Trabajo restante:** redirects (política `CheckRedirect`), cancelación por contexto en
 `httpx.Do` (`http.NewRequestWithContext`) y errores de proceso/filesystem
-multiplataforma, apoyándose en los seams pequeños de RW-011.
+multiplataforma, apoyándose en los seams pequeños de RW-011. Además, los flags
+`--log-file`/`--terminal-log-file` se aceptan por paridad de superficie pero **no
+están cableados** para escribir logs a archivo (el stub muerto `setupLogFile` fue
+eliminado); falta implementarlos (tee de stderr al archivo) o marcarlos como no
+soportados.
 
 ## P3 — Release y operación
 

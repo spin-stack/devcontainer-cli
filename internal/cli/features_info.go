@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -147,10 +146,4 @@ func encloseStringInBox(str string) string {
 	return "┌" + bar + "┐\n" +
 		"│\033[1m" + str + "\033[22m│\n" +
 		"└" + bar + "┘"
-}
-
-// mermaidHash generates a short hex hash for Mermaid nodes (matches TS crypto.createHash('sha256').update(JSON.stringify(node))).
-func mermaidHash(jsonData []byte) string {
-	h := sha256.Sum256(jsonData)
-	return fmt.Sprintf("%x", h[:3])
 }
