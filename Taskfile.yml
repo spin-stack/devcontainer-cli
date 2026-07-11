@@ -126,6 +126,7 @@ tasks:
   # ── TypeScript CLI ─────────────────────────────────────────────────
   ts:compile:
     desc: Compile the TypeScript reference CLI (in the reference/ submodule)
+    deps: [ts:install]
     dir: reference
     cmds:
       - yarn compile
