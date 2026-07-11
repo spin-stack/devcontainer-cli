@@ -54,6 +54,12 @@ auxiliares cubiertos.
   - los casos `-success` fallan si Go no llega a exit 0 con TS en 0 (W1);
   - Go siempre corre aunque TS se salte, y los skips se loguean con `[case=…]` (W6);
   - la normalización no coerciona escalares JSON ni scrubbea de más (W3).
+  - cada corrida publica conteos observados de `matched`, `failed`,
+    `skipped-docker`, `skipped-network`, `inconclusive` y `not-selected`; no se
+    infiere cobertura a partir de que el paquete haya terminado verde;
+  - CI usa `PARITY_STRICT=true`: cualquier caso inconcluso en el lane seleccionado
+    hace fallar el gate. Los skips de capacidades deshabilitadas explícitamente se
+    reportan por separado.
 
 ```sh
 task parity                       # compare-parity.sh (read-configuration por fixture)

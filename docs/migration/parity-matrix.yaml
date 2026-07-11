@@ -589,12 +589,13 @@ initial_cases:
     lane: contract
     command: build
     priority: p1
-    docker_required: false
+    docker_required: true
+    network_required: true
     ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --buildkit=never --platform linux/amd64"
     asserts: [exit_code, stdout_normalized, stderr_normalized]
     class: wired-flags
-    current_status: match
-    notes: "Cerrado: la comparación actual ya converge entre TS y Go en el harness de paridad"
+    current_status: deferred-runtime
+    notes: "El TS intenta hacer docker pull antes de llegar a la validación discriminante; no es un caso contract hermético. Requiere Docker/red y debe promoverse a match sólo tras una comparación efectiva."
 
   - id: build.compose-platform-not-supported
     lane: contract

@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -73,6 +74,71 @@ type paritySideResult struct {
 	VerifyExit   int
 }
 
+type parityOutcome string
+
+const (
+	parityMatched        parityOutcome = "matched"
+	parityFailed         parityOutcome = "failed"
+	paritySkippedDocker  parityOutcome = "skipped-docker"
+	paritySkippedNetwork parityOutcome = "skipped-network"
+	parityInconclusive   parityOutcome = "inconclusive"
+	parityNotSelected    parityOutcome = "not-selected"
+)
+
+type parityReport struct {
+	mu       sync.Mutex
+	outcomes map[string]parityOutcome
+}
+
+func newParityReport(cases []parityCase) *parityReport {
+	r := &parityReport{outcomes: make(map[string]parityOutcome, len(cases))}
+	for _, tc := range cases {
+		r.outcomes[tc.ID] = parityNotSelected
+	}
+	return r
+}
+
+func (r *parityReport) record(id string, outcome parityOutcome) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.outcomes[id] = outcome
+}
+
+func (r *parityReport) snapshot() map[parityOutcome][]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := map[parityOutcome][]string{}
+	for id, outcome := range r.outcomes {
+		result[outcome] = append(result[outcome], id)
+	}
+	for outcome := range result {
+		sort.Strings(result[outcome])
+	}
+	return result
+}
+
+func formatParityReport(snapshot map[parityOutcome][]string) string {
+	order := []parityOutcome{parityMatched, parityFailed, paritySkippedDocker, paritySkippedNetwork, parityInconclusive, parityNotSelected}
+	var b strings.Builder
+	b.WriteString("\n=== PARITY MATRIX REPORT ===\n")
+	for _, outcome := range order {
+		ids := snapshot[outcome]
+		fmt.Fprintf(&b, "%-16s %d\n", outcome+":", len(ids))
+		if len(ids) > 0 && outcome != parityMatched && outcome != parityNotSelected {
+			fmt.Fprintf(&b, "  %s\n", strings.Join(ids, ", "))
+		}
+	}
+	return b.String()
+}
+
+func strictParityError(snapshot map[parityOutcome][]string) error {
+	ids := snapshot[parityInconclusive]
+	if len(ids) == 0 {
+		return nil
+	}
+	return fmt.Errorf("strict parity gate: %d inconclusive case(s): %s", len(ids), strings.Join(ids, ", "))
+}
+
 // --- Main test ---
 
 func TestParityMatrix(t *testing.T) {
@@ -92,6 +158,16 @@ func TestParityMatrix(t *testing.T) {
 	if len(matrix.InitialCases) == 0 {
 		t.Fatal("no cases found in matrix")
 	}
+	report := newParityReport(matrix.InitialCases)
+	t.Cleanup(func() {
+		snapshot := report.snapshot()
+		fmt.Fprint(os.Stdout, formatParityReport(snapshot))
+		if os.Getenv("PARITY_STRICT") == "true" {
+			if err := strictParityError(snapshot); err != nil {
+				t.Error(err)
+			}
+		}
+	})
 
 	cliTS := envOr("CLI_TS", "node "+filepath.Join(repoRoot, "reference", "devcontainer.js"))
 	cliGO := envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer"))
@@ -114,8 +190,20 @@ func TestParityMatrix(t *testing.T) {
 		if !matchesFilter(tc) {
 			continue
 		}
+		// With no explicit lane, runtime is intentionally outside this invocation.
+		// Keep it as not-selected rather than creating a misleading skipped subtest.
+		if tc.Lane == "runtime" && os.Getenv("PARITY_LANE") == "" {
+			continue
+		}
 
 		t.Run(tc.ID, func(t *testing.T) {
+			outcome := parityMatched
+			defer func() {
+				if t.Failed() {
+					outcome = parityFailed
+				}
+				report.record(tc.ID, outcome)
+			}()
 			// Cases run in parallel (bounded by `go test -parallel N`); per-case
 			// COMPOSE_PROJECT_NAME + id-labels isolate runtime cases. A few cases
 			// that can't be isolated opt into serial execution.
@@ -123,14 +211,12 @@ func TestParityMatrix(t *testing.T) {
 				t.Parallel()
 			}
 
-			// Runtime tests are opt-in: only run when PARITY_LANE=runtime or PARITY_LANE=all
-			if tc.Lane == "runtime" && os.Getenv("PARITY_LANE") == "" {
-				t.Skip("runtime tests require PARITY_LANE=runtime or PARITY_LANE=all")
-			}
 			if tc.DockerRequired && (os.Getenv("PARITY_SKIP_DOCKER") == "true" || !dockerAvailable) {
+				outcome = paritySkippedDocker
 				t.Skip("docker required")
 			}
 			if tc.NetworkRequired && os.Getenv("PARITY_SKIP_NETWORK") == "true" {
+				outcome = paritySkippedNetwork
 				t.Skip("network required")
 			}
 			perCaseTimeout := defaultTimeout
@@ -158,6 +244,7 @@ func TestParityMatrix(t *testing.T) {
 			// When Go hit the SAME environment limit (e.g. arm64 on an amd64 host) that
 			// is a shared skip, not a Go bug.
 			if tsStatus.Skip {
+				outcome = parityInconclusive
 				t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
 				return
 			}
@@ -169,6 +256,7 @@ func TestParityMatrix(t *testing.T) {
 
 			// Skip when TS fails due to infra but Go succeeds; this is not a product mismatch.
 			if tsRes.ExitCode != 0 && goRes.ExitCode == 0 && tsStatus.Infra {
+				outcome = parityInconclusive
 				t.Skipf("TS infra error (exit %d) [case=%s]", tsRes.ExitCode, tc.ID)
 				return
 			}
@@ -184,6 +272,7 @@ func TestParityMatrix(t *testing.T) {
 						t.Errorf("regression: success-intended case, TS exit 0 but Go exited %d\n--- Go stdout\n%s\n--- Go stderr\n%s",
 							goRes.ExitCode, strings.TrimSpace(goRes.Stdout), strings.TrimSpace(goRes.Stderr))
 					} else {
+						outcome = parityInconclusive
 						t.Skipf("inconclusive: success-intended case but both sides failed (TS=%d Go=%d) [case=%s]", tsRes.ExitCode, goRes.ExitCode, tc.ID)
 						return
 					}
@@ -409,16 +498,16 @@ func runShellCommand(ctx context.Context, repoRoot, shellCmd string, env map[str
 // --- Normalization ---
 
 var (
-	reTimestampGo      = regexp.MustCompile(`\[\d+ ms\]`)
-	reTimestampTS      = regexp.MustCompile(`\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]`)
+	reTimestampGo = regexp.MustCompile(`\[\d+ ms\]`)
+	reTimestampTS = regexp.MustCompile(`\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]`)
 	// Host/tmp path scrubbers stop at structural delimiters (comma, '=', ';', ')')
 	// so a mount spec like source=/home/x,target=/y,type=bind keeps its
 	// target/type for comparison instead of collapsing everything after the host
 	// prefix into one token.
-	reHostPath   = regexp.MustCompile(`/Users/[^\s"'\n,;=)]+`)
-	reHomePath   = regexp.MustCompile(`/home/[^\s"'\n,;=)]+`)
-	reTmpPath    = regexp.MustCompile(`/tmp/[^\s"'\n,;=)]+`)
-	reVarFolders = regexp.MustCompile(`/var/folders/[^\s"'\n,;=)]+`)
+	reHostPath         = regexp.MustCompile(`/Users/[^\s"'\n,;=)]+`)
+	reHomePath         = regexp.MustCompile(`/home/[^\s"'\n,;=)]+`)
+	reTmpPath          = regexp.MustCompile(`/tmp/[^\s"'\n,;=)]+`)
+	reVarFolders       = regexp.MustCompile(`/var/folders/[^\s"'\n,;=)]+`)
 	reSHA256           = regexp.MustCompile(`sha256:[a-f0-9]{64}`)
 	reHexID            = regexp.MustCompile(`\b[a-f0-9]{12,64}\b`)
 	reMermaidNode      = regexp.MustCompile(`[a-f0-9]{6}\[`)

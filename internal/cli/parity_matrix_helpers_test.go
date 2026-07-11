@@ -2,8 +2,38 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
+
+func TestParityReport_CountsEveryOutcome(t *testing.T) {
+	report := newParityReport([]parityCase{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}})
+	report.record("a", parityMatched)
+	report.record("b", parityInconclusive)
+	report.record("c", paritySkippedDocker)
+
+	snapshot := report.snapshot()
+	if len(snapshot[parityMatched]) != 1 || len(snapshot[parityInconclusive]) != 1 ||
+		len(snapshot[paritySkippedDocker]) != 1 || len(snapshot[parityNotSelected]) != 1 {
+		t.Fatalf("unexpected snapshot: %#v", snapshot)
+	}
+	formatted := formatParityReport(snapshot)
+	for _, want := range []string{"matched:", "failed:", "skipped-docker:", "skipped-network:", "inconclusive:", "not-selected:"} {
+		if !strings.Contains(formatted, want) {
+			t.Errorf("report missing %q:\n%s", want, formatted)
+		}
+	}
+}
+
+func TestStrictParityError(t *testing.T) {
+	if err := strictParityError(map[parityOutcome][]string{parityMatched: {"ok"}}); err != nil {
+		t.Fatalf("matched report rejected: %v", err)
+	}
+	err := strictParityError(map[parityOutcome][]string{parityInconclusive: {"case-b", "case-a"}})
+	if err == nil || !strings.Contains(err.Error(), "2 inconclusive") {
+		t.Fatalf("strictParityError = %v", err)
+	}
+}
 
 func TestNormalizeOutput_ExtractsEmbeddedJSON(t *testing.T) {
 	raw := "[2026-04-17T02:07:14.225Z] @devcontainers/cli 0.74.0\n" +

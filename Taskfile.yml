@@ -84,35 +84,17 @@ tasks:
     cmds:
       - go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
 
-  "parity:wave:1":
-    desc: "Run parity wave 1: contract p0 hermetic"
+  "parity:matrix:semantic":
+    desc: "Parity matrix — semantic cases that do not require Docker/network."
     deps: [build, ts:compile]
     cmds:
-      - PARITY_LANE=contract PARITY_PRIORITY=p0 PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
-
-  "parity:wave:2":
-    desc: "Run parity wave 2: contract p1 hermetic"
-    deps: [build, ts:compile]
-    cmds:
-      - PARITY_LANE=contract PARITY_PRIORITY=p1 go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
-
-  "parity:wave:3":
-    desc: "Run parity wave 3: semantic cases that are not blocked by Docker/network"
-    deps: [build, ts:compile]
-    cmds:
-      - PARITY_LANE=semantic PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
-
-  "parity:wave:4":
-    desc: "Run parity wave 4: runtime coverage"
-    deps: [build, ts:compile]
-    cmds:
-      - PARITY_LANE=runtime go test ./internal/cli/ -run TestParityMatrix -timeout 1800s -v -count=1
+      - PARITY_STRICT=true PARITY_LANE=semantic PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -v -count=1
 
   "parity:matrix:contract":
     desc: "Parity matrix — contract lane (hermetic: no docker/network). Fast CI gate."
     deps: [build, ts:compile]
     cmds:
-      - PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -count=1
+      - PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli/ -run TestParityMatrix -timeout 600s -count=1 -v
 
   "parity:matrix:runtime":
     desc: "Parity matrix — runtime lane (requires Docker). Parallel."
@@ -121,7 +103,7 @@ tasks:
       - sh: docker info > /dev/null 2>&1
         msg: Docker is required for the runtime parity lane
     cmds:
-      - PARITY_LANE=all go test ./internal/cli/ -run TestParityMatrix -parallel 4 -timeout 1800s -count=1
+      - PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli/ -run TestParityMatrix -parallel 4 -timeout 1800s -count=1 -v
 
   # ── TypeScript CLI ─────────────────────────────────────────────────
   ts:compile:
