@@ -239,7 +239,7 @@ func TestMetadataInteropTSToGo(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	oracle := filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")
 	if _, err := os.Stat(oracle); err != nil {
-		t.Skip("TS reference oracle not compiled; TS->Go interop validated in RW-018")
+		t.Skip("TS reference oracle not compiled; skipping TS->Go interop")
 	}
 	if !isDockerAvailable() {
 		t.Skip("docker required")
@@ -249,5 +249,5 @@ func TestMetadataInteropTSToGo(t *testing.T) {
 	// The assertion still holds: read via the Go reader and compare the merge as
 	// normalized JSON. This guard keeps the worktree hermetic until the
 	// bidirectional build wiring is added.
-	t.Skip("TS->Go interop build wiring lands in RW-018")
+	t.Skip("TS->Go interop build wiring not implemented yet")
 }

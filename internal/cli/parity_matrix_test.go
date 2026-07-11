@@ -63,6 +63,13 @@ type parityCase struct {
 	// Serial forces a case to run sequentially (no t.Parallel). Used for the few
 	// runtime cases that can't be isolated for parallel execution.
 	Serial bool `yaml:"serial"`
+	// CompareHashes keeps sha256/hex digests UNSCRUBBED so they are compared
+	// exactly between TS and Go. Set it for cases whose digests are deterministic
+	// and meaningful (resolve-dependencies installOrder resource@digest,
+	// read-configuration featuresConfiguration manifest/computed digests, lockfile
+	// integrity) — otherwise a wrong Go digest normalizes to <HASH> and passes.
+	// Leave it false where digests are non-deterministic (tarball push mtime).
+	CompareHashes bool `yaml:"compare_hashes"`
 }
 
 type paritySideResult struct {
@@ -319,11 +326,13 @@ func TestParityMatrix(t *testing.T) {
 				t.Errorf("exit code: TS=%d Go=%d", tsRes.ExitCode, goRes.ExitCode)
 			}
 
+			scrubHashes := !tc.CompareHashes
+
 			// Non-zero exit path
 			if tsRes.ExitCode != 0 && goRes.ExitCode != 0 {
 				if asserts["stdout_normalized"] {
-					tsNorm := normalizeOutput(tsRes.Stdout)
-					goNorm := normalizeOutput(goRes.Stdout)
+					tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes)
+					goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes)
 					if tsNorm != goNorm {
 						t.Errorf("stdout differs:\n--- TS\n%s\n--- Go\n%s", tsNorm, goNorm)
 					}
@@ -340,16 +349,16 @@ func TestParityMatrix(t *testing.T) {
 
 			// Success path
 			if asserts["stdout_normalized"] {
-				tsNorm := normalizeOutput(tsRes.Stdout)
-				goNorm := normalizeOutput(goRes.Stdout)
+				tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes)
+				goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes)
 				if tsNorm != goNorm {
 					t.Errorf("stdout differs:\n--- TS\n%s\n--- Go\n%s", tsNorm, goNorm)
 				}
 			}
 
 			if asserts["stderr_normalized"] {
-				tsNorm := normalizeText(tsRes.Stderr)
-				goNorm := normalizeText(goRes.Stderr)
+				tsNorm := normalizeTextOpts(tsRes.Stderr, scrubHashes)
+				goNorm := normalizeTextOpts(goRes.Stderr, scrubHashes)
 				if tsNorm != goNorm {
 					t.Errorf("stderr differs:\n--- TS\n%s\n--- Go\n%s", tsNorm, goNorm)
 				}
@@ -368,13 +377,13 @@ func TestParityMatrix(t *testing.T) {
 					)
 					return
 				}
-				tsVerifyOut := normalizeText(tsRes.VerifyStdout)
-				goVerifyOut := normalizeText(goRes.VerifyStdout)
+				tsVerifyOut := normalizeTextOpts(tsRes.VerifyStdout, scrubHashes)
+				goVerifyOut := normalizeTextOpts(goRes.VerifyStdout, scrubHashes)
 				if tsVerifyOut != goVerifyOut {
 					t.Errorf("verify stdout differs:\n--- TS\n%s\n--- Go\n%s", tsVerifyOut, goVerifyOut)
 				}
-				tsVerifyErr := normalizeText(tsRes.VerifyStderr)
-				goVerifyErr := normalizeText(goRes.VerifyStderr)
+				tsVerifyErr := normalizeTextOpts(tsRes.VerifyStderr, scrubHashes)
+				goVerifyErr := normalizeTextOpts(goRes.VerifyStderr, scrubHashes)
 				if tsVerifyErr != goVerifyErr {
 					t.Errorf("verify stderr differs:\n--- TS\n%s\n--- Go\n%s", tsVerifyErr, goVerifyErr)
 				}
@@ -558,27 +567,35 @@ var (
 	}
 )
 
-func normalizeString(s string) string {
+func normalizeString(s string) string { return normalizeStringOpts(s, true) }
+
+func normalizeStringOpts(s string, scrubHashes bool) string {
 	s = reHostPath.ReplaceAllString(s, "<HOST_PATH>")
 	s = reHomePath.ReplaceAllString(s, "<HOST_PATH>")
 	s = reTmpPath.ReplaceAllString(s, "<TMP_PATH>")
 	s = reVarFolders.ReplaceAllString(s, "<TMP_PATH>")
-	s = reSHA256.ReplaceAllString(s, "sha256:<HASH>")
-	// Only scrub hex-looking runs that actually contain a hex letter — a pure
-	// decimal run (epoch-ms, large uid) is a real value and must stay comparable.
-	s = reHexID.ReplaceAllStringFunc(s, func(m string) string {
-		if strings.ContainsAny(m, "abcdef") {
-			return "<ID>"
-		}
-		return m
-	})
+	if scrubHashes {
+		s = reSHA256.ReplaceAllString(s, "sha256:<HASH>")
+		// Only scrub hex-looking runs that actually contain a hex letter — a pure
+		// decimal run (epoch-ms, large uid) is a real value and must stay comparable.
+		s = reHexID.ReplaceAllStringFunc(s, func(m string) string {
+			if strings.ContainsAny(m, "abcdef") {
+				return "<ID>"
+			}
+			return m
+		})
+	}
+	// Mermaid node hashes are internally-consistent but not byte-identical across
+	// TS/Go, so they are always scrubbed (independent of scrubHashes).
 	s = reMermaidNode.ReplaceAllString(s, "<NODE>[")
 	// Normalize parity side identifiers in image/container names
 	s = reParitySideSuffix.ReplaceAllString(s, "-<SIDE>$2")
 	return s
 }
 
-func normalizeOutput(raw string) string {
+func normalizeOutput(raw string) string { return normalizeOutputOpts(raw, true) }
+
+func normalizeOutputOpts(raw string, scrubHashes bool) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
@@ -586,7 +603,7 @@ func normalizeOutput(raw string) string {
 
 	// Try JSON parse (UseNumber preserves numeric precision)
 	if parsed, ok := decodeJSONNumber(raw); ok {
-		normalized := normalizeValue(parsed)
+		normalized := normalizeValueOpts(parsed, scrubHashes)
 		out, _ := json.Marshal(normalized)
 		return string(out)
 	}
@@ -594,17 +611,19 @@ func normalizeOutput(raw string) string {
 	// TS occasionally prefixes JSON with banner/noise on stderr/stdout; recover the payload.
 	if candidate := extractJSONCandidate(raw); candidate != "" && candidate != raw {
 		if parsed, ok := decodeJSONNumber(candidate); ok {
-			normalized := normalizeValue(parsed)
+			normalized := normalizeValueOpts(parsed, scrubHashes)
 			out, _ := json.Marshal(normalized)
 			return string(out)
 		}
 	}
 
 	// Fallback: normalize as text
-	return normalizeString(raw)
+	return normalizeStringOpts(raw, scrubHashes)
 }
 
-func normalizeValue(v interface{}) interface{} {
+func normalizeValue(v interface{}) interface{} { return normalizeValueOpts(v, true) }
+
+func normalizeValueOpts(v interface{}, scrubHashes bool) interface{} {
 	switch val := v.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
@@ -614,38 +633,38 @@ func normalizeValue(v interface{}) interface{} {
 			}
 			if k == "devcontainer.metadata" {
 				if s, ok := v.(string); ok {
-					result[k] = normalizeEmbeddedJSON(s)
+					result[k] = normalizeEmbeddedJSONOpts(s, scrubHashes)
 					continue
 				}
 			}
-			result[k] = normalizeValue(v)
+			result[k] = normalizeValueOpts(v, scrubHashes)
 		}
 		return sortedMap(result)
 	case []interface{}:
 		out := make([]interface{}, len(val))
 		for i, item := range val {
-			out[i] = normalizeValue(item)
+			out[i] = normalizeValueOpts(item, scrubHashes)
 		}
 		return out
 	case string:
 		if embedded, ok := parseEmbeddedJSON(val); ok {
-			return normalizeValue(embedded)
+			return normalizeValueOpts(embedded, scrubHashes)
 		}
-		return normalizeString(val)
+		return normalizeStringOpts(val, scrubHashes)
 	default:
 		return val
 	}
 }
 
-func normalizeEmbeddedJSON(raw string) interface{} {
+func normalizeEmbeddedJSONOpts(raw string, scrubHashes bool) interface{} {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
 	if parsed, ok := parseEmbeddedJSON(raw); ok {
-		return normalizeValue(parsed)
+		return normalizeValueOpts(parsed, scrubHashes)
 	}
-	return normalizeString(raw)
+	return normalizeStringOpts(raw, scrubHashes)
 }
 
 func parseEmbeddedJSON(raw string) (interface{}, bool) {
@@ -678,7 +697,9 @@ func sortedMap(m map[string]interface{}) map[string]interface{} {
 	return m
 }
 
-func normalizeText(raw string) string {
+func normalizeText(raw string) string { return normalizeTextOpts(raw, true) }
+
+func normalizeTextOpts(raw string, scrubHashes bool) string {
 	var lines []string
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimRight(line, "\r")
@@ -700,7 +721,7 @@ func normalizeText(raw string) string {
 		line = reTimestampTS.ReplaceAllString(line, "[X ms]")
 
 		// Normalize paths and IDs
-		line = normalizeString(line)
+		line = normalizeStringOpts(line, scrubHashes)
 
 		// Normalize dockerfile size
 		line = reDockerfileB.ReplaceAllString(line, "transferring dockerfile: <N>B")
