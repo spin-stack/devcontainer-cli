@@ -5,17 +5,19 @@
 # the CA certificate bundle. Those CA certs are required: the CLI performs
 # TLS to OCI registries (ghcr.io, mcr, etc.) when pulling Features/Templates.
 #
-# This Dockerfile expects the binary to already exist in the build context as
-# ./devcontainer. GoReleaser's `dockers:` block builds the binary first and
-# drops it into the context (see .goreleaser.yml); for a local build, run
-#   CGO_ENABLED=0 go build -o devcontainer ./cmd/devcontainer
-# before `docker build`.
+# GoReleaser's `dockers_v2:` block does a single multi-platform buildx build and
+# stages the per-platform binary under ${TARGETPLATFORM}/devcontainer in the build
+# context. For a local single-arch build:
+#   mkdir -p linux/amd64
+#   CGO_ENABLED=0 go build -o linux/amd64/devcontainer ./cmd/devcontainer
+#   docker buildx build --platform linux/amd64 --load -t devcontainer-cli .
 FROM gcr.io/distroless/static:nonroot
 
 # Version/revision are injected at build time. GoReleaser passes them via
-# build_flag_templates; a local build can pass --build-arg VERSION=... .
+# build_args; a local build can pass --build-arg VERSION=... .
 ARG VERSION=dev
 ARG REVISION=unknown
+ARG TARGETPLATFORM
 
 LABEL org.opencontainers.image.title="devcontainer-cli"
 LABEL org.opencontainers.image.description="Dev Container CLI (Go rewrite)"
@@ -28,6 +30,6 @@ LABEL org.opencontainers.image.revision="${REVISION}"
 # Distroless already runs as the nonroot user (uid 65532); be explicit.
 USER nonroot:nonroot
 
-COPY devcontainer /devcontainer
+COPY ${TARGETPLATFORM}/devcontainer /devcontainer
 
 ENTRYPOINT ["/devcontainer"]
