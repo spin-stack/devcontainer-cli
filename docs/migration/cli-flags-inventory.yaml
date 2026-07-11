@@ -160,7 +160,8 @@ commands:
       skip-feature-auto-mapping:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go up.go omits MarkHidden — flag is visible in --help.
+        # In the TS CLI (and build/read-configuration in Go) this flag is hidden.
         description: "Temporary option for testing."
       skip-post-attach:
         type: boolean
@@ -182,7 +183,7 @@ commands:
       omit-config-remote-env-from-metadata:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
         description: "Omit remoteEnv from devcontainer.json for container metadata label."
       secrets-file:
         type: string
@@ -190,17 +191,17 @@ commands:
       experimental-lockfile:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
         description: "Write lockfile."
       experimental-frozen-lockfile:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
         description: "Ensure lockfile remains unchanged."
       omit-syntax-directive:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
         description: "Omit Dockerfile syntax directives."
       include-configuration:
         type: boolean
@@ -210,6 +211,12 @@ commands:
         type: boolean
         default: false
         description: "Include merged configuration in result."
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     custom_checks:
       - "id-label must match name=value format"
       - "workspace-folder OR id-label is required"
@@ -286,6 +293,12 @@ commands:
       include-merged-configuration:
         type: boolean
         default: false
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     custom_checks:
       - "remote-env must match name=value format"
 
@@ -441,7 +454,7 @@ commands:
       skip-feature-auto-mapping:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go run_user_commands.go omits MarkHidden — should be hidden.
       skip-post-attach:
         type: boolean
         default: false
@@ -456,6 +469,12 @@ commands:
         type: string
       secrets-file:
         type: string
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     custom_checks:
       - "id-label must match name=value format"
       - "remote-env must match name=value format"
@@ -517,6 +536,12 @@ commands:
         type: boolean
         default: false
         hidden: true
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     custom_checks:
       - "id-label must match name=value format"
       - "One of --container-id, --id-label or --workspace-folder is required"
@@ -559,6 +584,12 @@ commands:
       terminal-rows:
         type: number
         implies: [terminal-columns]
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     output_notes: >
       --output-format text: text-table con columnas [Feature, Current, Wanted, Latest].
       --output-format json: JSON con indentación si TTY.
@@ -592,14 +623,20 @@ commands:
         description: "Write generated lockfile to standard out instead of to disk."
       feature:
         type: string
-        alias: f
-        hidden: true
+        # BUG(RW-013): Go outdated.go registers this without shorthand `-f` and
+        # without MarkHidden — the TS CLI exposes it as a hidden `-f` alias.
         description: "Upgrade the version requirements of a given Feature."
       target-version:
         type: string
-        alias: v
-        hidden: true
+        # BUG(RW-013): Go outdated.go registers this without shorthand `-v` and
+        # without MarkHidden — the TS CLI exposes it as a hidden `-v` alias.
         description: "The major (x), minor (x.y), or patch version (x.y.z) of the Feature to pin."
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     custom_checks:
       - "--feature and --target-version must be used together"
       - "--target-version must match /^\\d+(\\.\\d+(\\.\\d+)?)?$/"
@@ -665,7 +702,13 @@ commands:
       skip-feature-auto-mapping:
         type: boolean
         default: false
-        hidden: true
+        # BUG(RW-013): Go exec.go omits MarkHidden — should be hidden.
+      log-file:
+        type: string
+        description: "Log file path."
+      terminal-log-file:
+        type: string
+        description: "Terminal log file path."
     positional_args:
       cmd:
         type: string
@@ -753,10 +796,6 @@ commands:
         positional: "<target>"
         handler: featuresPackageHandler
         flags:
-          target:
-            type: string
-            positional: true
-            default: "."
           output-folder:
             type: string
             alias: o
@@ -769,16 +808,17 @@ commands:
             type: choice
             choices: [info, debug, trace]
             default: info
+        positional_args:
+          # `target` is a positional argument ([target] in Use), not a pflag flag.
+          target:
+            type: string
+            default: "."
 
       publish:
         description: "Package and publish Features"
         positional: "<target>"
         handler: featuresPublishHandler
         flags:
-          target:
-            type: string
-            positional: true
-            default: "."
           registry:
             type: string
             alias: r
@@ -792,6 +832,11 @@ commands:
             type: choice
             choices: [info, debug, trace]
             default: info
+        positional_args:
+          # `target` is a positional argument ([target] in Use), not a pflag flag.
+          target:
+            type: string
+            default: "."
 
       info:
         description: "Fetch metadata for a published Feature"
@@ -899,10 +944,6 @@ commands:
         positional: "<target>"
         handler: templatesPublishHandler
         flags:
-          target:
-            type: string
-            positional: true
-            default: "."
           registry:
             type: string
             alias: r
@@ -915,6 +956,11 @@ commands:
             type: choice
             choices: [info, debug, trace]
             default: info
+        positional_args:
+          # `target` is a positional argument ([target] in Use), not a pflag flag.
+          target:
+            type: string
+            default: "."
 
       metadata:
         description: "Fetch a published Template's metadata"
