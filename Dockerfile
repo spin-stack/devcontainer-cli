@@ -21,7 +21,7 @@ LABEL org.opencontainers.image.title="devcontainer-cli"
 LABEL org.opencontainers.image.description="Dev Container CLI (Go rewrite)"
 LABEL org.opencontainers.image.source="https://github.com/spin-stack/devcontainer-cli"
 LABEL org.opencontainers.image.url="https://github.com/spin-stack/devcontainer-cli"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.revision="${REVISION}"
 
