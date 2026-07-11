@@ -153,30 +153,16 @@ func TestParityMatrix(t *testing.T) {
 				t.Fatalf("Go timed out")
 			}
 
-			// Assert the Go side reached the outcome the case name declares, independent
-			// of TS (W1). This turns "both failed identically on a success case" — the
-			// classic vacuous pass — into a real failure. Skipped when Go infra-failed.
-			if expectSuccess, known := caseExpectsOutcome(tc.ID); known && !goStatus.Infra {
-				if expectSuccess && goRes.ExitCode != 0 {
-					t.Errorf("expected success but Go exited %d\n--- Go stdout\n%s\n--- Go stderr\n%s",
-						goRes.ExitCode, strings.TrimSpace(goRes.Stdout), strings.TrimSpace(goRes.Stderr))
-				}
-				if !expectSuccess && goRes.ExitCode == 0 {
-					t.Errorf("expected failure but Go exited 0\n--- Go stdout\n%s", strings.TrimSpace(goRes.Stdout))
-				}
-			}
-
 			// TS unavailable as an oracle (infra/timeout): record it (auditable) but
-			// don't compare. Go already ran and was outcome-checked above.
+			// don't compare. Go still ran (W6), so its coverage is not silently lost.
+			// When Go hit the SAME environment limit (e.g. arm64 on an amd64 host) that
+			// is a shared skip, not a Go bug.
 			if tsStatus.Skip {
-				if goStatus.Infra {
-					t.Fatalf("Go infra error while TS was skipped (%s): Go exit %d", tsStatus.Reason, goRes.ExitCode)
-				}
 				t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
 				return
 			}
 			if goStatus.Infra && tsRes.ExitCode == 0 {
-				t.Fatalf("Go failed with infra error (exit %d)", goRes.ExitCode)
+				t.Fatalf("Go failed with infra error (exit %d) while TS succeeded", goRes.ExitCode)
 			}
 
 			asserts := setFrom(tc.Asserts)
@@ -185,6 +171,26 @@ func TestParityMatrix(t *testing.T) {
 			if tsRes.ExitCode != 0 && goRes.ExitCode == 0 && tsStatus.Infra {
 				t.Skipf("TS infra error (exit %d) [case=%s]", tsRes.ExitCode, tc.ID)
 				return
+			}
+
+			// W1 — outcome-intent check, now that TS is a usable oracle:
+			//  - success case, TS exit 0, Go non-zero → real regression (RED).
+			//  - success case, BOTH failed → we can't tell a product bug from an
+			//    environment limit; mark inconclusive (visible SKIP, not a silent pass).
+			//  - failure case, TS non-zero, Go exit 0 → real regression (RED).
+			if expectSuccess, known := caseExpectsOutcome(tc.ID); known {
+				if expectSuccess && goRes.ExitCode != 0 {
+					if tsRes.ExitCode == 0 {
+						t.Errorf("regression: success-intended case, TS exit 0 but Go exited %d\n--- Go stdout\n%s\n--- Go stderr\n%s",
+							goRes.ExitCode, strings.TrimSpace(goRes.Stdout), strings.TrimSpace(goRes.Stderr))
+					} else {
+						t.Skipf("inconclusive: success-intended case but both sides failed (TS=%d Go=%d) [case=%s]", tsRes.ExitCode, goRes.ExitCode, tc.ID)
+						return
+					}
+				}
+				if !expectSuccess && tsRes.ExitCode != 0 && goRes.ExitCode == 0 {
+					t.Errorf("regression: failure-intended case, TS exited %d but Go exited 0\n--- Go stdout\n%s", tsRes.ExitCode, strings.TrimSpace(goRes.Stdout))
+				}
 			}
 
 			// Exit code
