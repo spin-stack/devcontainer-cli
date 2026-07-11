@@ -1,20 +1,40 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/spf13/cobra"
 )
+
+// bareVersionRe matches a bare semver-ish target: x / x.y / x.y.z
+// (TS: /^\d+(\.\d+(\.\d+)?)?$/ in upgradeCommand.ts).
+var bareVersionRe = regexp.MustCompile(`^\d+(\.\d+(\.\d+)?)?$`)
+
+// lastVersionDelimiter matches the trailing ":tag" or "@digest" of a feature id
+// (TS getFeatureIdWithoutVersion: /[:@][^/]*$/).
+var lastVersionDelimiter = regexp.MustCompile(`[:@][^/]*$`)
+
+// getFeatureIdWithoutVersion strips the trailing version tag or digest from a
+// user feature id, leaving the full id path (matches TS getFeatureIdWithoutVersion).
+func getFeatureIdWithoutVersion(featureID string) string {
+	if loc := lastVersionDelimiter.FindStringIndex(featureID); loc != nil {
+		return featureID[:loc[0]]
+	}
+	return featureID
+}
 
 func newOutdatedCmd() *cobra.Command {
 	var (
@@ -197,25 +217,156 @@ func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevel
 		data, _ := json.MarshalIndent(payload, "", "  ")
 		fmt.Fprintln(out.Stdout(), string(data))
 	} else {
-		// Text table
-		ids := make([]string, 0, len(result))
-		for id := range result {
-			ids = append(ids, id)
-		}
-		sort.Strings(ids)
-		fmt.Fprintf(out.Stdout(), "%-50s %-12s %-12s %-12s\n", "Feature", "Current", "Wanted", "Latest")
-		for _, id := range ids {
-			e := result[id]
-			// Shorten display ID
-			display := id
-			if parts := strings.Split(display, "/"); len(parts) > 2 {
-				display = strings.Join(parts[len(parts)-2:], "/")
+		// Text table. Rows follow the order features were declared in the config
+		// (TS reorders resolved.features back to config order), and the Feature
+		// column shows the full user id without its version tag/digest. Formatting
+		// mirrors npm's text-table (min column widths, 2-space separator, left
+		// aligned, trailing whitespace stripped per row).
+		rows := [][]string{{"Feature", "Current", "Wanted", "Latest"}}
+		for _, id := range orderedFeatureKeys(cfg.ConfigFilePath, cfg.Features) {
+			e, ok := result[id]
+			if !ok {
+				continue
 			}
-			fmt.Fprintf(out.Stdout(), "%-50s %-12s %-12s %-12s\n", display, e.Current, e.Wanted, e.Latest)
+			rows = append(rows, []string{
+				getFeatureIdWithoutVersion(id),
+				dashIfEmpty(e.Current),
+				dashIfEmpty(e.Wanted),
+				dashIfEmpty(e.Latest),
+			})
 		}
+		fmt.Fprintln(out.Stdout(), textTable(rows))
 	}
 
 	return nil
+}
+
+// dashIfEmpty renders an empty column value as "-" (TS maps undefined → '-').
+func dashIfEmpty(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// orderedFeatureKeys returns the feature ids in the order they appear in the
+// devcontainer.json (Go maps are unordered, so the raw file is re-read). Any key
+// present in features but not recovered from the file is appended sorted, so the
+// caller never silently drops a feature.
+func orderedFeatureKeys(configFilePath string, features map[string]interface{}) []string {
+	ordered, _ := featureKeyOrderFromFile(configFilePath)
+
+	seen := make(map[string]bool, len(ordered))
+	result := make([]string, 0, len(features))
+	for _, k := range ordered {
+		if _, ok := features[k]; ok && !seen[k] {
+			seen[k] = true
+			result = append(result, k)
+		}
+	}
+	if len(result) < len(features) {
+		var rest []string
+		for k := range features {
+			if !seen[k] {
+				rest = append(rest, k)
+			}
+		}
+		sort.Strings(rest)
+		result = append(result, rest...)
+	}
+	return result
+}
+
+// featureKeyOrderFromFile parses configFilePath and returns the keys of its
+// top-level "features" object in document order.
+func featureKeyOrderFromFile(configFilePath string) ([]string, error) {
+	if configFilePath == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return nil, err
+	}
+	std, err := jsonc.StripComments(data)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(std))
+	// Opening brace of the top-level object.
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, _ := keyTok.(string)
+		if key != "features" {
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		// "features" value must be an object; read its keys in order.
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		if d, ok := tok.(json.Delim); !ok || d != '{' {
+			return nil, nil
+		}
+		var keys []string
+		for dec.More() {
+			featTok, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			if fk, ok := featTok.(string); ok {
+				keys = append(keys, fk)
+			}
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return nil, err
+			}
+		}
+		return keys, nil
+	}
+	return nil, nil
+}
+
+// textTable formats rows the way npm's text-table does: each column padded to
+// its max cell width, cells separated by two spaces, left-aligned, with trailing
+// whitespace trimmed from each line.
+func textTable(rows [][]string) string {
+	var widths []int
+	for _, row := range rows {
+		for i, cell := range row {
+			if i >= len(widths) {
+				widths = append(widths, 0)
+			}
+			if len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		var b strings.Builder
+		for i, cell := range row {
+			if i > 0 {
+				b.WriteString("  ")
+			}
+			b.WriteString(cell)
+			if pad := widths[i] - len(cell); pad > 0 {
+				b.WriteString(strings.Repeat(" ", pad))
+			}
+		}
+		lines = append(lines, strings.TrimRight(b.String(), " "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func newUpgradeCmd() *cobra.Command {
@@ -228,12 +379,25 @@ func newUpgradeCmd() *cobra.Command {
 		logFile         string
 		terminalLogFile string
 		dryRun          bool
+		feature         string
+		targetVersion   string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade lockfile",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --feature/--target-version are the dependabot-oriented flags: they
+			// must be supplied together, and --target-version must be a bare
+			// x / x.y / x.y.z version. TS validates this in yargs .check() before
+			// the handler runs (upgradeCommand.ts), so exit 1 with the same text.
+			if (feature != "") != (targetVersion != "") {
+				return fmt.Errorf("The '--target-version' and '--feature' flag must be used together.")
+			}
+			if targetVersion != "" && !bareVersionRe.MatchString(targetVersion) {
+				return fmt.Errorf("Invalid version '%s'.  Must be in the form of 'x', 'x.y', or 'x.y.z'", targetVersion)
+			}
+
 			// 0.88: workspace-folder defaults to cwd when not provided.
 			if workspaceFolder == "" {
 				workspaceFolder, _ = os.Getwd()
@@ -301,8 +465,8 @@ func newUpgradeCmd() *cobra.Command {
 	f.StringVar(&composePath, "docker-compose-path", "docker-compose", "Compose path.")
 	f.StringVar(&logLevel, "log-level", "info", "Log level.")
 	f.BoolVar(&dryRun, "dry-run", false, "Write to stdout.")
-	f.StringP("feature", "f", "", "")
-	f.StringP("target-version", "v", "", "")
+	f.StringVarP(&feature, "feature", "f", "", "")
+	f.StringVarP(&targetVersion, "target-version", "v", "", "")
 	_ = f.MarkHidden("feature")        // hidden aliased flag (TS parity: alias -f)
 	_ = f.MarkHidden("target-version") // hidden aliased flag (TS parity: alias -v)
 	_ = dockerPath
