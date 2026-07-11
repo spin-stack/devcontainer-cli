@@ -2,11 +2,13 @@ package cli
 
 import (
 	"archive/tar"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	coreerrors "github.com/devcontainers/cli/internal/errors"
@@ -435,6 +437,15 @@ func publishCollection(targetFolder, registry, namespace, collectionType, logLev
 	return nil
 }
 
+// README templates, matching the TS FEATURES_README_TEMPLATE / TEMPLATE_README_TEMPLATE
+// byte-for-byte (leading newline, blank lines, double space before "Add").
+const featuresReadmeTemplate = "\n# #{Name}\n\n#{Description}\n\n## Example Usage\n\n```json\n\"features\": {\n    \"#{Registry}/#{Namespace}/#{Id}:#{Version}\": {}\n}\n```\n\n#{OptionsTable}\n#{Customizations}\n#{Notes}\n\n---\n\n_Note: This file was auto-generated from the [devcontainer-feature.json](#{RepoUrl}).  Add additional notes to a `NOTES.md`._\n"
+
+const templatesReadmeTemplate = "\n# #{Name}\n\n#{Description}\n\n#{OptionsTable}\n\n#{Notes}\n\n---\n\n_Note: This file was auto-generated from the [devcontainer-template.json](#{RepoUrl}).  Add additional notes to a `NOTES.md`._\n"
+
+// generateDocs is a faithful port of the TS _generateDocumentation: it iterates
+// the DIRECT children of projectFolder (no auto-descent into src/), and for each
+// child writes <child>/README.md from the metadata file, preserving option order.
 func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, collectionType, logLevelStr string) error {
 	logger := log.New(log.Options{
 		Level:  log.MapLogLevel(logLevelStr),
@@ -442,79 +453,248 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 		Writer: os.Stderr,
 	})
 
-	srcDir := filepath.Join(projectFolder, "src")
-	if !pfs.IsDir(srcDir) {
-		srcDir = projectFolder
-	}
-
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return fmt.Errorf("read source: %w", err)
-	}
-
 	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
+	template := featuresReadmeTemplate
+	if collectionType == "template" {
+		template = templatesReadmeTemplate
+	}
+
+	entries, err := os.ReadDir(projectFolder)
+	if err != nil {
+		return fmt.Errorf("read project folder: %w", err)
+	}
+
+	basePathTrimmed := strings.TrimPrefix(projectFolder, "./")
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		f := entry.Name()
+		if strings.HasPrefix(f, ".") {
 			continue
 		}
 
-		metaPath := filepath.Join(srcDir, entry.Name(), metadataFile)
-		if !pfs.IsFile(metaPath) {
+		readmePath := filepath.Join(projectFolder, f, "README.md")
+		logger.Write(fmt.Sprintf("Generating %s...", readmePath), log.LevelInfo)
+
+		jsonPath := filepath.Join(projectFolder, f, metadataFile)
+		raw, readErr := os.ReadFile(jsonPath)
+		if readErr != nil {
+			logger.Write(fmt.Sprintf("(!) Warning: %s not found at path '%s'. Skipping...", metadataFile, jsonPath), log.LevelWarning)
 			continue
 		}
 
-		data, _ := os.ReadFile(metaPath)
+		std, stripErr := jsonc.StripComments(raw)
+		if stripErr != nil {
+			logger.Write(fmt.Sprintf("Failed to parse %s: %v", jsonPath, stripErr), log.LevelError)
+			continue
+		}
 		var meta map[string]interface{}
-		jsonc.Unmarshal(data, &meta)
-
-		name, _ := meta["name"].(string)
-		if name == "" {
-			name = entry.Name()
+		if err := json.Unmarshal(std, &meta); err != nil {
+			logger.Write(fmt.Sprintf("Failed to parse %s: %v", jsonPath, err), log.LevelError)
+			continue
 		}
-		desc, _ := meta["description"].(string)
 		id, _ := meta["id"].(string)
 		if id == "" {
-			id = entry.Name()
+			logger.Write(fmt.Sprintf("%s for '%s' does not contain an 'id'", metadataFile, f), log.LevelError)
+			continue
 		}
 
-		var readme strings.Builder
-		readme.WriteString(fmt.Sprintf("\n# %s (%s)\n\n", name, id))
-		readme.WriteString(fmt.Sprintf("%s\n\n", desc))
+		name := id
+		if n, _ := meta["name"].(string); n != "" {
+			name = fmt.Sprintf("%s (%s)", n, id)
+		}
+		desc, _ := meta["description"].(string)
 
-		// Installation snippet
-		if registry != "" && namespace != "" {
-			readme.WriteString("## Usage\n\n")
-			readme.WriteString("```json\n")
-			readme.WriteString(fmt.Sprintf("\"features\": {\n    \"%s/%s/%s:1\": {}\n}\n", registry, namespace, id))
-			readme.WriteString("```\n\n")
+		version := "latest"
+		if v, _ := meta["version"].(string); v != "" {
+			version = strings.SplitN(v, ".", 2)[0]
 		}
 
-		// Options table
-		if options, ok := meta["options"].(map[string]interface{}); ok && len(options) > 0 {
-			readme.WriteString("## Options\n\n")
-			readme.WriteString("| Option | Type | Default | Description |\n")
-			readme.WriteString("|--------|------|---------|-------------|\n")
-			for optName, optVal := range options {
-				optMap, _ := optVal.(map[string]interface{})
-				optType, _ := optMap["type"].(string)
-				optDefault := fmt.Sprintf("%v", optMap["default"])
-				optDesc, _ := optMap["description"].(string)
-				readme.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", optName, optType, optDefault, optDesc))
-			}
-			readme.WriteString("\n")
+		notes := ""
+		if n, e := os.ReadFile(filepath.Join(projectFolder, f, "NOTES.md")); e == nil {
+			notes = string(n)
 		}
 
-		// Source link
+		urlToConfig := metadataFile
 		if githubOwner != "" && githubRepo != "" {
-			readme.WriteString(fmt.Sprintf("---\n\n_Note: This file was auto-generated. See [%s/%s](https://github.com/%s/%s) for source._\n", githubOwner, githubRepo, githubOwner, githubRepo))
+			urlToConfig = fmt.Sprintf("https://github.com/%s/%s/blob/main/%s/%s/%s", githubOwner, githubRepo, basePathTrimmed, f, metadataFile)
 		}
 
-		readmePath := filepath.Join(srcDir, entry.Name(), "README.md")
-		os.WriteFile(readmePath, []byte(readme.String()), 0644)
-		logger.Write(fmt.Sprintf("Generated docs for %s", entry.Name()), log.LevelInfo)
+		readme := template
+		readme = strings.Replace(readme, "#{Id}", id, 1)
+		readme = strings.Replace(readme, "#{Name}", name, 1)
+		readme = strings.Replace(readme, "#{Description}", desc, 1)
+		readme = strings.Replace(readme, "#{OptionsTable}", generateOptionsMarkdown(std, meta), 1)
+		readme = strings.Replace(readme, "#{Notes}", notes, 1)
+		readme = strings.Replace(readme, "#{RepoUrl}", urlToConfig, 1)
+		readme = strings.Replace(readme, "#{Registry}", registry, 1)
+		readme = strings.Replace(readme, "#{Namespace}", namespace, 1)
+		readme = strings.Replace(readme, "#{Version}", version, 1)
+		readme = strings.Replace(readme, "#{Customizations}", generateCustomizationsMarkdown(meta), 1)
+
+		if header := generateDocsHeader(meta); header != "" {
+			readme = header + readme
+		}
+
+		os.Remove(readmePath)
+		if err := os.WriteFile(readmePath, []byte(readme), 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", readmePath, err)
+		}
 	}
 
+	return nil
+}
+
+// generateOptionsMarkdown renders the options table with columns and row order
+// matching TS: "| Options Id | Description | Type | Default Value |" in the JSON's
+// insertion order. Returns "" only when the metadata has no "options" key.
+func generateOptionsMarkdown(std []byte, meta map[string]interface{}) string {
+	optsVal, hasOptions := meta["options"]
+	if !hasOptions {
+		return ""
+	}
+	optsMap, _ := optsVal.(map[string]interface{})
+
+	var optionsRaw json.RawMessage
+	var top map[string]json.RawMessage
+	if json.Unmarshal(std, &top) == nil {
+		optionsRaw = top["options"]
+	}
+
+	var rows []string
+	for _, k := range orderedObjectKeys(optionsRaw) {
+		ov, _ := optsMap[k].(map[string]interface{})
+		desc := jsTruthyString(ov["description"], "-")
+		typ := jsTruthyString(ov["type"], "-")
+		rows = append(rows, fmt.Sprintf("| %s | %s | %s | %s |", k, desc, typ, defaultCell(ov)))
+	}
+	return "## Options\n\n| Options Id | Description | Type | Default Value |\n|-----|-----|-----|-----|\n" + strings.Join(rows, "\n")
+}
+
+func generateCustomizationsMarkdown(meta map[string]interface{}) string {
+	cust, _ := meta["customizations"].(map[string]interface{})
+	vscode, _ := cust["vscode"].(map[string]interface{})
+	exts, _ := vscode["extensions"].([]interface{})
+	if len(exts) == 0 {
+		return ""
+	}
+	var lines []string
+	for _, e := range exts {
+		if s, ok := e.(string); ok {
+			lines = append(lines, fmt.Sprintf("- `%s`", s))
+		}
+	}
+	return "\n## Customizations\n\n### VS Code Extensions\n\n" + strings.Join(lines, "\n") + "\n"
+}
+
+func generateDocsHeader(meta map[string]interface{}) string {
+	deprecated, _ := meta["deprecated"].(bool)
+	legacy, _ := meta["legacyIds"].([]interface{})
+	if !deprecated && len(legacy) == 0 {
+		return ""
+	}
+	h := "### **IMPORTANT NOTE**\n"
+	if deprecated {
+		h += "- **This Feature is deprecated, and will no longer receive any further updates/support.**\n"
+	}
+	if len(legacy) > 0 {
+		ids := make([]string, 0, len(legacy))
+		for _, l := range legacy {
+			if s, ok := l.(string); ok {
+				ids = append(ids, fmt.Sprintf("'%s'", s))
+			}
+		}
+		h += fmt.Sprintf("- **Ids used to publish this Feature in the past - %s**\n", strings.Join(ids, ", "))
+	}
+	return h
+}
+
+// jsTruthyString mirrors JS `value || fallback` for string cells: an empty or
+// non-string value falls back.
+func jsTruthyString(v interface{}, fallback string) string {
+	if s, ok := v.(string); ok && s != "" {
+		return s
+	}
+	return fallback
+}
+
+// defaultCell mirrors TS `val.default !== '' ? val.default : '-'`: an empty string
+// becomes "-", an absent default renders "undefined", everything else prints as JS
+// would interpolate it.
+func defaultCell(ov map[string]interface{}) string {
+	d, ok := ov["default"]
+	if !ok {
+		return "undefined"
+	}
+	if s, isStr := d.(string); isStr {
+		if s == "" {
+			return "-"
+		}
+		return s
+	}
+	switch x := d.(type) {
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case nil:
+		return "null"
+	default:
+		return fmt.Sprintf("%v", x)
+	}
+}
+
+// orderedObjectKeys returns the keys of a JSON object in source order.
+func orderedObjectKeys(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	t, err := dec.Token()
+	if err != nil {
+		return nil
+	}
+	if d, ok := t.(json.Delim); !ok || d != '{' {
+		return nil
+	}
+	var keys []string
+	for dec.More() {
+		kt, err := dec.Token()
+		if err != nil {
+			break
+		}
+		if key, ok := kt.(string); ok {
+			keys = append(keys, key)
+		}
+		if err := skipJSONValue(dec); err != nil {
+			break
+		}
+	}
+	return keys
+}
+
+func skipJSONValue(dec *json.Decoder) error {
+	t, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if d, ok := t.(json.Delim); ok && (d == '{' || d == '[') {
+		for dec.More() {
+			if d == '{' {
+				if _, err := dec.Token(); err != nil { // key
+					return err
+				}
+			}
+			if err := skipJSONValue(dec); err != nil {
+				return err
+			}
+		}
+		if _, err := dec.Token(); err != nil { // closing delim
+			return err
+		}
+	}
 	return nil
 }
 
