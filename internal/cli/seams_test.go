@@ -29,8 +29,10 @@ func (c *captureOutput) Stderr() io.Writer { return &c.err }
 type fakeRegistry struct {
 	published      map[string][]string // resource -> already-published tags
 	failIDs        map[string]bool
-	pushed         []string // resources successfully pushed (for assertions)
-	collectionPush int      // times PushCollectionMetadata was called
+	pushed         []string            // resources successfully pushed (for assertions)
+	pushedTags     map[string][]string // resource -> tags requested on push
+	collectionPush int                 // times PushCollectionMetadata was called
+	failCollection bool                // when true, PushCollectionMetadata errors
 }
 
 func (f *fakeRegistry) FetchManifest(ref *oci.Ref, expectedDigest string) (*oci.ManifestContainer, error) {
@@ -50,11 +52,17 @@ func (f *fakeRegistry) PushArtifact(ref *oci.Ref, tgzPath string, tags []string,
 		return nil, fmt.Errorf("simulated push failure for %s", ref.ID)
 	}
 	f.pushed = append(f.pushed, ref.Resource)
+	if f.pushedTags != nil {
+		f.pushedTags[ref.Resource] = tags
+	}
 	return &oci.PushResult{Digest: "sha256:deadbeef", PublishedTags: tags}, nil
 }
 
 func (f *fakeRegistry) PushCollectionMetadata(ref *oci.Ref, collectionJSONPath string) (*oci.PushResult, error) {
 	f.collectionPush++
+	if f.failCollection {
+		return nil, fmt.Errorf("simulated collection metadata push failure")
+	}
 	return &oci.PushResult{Digest: "sha256:cafef00d"}, nil
 }
 
