@@ -2206,12 +2206,13 @@ initial_cases:
     docker_required: true
     ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --platform fake/platform"
     asserts: [exit_code]
+    expect_infra_failure: true
     class: build-runtime
     current_status: match
-    notes: "Plataforma inválida → ambos exit 1. El texto del error es a nivel docker y
-      env-específico (Go `docker build` 'no match for platform in manifest'; TS `buildx`
-      'Command failed'), así que sólo se asevera exit_code; isInfraError puede clasificarlo
-      inconclusive según el host. Infra-skip legítimo, no una divergencia."
+    notes: "Plataforma inválida → ambos exit 1 (el fallo ES la conducta esperada). El texto
+      del error es a nivel docker y env-específico (Go `docker build` 'no match for platform
+      in manifest'; TS `buildx` 'Command failed'), así que sólo se asevera exit_code. Con
+      expect_infra_failure el harness compara exit codes en vez de saltar por isInfraError."
 
   - id: build.compose-image-with-features-success
     lane: runtime

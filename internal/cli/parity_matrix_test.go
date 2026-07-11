@@ -80,6 +80,12 @@ type parityCase struct {
 	// these are skipped (skipped-arm64) unless PARITY_ARM64=true is set explicitly —
 	// they never fail the strict gate.
 	Arm64Required bool `yaml:"arm64_required"`
+	// ExpectInfraFailure marks a failure-intended case whose TS side fails with an
+	// infra-looking error that IS the expected behavior (e.g. an invalid --platform
+	// makes docker fail at the metadata layer). Without this, isInfraError would
+	// classify TS's failure as an unusable-oracle skip → inconclusive; with it, when
+	// Go also failed the harness compares exit codes instead.
+	ExpectInfraFailure bool `yaml:"expect_infra_failure"`
 }
 
 type paritySideResult struct {
@@ -300,9 +306,14 @@ func TestParityMatrix(t *testing.T) {
 			// When Go hit the SAME environment limit (e.g. arm64 on an amd64 host) that
 			// is a shared skip, not a Go bug.
 			if tsStatus.Skip {
-				outcome = parityInconclusive
-				t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
-				return
+				// A failure-intended case whose TS side fails with an infra-looking
+				// error IS the expected behavior (e.g. invalid --platform). When Go
+				// also failed, compare exit codes instead of marking inconclusive.
+				if !(tc.ExpectInfraFailure && tsStatus.Infra && goRes.ExitCode != 0) {
+					outcome = parityInconclusive
+					t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
+					return
+				}
 			}
 			if goStatus.Infra && tsRes.ExitCode == 0 {
 				t.Fatalf("Go failed with infra error (exit %d) while TS succeeded", goRes.ExitCode)
