@@ -22,8 +22,9 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 		Use:   "resolve-dependencies",
 		Short: "Read and resolve dependency graph from a configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 0.88: workspace-folder defaults to cwd when not provided.
 			if workspaceFolder == "" {
-				return fmt.Errorf("Missing required argument: --workspace-folder")
+				workspaceFolder, _ = os.Getwd()
 			}
 
 			logger := log.New(log.Options{
