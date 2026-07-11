@@ -328,7 +328,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		Tags:        imageNames,
 		Target:      stageName,
 		BuildArgs:   buildArgs,
-		CacheFrom:   opts.cacheFrom,
+		CacheFrom:   cacheFromForDockerfileBuild(opts.cacheFrom, cfg),
 		Labels:      allLabels,
 		NoCache:     opts.noCache,
 		ExtraArgs:   buildOptionsFromConfig(cfg),
@@ -550,6 +550,22 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 	// No image names, no platform/push — return base image as-is
 
 	return imageNames, nil
+}
+
+// cacheFromForDockerfileBuild combines the --cache-from flag values with the
+// devcontainer.json build.cacheFrom, in that order — matching TS singleContainer,
+// which pushes the additional (flag) cache-froms first and then config.build.cacheFrom
+// (string or array). It applies only to the build of the user's Dockerfile; the
+// feature layers take the flag values alone (matching TS containerFeatures, which
+// uses additionalCacheFroms only).
+func cacheFromForDockerfileBuild(flagCacheFrom []string, cfg *config.DevContainerConfig) []string {
+	if cfg == nil || cfg.Build == nil || len(cfg.Build.CacheFrom) == 0 {
+		return flagCacheFrom
+	}
+	combined := make([]string, 0, len(flagCacheFrom)+len(cfg.Build.CacheFrom))
+	combined = append(combined, flagCacheFrom...)
+	combined = append(combined, cfg.Build.CacheFrom...)
+	return combined
 }
 
 func buildArgsFromConfig(cfg *config.DevContainerConfig) map[string]string {

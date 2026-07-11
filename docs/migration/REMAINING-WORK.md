@@ -322,6 +322,44 @@ La auditoría de cobertura marcó que una matriz "verde" sobreestima paridad. Es
   fixture-path faltante, ya corregido) corren con `--log-level trace` + secrets y matchean
   — verificado 0 leaks del valor crudo en la salida de ambos lados.
 
+## Mejoras de integración (post-paridad, tiers)
+
+Trabajo dirigido a que orquestadores/tooling downstream corran el CLI sin
+maquinaria externa (auth, cache de build, prebuilds). No son gaps de paridad
+con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
+
+- **T1.1 — `config.build.cacheFrom` cableado.** El campo existe (`config/types.go`)
+  pero sólo se usaba el flag `--cache-from`; TS (`singleContainer.ts:226-234`)
+  además empuja `config.build.cacheFrom` (string|array) tras los del flag. Se
+  mergea en la build del Dockerfile del usuario (no en las capas de features, que
+  en TS usan sólo `additionalCacheFroms`). No-breaking. → **cerrado** si hay test
+  del merge y del orden.
+- **T1.2 — `build --label`.** Ya funciona (`docker/client.go`), adelantado a
+  upstream #930. Sin trabajo; registrado como capacidad presente.
+- **T2.1 — Puente de auth para `docker build`.** La cadena de credenciales del CLI
+  (`oci.getCredential`: `DEVCONTAINERS_OCI_AUTH`, docker config, cred helpers,
+  `GITHUB_TOKEN`) sólo aplica a las ops de registry del propio CLI, no al
+  subproceso `docker build` (pull de base privada / `--push` / `--cache-to`). Se
+  resolverán los registries referenciados por la build, se escribirá un
+  `DOCKER_CONFIG` temporal con `auths` y se pasará por env al subproceso; sin
+  credenciales resueltas no se crea nada (idéntico al comportamiento actual).
+- **T3.1 — `--secrets-file` en `build`.** Hoy sólo en `up`/`run-user-commands`;
+  passthrough a buildx `--secret`. Añadir al inventario de flags.
+- **T3.2 — `BUILDKIT_INLINE_CACHE=1` condicional.** Hoy hardcodeado
+  (`docker/client.go`). Debe replicar la guarda exacta de TS
+  (`singleContainer.ts:202`, rama no-`--no-cache`) — parity-sensible.
+- **T4.1 — `read-configuration --cache-key`.** Hash determinista
+  content-addressed de `{devcontainer.json normalizado + Dockerfile + contexto +
+  digests base/features + proxy env}` para prebuild-reuse sin re-implementar el
+  hashing. Go-only (sin oráculo) → tests de determinismo/estabilidad.
+- **T4.2 — `--cache-image` / image-override que saltee feature-install.** Evita el
+  clone-and-mutate del config para apuntar a una imagen prebuildeada. Mayor
+  alcance; evaluar tras T4.1.
+- **T4.3 — deep-merge de `--override-config`.** Hoy es reemplazo total de archivo.
+  **Riesgo de paridad:** confirmar la semántica de TS (`resolve(...
+  overrideConfigFile ...)`) antes de tocar; si TS reemplaza, un merge diverge del
+  oráculo.
+
 ## Decisiones que deben quedar explícitas
 
 Decisiones ya tomadas (firmes):

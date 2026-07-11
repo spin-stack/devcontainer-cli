@@ -719,7 +719,7 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 		Target:      stageName,
 		BuildArgs:   buildArgsFromConfig(cfg),
 		ExtraArgs:   buildOptionsFromConfig(cfg),
-		CacheFrom:   opts.cacheFrom,
+		CacheFrom:   cacheFromForDockerfileBuild(opts.cacheFrom, cfg),
 		Labels:      []string{fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel)},
 		NoCache:     opts.buildNoCache,
 		UseBuildx:   useBuildx,
