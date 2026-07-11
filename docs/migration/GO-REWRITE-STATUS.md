@@ -16,25 +16,25 @@ historia de cómo llegamos — para eso está el `git log` y
 | `features` / `templates` `generate-docs` | ✅ byte-idéntico |
 | `features package` → `devcontainer-collection.json` | ✅ byte-idéntico |
 | `features` / `templates` `resolve-dependencies` (grafo + installOrder) | ✅ idéntico (post-scrub de hashes) |
-| `features publish` (push a registry OCI) | ✅ idéntico (test con `registry:3` vía testcontainers) |
+| `features` / `templates` `publish` (push a registry OCI) | ✅ idéntico (test con `registry:3` vía testcontainers) |
+| `templates metadata` | ✅ byte-idéntico (orden de keys preservado) |
+| `features test` (build + run de scripts por feature) | ✅ corre y da resultados/REPORT como TS |
 | Seguridad: `disallowed-features` (blocklist del control-manifest) | ✅ cableado, envelope idéntico |
 
 ## Qué falta
 
-Poco, y de bajo impacto:
+Muy poco, y de bajo impacto:
 
-1. **Cobertura de `templates publish` / `features test` / `templates metadata`** —
-   `features publish` ya tiene test hermético (`TestFeaturesPublishParity`, levanta
-   `registry:3` con testcontainers-go); falta replicar el patrón a `templates publish`
-   y `templates metadata`, y cubrir `features test` (levanta contenedores por escenario).
-   La implementación existe; falta el harness.
+1. **Refinamientos de `features test`** — corre y reporta pass/fail como TS, pero aún
+   no genera los tests *autogenerados/randomizados* ni colorea la salida (ANSI). El
+   núcleo (build por feature, `dev-container-features-test-lib`, REPORT) funciona.
 2. **Digest del tarball de `features package`** — **no es alcanzable** la paridad
    byte-a-byte: los headers del tar incrustan `mtime` y node-tar/Go difieren en su
    manejo (el propio TS es no-determinista). El contenido, el file-list y el
    `collection.json` sí coinciden. No es un gap real de comportamiento.
 3. **Higiene de aislamiento en la matriz** — algunos casos compose son *flaky* bajo
-   ejecución paralela (comparten cache/proyecto); pasan aislados. Mejora de test, no
-   de producto (ver W6 en la sección de harness abajo).
+   ejecución paralela (comparten recursos docker); pasan aislados. Mejora de test, no
+   de producto.
 
 No hay divergencias de producto abiertas conocidas en los comandos core ni en los
 auxiliares cubiertos.
