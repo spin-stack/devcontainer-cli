@@ -931,12 +931,14 @@ func selectedSubstring(value, filter string) bool {
 
 func isInfraError(stdout, stderr string) bool {
 	combined := stdout + stderr
+	// Anchored to unambiguous environment signals. Note "docker buildx" was
+	// removed: it also appears in the build command's yargs --output help text, so
+	// any build flag-validation error was being misclassified as infra and skipped.
 	infraPatterns := []string{
-		"docker buildx",
 		"no match for platform",
 		"failed to solve",
 		"ERROR: error getting credentials",
-		"permission denied",
+		"Cannot connect to the Docker daemon",
 	}
 	for _, p := range infraPatterns {
 		if strings.Contains(strings.ToLower(combined), strings.ToLower(p)) {
