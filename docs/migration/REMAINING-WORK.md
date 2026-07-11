@@ -184,10 +184,9 @@ propaga un fallo de `ReadFile` del `pfs.FS` inyectado.
 ### RW-015 — Pipeline GoReleaser — ✅ HECHO
 `.goreleaser.yml` sin `go test ./...` en el hook, matriz reducida a Linux
 (amd64/arm64), bloque `sboms:`, y workflow `release.yml` por tag que corre los gates
-de CI y produce draft release con checksums/SBOM. **Verificado:** `goreleaser check`
-valida la config y `goreleaser release --snapshot --clean` produce binarios + archives +
-SBOMs (syft) + imágenes docker. Follow-up menor: migrar `dockers`/`docker_manifests` a
-`dockers_v2` (deprecation, aún funciona).
+de CI y produce draft release con checksums/SBOM. Imágenes vía `dockers_v2` (sin
+deprecations). **Verificado:** `goreleaser check` limpio y `goreleaser release
+--snapshot --clean` produce binarios + archives + SBOMs (syft) + imágenes docker.
 
 ### RW-016 — Distribuir imagen OCI del CLI — ✅ HECHO
 
@@ -200,9 +199,10 @@ SBOMs (syft) + imágenes docker. Follow-up menor: migrar `dockers`/`docker_manif
   `ENTRYPOINT ["/devcontainer"]`. Labels OCI `title=devcontainer-cli`,
   `source`, `version`, `revision`, `created`, `licenses`. `VERSION`/`REVISION` por
   `ARG` (los inyecta GoReleaser; en local por `--build-arg`).
-- `.goreleaser.yml` — bloques `dockers:` (uno por arch: linux/amd64 y linux/arm64,
-  reusando los binarios ya construidos, `use: buildx`) + `docker_manifests:` que
-  combinan en `:{{.Version}}` y `:latest`.
+- `.goreleaser.yml` — bloque `dockers_v2:` (un único build multi-plataforma
+  linux/amd64+arm64 con buildx, reusando los binarios; el Dockerfile hace
+  `COPY ${TARGETPLATFORM}/devcontainer`) que produce el manifest `:{{.Version}}` +
+  `:latest` vía buildx imagetools.
 - `.github/workflows/release.yml` — job `goreleaser` con `docker/setup-qemu-action`,
   `docker/setup-buildx-action`, login a GHCR (`docker/login-action` con
   `GITHUB_TOKEN`), permisos `packages: write` + `id-token: write`. Tras publicar:
@@ -211,12 +211,10 @@ SBOMs (syft) + imágenes docker. Follow-up menor: migrar `dockers`/`docker_manif
   imagen con cosign + syft contra el digest. Gated al path de tag+aprobación; nunca
   desde PRs.
 
-**Provenance/SBOM — decisión técnica:** los flags buildx `--provenance`/`--sbom` NO se
-ponen inline en las imágenes por-arch: convierten cada imagen en un OCI index, y el
-`docker manifest create` clásico que usa `docker_manifests:` no puede anidarlo
-(`"... is a manifest list"`, exit 1 — verificado empíricamente contra un registry
-local). En su lugar: SBOM del archive por `sboms:` (syft) + SBOM/firma de imagen por
-cosign+syft en el workflow contra el digest inmutable.
+**Provenance/SBOM:** `dockers_v2` usa buildx imagetools (que sí anida OCI indexes), así
+que la restricción del viejo `docker_manifests:` ya no aplica. SBOM del archive por
+`sboms:` (syft); SBOM/firma keyless de imagen por cosign+syft en el workflow contra el
+digest inmutable del manifest publicado.
 
 **Verificado localmente:** `docker build` + `docker run --rm <img> --version` → `0.0.0-smoke`
 (binario estático `CGO_ENABLED=0`, host amd64). Build multi-arch
