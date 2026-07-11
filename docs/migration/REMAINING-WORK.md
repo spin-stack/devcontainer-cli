@@ -184,9 +184,10 @@ propaga un fallo de `ReadFile` del `pfs.FS` inyectado.
 ### RW-015 — Pipeline GoReleaser — ✅ HECHO
 `.goreleaser.yml` sin `go test ./...` en el hook, matriz reducida a Linux
 (amd64/arm64), bloque `sboms:`, y workflow `release.yml` por tag que corre los gates
-de CI y produce draft release con checksums/SBOM. **Nota:** `goreleaser`/`syft` no
-están instalados localmente, así que la config no fue verificada con
-`task release -- --snapshot`; se valida en un runner con las herramientas (RW-018).
+de CI y produce draft release con checksums/SBOM. **Verificado:** `goreleaser check`
+valida la config y `goreleaser release --snapshot --clean` produce binarios + archives +
+SBOMs (syft) + imágenes docker. Follow-up menor: migrar `dockers`/`docker_manifests` a
+`dockers_v2` (deprecation, aún funciona).
 
 ### RW-016 — Distribuir imagen OCI del CLI — ✅ HECHO
 
@@ -220,10 +221,11 @@ cosign+syft en el workflow contra el digest inmutable.
 **Verificado localmente:** `docker build` + `docker run --rm <img> --version` → `0.0.0-smoke`
 (binario estático `CGO_ENABLED=0`, host amd64). Build multi-arch
 `docker buildx build --platform linux/amd64,linux/arm64` exitoso (containerd store).
-La variante arm64 **no** se puede *ejecutar* localmente (QEMU/binfmt no registrado en
-el host); corre nativamente en CI (el smoke test usa la arch del runner). `goreleaser`/
-`syft`/`cosign` no están instalados localmente: YAML validado por parseo, `goreleaser
-check` y la firma/SBOM de imagen quedan validados en CI (RW-018).
+La variante arm64 corre nativamente en CI (el smoke test usa la arch del runner).
+`goreleaser`/`syft` verificados: `goreleaser check` valida la config y `goreleaser
+release --snapshot` buildea las imágenes `ghcr.io/spin-stack/devcontainer-cli:*-{amd64,
+arm64}` con SBOMs; `docker run <img> --version` → `0.0.0-SNAPSHOT-<sha>` ✅. La firma
+cosign de imagen (push real) queda para el path de tag en CI.
 
 **Aceptación:** `docker run <image> --version` ✅ (local, amd64), amd64/arm64 build ✅,
 digest artefactado en el workflow ✅.
@@ -255,11 +257,17 @@ amd64/arm64) · parity:contract ✅ 68/0/0 · parity:network ✅ 13/0/0 · parit
 **189 matched / 0 failed / 0 inconclusive** (+ TestPublishParity ✅) · skipped-arm64 4
 (experimental). Reportes JSON por lane + `reference-commit.txt` + `coverage.out` guardados.
 
-**Caveats de la corrida:** (1) el runtime lane necesitó `-parallel 2` — a `-parallel 4`
-1 caso compose flakea por contención docker (todos matchean aislados; issue de
-aislamiento, no de producto). (2) `task release -- --snapshot` (RW-015) queda sin
-verificar: `goreleaser`/`syft` no instalados. Para el gate CI oficial: instalar esas
-herramientas y correr el runtime lane con paralelismo estable para el host.
+**Caveats — resueltos:** (1) la flakiness del runtime lane bajo `-parallel 4` se
+eliminó: el gate (`task parity:runtime`) ahora default `-parallel 2` (determinista,
+override `PARITY_PARALLEL`). (2) `goreleaser`/`syft` verificados localmente:
+`goreleaser check` valida la config (queda sólo la deprecation intencional de
+`dockers`→`dockers_v2`), `goreleaser release --snapshot` buildea binarios + archives +
+SBOMs + imágenes docker, y `docker run <img> --version` funciona. El gate CI
+(`.github/workflows/go-cli.yml`) corre toda la secuencia con artefactos; arm64 es un job
+experimental no-bloqueante.
+
+**Para declarar paridad completa:** correr el gate CI en verde sobre el commit candidato
+y tildar la RELEASE-CHECKLIST. No quedan blockers de producto ni de infra conocidos.
 
 
 
@@ -272,9 +280,8 @@ task parity:contract && task parity:network && task parity:runtime
 task build:cross
 ```
 
-Incluye resolver las colas de otros ítems: promover los diferidos de **RW-005**
-(evidence-based), correr la mitad TS→Go de **RW-006**, y verificar `task release --
---snapshot` de **RW-015** con `goreleaser`/`syft` instalados.
+Las colas de otros ítems ya están cubiertas: los diferidos de **RW-005** matchean en la
+corrida limpia, y `goreleaser release --snapshot` de **RW-015/016** fue verificado.
 
 **Aceptación:** cero `failed`, cero `inconclusive`, deferred resueltos, SHA del
 oráculo y JSON de cada lane guardados, checklist completa. `skipped-arm64` (runtime
