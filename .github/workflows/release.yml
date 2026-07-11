@@ -60,6 +60,14 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     needs: [gate, gate-runtime]
+    # Scoped least-privilege for the publishing job:
+    #   contents: write  -> create the draft GitHub Release
+    #   packages: write  -> push images to GHCR (ghcr.io/spin-stack/devcontainer-cli)
+    #   id-token: write  -> cosign keyless (OIDC) signing of the pushed image
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,8 +76,23 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # syft powers the sboms: block in .goreleaser.yml.
+      # syft powers the sboms: block in .goreleaser.yml and the image SBOM below.
       - uses: anchore/sbom-action/download-syft@v0
+
+      # Multi-arch image build (arm64 emulated) + buildx driver for the
+      # dockers:/docker_manifests: blocks in .goreleaser.yml.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # GHCR login. Only reached on the tag path (this workflow is push.tags),
+      # never on PRs, so images are pushed exclusively from an approved tag run.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@v3
 
       - uses: goreleaser/goreleaser-action@v6
         with:
@@ -78,6 +101,51 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Post-publish: smoke test, sign, and record the image digest. ---
+      # Derive the goreleaser version (tag without the leading "v").
+      - name: Compute image ref
+        id: img
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IMAGE="ghcr.io/spin-stack/devcontainer-cli:${VERSION}"
+          echo "version=${VERSION}" >>"$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >>"$GITHUB_OUTPUT"
+
+      - name: Smoke test (docker run --version)
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.img.outputs.image }}"
+          EXPECTED="${{ steps.img.outputs.version }}"
+          GOT="$(docker run --rm "$IMAGE" --version)"
+          echo "image reported version: $GOT (expected: $EXPECTED)"
+          test "$GOT" = "$EXPECTED"
+
+      - name: Record image digest
+        id: digest
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.img.outputs.image }}"
+          DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{ json .Manifest.Digest }}' | tr -d '\"')"
+          echo "digest=${DIGEST}" >>"$GITHUB_OUTPUT"
+          {
+            echo "## Published image"
+            echo ""
+            echo "- \`${IMAGE}\`"
+            echo "- digest: \`${DIGEST}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools inspect "$IMAGE"
+
+      # Image-level SBOM + keyless provenance signature against the immutable
+      # digest (not the mutable tag). This is the cosign/syft path chosen over
+      # inline buildx --provenance/--sbom, which would break docker_manifests.
+      - name: Sign image and attest SBOM (cosign keyless)
+        run: |
+          set -euo pipefail
+          REF="ghcr.io/spin-stack/devcontainer-cli@${{ steps.digest.outputs.digest }}"
+          cosign sign --yes "$REF"
+          syft "$REF" -o spdx-json=image.sbom.spdx.json
+          cosign attest --yes --predicate image.sbom.spdx.json --type spdxjson "$REF"
 
   # Non-gating: perf/distribution metrics recorded per release, never blocks.
   metrics:

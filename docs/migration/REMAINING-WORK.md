@@ -21,9 +21,9 @@ Un ítem sólo se considera cerrado cuando:
 ## Estado (al día)
 
 Cerrados o hechos: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009, RW-010, RW-011,
-RW-013, RW-015, RW-017. Parciales (falta cola de evidencia o CI con secrets): RW-005,
-RW-006, RW-008, RW-014. **Pendientes reales:** **RW-012** (cobertura), **RW-016**
-(imagen OCI) y **RW-018** (corrida limpia — gate final).
+RW-013, RW-015, RW-016, RW-017. Parciales (falta cola de evidencia o CI con secrets):
+RW-005, RW-006, RW-008, RW-014. **Pendientes reales:** **RW-012** (cobertura) y
+**RW-018** (corrida limpia — gate final).
 
 ## P0 — Paridad funcional
 
@@ -154,16 +154,45 @@ de CI y produce draft release con checksums/SBOM. **Nota:** `goreleaser`/`syft` 
 están instalados localmente, así que la config no fue verificada con
 `task release -- --snapshot`; se valida en un runner con las herramientas (RW-018).
 
-### RW-016 — Distribuir imagen OCI del CLI — ❌ PENDIENTE
+### RW-016 — Distribuir imagen OCI del CLI — ✅ HECHO
 
-**Trabajo:** imagen mínima multi-arch (linux/amd64+arm64) con el binario estático
-(`distroless/static:nonroot`, que incluye CA certs), labels OCI (`version`/`source`/
-`revision`), provenance/SBOM, y smoke test `docker run <image> --version`. Preferible
-vía `dockers:`/`docker_manifests:` de GoReleaser (reusa los binarios ya construidos).
+**Decisión tomada (firme):** imagen `ghcr.io/spin-stack/devcontainer-cli`
+(source repo `https://github.com/spin-stack/devcontainer-cli`).
 
-**Decisión abierta:** nombre/registry de la imagen (probable `ghcr.io/devcontainers/cli`).
+**Hecho:**
+- `./Dockerfile` — `FROM gcr.io/distroless/static:nonroot` (trae CA certs para el TLS
+  a registries), `USER nonroot`, `COPY devcontainer /devcontainer`,
+  `ENTRYPOINT ["/devcontainer"]`. Labels OCI `title=devcontainer-cli`,
+  `source`, `version`, `revision`, `created`, `licenses`. `VERSION`/`REVISION` por
+  `ARG` (los inyecta GoReleaser; en local por `--build-arg`).
+- `.goreleaser.yml` — bloques `dockers:` (uno por arch: linux/amd64 y linux/arm64,
+  reusando los binarios ya construidos, `use: buildx`) + `docker_manifests:` que
+  combinan en `:{{.Version}}` y `:latest`.
+- `.github/workflows/release.yml` — job `goreleaser` con `docker/setup-qemu-action`,
+  `docker/setup-buildx-action`, login a GHCR (`docker/login-action` con
+  `GITHUB_TOKEN`), permisos `packages: write` + `id-token: write`. Tras publicar:
+  smoke test `docker run --rm <img> --version` (asserta la versión esperada), registro
+  del digest vía `docker buildx imagetools inspect`, y firma keyless + attest SBOM de
+  imagen con cosign + syft contra el digest. Gated al path de tag+aprobación; nunca
+  desde PRs.
 
-**Aceptación:** `docker run <image> --version`, amd64/arm64, digest artefactado.
+**Provenance/SBOM — decisión técnica:** los flags buildx `--provenance`/`--sbom` NO se
+ponen inline en las imágenes por-arch: convierten cada imagen en un OCI index, y el
+`docker manifest create` clásico que usa `docker_manifests:` no puede anidarlo
+(`"... is a manifest list"`, exit 1 — verificado empíricamente contra un registry
+local). En su lugar: SBOM del archive por `sboms:` (syft) + SBOM/firma de imagen por
+cosign+syft en el workflow contra el digest inmutable.
+
+**Verificado localmente:** `docker build` + `docker run --rm <img> --version` → `0.0.0-smoke`
+(binario estático `CGO_ENABLED=0`, host amd64). Build multi-arch
+`docker buildx build --platform linux/amd64,linux/arm64` exitoso (containerd store).
+La variante arm64 **no** se puede *ejecutar* localmente (QEMU/binfmt no registrado en
+el host); corre nativamente en CI (el smoke test usa la arch del runner). `goreleaser`/
+`syft`/`cosign` no están instalados localmente: YAML validado por parseo, `goreleaser
+check` y la firma/SBOM de imagen quedan validados en CI (RW-018).
+
+**Aceptación:** `docker run <image> --version` ✅ (local, amd64), amd64/arm64 build ✅,
+digest artefactado en el workflow ✅.
 
 ### RW-017 — Métricas de rendimiento y distribución — ✅ HECHO
 
@@ -211,11 +240,12 @@ Decisiones ya tomadas (firmes):
 - **Runtime: sólo Docker.** Podman no soportado. → RW-009 cerrado.
 - **Compose: sólo v2** (`docker compose`). Compose v1 no soportado. → RW-009 cerrado.
 - **exec: terminal heredado** (`docker exec -it`), sin PTY propio. → RW-003 Branch A.
+- **Imagen OCI: `ghcr.io/spin-stack/devcontainer-cli`** (source repo
+  `github.com/spin-stack/devcontainer-cli`). → RW-016 cerrado.
 
 Puntos que aún no deben permanecer ambiguos:
 
 - `--log-file`/`--terminal-log-file`: implementar (tee a archivo) o marcar no soportado (RW-014);
-- nombre/registry de la imagen OCI del CLI (RW-016);
 - fallback de legacy Features por GitHub Releases;
 - paridad byte-a-byte del tarball, hoy no alcanzable por `mtime`;
 - alcance de ACR/ECR en CI regular o programado (helpers sólo Linux: `secretservice`/`pass`).
