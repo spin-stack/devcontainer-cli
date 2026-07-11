@@ -70,6 +70,11 @@ type parityCase struct {
 	// integrity) — otherwise a wrong Go digest normalizes to <HASH> and passes.
 	// Leave it false where digests are non-deterministic (tarball push mtime).
 	CompareHashes bool `yaml:"compare_hashes"`
+	// CompareNulls keeps JSON null values instead of dropping them, so a field TS
+	// emits as null but Go omits (or vice versa) is caught instead of comparing
+	// equal. Set it for result-envelope cases where present-null vs absent-key is
+	// a real shape divergence.
+	CompareNulls bool `yaml:"compare_nulls"`
 }
 
 type paritySideResult struct {
@@ -331,8 +336,8 @@ func TestParityMatrix(t *testing.T) {
 			// Non-zero exit path
 			if tsRes.ExitCode != 0 && goRes.ExitCode != 0 {
 				if asserts["stdout_normalized"] {
-					tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes)
-					goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes)
+					tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes, tc.CompareNulls)
+					goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes, tc.CompareNulls)
 					if tsNorm != goNorm {
 						t.Errorf("stdout differs:\n--- TS\n%s\n--- Go\n%s", tsNorm, goNorm)
 					}
@@ -349,8 +354,8 @@ func TestParityMatrix(t *testing.T) {
 
 			// Success path
 			if asserts["stdout_normalized"] {
-				tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes)
-				goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes)
+				tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes, tc.CompareNulls)
+				goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes, tc.CompareNulls)
 				if tsNorm != goNorm {
 					t.Errorf("stdout differs:\n--- TS\n%s\n--- Go\n%s", tsNorm, goNorm)
 				}
@@ -593,9 +598,9 @@ func normalizeStringOpts(s string, scrubHashes bool) string {
 	return s
 }
 
-func normalizeOutput(raw string) string { return normalizeOutputOpts(raw, true) }
+func normalizeOutput(raw string) string { return normalizeOutputOpts(raw, true, false) }
 
-func normalizeOutputOpts(raw string, scrubHashes bool) string {
+func normalizeOutputOpts(raw string, scrubHashes, keepNulls bool) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
@@ -603,7 +608,7 @@ func normalizeOutputOpts(raw string, scrubHashes bool) string {
 
 	// Try JSON parse (UseNumber preserves numeric precision)
 	if parsed, ok := decodeJSONNumber(raw); ok {
-		normalized := normalizeValueOpts(parsed, scrubHashes)
+		normalized := normalizeValueOpts(parsed, scrubHashes, keepNulls)
 		out, _ := json.Marshal(normalized)
 		return string(out)
 	}
@@ -611,7 +616,7 @@ func normalizeOutputOpts(raw string, scrubHashes bool) string {
 	// TS occasionally prefixes JSON with banner/noise on stderr/stdout; recover the payload.
 	if candidate := extractJSONCandidate(raw); candidate != "" && candidate != raw {
 		if parsed, ok := decodeJSONNumber(candidate); ok {
-			normalized := normalizeValueOpts(parsed, scrubHashes)
+			normalized := normalizeValueOpts(parsed, scrubHashes, keepNulls)
 			out, _ := json.Marshal(normalized)
 			return string(out)
 		}
@@ -621,34 +626,37 @@ func normalizeOutputOpts(raw string, scrubHashes bool) string {
 	return normalizeStringOpts(raw, scrubHashes)
 }
 
-func normalizeValue(v interface{}) interface{} { return normalizeValueOpts(v, true) }
+func normalizeValue(v interface{}) interface{} { return normalizeValueOpts(v, true, false) }
 
-func normalizeValueOpts(v interface{}, scrubHashes bool) interface{} {
+func normalizeValueOpts(v interface{}, scrubHashes, keepNulls bool) interface{} {
 	switch val := v.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
 		for k, v := range val {
 			if v == nil {
+				if keepNulls {
+					result[k] = nil
+				}
 				continue
 			}
 			if k == "devcontainer.metadata" {
 				if s, ok := v.(string); ok {
-					result[k] = normalizeEmbeddedJSONOpts(s, scrubHashes)
+					result[k] = normalizeEmbeddedJSONOpts(s, scrubHashes, keepNulls)
 					continue
 				}
 			}
-			result[k] = normalizeValueOpts(v, scrubHashes)
+			result[k] = normalizeValueOpts(v, scrubHashes, keepNulls)
 		}
 		return sortedMap(result)
 	case []interface{}:
 		out := make([]interface{}, len(val))
 		for i, item := range val {
-			out[i] = normalizeValueOpts(item, scrubHashes)
+			out[i] = normalizeValueOpts(item, scrubHashes, keepNulls)
 		}
 		return out
 	case string:
 		if embedded, ok := parseEmbeddedJSON(val); ok {
-			return normalizeValueOpts(embedded, scrubHashes)
+			return normalizeValueOpts(embedded, scrubHashes, keepNulls)
 		}
 		return normalizeStringOpts(val, scrubHashes)
 	default:
@@ -656,13 +664,13 @@ func normalizeValueOpts(v interface{}, scrubHashes bool) interface{} {
 	}
 }
 
-func normalizeEmbeddedJSONOpts(raw string, scrubHashes bool) interface{} {
+func normalizeEmbeddedJSONOpts(raw string, scrubHashes, keepNulls bool) interface{} {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
 	if parsed, ok := parseEmbeddedJSON(raw); ok {
-		return normalizeValueOpts(parsed, scrubHashes)
+		return normalizeValueOpts(parsed, scrubHashes, keepNulls)
 	}
 	return normalizeStringOpts(raw, scrubHashes)
 }

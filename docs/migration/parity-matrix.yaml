@@ -447,6 +447,7 @@ initial_cases:
     class: feature-resolution
     current_status: match
     compare_hashes: true
+    compare_nulls: true
 
   - id: read-configuration.compose-path-terminal
     lane: semantic
@@ -2314,6 +2315,7 @@ initial_cases:
     class: features-runtime
     current_status: match
     compare_hashes: true
+    compare_nulls: true
     notes: "stdout = grafo mermaid + JSON installOrder. El mermaid se genera con roundPriority 0 (default TS) y alias del feature id (fallback a ref.ID cuando falta la annotation); los hashes de nodo se scrubbean por reMermaidNode. installOrder resuelto vía ComputeInstallationOrder."
 
   - id: templates.metadata-success
