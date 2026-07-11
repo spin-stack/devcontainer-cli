@@ -102,15 +102,8 @@ func runFeaturesInfo(out Output, mode, featureID, logLevel, outputFormat string)
 		}
 	}
 
-	// Dependencies — text mode only, matching TS behavior: the boxed title then
-	// the mermaid dependency graph (built by the shared renderer).
-	if (mode == "dependencies" || mode == "verbose") && outputFormat == "text" {
-		logger.Write(fmt.Sprintf("Building dependency graph for '%s'...", featureID), log.LevelInfo)
-		fmt.Fprintln(out.Stdout(), encloseStringInBox("Dependency Tree (Render with https://mermaid.live/)"))
-		fmt.Fprintln(out.Stdout(), renderDependencyMermaid(client, logger, []string{featureID}))
-	}
-
-	// Tags
+	// Tags. TS parity: verbose text order is Manifest → Canonical → Published Tags
+	// → Dependency Tree (featuresCLI/info.ts), so Tags precedes Dependencies.
 	if mode == "tags" || mode == "verbose" {
 		tags, err := client.GetPublishedTags(ref)
 		if err != nil || len(tags) == 0 {
@@ -127,6 +120,14 @@ func runFeaturesInfo(out Output, mode, featureID, logLevel, outputFormat string)
 		} else {
 			jsonOutput["publishedTags"] = tags
 		}
+	}
+
+	// Dependencies — text mode only: the boxed title then the mermaid dependency
+	// graph (built by the shared renderer). Emitted AFTER Published Tags (TS order).
+	if (mode == "dependencies" || mode == "verbose") && outputFormat == "text" {
+		logger.Write(fmt.Sprintf("Building dependency graph for '%s'...", featureID), log.LevelInfo)
+		fmt.Fprintln(out.Stdout(), encloseStringInBox("Dependency Tree (Render with https://mermaid.live/)"))
+		fmt.Fprintln(out.Stdout(), renderDependencyMermaid(client, logger, []string{featureID}))
 	}
 
 	if outputFormat == "json" {
