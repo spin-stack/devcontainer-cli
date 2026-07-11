@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/core/jsonc"
@@ -263,7 +264,13 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainerConfig, mo
 	// Only compute workspaceMount for non-compose configs
 	// Docker Compose manages its own mounts via the compose file
 	if !config.IsComposeConfig() {
-		wc.WorkspaceMount = fmt.Sprintf("type=bind,source=%s,target=/workspaces/%s,consistency=consistent", sourceFolder, filepath.Base(sourceFolder))
+		// 0.88 only appends consistency on non-Linux hosts (macOS/Windows);
+		// on Linux the bind mount carries no consistency= suffix (getWorkspaceConfiguration).
+		consistency := ""
+		if runtime.GOOS != "linux" {
+			consistency = ",consistency=consistent"
+		}
+		wc.WorkspaceMount = fmt.Sprintf("type=bind,source=%s,target=/workspaces/%s%s", sourceFolder, filepath.Base(sourceFolder), consistency)
 	}
 
 	if config.WorkspaceFolder != "" {
