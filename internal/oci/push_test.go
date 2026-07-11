@@ -14,6 +14,7 @@ func TestComputeTags(t *testing.T) {
 		{"2.0", []string{"2.0", "2", "latest"}},
 		{"3", []string{"3", "latest"}},
 		{"1.0.0", []string{"1.0.0", "1.0", "1", "latest"}},
+		{"1.2.3.4", []string{"1.2.3.4", "1.2", "1", "latest"}}, // unusual four-part version
 	}
 
 	for _, tt := range tests {
