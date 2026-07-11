@@ -94,18 +94,28 @@ func runFeaturesTestCommand(
 	quiet bool,
 	permitRandomization bool,
 ) int {
+	// Print the banner before validating the collection layout so that a
+	// project folder lacking src/ and test/ still emits the header. This matches
+	// TS (testCommandImpl.ts), which writes the banner to stdout first and only
+	// then checks for the required folders.
+	fmt.Fprintf(out.Stdout(), `
+┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+|    Dev Container Features   |
+│           v%s           │
+└ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+
+`, cliVersion())
+
 	srcDir := filepath.Join(collectionFolder, "src")
 	testDir := filepath.Join(collectionFolder, "test")
 
 	if !pfs.IsDir(srcDir) || !pfs.IsDir(testDir) {
-		logger.Write(fmt.Sprintf("Folder %q does not contain required 'src' and 'test' folders.", collectionFolder), log.LevelError)
+		// TS reports this failure on stdout (chalk.red with a '[-]' prefix) and
+		// exits 1 — not via the logger on stderr. Match the exact wording: single
+		// quotes around the path and both folder names, and "the required".
+		fmt.Fprintf(out.Stdout(), "[-] Folder '%s' does not contain the required 'src' and 'test' folders.\n", collectionFolder)
 		return 1
 	}
-
-	fmt.Fprintln(out.Stdout(), "┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐")
-	fmt.Fprintln(out.Stdout(), "|    Dev Container Features      |")
-	fmt.Fprintln(out.Stdout(), "└ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘")
-	fmt.Fprintln(out.Stdout())
 
 	var results []testResult
 
