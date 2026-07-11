@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -83,16 +84,20 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 		}
 
 		if outputFormat == "text" {
-			fmt.Println("┌──────────────────┐")
-			fmt.Println("│\033[1mManifest\033[22m          │")
-			fmt.Println("└──────────────────┘")
-			data, _ := json.MarshalIndent(manifest.Manifest, "", "  ")
-			fmt.Println(string(data))
+			fmt.Println(encloseStringInBox("Manifest"))
+			// Re-indent the raw manifest bytes so the key order matches the fetched
+			// document (TS prints the object as-is); MarshalIndent of the struct/map
+			// would sort keys and reorder annotations.
+			var buf bytes.Buffer
+			if json.Indent(&buf, manifest.ManifestBytes, "", "  ") == nil {
+				fmt.Println(buf.String())
+			} else {
+				data, _ := json.MarshalIndent(manifest.Manifest, "", "  ")
+				fmt.Println(string(data))
+			}
 			fmt.Println()
-			fmt.Println("┌──────────────────────┐")
-			fmt.Println("│\033[1mCanonical Identifier\033[22m │")
-			fmt.Println("└──────────────────────┘")
-			fmt.Println(manifest.CanonicalID)
+			fmt.Println(encloseStringInBox("Canonical Identifier"))
+			fmt.Printf("%s\n\n", manifest.CanonicalID)
 		} else {
 			jsonOutput["manifest"] = manifest.Manifest
 			jsonOutput["canonicalId"] = manifest.CanonicalID
@@ -210,12 +215,9 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 		}
 
 		if outputFormat == "text" {
-			fmt.Println("┌────────────────┐")
-			fmt.Println("│\033[1mPublished Tags\033[22m  │")
-			fmt.Println("└────────────────┘")
-			for _, tag := range tags {
-				fmt.Printf("   %s\n", tag)
-			}
+			fmt.Println(encloseStringInBox("Published Tags"))
+			// TS joins with "\n   ": the first tag is flush, the rest indented by 3.
+			fmt.Println(strings.Join(tags, "\n   "))
 		} else {
 			jsonOutput["publishedTags"] = tags
 		}
@@ -227,6 +229,17 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 	}
 
 	return nil
+}
+
+// encloseStringInBox renders a single-line title inside a box sized exactly to the
+// title (matching the TS encloseStringInBox): the ANSI bold codes are not counted
+// toward the width.
+func encloseStringInBox(str string) string {
+	w := len([]rune(str))
+	bar := strings.Repeat("─", w)
+	return "┌" + bar + "┐\n" +
+		"│\033[1m" + str + "\033[22m│\n" +
+		"└" + bar + "┘"
 }
 
 // mermaidHash generates a short hex hash for Mermaid nodes (matches TS crypto.createHash('sha256').update(JSON.stringify(node))).
