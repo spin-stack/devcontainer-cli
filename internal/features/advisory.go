@@ -153,33 +153,52 @@ type FeatureWithAdvisory struct {
 	Advisories []FeatureAdvisory
 }
 
-// EnsureNoDisallowedFeatures checks features against the blocklist.
+// DisallowedFeatureError reports a config feature that the control manifest
+// blocklists. The CLI layer turns it into the user-facing ContainerError envelope.
+type DisallowedFeatureError struct {
+	FeatureID        string
+	DocumentationURL string
+}
+
+func (e *DisallowedFeatureError) Error() string {
+	return fmt.Sprintf("Cannot use the '%s' Feature since it was reported to be problematic.", e.FeatureID)
+}
+
+// findDisallowedFeatureEntry matches a feature id against the blocklist. Like the
+// TS CLI, a prefix only matches when the id equals the prefix or continues with a
+// separator (/ : @) — so "foo" does not block "foobar".
+func findDisallowedFeatureEntry(manifest *ControlManifest, featureID string) *DisallowedFeature {
+	for i := range manifest.DisallowedFeatures {
+		d := &manifest.DisallowedFeatures[i]
+		if !strings.HasPrefix(featureID, d.FeatureIDPrefix) {
+			continue
+		}
+		if len(featureID) == len(d.FeatureIDPrefix) {
+			return d
+		}
+		switch featureID[len(d.FeatureIDPrefix)] {
+		case '/', ':', '@':
+			return d
+		}
+	}
+	return nil
+}
+
+// EnsureNoDisallowedFeatures checks config + additional features against the
+// control-manifest blocklist and returns a *DisallowedFeatureError for the first
+// disallowed one (nil if all are allowed).
 func EnsureNoDisallowedFeatures(manifest *ControlManifest, features map[string]interface{}, additionalFeatures map[string]interface{}) error {
 	if len(manifest.DisallowedFeatures) == 0 {
 		return nil
 	}
-
-	check := func(featureID string) error {
-		for _, d := range manifest.DisallowedFeatures {
-			if strings.HasPrefix(featureID, d.FeatureIDPrefix) {
-				msg := fmt.Sprintf("Feature %q is disallowed", featureID)
-				if d.DocumentationURL != "" {
-					msg += fmt.Sprintf(". See %s", d.DocumentationURL)
-				}
-				return fmt.Errorf("%s", msg)
-			}
-		}
-		return nil
-	}
-
 	for id := range features {
-		if err := check(id); err != nil {
-			return err
+		if d := findDisallowedFeatureEntry(manifest, id); d != nil {
+			return &DisallowedFeatureError{FeatureID: id, DocumentationURL: d.DocumentationURL}
 		}
 	}
 	for id := range additionalFeatures {
-		if err := check(id); err != nil {
-			return err
+		if d := findDisallowedFeatureEntry(manifest, id); d != nil {
+			return &DisallowedFeatureError{FeatureID: id, DocumentationURL: d.DocumentationURL}
 		}
 	}
 	return nil

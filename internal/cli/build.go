@@ -140,6 +140,10 @@ func runBuild(ctx context.Context, opts *buildOpts) error {
 		return writeErrorResult(err.Error())
 	}
 
+	if derr := enforceDisallowedFeatures(cfg, logger); derr != nil {
+		return writeErrorJSON(coreerrors.ToErrorOutput(derr))
+	}
+
 	// Setup Docker clients
 	dockerClient := docker.NewClient(opts.dockerPath, nil, logger)
 

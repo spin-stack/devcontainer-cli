@@ -270,6 +270,10 @@ func runUp(ctx context.Context, opts *upOpts) error {
 		return writeErrorResult(mergeErr.Error())
 	}
 
+	if derr := enforceDisallowedFeatures(cfg, logger); derr != nil {
+		return writeErrorJSON(coreerrors.ToErrorOutput(derr))
+	}
+
 	// Run initializeCommand on the host (before container creation).
 	// A failure aborts `up` with an error outcome, matching the TS CLI (which
 	// throws a ContainerError). Swallowing it produced silently-broken setups.

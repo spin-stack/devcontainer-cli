@@ -1,6 +1,7 @@
 package features
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -117,7 +118,7 @@ func TestEnsureNoDisallowedFeatures_Allowed(t *testing.T) {
 func TestEnsureNoDisallowedFeatures_Blocked(t *testing.T) {
 	manifest := &ControlManifest{
 		DisallowedFeatures: []DisallowedFeature{
-			{FeatureIDPrefix: "ghcr.io/bad/", DocumentationURL: "https://example.com"},
+			{FeatureIDPrefix: "ghcr.io/bad/features/evil", DocumentationURL: "https://example.com"},
 		},
 	}
 
@@ -127,7 +128,37 @@ func TestEnsureNoDisallowedFeatures_Blocked(t *testing.T) {
 
 	err := EnsureNoDisallowedFeatures(manifest, features, nil)
 	if err == nil {
-		t.Error("expected error for disallowed feature")
+		t.Fatal("expected error for disallowed feature")
+	}
+	var dfe *DisallowedFeatureError
+	if !errors.As(err, &dfe) {
+		t.Fatalf("expected *DisallowedFeatureError, got %T", err)
+	}
+	if dfe.FeatureID != "ghcr.io/bad/features/evil:1" || dfe.DocumentationURL != "https://example.com" {
+		t.Errorf("unexpected error fields: %+v", dfe)
+	}
+}
+
+// A prefix only matches on a separator boundary (/ : @) or exact length, like TS —
+// it must not block an unrelated feature that merely shares the prefix's characters.
+func TestEnsureNoDisallowedFeatures_PrefixBoundary(t *testing.T) {
+	manifest := &ControlManifest{
+		DisallowedFeatures: []DisallowedFeature{
+			{FeatureIDPrefix: "ghcr.io/acme/features/tool"},
+		},
+	}
+	cases := map[string]bool{
+		"ghcr.io/acme/features/tool":         true,  // exact
+		"ghcr.io/acme/features/tool:1":       true,  // ':' boundary
+		"ghcr.io/acme/features/tool@sha256:x": true, // '@' boundary
+		"ghcr.io/acme/features/toolkit:1":    false, // shares chars, no boundary
+		"ghcr.io/acme/features/tooling":      false,
+	}
+	for id, wantBlocked := range cases {
+		err := EnsureNoDisallowedFeatures(manifest, map[string]interface{}{id: true}, nil)
+		if (err != nil) != wantBlocked {
+			t.Errorf("%q: blocked=%v, want %v", id, err != nil, wantBlocked)
+		}
 	}
 }
 
