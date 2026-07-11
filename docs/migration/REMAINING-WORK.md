@@ -3,9 +3,7 @@
 Este documento es la **única fuente operativa del trabajo pendiente** para llevar
 el CLI Go a paridad demostrada con `devcontainers/cli` v0.88.0. El estado resumido vive en
 [`GO-REWRITE-STATUS.md`](GO-REWRITE-STATUS.md) y el gate final en
-[`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md). El plan de ejecución por ítem
-(esfuerzo, dependencias, paralelización con agentes) vive en
-[`EXECUTION-PLAN.md`](EXECUTION-PLAN.md).
+[`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md).
 
 ## Regla de cierre
 
@@ -39,8 +37,8 @@ construía nodos **sin aristas**. Tests herméticos con stub en memoria.
 ### RW-003 — Contrato PTY/señales de `exec` — ✅ HECHO
 `exec` usa `docker exec -it` heredado (equivalente al fallback sin node-pty de TS);
 el código PTY muerto fue borrado; contrato `128+N` endurecido para el caso del
-proceso host señalado. Decisión registrada en [`EXECUTION-PLAN.md`](EXECUTION-PLAN.md)
-(RW-003 Branch A).
+proceso host señalado. Decisión: herencia directa (no PTY propio), equivalente al
+fallback de TS cuando node-pty no está — ver `exec.go` y la sección de decisiones.
 
 ### RW-004 — `--docker-compose-path` — ✅ HECHO
 Cableado end-to-end en `build` (único comando que faltaba; `up` ya lo tenía). Los
@@ -65,8 +63,8 @@ compilado → se valida en RW-018.
 ### RW-007 — OCI image indexes por plataforma — ✅ HECHO (retirado)
 Los tipos muertos `ImageIndex`/`ImageIndexEntry`/`Platform` y
 `OCIImageIndexMediaType` fueron retirados. v0.88.0 sólo usa resolución de índices en
-`inspectImageInRegistry` (no portado). Decisión en [`EXECUTION-PLAN.md`](EXECUTION-PLAN.md):
-si se porta ese path, implementar vía oras, no con structs a mano.
+`inspectImageInRegistry` (no portado). Decisión: si en el futuro se porta ese path,
+implementarlo vía oras, no con structs de índice a mano.
 
 ### RW-008 — Registries y credenciales reales — 🟡 HECHO (hermético)
 Loop 401→bearer→pull/push contra `registry:3` con htpasswd, protocolo de credential
@@ -88,8 +86,7 @@ objetivos: sin runtime/E2E/release/lane `windows-latest`/ConPTY. La lógica
 
 ### RW-011 — Seams para efectos externos — ✅ HECHO
 Cuatro interfaces pequeñas (`cli.Output`, `oci.Registry`, `exec.Runner`, `pfs.FS`),
-sin `CLIHost` monolítico. Tests con fakes (publish parcial, runner). Decisión en
-[`EXECUTION-PLAN.md`](EXECUTION-PLAN.md).
+sin `CLIHost` monolítico (decisión deliberada). Tests con fakes (publish parcial, runner).
 
 ### RW-012 — Cobertura de paths críticos — ✅ HECHO (riesgos nombrados)
 

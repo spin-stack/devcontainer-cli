@@ -11,8 +11,8 @@ los artefactos de una corrida limpia contra el pin v0.88.0.
 **Alcance soportado (firme):** **sólo Linux** (amd64/arm64) y **sólo Docker**. Windows y
 macOS no son objetivos (sin runtime/E2E/release). **Podman no soportado**; sólo
 `docker compose` v2. La lógica cross-platform/Podman existente se conserva únicamente por
-paridad con el oráculo TS y no ofrece garantía. Ver
-[EXECUTION-PLAN.md](EXECUTION-PLAN.md) para el plan por ítem y la paralelización.
+paridad con el oráculo TS y no ofrece garantía. El trabajo pendiente por ítem vive en
+[REMAINING-WORK.md](REMAINING-WORK.md).
 
 El backlog detallado y priorizado se mantiene únicamente en
 [REMAINING-WORK.md](REMAINING-WORK.md).
