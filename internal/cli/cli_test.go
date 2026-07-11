@@ -57,117 +57,42 @@ func TestRootCommand(t *testing.T) {
 	}
 }
 
-func TestReadConfiguration_ImageFixture(t *testing.T) {
-	fixtureDir := filepath.Join("..", "..", "src", "test", "configs", "image")
-	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
-		t.Skip("fixtures not found")
+func TestReadConfigurationFixtures(t *testing.T) {
+	tests := []struct {
+		name    string
+		fixture string
+		check   func(t *testing.T, cfg map[string]interface{})
+	}{
+		{"image", "image", func(t *testing.T, cfg map[string]interface{}) {
+			if cfg["image"] != "ubuntu:latest" {
+				t.Errorf("image = %v, want 'ubuntu:latest'", cfg["image"])
+			}
+		}},
+		{"dockerfile", "dockerfile-without-features", func(t *testing.T, cfg map[string]interface{}) {
+			build, ok := cfg["build"].(map[string]interface{})
+			if !ok {
+				t.Fatal("expected 'build' in Dockerfile config")
+			}
+			if build["dockerfile"] != "Dockerfile" {
+				t.Errorf("dockerfile = %v", build["dockerfile"])
+			}
+		}},
+		{"compose", "compose-image-without-features", func(t *testing.T, cfg map[string]interface{}) {
+			if cfg["service"] != "app" {
+				t.Errorf("service = %v, want 'app'", cfg["service"])
+			}
+		}},
 	}
 
-	// Capture stdout
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := NewRootCommand()
-	root.SetArgs([]string{"read-configuration", "--workspace-folder", fixtureDir})
-	err := root.Execute()
-
-	w.Close()
-	os.Stdout = old
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	output := buf.String()
-
-	// Should be valid JSON
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &result); err != nil {
-		t.Fatalf("invalid JSON output: %v\nOutput: %s", err, output)
-	}
-
-	// Should have configuration
-	cfg, ok := result["configuration"]
-	if !ok {
-		t.Fatal("missing 'configuration' in output")
-	}
-
-	cfgMap, ok := cfg.(map[string]interface{})
-	if !ok {
-		t.Fatal("configuration is not an object")
-	}
-
-	if cfgMap["image"] != "ubuntu:latest" {
-		t.Errorf("image = %v, want 'ubuntu:latest'", cfgMap["image"])
-	}
-}
-
-func TestReadConfiguration_DockerfileFixture(t *testing.T) {
-	fixtureDir := filepath.Join("..", "..", "src", "test", "configs", "dockerfile-without-features")
-	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
-		t.Skip("fixtures not found")
-	}
-
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := NewRootCommand()
-	root.SetArgs([]string{"read-configuration", "--workspace-folder", fixtureDir})
-	root.Execute()
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-
-	cfg := result["configuration"].(map[string]interface{})
-	build, ok := cfg["build"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected 'build' in Dockerfile config")
-	}
-	if build["dockerfile"] != "Dockerfile" {
-		t.Errorf("dockerfile = %v", build["dockerfile"])
-	}
-}
-
-func TestReadConfiguration_ComposeFixture(t *testing.T) {
-	fixtureDir := filepath.Join("..", "..", "src", "test", "configs", "compose-image-without-features")
-	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
-		t.Skip("fixtures not found")
-	}
-
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	root := NewRootCommand()
-	root.SetArgs([]string{"read-configuration", "--workspace-folder", fixtureDir})
-	root.Execute()
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &result); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-
-	cfg := result["configuration"].(map[string]interface{})
-	if cfg["service"] != "app" {
-		t.Errorf("service = %v, want 'app'", cfg["service"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := readConfigurationResult(t, tt.fixture)
+			cfg, ok := result["configuration"].(map[string]interface{})
+			if !ok {
+				t.Fatal("missing/invalid 'configuration' in output")
+			}
+			tt.check(t, cfg)
+		})
 	}
 }
 
