@@ -75,6 +75,11 @@ type parityCase struct {
 	// equal. Set it for result-envelope cases where present-null vs absent-key is
 	// a real shape divergence.
 	CompareNulls bool `yaml:"compare_nulls"`
+	// Arm64Required marks a case that needs arm64 container emulation (QEMU/binfmt
+	// on an amd64 host). arm64 runtime is EXPERIMENTAL and unsupported for now, so
+	// these are skipped (skipped-arm64) unless PARITY_ARM64=true is set explicitly —
+	// they never fail the strict gate.
+	Arm64Required bool `yaml:"arm64_required"`
 }
 
 type paritySideResult struct {
@@ -93,6 +98,7 @@ const (
 	parityFailed         parityOutcome = "failed"
 	paritySkippedDocker  parityOutcome = "skipped-docker"
 	paritySkippedNetwork parityOutcome = "skipped-network"
+	paritySkippedArm64   parityOutcome = "skipped-arm64"
 	parityInconclusive   parityOutcome = "inconclusive"
 	parityNotSelected    parityOutcome = "not-selected"
 )
@@ -121,7 +127,7 @@ func (r *parityReport) snapshot() map[parityOutcome][]string {
 	defer r.mu.Unlock()
 	result := map[parityOutcome][]string{
 		parityMatched: {}, parityFailed: {}, paritySkippedDocker: {},
-		paritySkippedNetwork: {}, parityInconclusive: {}, parityNotSelected: {},
+		paritySkippedNetwork: {}, paritySkippedArm64: {}, parityInconclusive: {}, parityNotSelected: {},
 	}
 	for id, outcome := range r.outcomes {
 		result[outcome] = append(result[outcome], id)
@@ -133,7 +139,7 @@ func (r *parityReport) snapshot() map[parityOutcome][]string {
 }
 
 func formatParityReport(snapshot map[parityOutcome][]string) string {
-	order := []parityOutcome{parityMatched, parityFailed, paritySkippedDocker, paritySkippedNetwork, parityInconclusive, parityNotSelected}
+	order := []parityOutcome{parityMatched, parityFailed, paritySkippedDocker, paritySkippedNetwork, paritySkippedArm64, parityInconclusive, parityNotSelected}
 	var b strings.Builder
 	b.WriteString("\n=== PARITY MATRIX REPORT ===\n")
 	for _, outcome := range order {
@@ -262,6 +268,12 @@ func TestParityMatrix(t *testing.T) {
 			if tc.NetworkRequired && os.Getenv("PARITY_SKIP_NETWORK") == "true" {
 				outcome = paritySkippedNetwork
 				t.Skip("network required")
+			}
+			// arm64 runtime is experimental and unsupported for now; skip unless
+			// explicitly opted in (needs arm64 emulation, e.g. QEMU/binfmt).
+			if tc.Arm64Required && os.Getenv("PARITY_ARM64") != "true" {
+				outcome = paritySkippedArm64
+				t.Skip("arm64 experimental (set PARITY_ARM64=true to run; requires arm64 emulation)")
 			}
 			perCaseTimeout := defaultTimeout
 			if tc.Lane == "runtime" {

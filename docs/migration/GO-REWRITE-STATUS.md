@@ -8,6 +8,11 @@ vive en el backlog y la historia en `git log`.
 salida requiere cumplir [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) y conservar
 los artefactos de una corrida limpia contra el pin v0.88.0.
 
+**arm64 runtime: experimental, sin soporte por ahora.** Los binarios cross-compilan a
+`linux/arm64`, pero correr contenedores arm64 (vía emulación QEMU/binfmt en hosts amd64)
+es experimental: los casos de paridad `arm64_required` se saltan por default
+(`skipped-arm64`, no afectan el gate) y sólo corren con `PARITY_ARM64=true`.
+
 **Alcance soportado (firme):** **sólo Linux** (amd64/arm64) y **sólo Docker**. Windows y
 macOS no son objetivos (sin runtime/E2E/release). **Podman no soportado**; sólo
 `docker compose` v2. La lógica cross-platform/Podman existente se conserva únicamente por
