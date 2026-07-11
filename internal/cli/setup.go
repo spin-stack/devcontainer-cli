@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
@@ -21,6 +20,8 @@ func newSetUpCmd() *cobra.Command {
 		configPath                 string
 		logLevel                   string
 		logFormat                  string
+		logFile                    string
+		terminalLogFile            string
 		skipPostCreate             bool
 		skipNonBlocking            bool
 		dotfilesRepo               string
@@ -59,11 +60,17 @@ func newSetUpCmd() *cobra.Command {
 				return writeValidationError(out, err.Error())
 			}
 
+			logDst, closeLog, logErr := logWriter(logFile, terminalLogFile)
+			if logErr != nil {
+				return writeErrorResult(out, fmt.Sprintf("open log file: %v", logErr))
+			}
+			defer closeLog()
+
 			logger := log.New(log.Options{
 				Version:    cliVersion(),
 				Level:      log.MapLogLevel(logLevel),
 				Format:     logFormat,
-				Writer:     os.Stderr,
+				Writer:     logDst,
 				Dimensions: logDimensions(terminalColumns, terminalRows),
 			})
 
@@ -243,6 +250,6 @@ func newSetUpCmd() *cobra.Command {
 	f.IntVar(&terminalColumns, "terminal-columns", 0, "")
 	f.IntVar(&terminalRows, "terminal-rows", 0, "")
 
-	addLogFileFlags(cmd)
+	addLogFileFlags(cmd, &logFile, &terminalLogFile)
 	return cmd
 }

@@ -1,9 +1,13 @@
 package httpx
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestClient(t *testing.T) {
@@ -144,7 +148,7 @@ func TestClient(t *testing.T) {
 			defer srv.Close()
 
 			c := New(tt.version)
-			resp, err := c.Do(tt.opts(srv.URL))
+			resp, err := c.Do(context.Background(), tt.opts(srv.URL))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,5 +156,124 @@ func TestClient(t *testing.T) {
 				tt.check(t, resp)
 			}
 		})
+	}
+}
+
+// TestDoRedirectChain follows a multi-hop redirect chain end to end and confirms
+// every hop was visited and the final body is returned.
+func TestDoRedirectChain(t *testing.T) {
+	var hops int32
+	mux := http.NewServeMux()
+	// /a -> /b -> /c -> final body
+	mux.HandleFunc("/a", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hops, 1)
+		http.Redirect(w, r, "/b", http.StatusFound)
+	})
+	mux.HandleFunc("/b", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hops, 1)
+		http.Redirect(w, r, "/c", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/c", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hops, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("arrived"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := New("test")
+	resp, err := c.Do(context.Background(), RequestOptions{URL: srv.URL + "/a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if string(resp.Body) != "arrived" {
+		t.Errorf("body = %q, want %q", string(resp.Body), "arrived")
+	}
+	if got := atomic.LoadInt32(&hops); got != 3 {
+		t.Errorf("visited %d hops, want 3 (full chain followed)", got)
+	}
+}
+
+// TestDoCheckRedirectPolicy verifies SetCheckRedirect can stop the CLI from
+// following redirects (returning the 302 itself).
+func TestDoCheckRedirectPolicy(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/from", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/to", http.StatusFound)
+	})
+	mux.HandleFunc("/to", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("should-not-reach"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := New("test")
+	c.SetCheckRedirect(func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	})
+	resp, err := c.Do(context.Background(), RequestOptions{URL: srv.URL + "/from"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("status = %d, want 302 (redirect not followed)", resp.StatusCode)
+	}
+	if string(resp.Body) == "should-not-reach" {
+		t.Error("redirect was followed despite ErrUseLastResponse policy")
+	}
+}
+
+// TestDoContextCancelled confirms a cancelled context aborts the request rather
+// than blocking on a slow/hung server.
+func TestDoContextCancelled(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release // block until the test releases us
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-started
+		cancel()
+	}()
+
+	c := New("test")
+	_, err := c.Do(ctx, RequestOptions{URL: srv.URL})
+	if err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, want context.Canceled", err)
+	}
+}
+
+// TestDoContextDeadline confirms a context deadline aborts a slow request.
+func TestDoContextDeadline(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	c := New("test")
+	_, err := c.Do(ctx, RequestOptions{URL: srv.URL})
+	if err == nil {
+		t.Fatal("expected error from context deadline, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %v, want context.DeadlineExceeded", err)
 	}
 }

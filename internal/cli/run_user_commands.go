@@ -25,6 +25,8 @@ type runUserCommandsOpts struct {
 	idLabels                   []string
 	logLevel                   string
 	logFormat                  string
+	logFile                    string
+	terminalLogFile            string
 	skipNonBlocking            bool
 	skipPostAttach             bool
 	prebuild                   bool
@@ -81,7 +83,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
 	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
 
-	addLogFileFlags(cmd)
+	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
 }
 
@@ -112,11 +114,17 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 		return writeValidationError(out, err.Error())
 	}
 
+	logDst, closeLog, logErr := logWriter(opts.logFile, opts.terminalLogFile)
+	if logErr != nil {
+		return writeErrorResult(out, fmt.Sprintf("open log file: %v", logErr))
+	}
+	defer closeLog()
+
 	logger := log.New(log.Options{
 		Version:    cliVersion(),
 		Level:      log.MapLogLevel(opts.logLevel),
 		Format:     opts.logFormat,
-		Writer:     os.Stderr,
+		Writer:     logDst,
 		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
 		Secrets:    secretValuesFromFile(opts.secretsFile),
 	})
