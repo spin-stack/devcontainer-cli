@@ -110,8 +110,8 @@ changelog:
 
 release:
   github:
-    owner: devcontainers
-    name: cli
+    owner: spin-stack
+    name: devcontainer-cli
   draft: true
   prerelease: auto
   name_template: "Go CLI v{{.Version}}"

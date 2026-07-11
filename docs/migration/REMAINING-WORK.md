@@ -91,9 +91,23 @@ Cuatro interfaces pequeñas (`cli.Output`, `oci.Registry`, `exec.Runner`, `pfs.F
 sin `CLIHost` monolítico. Tests con fakes (publish parcial, runner). Decisión en
 [`EXECUTION-PLAN.md`](EXECUTION-PLAN.md).
 
-### RW-012 — Cobertura de paths críticos — ❌ PENDIENTE
+### RW-012 — Cobertura de paths críticos — ✅ HECHO (riesgos nombrados)
 
-Baseline unitario aproximado (previo a RW-011; algunos números ya mejoraron):
+Cobertura de los riesgos nombrados, cada test atado a un riesgo (no padding),
+apoyada en los seams de RW-011. Deltas por paquete:
+
+- `internal/oci` 75.9% → **86.1%** (publish parcial sin rollback, loop 401→bearer→token→retry, branches de credential helper);
+- `internal/docker` 63.3% → **79.7%** (buildArgs/runArgs/compose args exactos vía `exec.Runner`);
+- `internal/lifecycle` 39.5% → **60.2%** (seam `shellExec`; probe cache/timeout-124/PATH-merge; parsers 100%);
+- `internal/templates` 46.5% → **88.9%** (workspace a medio escribir vía fake `pfs.FS`; errores fetch/merge);
+- `internal/cli` — errores cross-layer pre-Docker en `runBuild`/`runUp`/`runExec`.
+
+**Pendiente menor:** la **cancelación por contexto** en los runners de comandos
+necesita un seam de contexto / rewiring (fuera del alcance de estos tracks); anotado
+para un incremento futuro. Los paths sólo-Docker (p. ej. cleanup del Dockerfile temporal)
+quedan cubiertos por E2E, no herméticamente.
+
+Baseline unitario aproximado (previo a RW-011; ya superado en varios paquetes):
 
 | Paquete | Cobertura |
 |---|---:|
