@@ -252,6 +252,11 @@ func realFeaturesTestCmd() *cobra.Command {
 // --- Shared implementation ---
 
 func packageCollection(targetFolder, outputDir, collectionType string, forceClean bool, logLevelStr string) error {
+	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
+	// silently defaulting to Info (collectionCommonUtils/package.ts:18).
+	if err := validateEnum("log-level", logLevelStr, []string{"info", "debug", "trace"}); err != nil {
+		return err
+	}
 	logger := log.New(log.Options{
 		Level:  log.MapLogLevel(logLevelStr),
 		Format: "text",
@@ -339,6 +344,11 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 // with a fake oci.Registry and a capturing Output to drive the partial-publish
 // error path hermetically.
 func publishCollection(targetFolder, registry, namespace, collectionType, logLevelStr string) error {
+	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
+	// silently defaulting to Info (collectionCommonUtils/publish.ts:14).
+	if err := validateEnum("log-level", logLevelStr, []string{"info", "debug", "trace"}); err != nil {
+		return err
+	}
 	logger := log.New(log.Options{
 		Level:  log.MapLogLevel(logLevelStr),
 		Format: "text",

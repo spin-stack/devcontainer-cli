@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/devcontainers/cli/internal/config"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
@@ -44,8 +45,11 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			cfg := loadResult.Config
 			userFeatures := features.UserFeaturesToArray(cfg.Features)
 			if len(userFeatures) == 0 {
-				fmt.Fprintln(out.Stdout(), `{"installOrder":[]}`)
-				return nil
+				// TS parity: no parseable features → stderr error + exit 1
+				// (featuresCLI/resolveDependencies.ts:92-93), NOT an empty
+				// installOrder on stdout.
+				logger.Write(fmt.Sprintf("Could not parse features object in configuration '%s'", cfg.ConfigFilePath), log.LevelError)
+				return &coreerrors.ExitCodeError{Code: 1}
 			}
 
 			ociClient := oci.NewClient(logger, osEnvMap())

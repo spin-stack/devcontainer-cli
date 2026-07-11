@@ -172,6 +172,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		{"log-level", opts.logLevel, []string{"info", "debug", "trace"}},
 		{"log-format", opts.logFormat, []string{"text", "json"}},
 		{"buildkit", opts.buildkit, []string{"auto", "never"}},
+		{"workspace-mount-consistency", opts.workspaceMountConsistency, []string{"consistent", "cached", "delegated"}},
 		{"gpu-availability", opts.gpuAvailability, []string{"all", "detect", "none"}},
 		{"default-user-env-probe", opts.defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
 		{"update-remote-user-uid-default", opts.updateRemoteUserUIDDefault, []string{"on", "off", "never"}},
