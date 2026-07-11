@@ -106,9 +106,9 @@ func TestCredHelperViaDockerConfig(t *testing.T) {
 	}
 }
 
-// TestDefaultCredentialHelperName pins the RW-008 divergence: on Linux the
-// libsecret helper is `secretservice` (NOT the TS CLI's `secret`, which names no
-// real binary). Go keeps `secretservice`.
+// TestDefaultCredentialHelperName pins the divergence from the TS CLI: on Linux
+// the libsecret helper is `secretservice` (NOT the TS CLI's `secret`, which names
+// no real binary). Go keeps `secretservice`.
 func TestDefaultCredentialHelperName(t *testing.T) {
 	if got := linuxDefaultHelperName(false); got != "secretservice" {
 		t.Errorf("linux default without pass = %q, want secretservice", got)

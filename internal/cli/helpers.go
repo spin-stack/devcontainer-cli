@@ -45,7 +45,7 @@ func envSliceToMap(envs []string) map[string]string {
 // merges them into cfg.Features. Config features have priority — additional
 // features are only added if their key doesn't already exist.
 // The returned set holds the keys that originated only from --additional-features
-// (not present in config.features). 0.88 (#11616) excludes these from the lockfile.
+// (not present in config.features). These are excluded from the lockfile.
 func mergeAdditionalFeatures(cfg *config.DevContainerConfig, additionalFeaturesJSON string) (map[string]bool, error) {
 	if additionalFeaturesJSON == "" {
 		return nil, nil

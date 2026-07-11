@@ -11,8 +11,8 @@ import (
 // item-level partial-failure test (seams_test.go): here every ITEM publishes
 // fine but the SEPARATE collection-metadata push fails. That failure must be
 // counted and surfaced as the command error, while the successfully published
-// items still appear in the result JSON. This is the distinct
-// "collection-metadata push" risk named in RW-012.
+// items still appear in the result JSON. This exercises the distinct
+// "collection-metadata push" failure path, separate from item-level failures.
 func TestPublishCollection_CollectionMetadataFailureCounts(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")

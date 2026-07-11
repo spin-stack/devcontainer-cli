@@ -18,7 +18,7 @@ import (
 
 // mergedPassthroughKeys are config-only properties spread into mergedConfiguration
 // by the TS CLI that the typed MergedConfig does not model. They are copied from
-// the raw config into the merged output (blocker B12).
+// the raw config into the merged output.
 var mergedPassthroughKeys = []string{
 	"features", "build", "dockerComposeFile", "service", "workspaceFolder",
 	"name", "overrideFeatureInstallOrder",
@@ -165,8 +165,8 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 				delete(cfgMap, k)
 			}
 		}
-		// Preserve unknown/vendor top-level properties that the typed struct drops
-		// (blocker B12): the TS config output keeps them. Legacy fields migrated
+		// Preserve unknown/vendor top-level properties that the typed struct drops:
+		// the TS config output keeps them. Legacy fields migrated
 		// into customizations (settings/extensions/devPort) stay removed.
 		for k, v := range result.Raw {
 			if _, known := cfgMap[k]; known {
@@ -285,7 +285,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			// No container yet: derive the base metadata from the image and the
 			// features, like the TS getImageBuildInfo. Otherwise mergedConfiguration
 			// loses the image's remoteUser/lifecycle/customizations and the features'
-			// metadata before the container is created (blocker B13) — VS Code calls
+			// metadata before the container is created — VS Code calls
 			// this before creating the container.
 			if result.Config.Image != "" {
 				if img, imgErr := engine.InspectImage(ctx, result.Config.Image); imgErr == nil && img.Config != nil {
@@ -336,7 +336,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 
 		// TS builds mergedConfiguration by spreading the config, so config-only
 		// properties that the typed MergedConfig does not model (features, build,
-		// service, workspaceFolder, …) must be carried over (blocker B12).
+		// service, workspaceFolder, …) must be carried over.
 		mergedJSON, _ := json.Marshal(merged)
 		var mergedMap map[string]interface{}
 		if json.Unmarshal(mergedJSON, &mergedMap) == nil {
@@ -383,7 +383,7 @@ func configToMetadataEntry(cfg *config.DevContainerConfig, omitRemoteEnv ...bool
 	}
 	// Port and host-requirement properties are part of the config metadata entry
 	// (pickConfigProperties in TS). Omitting them made the devcontainer.metadata
-	// label lossy vs the TS CLI (blocker B10).
+	// label lossy vs the TS CLI.
 	if len(cfg.ForwardPorts) > 0 {
 		fp := make([]interface{}, len(cfg.ForwardPorts))
 		for i, p := range cfg.ForwardPorts {

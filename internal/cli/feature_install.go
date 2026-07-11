@@ -52,7 +52,7 @@ type FeatureBuildOptions struct {
 	// --additional-features; 0.88 (#11616) keeps these out of the lockfile.
 	LockfileExcludeIDs map[string]bool
 	// OverrideFeatureInstallOrder is cfg.overrideFeatureInstallOrder, threaded
-	// into the dependency graph builder so install order honors it (RW-001).
+	// into the dependency graph builder so install order honors it.
 	OverrideFeatureInstallOrder []string
 }
 
@@ -65,14 +65,14 @@ type fetchFeatureResult struct {
 }
 
 // fetchFeatureSets fetches features and returns them in install order. reg is the
-// registry seam (RW-011); pass nil for the default OCI client.
+// registry seam; pass nil for the default OCI client.
 func fetchFeatureSets(logger log.Log, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
 	return fetchFeatureSetsWithOrder(logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
 }
 
 // fetchFeatureSetsWithOrder resolves the feature dependency graph through the
-// unified features.BuildDependencyGraph builder (RW-002), applying
-// overrideFeatureInstallOrder (RW-001) and returning the FeatureSets in install
+// unified features.BuildDependencyGraph builder, applying
+// overrideFeatureInstallOrder and returning the FeatureSets in install
 // order. Each returned FeatureSet's content is staged under the returned TmpDir
 // at _dev_container_feature_<installOrderIndex>, matching the generated
 // Dockerfile's COPY paths.

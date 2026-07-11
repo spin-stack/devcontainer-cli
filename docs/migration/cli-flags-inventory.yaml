@@ -380,6 +380,12 @@ commands:
         type: boolean
         default: false
         hidden: true
+      no-lockfile:
+        type: boolean
+        default: false
+      frozen-lockfile:
+        type: boolean
+        default: false
       omit-syntax-directive:
         type: boolean
         default: false

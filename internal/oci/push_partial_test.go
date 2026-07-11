@@ -18,8 +18,8 @@ func writeTarball(t *testing.T, content string) string {
 	return p
 }
 
-// TestPushArtifact_BearerAuthAndPartialTagFailure drives two named RW-012 risks
-// at once against a hermetic httptest registry:
+// TestPushArtifact_BearerAuthAndPartialTagFailure drives two risks at once
+// against a hermetic httptest registry:
 //
 //   - Auth: the registry requires Bearer auth, so PushArtifact must run the full
 //     401 -> WWW-Authenticate: Bearer -> token endpoint -> retry loop (this path

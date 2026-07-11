@@ -63,7 +63,7 @@ func TestGenerateLockfile(t *testing.T) {
 	}
 }
 
-// 0.88 (#11616): features supplied only via --additional-features must not be
+// Features supplied only via --additional-features must not be
 // written to the lockfile.
 func TestGenerateLockfile_ExcludesAdditionalFeatures(t *testing.T) {
 	config := &FeaturesConfig{

@@ -63,9 +63,9 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 
 			// Build the dependency graph once (with dependency edges and
 			// overrideFeatureInstallOrder priorities), then derive both the mermaid
-			// diagram and the install order from it — the single-builder path
-			// (RW-002). The previous edge-less node list ignored transitive
-			// dependencies in the install order.
+			// diagram and the install order from it via a single builder. The
+			// previous edge-less node list ignored transitive dependencies in
+			// the install order.
 			processFeature := newMetadataProcessFeature(ociClient, logger, basePath, lockfile)
 			graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, cfg.OverrideFeatureInstallOrder, lockfile)
 			if err != nil {

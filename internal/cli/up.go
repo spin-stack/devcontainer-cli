@@ -254,7 +254,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 				}
 			}
 
-			// Run lifecycle hooks on reattach (blocker B14): postAttach every time,
+			// Run lifecycle hooks on reattach: postAttach every time,
 			// postStart when restarted; onCreate/updateContent/postCreate are gated
 			// by markers. Hooks come from the container's baked metadata.
 			if !opts.skipPostCreate {
@@ -481,7 +481,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			// Read the image's metadata (features are baked into the image), not the
 			// container's — the container now carries the full config metadata as a
 			// label, so reading it here and re-adding the config entry would double
-			// the lifecycle commands (B14). The output entry uses the config's
+			// the lifecycle commands. The output entry uses the config's
 			// remoteEnv regardless of --omit-config-remote-env-from-metadata (that
 			// flag only affects the persisted label).
 			var entries []imagemeta.Entry
@@ -508,7 +508,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			json.Unmarshal(mergedJSON, &mergedGeneric)
 			mergedSub := config.SubstituteContainer("linux", containerEnv, mergedGeneric)
 			// Carry over config-only properties spread into mergedConfiguration by
-			// the TS CLI that the typed MergedConfig does not model (blocker B12).
+			// the TS CLI that the typed MergedConfig does not model.
 			if mm, ok := mergedSub.(map[string]interface{}); ok {
 				if cfgResult, ok := result["configuration"].(map[string]interface{}); ok {
 					for _, k := range mergedPassthroughKeys {
@@ -575,7 +575,7 @@ func (r *upRunner) finishUp(containerID string, cfg *config.DevContainerConfig, 
 // container (found via --id-label, no config loaded). Hooks come from the
 // container's baked devcontainer.metadata; markers gate onCreate/updateContent/
 // postCreate (already ran) and postStart (per startedAt), while postAttach runs
-// every attach — matching the TS reattach path (blocker B14). Best-effort: probe
+// every attach — matching the TS reattach path. Best-effort: probe
 // or shell failures degrade to a warning.
 func (r *upRunner) runReattachLifecycle(containerID string) {
 	ctx, logger, engine, opts := r.ctx, r.log, r.engine, r.opts
@@ -801,7 +801,7 @@ func (r *upRunner) fromImage(cfg *config.DevContainerConfig, loadResult *config.
 // root, or when the host UID is not a regular user. Applies to both the image
 // and Dockerfile paths of up (previously only the image path called it, so
 // Dockerfile-based configs with a remoteUser had broken bind-mount permissions
-// on Linux — blocker B17).
+// on Linux).
 func (r *upRunner) maybeUpdateRemoteUserUID(imageName, remoteUser string, cfg *config.DevContainerConfig) string {
 	logger, dockerClient, opts := r.log, r.docker, r.opts
 	shouldUpdateUID := opts.updateRemoteUserUIDDefault == "on"
@@ -839,8 +839,8 @@ func (r *upRunner) runContainer(imageName string, cfg *config.DevContainerConfig
 
 	// The container carries the full devcontainer.metadata (image + config) so the
 	// CLI/VS Code can read remoteUser/lifecycle/customizations back on reattach —
-	// image-based containers previously had no metadata label (blocker B14 and
-	// interop). The label matches what the TS CLI adds with `-l`.
+	// image-based containers previously had no metadata label. The label matches
+	// what the TS CLI adds with `-l`.
 	containerMetadataLabel := imagemeta.GenerateMetadataLabel(metaEntries)
 
 	containerWorkspace := loadResult.WorkspaceConfig.WorkspaceFolder
@@ -1346,7 +1346,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 	// Always create a compose override for the target service to attach the
 	// devcontainer.* labels (id-labels + metadata) so the container is
 	// discoverable by exec and VS Code — matching the TS CLI, which sets
-	// additionalLabels on the compose service (B16). When features were installed
+	// additionalLabels on the compose service. When features were installed
 	// we also add the runtime settings (image, entrypoint, env, mounts).
 	{
 		var overrideDir string
@@ -1575,7 +1575,7 @@ func (r *upRunner) runLifecycleForUp(containerID string, cfg *config.DevContaine
 	// Read metadata from the image (features' lifecycle commands are baked into
 	// the image), NOT the container: the container now carries the config metadata
 	// as a label, so reading it and then re-adding the config commands below would
-	// run every hook twice (B14 regression).
+	// run every hook twice.
 	inspectResp, inspErr := engine.InspectContainer(ctx, containerID)
 	var merged *imagemeta.MergedConfig
 	if inspErr == nil && inspectResp.Image != "" {
@@ -1605,7 +1605,7 @@ func (r *upRunner) runLifecycleForUp(containerID string, cfg *config.DevContaine
 		merged.PostAttachCommands = append(merged.PostAttachCommands, cfg.PostAttachCommand.Raw())
 	}
 
-	// Marker files (blocker B5): make hooks idempotent across repeated `up`s and
+	// Marker files: make hooks idempotent across repeated `up`s and
 	// editor reconnections. onCreate/updateContent/postCreate run only when their
 	// marker does not already record this container's createdAt; postStart runs
 	// only when the marker does not record its startedAt. postAttach always runs.

@@ -261,7 +261,7 @@ func TestParityMatrix(t *testing.T) {
 			tsCancel()
 
 			// Always run the Go side, even when TS is skipped — a TS-side infra/timeout
-			// must never silently delete Go's coverage (W6). We decide what to do with
+			// must never silently delete Go's coverage. We decide what to do with
 			// the results afterwards.
 			goCtx, goCancel := context.WithTimeout(t.Context(), perCaseTimeout)
 			goRes := runParitySide(t, goCtx, repoRoot, cliGO, tc, "go")
@@ -272,7 +272,7 @@ func TestParityMatrix(t *testing.T) {
 			}
 
 			// TS unavailable as an oracle (infra/timeout): record it (auditable) but
-			// don't compare. Go still ran (W6), so its coverage is not silently lost.
+			// don't compare. Go still ran, so its coverage is not silently lost.
 			// When Go hit the SAME environment limit (e.g. arm64 on an amd64 host) that
 			// is a shared skip, not a Go bug.
 			if tsStatus.Skip {
@@ -293,7 +293,7 @@ func TestParityMatrix(t *testing.T) {
 				return
 			}
 
-			// W1 — outcome-intent check, now that TS is a usable oracle:
+			// Outcome-intent check, now that TS is a usable oracle:
 			//  - success case, TS exit 0, Go non-zero → real regression (RED).
 			//  - success case, BOTH failed → we can't tell a product bug from an
 			//    environment limit; mark inconclusive (visible SKIP, not a silent pass).

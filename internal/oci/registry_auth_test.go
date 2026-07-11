@@ -122,7 +122,7 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 	}
 }
 
-// TestClientAuthCacheReused asserts the RW-008 cache hoist: every repository()
+// TestClientAuthCacheReused asserts the shared auth cache: every repository()
 // built by one Client shares the same auth.Cache, so an auth challenge resolved
 // for one operation is reused by related operations instead of re-running the
 // 401 loop.

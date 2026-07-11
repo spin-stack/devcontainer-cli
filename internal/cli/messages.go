@@ -5,8 +5,7 @@ package cli
 // punctuated — contrary to Go's error-string convention — because their exact
 // text is a compatibility contract, not a Go-internal detail. The ones that
 // were previously written out at more than one call site live here so the
-// copies cannot drift apart. Do not reword without updating the parity matrix
-// and GO-REWRITE-STATUS.md.
+// copies cannot drift apart. Do not reword without updating the parity matrix.
 const (
 	// msgLegacyFeature is returned when a bare-id (legacy) Feature is requested.
 	msgLegacyFeature = "Legacy feature '%s' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information."

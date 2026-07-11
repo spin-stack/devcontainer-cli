@@ -14,7 +14,7 @@ import (
 // --log-file is wired: when set, the command's log stream is teed to the file (see
 // logWriter). --terminal-log-file is also teed to its path, but note the CLI keeps
 // a single log stream — it has no self-managed PTY/terminal stream distinct from
-// the log stream (RW-003 Branch A: exec inherits the terminal). So both flags
+// the log stream (exec inherits the terminal). So both flags
 // capture the same, non-ANSI, log output; there is no separate terminal-formatted
 // capture. This is a deliberate, documented divergence from the TS CLI, which
 // produces distinct plain and terminal-formatted files.

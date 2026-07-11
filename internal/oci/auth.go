@@ -129,13 +129,13 @@ func tryPlatformDefaultHelper(registry string, logger log.Log) *credential {
 }
 
 // defaultCredentialHelperName returns the docker credential helper the current
-// platform defaults to (i.e. the suffix of docker-credential-<name>). Scope is
-// Linux-only for this rewrite; darwin/windows names are kept for parity with the
-// TS surface but are not a supported target.
+// platform defaults to (i.e. the suffix of docker-credential-<name>). Linux is
+// the only supported target; the darwin/windows names are provided for
+// completeness but are not exercised here.
 //
-// RW-008 divergence: on Linux the libsecret helper is `secretservice`
-// (docker-credential-secretservice). The TS CLI names it `secret`, which is
-// wrong — no such binary exists — so Go keeps the correct `secretservice`.
+// On Linux the libsecret-backed helper is `secretservice`
+// (docker-credential-secretservice), not `secret` — there is no
+// docker-credential-secret binary.
 func defaultCredentialHelperName() string {
 	switch runtime.GOOS {
 	case "darwin":

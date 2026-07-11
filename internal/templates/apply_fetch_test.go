@@ -189,7 +189,7 @@ func TestFetchAndApply_Success(t *testing.T) {
 	}
 }
 
-// TestFetchAndApply_PartialWorkspaceWrite is the core RW-012 risk: a WriteFile
+// TestFetchAndApply_PartialWorkspaceWrite covers the partial-write risk: a WriteFile
 // that fails mid-Walk. The first workspace file is written, the second fails,
 // and the error must propagate (wrapped) instead of silently leaving a partial
 // workspace unreported. The partial state (one file on disk) is asserted.

@@ -10,10 +10,9 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TestBuildComposePathWiring is the discriminating test for RW-004: the
-// `build` command must thread --docker-compose-path into
-// docker.NewComposeClient. With the pre-RW-004 code (which hardcoded "" at the
-// call site), the operator-supplied path could never appear in the
+// TestBuildComposePathWiring verifies that the `build` command threads
+// --docker-compose-path into docker.NewComposeClient. When the call site
+// hardcodes "" instead, the operator-supplied path could never appear in the
 // compose-client detection error ("neither 'docker compose' nor '<path>'
 // found"). The test is hermetic: dockerPath points at a nonexistent binary so
 // the `docker compose` (v2) probe always fails regardless of the host, forcing

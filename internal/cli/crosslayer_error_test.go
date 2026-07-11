@@ -9,7 +9,7 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 )
 
-// RW-012 cross-layer error propagation.
+// Cross-layer error propagation.
 //
 // These tests exercise the command runners (build/up/exec) and assert that a
 // hermetically-reachable pre-Docker error — argument validation or a config-load
@@ -19,10 +19,9 @@ import (
 // proves the runner short-circuited before docker.NewEngineClient, regardless of
 // whether Docker happens to be installed on the host.
 //
-// NOTE (out of scope, per track brief): context cancellation cannot be tested
-// here because the commands do not thread cmd.Context() through a cancellation
-// seam into the pre-Docker phase; wiring that is a separate change and is
-// intentionally not done in this track.
+// NOTE (out of scope): context cancellation cannot be tested here because the
+// commands do not thread cmd.Context() through a cancellation seam into the
+// pre-Docker phase; wiring that is a separate change.
 
 // asExitCode unwraps an *errors.ExitCodeError, failing if err is not one.
 func asExitCode(t *testing.T, err error) *coreerrors.ExitCodeError {

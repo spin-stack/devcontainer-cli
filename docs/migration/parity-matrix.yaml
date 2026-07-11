@@ -273,6 +273,127 @@ initial_cases:
     current_status: match
     notes: "set-up no validaba --remote-env; ahora llama validateRemoteEnvs como sus comandos hermanos."
 
+  # --- Wave A batch 2: casos nuevos (6 divergencias más corregidas) ---
+  - id: upgrade.err-invalid-target-version-format
+    lane: contract
+    command: upgrade
+    priority: p1
+    docker_required: false
+    ts_cmd: "upgrade --workspace-folder src/test/configs/image-with-features --feature ghcr.io/devcontainers/features/node --target-version abc"
+    asserts: [exit_code, stderr_normalized]
+    class: version-validation
+    current_status: match
+    notes: "TS valida en yargs .check() antes del handler: --target-version debe ser x / x.y / x.y.z. 'abc' => exit 1 'Invalid version 'abc'.  Must be in the form of 'x', 'x.y', or 'x.y.z''. Go antes declaraba --feature/--target-version como hidden pero nunca los leia (upgrade normal, exit 0); ahora el RunE valida el formato con el mismo regex y texto."
+
+  - id: upgrade.err-feature-without-target-version
+    lane: contract
+    command: upgrade
+    priority: p1
+    docker_required: false
+    ts_cmd: "upgrade --workspace-folder src/test/configs/image-with-features --feature ghcr.io/devcontainers/features/node"
+    asserts: [exit_code, stderr_normalized]
+    class: version-validation
+    current_status: match
+    notes: "XOR de yargs .check(): --feature y --target-version deben usarse juntos. Solo --feature => exit 1 'The '--target-version' and '--feature' flag must be used together.'. Go ignoraba ambos flags; ahora el RunE aplica el XOR con el mismo mensaje."
+
+  - id: outdated.image-with-features-text
+    lane: runtime
+    command: outdated
+    priority: p1
+    network_required: true
+    ts_cmd: "outdated --workspace-folder src/test/configs/image-with-features --output-format text"
+    asserts: [exit_code, stdout_normalized]
+    class: outdated-runtime
+    current_status: match
+    notes: "outdated --output-format text: la columna Feature es el userFeatureId completo sin tag (getFeatureIdWithoutVersion), las filas van en orden de insercion del config, y el formato es text-table de npm (anchos minimos, separador de 2 espacios, alineado a la izquierda, sin espacios finales). Go antes acortaba a los 2 ultimos segmentos con tag, ordenaba alfabeticamente (map) y padeaba a %-50s con espacios finales."
+
+  - id: features.package-single-feature-success
+    lane: runtime
+    command: features-package
+    priority: p1
+    docker_required: false
+    ts_cmd: "features package reference/src/test/container-features/example-v2-features-sets/simple/src/color -o ${PKG_OUT} -f"
+    setup_cmd: "PKG_OUT=/tmp/parity-pkg-single-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${PKG_OUT}; echo PKG_OUT=$PKG_OUT"
+    verify_cmd: "test -f ${PKG_OUT}/devcontainer-feature-color.tgz && test -f ${PKG_OUT}/devcontainer-collection.json && printf ok"
+    cleanup_cmd: "rm -rf ${PKG_OUT}"
+    asserts: [exit_code, stdout_normalized]
+    class: collection-packaging
+    current_status: match
+    notes: "--target apunta a una carpeta de UN solo feature (devcontainer-feature.json + install.sh directos). TS despacha packageSingleFeature (exit 0: tgz + collection de 1 elemento); Go iteraba sólo subdirectorios → colección vacía → 'Failed to package'. Fix: packageCollection detecta el metadata en la carpeta raíz y empaqueta como single."
+
+  - id: features.test-missing-src-test-folders
+    lane: contract
+    command: features
+    priority: p1
+    docker_required: false
+    ts_cmd: "features test --project-folder src/test/configs/image"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+    notes: "project-folder sin src/ ni test/. TS imprime el banner y luego el error en STDOUT (chalk.red, prefijo '[-]') y sale 1; Go escribia el error a STDERR via logger y sin banner. Fix: banner antes del check + error a STDOUT con el texto exacto ('does not contain the required ''src'' and ''test'' folders.'). Ambos lados dejan STDERR vacio, por lo que extractErrorReason canoniza a '' en los dos y stderr_normalized matchea. No se asserta stdout_normalized: el banner TS lleva la version literal 'vX.Y.Z' que el normalizador no depura (necesitaria un version-scrub, wave B)."
+
+  - id: build.no-lockfile-frozen-lockfile-mutually-exclusive
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --no-lockfile --frozen-lockfile"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+    notes: "TS registra --no-lockfile/--frozen-lockfile públicos y rechaza las 3 combinaciones no-lockfile+frozen ('--no-lockfile and --frozen-lockfile are mutually exclusive.'). Go antes solo registraba los --experimental-* ocultos → 'unknown flag: --no-lockfile'."
+
+  - id: exec.workspace-image-nonzero-exit
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/image --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} sh -c \"exit 7\""
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/reference/devcontainer.js up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code]
+    class: container-runtime
+    current_status: match
+    notes: "exec propaga el exit code del comando remoto (sh -c 'exit 7' -> exit 7 en ambos CLIs). Solo se asserta exit_code: stdout vacio en ambos; el stderr difiere (Go emite banner + ruido de bash 'no job control', TS no)."
+
+  - id: exec.container-not-found
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/image --id-label parity.case=missing echo hi"
+    asserts: [exit_code, stderr_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "Sin contenedor arriba: ambos CLIs fallan con 'Dev container not found.' exit 1. extractErrorReason normaliza el banner de Go y el stack trace de TS a la misma razon."
+
+  - id: templates.publish-collection-success
+    lane: runtime
+    command: templates
+    priority: p1
+    docker_required: true
+    setup_cmd: "REG_NAME=parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE}; docker rm -f $REG_NAME >/dev/null 2>&1; docker run -d --name $REG_NAME -p 127.0.0.1::5000 registry:3 >/dev/null; PORT=$(docker port $REG_NAME 5000/tcp | head -1 | sed s/.*://); curl -s --retry 30 --retry-delay 1 --retry-connrefused http://localhost:$PORT/v2/ >/dev/null 2>&1; echo REGISTRY=localhost:$PORT"
+    cleanup_cmd: "docker rm -f parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    ts_cmd: "templates publish reference/src/test/container-templates/example-templates-sets/simple/src -r ${REGISTRY} -n octocat/templates"
+    asserts: [exit_code, stdout_normalized]
+    class: templates-runtime
+    current_status: match
+    notes: "publica la coleccion de templates (alpine, cpp, mytemplate, node-mongo) a un registry:3 LOCAL, uno por lado arrancado en setup_cmd con host 'localhost' (no 127.0.0.1) para que el cliente OCI de TS use HTTP plano. El puerto host aleatorio se captura via echo REGISTRY=localhost:PORT (reSetupEnv del harness lo inyecta en el env del ts_cmd). stdout = result-map JSON { id: {publishedTags:[1,1.0,1.0.0,latest], digest, version} }; el digest del tarball difiere entre lados (Go tar vs node-tar) pero se scrubbea a sha256:<HASH>, y las keys se ordenan por normalizeValue. Cada lado usa su propio registry fresco -> publishedTags deterministas."
+
+  - id: upgrade.write-lockfile-to-disk-success
+    lane: runtime
+    command: upgrade
+    priority: p1
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; cp -R reference/src/test/configs/image-with-features/. $WORKSPACE/; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "cat ${WORKSPACE}/.devcontainer-lock.json"
+    cleanup_cmd: "rm -rf /tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "upgrade --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code]
+    class: upgrade-runtime
+    current_status: match
+    notes: "upgrade SIN --dry-run persiste el lockfile en disco (.devcontainer-lock.json junto al .devcontainer.json, getLockfilePath) y no emite JSON a stdout; el verify_cmd cat-ea el lockfile producido. Cada lado trabaja sobre una copia tmp aislada del fixture image-with-features. Ambos resuelven los features contra ghcr.io a los mismos digests (sha256 scrubbeado por normalizacion de todos modos)."
+
   - id: read-configuration.missing-required
     lane: contract
     command: read-configuration

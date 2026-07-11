@@ -94,7 +94,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
 		return writeValidationError(out, err.Error())
 	}
-	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
+	// Default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
@@ -199,7 +199,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	// Build merged config. With a config loaded, read the image's metadata
 	// (features are baked into the image) + the config entry — reading the
 	// container label (which now carries the config metadata) and re-adding the
-	// config entry would double the lifecycle commands (B14). Without a config
+	// config entry would double the lifecycle commands. Without a config
 	// (container-id path) the container metadata is authoritative.
 	var allEntries []imagemeta.Entry
 	if cfg != nil {

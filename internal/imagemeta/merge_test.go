@@ -217,8 +217,8 @@ func TestGenerateMetadataLabel_Roundtrip(t *testing.T) {
 	}
 }
 
-// 0.88 (#1199): a single metadata entry must still serialize as a JSON array,
-// not a bare object.
+// A single metadata entry must still serialize as a JSON array, not a bare
+// object.
 func TestGenerateMetadataLabel_SingleEntryIsArray(t *testing.T) {
 	label := GenerateMetadataLabel([]Entry{{ID: "go", RemoteUser: "vscode"}})
 	if len(label) == 0 || label[0] != '[' {

@@ -14,7 +14,7 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// RW-006 — Bidirectional metadata interop.
+// Bidirectional metadata interop.
 //
 // Go always emits the devcontainer.metadata label as a JSON *array* even for a
 // single entry (imagemeta.GenerateMetadataLabel). TS and Go serialize with
@@ -28,7 +28,7 @@ import (
 // imagemeta.ReadMetadataFromLabels + MergeConfiguration, and assert the merge.
 //
 // TS->Go half: guarded to t.Skip unless the compiled reference oracle is
-// present. The full bidirectional run is validated in RW-018.
+// present.
 
 // interopEntries returns metadata entries exercising every merge dimension the
 // interop test cares about: mounts, forwardPorts, users, lifecycle hooks, and
@@ -233,8 +233,8 @@ func TestMetadataInteropGoRoundTrip(t *testing.T) {
 // with the Go reader and assert the normalized merge matches. It requires the
 // compiled reference oracle, so it is guarded to Skip in this hermetic worktree.
 //
-// TODO(RW-018): the full bidirectional run (TS build -> Go read AND Go build ->
-// TS read) is validated end-to-end in RW-018 with the compiled oracle present.
+// TODO: run the full bidirectional exchange (TS build -> Go read AND Go build ->
+// TS read) end-to-end once the compiled oracle is present.
 func TestMetadataInteropTSToGo(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	oracle := filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")
@@ -244,10 +244,10 @@ func TestMetadataInteropTSToGo(t *testing.T) {
 	if !isDockerAvailable() {
 		t.Skip("docker required")
 	}
-	// When the oracle is present (RW-018 lane), the TS build produces a
+	// When the oracle is present, the TS build produces a
 	// devcontainer.metadata label with different whitespace/key-order than Go's.
 	// The assertion still holds: read via the Go reader and compare the merge as
-	// normalized JSON. Full wiring lives in RW-018 alongside the other
-	// bidirectional cases; this guard keeps the worktree hermetic.
+	// normalized JSON. This guard keeps the worktree hermetic until the
+	// bidirectional build wiring is added.
 	t.Skip("TS->Go interop build wiring lands in RW-018")
 }

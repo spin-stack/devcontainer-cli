@@ -103,7 +103,7 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 		},
 		{
 			name: "FeatureEnvScopedToInstall",
-			// Regression for B1: feature option env vars (and _REMOTE_USER/_CONTAINER_USER)
+			// Regression: feature option env vars (and _REMOTE_USER/_CONTAINER_USER)
 			// must apply to install.sh, not to the preceding chmod. In POSIX sh,
 			// `KEY=v chmod ... && install.sh` scopes KEY to chmod only, so the options
 			// never reach install.sh.
