@@ -1996,6 +1996,32 @@ initial_cases:
     current_status: match
     notes: "upgrade --dry-run emite el lockfile a stdout; version = versión concreta resuelta (no el tag), resolved = resource@digest, integrity = digest."
 
+  - id: features.generate-docs-success
+    lane: runtime
+    command: features
+    priority: p1
+    ts_cmd: "features generate-docs -p ${GENDOCS_DIR} -n owner/repo --github-owner o --github-repo r"
+    setup_cmd: "GENDOCS_DIR=/tmp/parity-gendocs-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $GENDOCS_DIR; cp -R reference/src/test/container-features/example-v2-features-sets/simple/src $GENDOCS_DIR; echo GENDOCS_DIR=$GENDOCS_DIR"
+    verify_cmd: "cat ${GENDOCS_DIR}/color/README.md ${GENDOCS_DIR}/hello/README.md"
+    cleanup_cmd: "rm -rf /tmp/parity-gendocs-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "generate-docs escribe README.md por feature (stdout vacío); el verify compara el contenido generado. Port fiel del template TS (columnas 'Options Id|Description|Type|Default Value' en orden de inserción, header deprecated/legacyIds, customizations, NOTES.md)."
+
+  - id: templates.generate-docs-success
+    lane: runtime
+    command: templates
+    priority: p1
+    ts_cmd: "templates generate-docs -p ${GENDOCS_DIR} --github-owner o --github-repo r"
+    setup_cmd: "GENDOCS_DIR=/tmp/parity-tmpldocs-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $GENDOCS_DIR; cp -R reference/src/test/container-templates/example-templates-sets/simple/src $GENDOCS_DIR; echo GENDOCS_DIR=$GENDOCS_DIR"
+    verify_cmd: "cat ${GENDOCS_DIR}/alpine/README.md ${GENDOCS_DIR}/node-mongo/README.md"
+    cleanup_cmd: "rm -rf /tmp/parity-tmpldocs-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: templates-runtime
+    current_status: match
+    notes: "templates generate-docs usa TEMPLATE_README_TEMPLATE (sin Registry/Namespace/Version/Customizations)."
+
 groups:
   mode-validation:
     rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"
