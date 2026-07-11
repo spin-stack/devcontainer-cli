@@ -37,7 +37,7 @@ func TestGenerateLockfile(t *testing.T) {
 		},
 	}
 
-	lf := GenerateLockfile(config)
+	lf := GenerateLockfile(config, nil)
 
 	if len(lf.Features) != 2 {
 		t.Fatalf("features count = %d, want 2 (local should be excluded)", len(lf.Features))
@@ -63,6 +63,38 @@ func TestGenerateLockfile(t *testing.T) {
 	}
 }
 
+// 0.88 (#11616): features supplied only via --additional-features must not be
+// written to the lockfile.
+func TestGenerateLockfile_ExcludesAdditionalFeatures(t *testing.T) {
+	config := &FeaturesConfig{
+		FeatureSets: []*FeatureSet{
+			{
+				SourceInfo:     &OCISource{UserID: "ghcr.io/devcontainers/features/go:1", Registry: "ghcr.io", Namespace: "devcontainers/features", ID: "go"},
+				Features:       []Feature{{ID: "go", Version: "1.21.0"}},
+				ComputedDigest: "sha256:abc123",
+			},
+			{
+				SourceInfo:     &OCISource{UserID: "ghcr.io/devcontainers/features/node:1", Registry: "ghcr.io", Namespace: "devcontainers/features", ID: "node"},
+				Features:       []Feature{{ID: "node", Version: "18.0.0"}},
+				ComputedDigest: "sha256:def456",
+			},
+		},
+	}
+
+	exclude := map[string]bool{"ghcr.io/devcontainers/features/node:1": true}
+	lf := GenerateLockfile(config, exclude)
+
+	if _, ok := lf.Features["ghcr.io/devcontainers/features/node:1"]; ok {
+		t.Error("additional-feature node should be excluded from lockfile")
+	}
+	if _, ok := lf.Features["ghcr.io/devcontainers/features/go:1"]; !ok {
+		t.Error("config feature go should remain in lockfile")
+	}
+	if len(lf.Features) != 1 {
+		t.Fatalf("features count = %d, want 1", len(lf.Features))
+	}
+}
+
 func TestGenerateLockfile_Sorted(t *testing.T) {
 	config := &FeaturesConfig{
 		FeatureSets: []*FeatureSet{
@@ -79,7 +111,7 @@ func TestGenerateLockfile_Sorted(t *testing.T) {
 		},
 	}
 
-	lf := GenerateLockfile(config)
+	lf := GenerateLockfile(config, nil)
 	data, _ := json.MarshalIndent(lf, "", "  ")
 	str := string(data)
 

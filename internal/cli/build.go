@@ -37,6 +37,9 @@ type buildOpts struct {
 	skipPersistCustoms         bool
 	experimentalLockfile       bool
 	experimentalFrozenLockfile bool
+	// lockfileExcludeIDs is populated after merging --additional-features; it lists
+	// userFeatureIds supplied only via that flag, which 0.88 keeps out of the lockfile.
+	lockfileExcludeIDs map[string]bool
 }
 
 func newBuildCmd() *cobra.Command {
@@ -122,7 +125,8 @@ func runBuild(opts *buildOpts) error {
 	}
 	cfg := loadResult.Config
 
-	if err := mergeAdditionalFeatures(cfg, opts.additionalFeatures); err != nil {
+	opts.lockfileExcludeIDs, err = mergeAdditionalFeatures(cfg, opts.additionalFeatures)
+	if err != nil {
 		return writeErrorResult(err.Error())
 	}
 
@@ -308,6 +312,7 @@ func buildDockerfile(ctx context.Context, logger log.Log, dockerClient *docker.C
 			Lockfile:               opts.experimentalLockfile,
 			FrozenLockfile:         opts.experimentalFrozenLockfile,
 			ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 			SkipPersistCustoms:     opts.skipPersistCustoms,
 			FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
 			AdditionalMetadata:     []imagemeta.Entry{configToMetadataEntry(cfg)},
@@ -373,6 +378,7 @@ func buildImage(ctx context.Context, logger log.Log, dockerClient *docker.Client
 			Lockfile:               opts.experimentalLockfile,
 			FrozenLockfile:         opts.experimentalFrozenLockfile,
 			ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 			SkipPersistCustoms:     opts.skipPersistCustoms,
 			FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
 		})
@@ -402,6 +408,7 @@ func buildImage(ctx context.Context, logger log.Log, dockerClient *docker.Client
 				Lockfile:               opts.experimentalLockfile,
 				FrozenLockfile:         opts.experimentalFrozenLockfile,
 				ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 				SkipPersistCustoms:     opts.skipPersistCustoms,
 				FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
 			})
@@ -621,6 +628,7 @@ func buildCompose(ctx context.Context, logger log.Log, dockerClient *docker.Clie
 			Lockfile:               opts.experimentalLockfile,
 			FrozenLockfile:         opts.experimentalFrozenLockfile,
 			ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 			SkipPersistCustoms:     opts.skipPersistCustoms,
 			FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
 		})

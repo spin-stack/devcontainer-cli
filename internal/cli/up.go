@@ -25,6 +25,9 @@ type upOpts struct {
 	workspaceFolder             string
 	configPath                  string
 	overrideConfig              string
+	// lockfileExcludeIDs lists userFeatureIds supplied only via --additional-features;
+	// 0.88 keeps these out of the lockfile.
+	lockfileExcludeIDs map[string]bool
 	dockerPath                  string
 	dockerComposePath           string
 	logLevel                    string
@@ -249,8 +252,10 @@ func runUp(opts *upOpts) error {
 	cfg := loadResult.Config
 
 	// Merge --additional-features into config (config features have priority)
-	if err := mergeAdditionalFeatures(cfg, opts.additionalFeatures); err != nil {
-		return writeErrorResult(err.Error())
+	var mergeErr error
+	opts.lockfileExcludeIDs, mergeErr = mergeAdditionalFeatures(cfg, opts.additionalFeatures)
+	if mergeErr != nil {
+		return writeErrorResult(mergeErr.Error())
 	}
 
 	// Run initializeCommand on the host (before container creation).
@@ -694,6 +699,7 @@ func upFromDockerfile(ctx context.Context, logger log.Log, dockerClient *docker.
 			Lockfile:               opts.experimentalLockfile,
 			FrozenLockfile:         opts.experimentalFrozenLockfile,
 			ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 		})
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -731,6 +737,7 @@ func upFromImage(ctx context.Context, logger log.Log, dockerClient *docker.Clien
 			Lockfile:               opts.experimentalLockfile,
 			FrozenLockfile:         opts.experimentalFrozenLockfile,
 			ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 		})
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -1236,6 +1243,7 @@ func upFromCompose(ctx context.Context, logger log.Log, dockerClient *docker.Cli
 					Lockfile:               opts.experimentalLockfile,
 					FrozenLockfile:         opts.experimentalFrozenLockfile,
 					ConfigPath:             cfg.ConfigFilePath,
+			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 				})
 				if extErr != nil {
 					return "", fmt.Errorf("install features on compose service: %w", extErr)

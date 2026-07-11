@@ -29,8 +29,9 @@ func newOutdatedCmd() *cobra.Command {
 		Use:   "outdated",
 		Short: "Show current and available versions",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 0.88: workspace-folder defaults to cwd when not provided.
 			if workspaceFolder == "" {
-				return fmt.Errorf("Missing required argument: --workspace-folder")
+				workspaceFolder, _ = os.Getwd()
 			}
 			return runOutdated(workspaceFolder, configPath, outputFormat, logLevel, logFormat)
 		},
@@ -185,8 +186,9 @@ func newUpgradeCmd() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Upgrade lockfile",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 0.88: workspace-folder defaults to cwd when not provided.
 			if workspaceFolder == "" {
-				return fmt.Errorf("Missing required argument: --workspace-folder")
+				workspaceFolder, _ = os.Getwd()
 			}
 
 			ws := resolvePath(workspaceFolder)
@@ -220,7 +222,7 @@ func newUpgradeCmd() *cobra.Command {
 			ociClient := oci.NewClient(logger, osEnvMap())
 
 			featureSets := resolveFeatureSets(cfg, ociClient, logger)
-			lf := features.GenerateLockfile(&features.FeaturesConfig{FeatureSets: featureSets})
+			lf := features.GenerateLockfile(&features.FeaturesConfig{FeatureSets: featureSets}, nil)
 
 			if dryRun {
 				data, _ := json.MarshalIndent(lf, "", "  ")

@@ -197,3 +197,19 @@ func TestGenerateMetadataLabel_Roundtrip(t *testing.T) {
 		t.Errorf("roundtrip failed: %v", parsed)
 	}
 }
+
+// 0.88 (#1199): a single metadata entry must still serialize as a JSON array,
+// not a bare object.
+func TestGenerateMetadataLabel_SingleEntryIsArray(t *testing.T) {
+	label := GenerateMetadataLabel([]Entry{{ID: "go", RemoteUser: "vscode"}})
+	if len(label) == 0 || label[0] != '[' {
+		t.Fatalf("single entry not wrapped in array: %q", label)
+	}
+	var parsed []Entry
+	if err := json.Unmarshal([]byte(label), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed) != 1 || parsed[0].ID != "go" {
+		t.Errorf("roundtrip failed: %v", parsed)
+	}
+}

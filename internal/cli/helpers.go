@@ -44,32 +44,36 @@ func envSliceToMap(envs []string) map[string]string {
 // mergeAdditionalFeatures parses a JSON(C) string of additional features and
 // merges them into cfg.Features. Config features have priority — additional
 // features are only added if their key doesn't already exist.
-func mergeAdditionalFeatures(cfg *config.DevContainerConfig, additionalFeaturesJSON string) error {
+// The returned set holds the keys that originated only from --additional-features
+// (not present in config.features). 0.88 (#11616) excludes these from the lockfile.
+func mergeAdditionalFeatures(cfg *config.DevContainerConfig, additionalFeaturesJSON string) (map[string]bool, error) {
 	if additionalFeaturesJSON == "" {
-		return nil
+		return nil, nil
 	}
 
 	// Parse JSONC (tolerant of comments/trailing commas)
 	standardJSON, err := hujson.Standardize([]byte(additionalFeaturesJSON))
 	if err != nil {
-		return fmt.Errorf("parse additional-features: %w", err)
+		return nil, fmt.Errorf("parse additional-features: %w", err)
 	}
 
 	var additional map[string]interface{}
 	if err := json.Unmarshal(standardJSON, &additional); err != nil {
-		return fmt.Errorf("parse additional-features: %w", err)
+		return nil, fmt.Errorf("parse additional-features: %w", err)
 	}
 
 	if cfg.Features == nil {
 		cfg.Features = make(map[string]interface{})
 	}
 
+	additionalOnly := make(map[string]bool)
 	for k, v := range additional {
 		if _, exists := cfg.Features[k]; !exists {
 			cfg.Features[k] = v
+			additionalOnly[k] = true
 		}
 	}
-	return nil
+	return additionalOnly, nil
 }
 
 // validateIDLabels checks that all --id-label values match <name>=<value> format.

@@ -43,6 +43,9 @@ type FeatureBuildOptions struct {
 	Lockfile       bool
 	FrozenLockfile bool
 	ConfigPath     string
+	// LockfileExcludeIDs holds userFeatureIds supplied only via
+	// --additional-features; 0.88 (#11616) keeps these out of the lockfile.
+	LockfileExcludeIDs map[string]bool
 }
 
 // extendImageWithFeatures fetches features from OCI, generates the extended
@@ -514,7 +517,7 @@ func extendImageWithFeatures(
 	// --experimental-lockfile / --experimental-frozen-lockfile flags). Writing
 	// records the resolved digests for reproducibility; frozen aborts on drift.
 	if fbOpts != nil && (fbOpts.Lockfile || fbOpts.FrozenLockfile) && fbOpts.ConfigPath != "" {
-		lf := features.GenerateLockfile(&features.FeaturesConfig{FeatureSets: featureSets})
+		lf := features.GenerateLockfile(&features.FeaturesConfig{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
 		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, fbOpts.FrozenLockfile, fbOpts.Lockfile); err != nil {
 			return nil, fmt.Errorf("lockfile: %w", err)
 		}

@@ -138,7 +138,7 @@ func runReadConfiguration(opts *readConfigOpts) error {
 			return loadErr
 		}
 
-		if err := mergeAdditionalFeatures(result.Config, opts.additionalFeatures); err != nil {
+		if _, err := mergeAdditionalFeatures(result.Config, opts.additionalFeatures); err != nil {
 			return fmt.Errorf("additional-features: %w", err)
 		}
 

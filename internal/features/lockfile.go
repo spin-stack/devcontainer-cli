@@ -23,7 +23,10 @@ type LockfileEntry struct {
 }
 
 // GenerateLockfile creates a lockfile from resolved features config.
-func GenerateLockfile(config *FeaturesConfig) *Lockfile {
+// GenerateLockfile builds the lockfile from resolved feature sets. Features whose
+// userFeatureId is in excludeUserFeatureIDs are omitted — 0.88 (#11616) does not
+// write features supplied only via --additional-features to the lockfile.
+func GenerateLockfile(config *FeaturesConfig, excludeUserFeatureIDs map[string]bool) *Lockfile {
 	type entry struct {
 		id    string
 		entry LockfileEntry
@@ -37,6 +40,9 @@ func GenerateLockfile(config *FeaturesConfig) *Lockfile {
 		}
 		srcType := src.SourceType()
 		if srcType != "oci" && srcType != "direct-tarball" {
+			continue
+		}
+		if excludeUserFeatureIDs[src.UserFeatureID()] {
 			continue
 		}
 

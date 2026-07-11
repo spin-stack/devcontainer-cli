@@ -69,10 +69,9 @@ func GenerateMetadataLabel(entries []Entry) string {
 	if len(entries) == 0 {
 		return ""
 	}
-	if len(entries) == 1 {
-		data, _ := json.Marshal(entries[0])
-		return string(data)
-	}
+	// 0.88 (#1199): always write the devcontainer.metadata label as a JSON array,
+	// even for a single entry — tools that expect an array (e.g. Zed) fail on a
+	// bare object.
 	data, _ := json.Marshal(entries)
 	return string(data)
 }
