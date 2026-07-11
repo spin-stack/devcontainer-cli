@@ -444,7 +444,9 @@ func realignFeatureDirs(tmpDir string, sets []*features.FeatureSet) error {
 			}
 			set.Features[0].CachePath = dst
 		}
-		set.Features[0].ConsecutiveId = fmt.Sprintf("_dev_container_feature_%d", i)
+		// consecutiveId is the TS `${feature.id}_${idx}` identity (NOT the staging
+		// directory name, which stays _dev_container_feature_<i> for the COPY).
+		set.Features[0].ConsecutiveId = fmt.Sprintf("%s_%d", set.Features[0].ID, i)
 		keep[dst] = true
 	}
 	// Remove any leftover staging directories.
