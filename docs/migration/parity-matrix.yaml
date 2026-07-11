@@ -150,6 +150,40 @@ initial_cases:
     class: parse-validation
     current_status: match
 
+  # --- Casos que fijan divergencias destapadas por la auditoría de cobertura ---
+  - id: up.invalid-workspace-mount-consistency
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --workspace-mount-consistency bogus"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+    notes: "TS valida el enum yargs [consistent,cached,delegated]; Go antes pasaba el valor crudo a docker."
+
+  - id: features-publish.invalid-log-level
+    lane: contract
+    command: features-publish
+    priority: p1
+    docker_required: false
+    ts_cmd: "features publish src/test/configs --namespace o/r --log-level bogus"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+    notes: "TS rechaza --log-level fuera de [info,debug,trace]; Go antes defaulteaba a Info y seguía."
+
+  - id: features.resolve-dependencies-no-features
+    lane: contract
+    command: features
+    priority: p1
+    docker_required: false
+    ts_cmd: "features resolve-dependencies --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+    notes: "config sin features → TS error a stderr exit 1; Go antes imprimía {installOrder:[]} exit 0."
+
   - id: read-configuration.missing-required
     lane: contract
     command: read-configuration
