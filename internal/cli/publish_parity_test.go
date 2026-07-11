@@ -5,9 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
+	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/oci"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -59,14 +63,17 @@ func TestPublishParity(t *testing.T) {
 		name       string
 		subcommand string // "features" | "templates"
 		collection string
+		itemIDs    []string
 	}{
-		{"features", "features", filepath.Join(repoRoot, "reference", "src", "test", "container-features", "example-v2-features-sets", "simple", "src")},
-		{"templates", "templates", filepath.Join(repoRoot, "reference", "src", "test", "container-templates", "example-templates-sets", "simple", "src")},
+		{"features", "features", filepath.Join(repoRoot, "reference", "src", "test", "container-features", "example-v2-features-sets", "simple", "src"), []string{"color", "hello"}},
+		{"templates", "templates", filepath.Join(repoRoot, "reference", "src", "test", "container-templates", "example-templates-sets", "simple", "src"), []string{"alpine", "node-mongo", "cpp", "mytemplate"}},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			tsNamespace := "tsns/" + tc.name
+			goNamespace := "gons/" + tc.name
 			publish := func(cli []string, namespace string) string {
 				args := append([]string{}, cli[1:]...)
 				args = append(args, tc.subcommand, "publish", tc.collection, "-r", registry, "-n", namespace)
@@ -79,11 +86,42 @@ func TestPublishParity(t *testing.T) {
 				return string(out)
 			}
 
-			tsOut := normalizeOutput(publish([]string{"node", filepath.Join(repoRoot, "reference", "devcontainer.js")}, "tsns/"+tc.name))
-			goOut := normalizeOutput(publish([]string{goCLI}, "gons/"+tc.name))
+			tsOut := normalizeOutput(publish([]string{"node", filepath.Join(repoRoot, "reference", "devcontainer.js")}, tsNamespace))
+			goOut := normalizeOutput(publish([]string{goCLI}, goNamespace))
 
 			if tsOut != goOut {
 				t.Errorf("publish result differs:\n--- TS\n%s\n--- Go\n%s", tsOut, goOut)
+			}
+
+			// Output parity alone is insufficient for a mutating command. Verify the
+			// registry state for every item and the collection metadata artifact.
+			client := oci.NewClient(log.Null, osEnvMap())
+			for _, id := range tc.itemIDs {
+				tagsFor := func(namespace string) []string {
+					ref, err := oci.ParseRef(registry + "/" + namespace + "/" + id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					tags, err := client.GetPublishedTags(ref)
+					if err != nil {
+						t.Fatalf("published tags for %s/%s: %v", namespace, id, err)
+					}
+					sort.Strings(tags)
+					return tags
+				}
+				tsTags, goTags := tagsFor(tsNamespace), tagsFor(goNamespace)
+				if len(goTags) == 0 || !reflect.DeepEqual(tsTags, goTags) {
+					t.Errorf("registry tags for %s differ: TS=%v Go=%v", id, tsTags, goTags)
+				}
+			}
+			for _, namespace := range []string{tsNamespace, goNamespace} {
+				ref, err := oci.ParseRef(registry + "/" + namespace + ":latest")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := client.FetchManifest(ref, ""); err != nil {
+					t.Errorf("collection metadata was not published for %s: %v", namespace, err)
+				}
 			}
 		})
 	}

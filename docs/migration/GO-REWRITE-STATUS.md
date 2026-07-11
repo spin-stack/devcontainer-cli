@@ -19,16 +19,18 @@ historia de cómo llegamos — para eso está el `git log` y
 | Features `dependsOn` transitivo durante instalación | ✅ resuelve, deduplica y ordena dependencias; ciclos abortan |
 | `features` / `templates` `publish` (push a registry OCI) | ✅ idéntico (test con `registry:3` vía testcontainers) |
 | `templates metadata` | ✅ byte-idéntico (orden de keys preservado) |
-| `features test` (build + run de scripts por feature) | ✅ corre y da resultados/REPORT como TS |
+| `features test` (build + run de scripts por feature) | 🟡 implementación endurecida; E2E A/B agregado, pendiente de ejecución Docker |
 | Seguridad: `disallowed-features` (blocklist del control-manifest) | ✅ cableado, envelope idéntico |
 
 ## Qué falta
 
 Muy poco, y de bajo impacto:
 
-1. **Refinamientos de `features test`** — corre y reporta pass/fail como TS, pero aún
-   no genera los tests *autogenerados/randomizados* ni colorea la salida (ANSI). El
-   núcleo (build por feature, `dev-container-features-test-lib`, REPORT) funciona.
+1. **Validación y refinamientos de `features test`** — los errores de preparación ya
+   se distinguen de tests fallidos y escenarios omitidos, y existe un caso E2E A/B
+   (`features.test-single-scenario-success`). Falta ejecutarlo/promoverlo a `match`
+   en un runner con Docker/red. Tampoco genera todavía los tests
+   *autogenerados/randomizados* ni colorea la salida (ANSI).
 2. **Digest del tarball de `features package`** — **no es alcanzable** la paridad
    byte-a-byte: los headers del tar incrustan `mtime` y node-tar/Go difieren en su
    manejo (el propio TS es no-determinista). El contenido, el file-list y el
