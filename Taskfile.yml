@@ -96,11 +96,24 @@ tasks:
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for runtime parity
+      # Fail fast (~1s) if the builder can't export build cache — otherwise the
+      # runtime cases (build.cache-to-*, build.output-oci-*) fail ~4 min deep with
+      # a cryptic buildkit error. The default `docker` driver lacks cache export.
+      - sh: |
+          d=$(mktemp -d) && printf 'FROM busybox\n' > "$d/Dockerfile" && \
+          docker buildx build --cache-to=type=local,dest="$d/c" -t parity-builder-probe "$d" >/dev/null 2>&1; \
+          rc=$?; rm -rf "$d" >/dev/null 2>&1; exit $rc
+        msg: |
+          The Docker builder cannot export build cache (needed by the runtime parity
+          matrix: build.cache-to-*, build.output-oci-*). Enable the containerd image
+          store: put {"features":{"containerd-snapshotter":true}} in
+          /etc/docker/daemon.json and restart docker, or use a docker-container
+          buildx builder.
     cmds:
       # -parallel default 2 for gate determinism: higher values overload the docker
       # daemon on contended runners and transiently fail compose/heavy cases (they
       # match in isolation). Raise via PARITY_PARALLEL on beefy/idle runners.
-      - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 40m -v {{.CLI_ARGS}}
+      - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 60m -v {{.CLI_ARGS}}
       - go test ./internal/cli -run TestPublishParity -count=1 -timeout 10m -v
 
   clean:

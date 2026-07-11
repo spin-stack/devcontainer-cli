@@ -104,10 +104,20 @@ jobs:
     needs: lint-and-test
     env:
       PARITY_RUNTIME_TIMEOUT: "10m"
+      # 2-core hosted runners can't sustain 2 concurrent heavy docker builds; run
+      # serially for gate determinism (override with PARITY_PARALLEL for beefy runners).
+      PARITY_PARALLEL: "1"
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+      # The runtime matrix builds with cache export / --platform, unsupported by the
+      # default docker driver. Enable the containerd image store on the daemon.
+      - name: Enable containerd image store
+        run: |
+          echo '{"features":{"containerd-snapshotter":true}}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          echo "driver status:" && docker info -f '{{.DriverStatus}}'
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -153,6 +163,10 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
+      - name: Enable containerd image store
+        run: |
+          echo '{"features":{"containerd-snapshotter":true}}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
