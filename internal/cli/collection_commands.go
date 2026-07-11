@@ -266,6 +266,17 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 	}
 	pfs.MkdirAll(outputDir)
 
+	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
+
+	// TS dispatch (prepPackageCommand → isSingle = isLocalFile(target/devcontainer-<type>.json)):
+	// when the target folder itself holds the metadata file it is a SINGLE
+	// Feature/Template, so package it directly (packageSingleFeatureOrTemplate)
+	// instead of scanning for sub-folders — a single-feature folder has none, which
+	// would otherwise yield an empty collection and a wrong "Failed to package".
+	if singleMeta := filepath.Join(targetFolder, metadataFile); pfs.IsFile(singleMeta) {
+		return packageSingleItem(targetFolder, outputDir, collectionType, singleMeta, logger)
+	}
+
 	srcDir := filepath.Join(targetFolder, "src")
 	if !pfs.IsDir(srcDir) {
 		srcDir = targetFolder
@@ -276,7 +287,6 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 		return fmt.Errorf("read source directory: %w", err)
 	}
 
-	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
 	// orderedmap preserves each metadata file's key order so the emitted
 	// collection matches the TS CLI (which spreads the parsed JSON verbatim) rather
 	// than the alphabetical order a plain Go map would produce.
@@ -324,17 +334,59 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 		return &coreerrors.ExitCodeError{Code: 1}
 	}
 
-	// Write collection metadata: sourceInformation first, then the features/templates
-	// array — JSON.stringify(collection, null, 4) in TS, so 4-space indentation.
+	writeCollectionMetadata(outputDir, collectionType, collection)
+
+	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", len(collection), collectionType, outputDir), log.LevelInfo)
+	return nil
+}
+
+// packageSingleItem packages a lone Feature/Template folder (one that directly
+// contains devcontainer-<type>.json + install.sh), mirroring TS's
+// packageSingleFeatureOrTemplate: it emits devcontainer-<type>-<id>.tgz plus a
+// one-element devcontainer-collection.json.
+func packageSingleItem(targetFolder, outputDir, collectionType, metaPath string, logger log.Log) error {
+	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
+
+	data, _ := os.ReadFile(metaPath)
+	std, stripErr := jsonc.StripComments(data)
+	meta := orderedmap.New()
+	if stripErr != nil || json.Unmarshal(std, meta) != nil {
+		logger.Write(fmt.Sprintf("Failed to package %ss", collectionType), log.LevelError)
+		return &coreerrors.ExitCodeError{Code: 1}
+	}
+	// TS skips (with an error) a single feature/template missing id, version or name.
+	// The message omits the folder name (unlike the collection path).
+	if !hasNonEmptyString(meta, "id") || !hasNonEmptyString(meta, "version") || !hasNonEmptyString(meta, "name") {
+		logger.Write(fmt.Sprintf("%s is missing one of the following required properties in its %s: 'id', 'version', 'name'.", collectionType, metadataFile), log.LevelError)
+		return &coreerrors.ExitCodeError{Code: 1}
+	}
+
+	idVal, _ := meta.Get("id")
+	id, _ := idVal.(string)
+
+	archiveName := fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, id)
+	archivePath := filepath.Join(outputDir, archiveName)
+	if err := createTarArchive(archivePath, targetFolder); err != nil {
+		return fmt.Errorf("package %s: %w", id, err)
+	}
+	logger.Write(fmt.Sprintf("Packaged %s '%s'", collectionType, id), log.LevelInfo)
+
+	writeCollectionMetadata(outputDir, collectionType, []*orderedmap.OrderedMap{meta})
+
+	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", 1, collectionType, outputDir), log.LevelInfo)
+	return nil
+}
+
+// writeCollectionMetadata writes devcontainer-collection.json: sourceInformation
+// first, then the features/templates array — JSON.stringify(collection, null, 4)
+// in TS, so 4-space indentation.
+func writeCollectionMetadata(outputDir, collectionType string, collection []*orderedmap.OrderedMap) {
 	collMeta := orderedmap.New()
 	collMeta.Set("sourceInformation", map[string]string{"source": "devcontainer-cli"})
 	collMeta.Set(fmt.Sprintf("%ss", collectionType), collection)
 	collData, _ := json.MarshalIndent(collMeta, "", "    ")
 	collPath := filepath.Join(outputDir, "devcontainer-collection.json")
 	os.WriteFile(collPath, collData, 0644)
-
-	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", len(collection), collectionType, outputDir), log.LevelInfo)
-	return nil
 }
 
 // publishCollection wires the real OCI registry and process stdout, then
