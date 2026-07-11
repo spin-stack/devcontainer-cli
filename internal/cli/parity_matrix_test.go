@@ -9,10 +9,12 @@
 //
 // Recommended invocation for the full runtime lane (docker required):
 //
-//	PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -parallel 6 -timeout 30m
+//	PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -parallel 2 -timeout 40m
 //
-// ~5.5 min vs ~26 min sequential. Higher -parallel values increase docker
-// contention and transient flakes; 6 is a stable default on an 8-core host.
+// Higher -parallel is faster but overloads the docker daemon on contended runners
+// and transiently fails compose/heavy cases (which match in isolation), so the gate
+// (task parity:runtime) defaults to -parallel 2 for determinism; raise via
+// PARITY_PARALLEL on idle/beefy runners.
 package cli
 
 import (

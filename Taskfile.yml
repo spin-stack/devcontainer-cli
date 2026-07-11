@@ -95,7 +95,10 @@ tasks:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for runtime parity
     cmds:
-      - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel 4 -timeout 30m -v {{.CLI_ARGS}}
+      # -parallel default 2 for gate determinism: higher values overload the docker
+      # daemon on contended runners and transiently fail compose/heavy cases (they
+      # match in isolation). Raise via PARITY_PARALLEL on beefy/idle runners.
+      - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 40m -v {{.CLI_ARGS}}
       - go test ./internal/cli -run TestPublishParity -count=1 -timeout 10m -v
 
   clean:
