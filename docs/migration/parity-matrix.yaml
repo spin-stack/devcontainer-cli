@@ -2057,6 +2057,17 @@ initial_cases:
     current_status: match
     notes: "features package genera devcontainer-collection.json ({sourceInformation, features:[…]}, 4-space) preservando el orden de keys del devcontainer-feature.json (orderedmap). El verify compara ese JSON; el digest del tarball puede diferir (encoding de header Go vs node-tar) pero el file-list coincide."
 
+  - id: features.resolve-dependencies-success
+    lane: runtime
+    command: features
+    priority: p1
+    network_required: true
+    ts_cmd: "features resolve-dependencies --workspace-folder src/test/configs/image-with-features"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "stdout = grafo mermaid + JSON installOrder. El mermaid se genera con roundPriority 0 (default TS) y alias del feature id (fallback a ref.ID cuando falta la annotation); los hashes de nodo se scrubbean por reMermaidNode. installOrder resuelto vía ComputeInstallationOrder."
+
 groups:
   mode-validation:
     rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"

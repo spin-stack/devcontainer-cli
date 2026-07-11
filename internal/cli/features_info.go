@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/spf13/cobra"
@@ -104,104 +103,12 @@ func runFeaturesInfo(mode, featureID, logLevel, outputFormat string) error {
 		}
 	}
 
-	// Dependencies — text mode only, matching TS behavior.
-	// Builds a recursive dependency graph by fetching each dependsOn feature's metadata.
+	// Dependencies — text mode only, matching TS behavior: the boxed title then
+	// the mermaid dependency graph (built by the shared renderer).
 	if (mode == "dependencies" || mode == "verbose") && outputFormat == "text" {
 		logger.Write(fmt.Sprintf("Building dependency graph for '%s'...", featureID), log.LevelInfo)
-
-		type depNode struct {
-			id            string
-			index         int
-			aliases       []string
-			dependsOn     []string
-			installsAfter []string
-		}
-
-		// BFS: resolve dependsOn recursively, installsAfter only at each level.
-		visited := map[string]bool{}
-		var allNodes []depNode
-		queue := []string{featureID}
-		idx := 0
-
-		for len(queue) > 0 {
-			current := queue[0]
-			queue = queue[1:]
-			if visited[current] {
-				continue
-			}
-			visited[current] = true
-
-			curRef, refErr := oci.ParseRef(current)
-			if refErr != nil {
-				continue
-			}
-			manifest, fetchErr := client.FetchManifest(curRef, "")
-			if fetchErr != nil {
-				continue
-			}
-
-			var meta features.Feature
-			if manifest.Manifest.Annotations != nil {
-				if metaJSON, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok {
-					json.Unmarshal([]byte(metaJSON), &meta)
-				}
-			}
-
-			node := depNode{id: current, index: idx}
-			if meta.ID != "" {
-				node.aliases = append(node.aliases, meta.ID)
-			}
-			node.aliases = append(node.aliases, meta.LegacyIds...)
-			for depID := range meta.DependsOn {
-				node.dependsOn = append(node.dependsOn, depID)
-				if !visited[depID] {
-					queue = append(queue, depID)
-				}
-			}
-			node.installsAfter = meta.InstallsAfter
-			allNodes = append(allNodes, node)
-			idx++
-		}
-
-		title := "Dependency Tree (Render with https://mermaid.live/)"
-		fmt.Printf("┌%s┐\n", strings.Repeat("─", len(title)))
-		fmt.Printf("│\033[1m%s\033[22m│\n", title)
-		fmt.Printf("└%s┘\n", strings.Repeat("─", len(title)))
-
-		// Mermaid flowchart matching TS generateMermaidDiagram format.
-		// Node hashes use JSON.stringify of the full node (matching TS crypto hash).
-		// installsAfter edges only render if the target is in the worklist.
-		var sb strings.Builder
-		sb.WriteString("flowchart\n")
-		visitedIDs := map[string]bool{}
-		for _, n := range allNodes {
-			visitedIDs[n.id] = true
-		}
-		for _, n := range allNodes {
-			nodeJSON, _ := json.Marshal(map[string]interface{}{
-				"type": "user-provided", "userFeatureId": n.id,
-				"options": map[string]interface{}{}, "roundPriority": n.index,
-				"featureIdAliases": n.aliases,
-			})
-			nID := mermaidHash(nodeJSON)
-			aliasStr := ""
-			if len(n.aliases) > 0 {
-				aliasStr = fmt.Sprintf("<br>aliases: %s", strings.Join(n.aliases, ", "))
-			}
-			fmt.Fprintf(&sb, "%s[%s<br/><%d>%s]\n", nID, n.id, n.index, aliasStr)
-			for _, depID := range n.dependsOn {
-				depJSON, _ := json.Marshal(map[string]interface{}{"userFeatureId": depID})
-				fmt.Fprintf(&sb, "%s --> %s\n", nID, mermaidHash(depJSON))
-			}
-			// Only render installsAfter edges if target is in worklist
-			for _, afterID := range n.installsAfter {
-				if visitedIDs[afterID] {
-					afterJSON, _ := json.Marshal(map[string]interface{}{"userFeatureId": afterID})
-					fmt.Fprintf(&sb, "%s -.-> %s\n", nID, mermaidHash(afterJSON))
-				}
-			}
-		}
-		fmt.Println(sb.String())
+		fmt.Println(encloseStringInBox("Dependency Tree (Render with https://mermaid.live/)"))
+		fmt.Println(renderDependencyMermaid(client, logger, []string{featureID}))
 	}
 
 	// Tags

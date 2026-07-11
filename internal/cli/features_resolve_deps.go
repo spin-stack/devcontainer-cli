@@ -109,6 +109,14 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				entries = append(entries, installEntry{ID: id, Options: opts})
 			}
 
+			// The TS CLI prints the mermaid dependency graph to stdout before the
+			// install-order JSON.
+			rootIDs := make([]string, 0, len(userFeatures))
+			for _, uf := range userFeatures {
+				rootIDs = append(rootIDs, uf.UserFeatureID)
+			}
+			fmt.Fprintln(os.Stdout, renderDependencyMermaid(ociClient, logger, rootIDs))
+
 			out, _ := json.MarshalIndent(map[string]interface{}{"installOrder": entries}, "", "  ")
 			fmt.Fprintln(os.Stdout, string(out))
 			return nil
