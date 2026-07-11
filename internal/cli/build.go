@@ -269,6 +269,17 @@ func buildDockerfile(ctx context.Context, logger log.Log, dockerClient *docker.C
 	// Add metadata label
 	allLabels := append(opts.labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
 
+	// When features are present the base image is an intermediate build: it must
+	// land in the local image store so the feature build can reference it as
+	// $_DEV_CONTAINERS_BASE_IMAGE. Defer --output/--push to the feature build
+	// (below) — applying them here would export the base to a tarball/registry
+	// without loading it, breaking the feature stage.
+	hasFeatures := len(cfg.Features) > 0
+	baseOutput, basePush := opts.output, opts.push
+	if hasFeatures {
+		baseOutput, basePush = "", false
+	}
+
 	buildOpts := docker.BuildOptions{
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
@@ -281,8 +292,8 @@ func buildDockerfile(ctx context.Context, logger log.Log, dockerClient *docker.C
 		ExtraArgs:   buildOptionsFromConfig(cfg),
 		UseBuildx:   useBuildx,
 		Platform:    opts.platform,
-		Push:        opts.push,
-		Output:      opts.output,
+		Push:        basePush,
+		Output:      baseOutput,
 		CacheTo:     opts.cacheTo,
 	}
 
