@@ -342,8 +342,11 @@ func upTestContainer(workspaceFolder string, quiet bool) (string, error) {
 
 func execTestInContainer(containerId, testScript, workspaceFolder string) bool {
 	self, _ := os.Executable()
+	// The workspace is mounted at /workspaces/<name>; the test lib and scripts live
+	// there, so cd into it (not its parent) before sourcing them.
+	containerWs := "/workspaces/" + filepath.Base(workspaceFolder)
 	cmd := exec.Command(self, "exec", "--container-id", containerId, "--", "bash", "-c",
-		fmt.Sprintf("cd /workspaces && source dev-container-features-test-lib && source %s && reportResults", testScript))
+		fmt.Sprintf("cd %s && source dev-container-features-test-lib && source %s && reportResults", containerWs, testScript))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run() == nil
@@ -363,13 +366,15 @@ func cleanupTestContainers(logger log.Log) {
 
 func reportTestResults(results []testResult) int {
 	fmt.Println()
-	fmt.Println("================== TEST REPORT ==================")
+	// Format matches the TS test report: `${prefix} ${msg}` with a leading-space
+	// prefix on the header and ✅/❌ prefixes on the result lines.
+	fmt.Println("  ================== TEST REPORT ==================")
 	allPassed := true
 	for _, r := range results {
 		if r.Passed {
-			fmt.Printf("  Passed: '%s'\n", r.Name)
+			fmt.Printf("✅ Passed:      '%s'\n", r.Name)
 		} else {
-			fmt.Printf("  Failed: '%s'\n", r.Name)
+			fmt.Printf("❌ Failed:      '%s'\n", r.Name)
 			allPassed = false
 		}
 	}
