@@ -85,6 +85,16 @@ func newBuildCmd() *cobra.Command {
 	return cmd
 }
 
+// buildRunner carries the dependencies shared across the `build` flow so they
+// don't have to be threaded through every helper by hand.
+type buildRunner struct {
+	ctx    context.Context
+	log    log.Log
+	docker *docker.Client
+	engine *docker.EngineClient
+	opts   *buildOpts
+}
+
 func runBuild(opts *buildOpts) error {
 	// 0.88: --workspace-folder defaults to the current directory when not given.
 	if opts.workspaceFolder == "" {
@@ -140,6 +150,8 @@ func runBuild(opts *buildOpts) error {
 	}
 	defer engine.Close()
 
+	run := &buildRunner{ctx: ctx, log: logger, docker: dockerClient, engine: engine, opts: opts}
+
 	// Detect BuildKit
 	var useBuildx bool
 	if opts.buildkit != "never" {
@@ -171,12 +183,12 @@ func runBuild(opts *buildOpts) error {
 	var imageNameResult []string
 
 	if cfg.IsDockerfileConfig() {
-		imageNameResult, err = buildDockerfile(ctx, logger, dockerClient, engine, cfg, loadResult, opts, useBuildx)
+		imageNameResult, err = run.buildDockerfile(cfg, loadResult, useBuildx)
 	} else if cfg.IsComposeConfig() {
-		imageNameResult, err = buildCompose(ctx, logger, dockerClient, engine, cfg, opts, useBuildx)
+		imageNameResult, err = run.buildCompose(cfg, useBuildx)
 	} else {
 		// Image-based config
-		imageNameResult, err = buildImage(ctx, logger, dockerClient, engine, cfg, loadResult, opts, useBuildx)
+		imageNameResult, err = run.buildImage(cfg, loadResult, useBuildx)
 	}
 
 	if err != nil {
@@ -194,7 +206,8 @@ func runBuild(opts *buildOpts) error {
 	})
 }
 
-func buildDockerfile(ctx context.Context, logger log.Log, dockerClient *docker.Client, engine *docker.EngineClient, cfg *config.DevContainerConfig, loadResult *config.LoadResult, opts *buildOpts, useBuildx bool) ([]string, error) {
+func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
+	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
 	// Read Dockerfile
 	dockerfilePath := cfg.GetDockerfile()
 	if dockerfilePath == "" {
@@ -333,7 +346,8 @@ func buildDockerfile(ctx context.Context, logger log.Log, dockerClient *docker.C
 	return imageNames, nil
 }
 
-func buildImage(ctx context.Context, logger log.Log, dockerClient *docker.Client, engine *docker.EngineClient, cfg *config.DevContainerConfig, loadResult *config.LoadResult, opts *buildOpts, useBuildx bool) ([]string, error) {
+func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
+	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
 	if cfg.Image == "" {
 		return nil, fmt.Errorf("no image specified in devcontainer.json")
 	}
@@ -419,7 +433,7 @@ func buildImage(ctx context.Context, logger log.Log, dockerClient *docker.Client
 				Lockfile:               opts.experimentalLockfile,
 				FrozenLockfile:         opts.experimentalFrozenLockfile,
 				ConfigPath:             cfg.ConfigFilePath,
-			LockfileExcludeIDs:     opts.lockfileExcludeIDs,
+				LockfileExcludeIDs:     opts.lockfileExcludeIDs,
 				SkipPersistCustoms:     opts.skipPersistCustoms,
 				FeaturesBasePath:       filepath.Dir(cfg.ConfigFilePath),
 			})
@@ -571,7 +585,8 @@ func isUserFacingBuildError(err error) bool {
 	return strings.HasPrefix(msg, "Legacy feature '")
 }
 
-func buildCompose(ctx context.Context, logger log.Log, dockerClient *docker.Client, engine *docker.EngineClient, cfg *config.DevContainerConfig, opts *buildOpts, useBuildx bool) ([]string, error) {
+func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx bool) ([]string, error) {
+	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
 		return nil, fmt.Errorf("dockerComposeFile config requires 'service' property")
 	}
