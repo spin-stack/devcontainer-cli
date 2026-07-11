@@ -91,7 +91,7 @@ func fetchFeatureSets(logger log.Log, featuresCfg map[string]interface{}, featur
 			}
 			if !features.IsKnownLegacyFeature(name) {
 				os.RemoveAll(tmpDir)
-				return nil, fmt.Errorf("Legacy feature '%s' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information.", id)
+				return nil, fmt.Errorf(msgLegacyFeature, id)
 			}
 			// gradle/maven/jupyterlab folded into java/python with an option
 			// (installGradle, ...) — matching the TS deprecatedFeaturesIntoOptions.

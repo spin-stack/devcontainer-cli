@@ -702,7 +702,7 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 		return "", err
 	}
 	if buildResult.ExitCode != 0 {
-		return "", fmt.Errorf("Command failed: docker build (exit %d): %s", buildResult.ExitCode, string(buildResult.Stderr))
+		return "", fmt.Errorf(msgDockerBuildFailed, buildResult.ExitCode, string(buildResult.Stderr))
 	}
 
 	logger.Write(string(buildResult.Stderr), log.LevelInfo)

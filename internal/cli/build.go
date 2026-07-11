@@ -314,7 +314,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		return nil, err
 	}
 	if result.ExitCode != 0 {
-		return nil, fmt.Errorf("Command failed: docker build (exit %d): %s", result.ExitCode, string(result.Stderr))
+		return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 	}
 
 	logger.Write(string(result.Stderr), log.LevelInfo)
@@ -362,7 +362,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 					name = id[:idx]
 				}
 				if !features.IsKnownLegacyFeature(name) {
-					return nil, fmt.Errorf("Legacy feature '%s' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information.", id)
+					return nil, fmt.Errorf(msgLegacyFeature, id)
 				}
 			}
 		}
@@ -469,7 +469,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 			return nil, fmt.Errorf("build image: %w", buildErr)
 		}
 		if result.ExitCode != 0 {
-			return nil, fmt.Errorf("Command failed: docker build (exit %d): %s", result.ExitCode, string(result.Stderr))
+			return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 		}
 		logger.Write(string(result.Stderr), log.LevelInfo)
 		return featureImageNames, nil
@@ -581,7 +581,7 @@ func writeErrorJSON(errOutput coreerrors.ErrorOutput) error {
 
 func isUserFacingBuildError(err error) bool {
 	msg := err.Error()
-	return strings.HasPrefix(msg, "Legacy feature '")
+	return strings.HasPrefix(msg, legacyFeaturePrefix)
 }
 
 func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx bool) ([]string, error) {
@@ -687,7 +687,7 @@ func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx boo
 			return nil, fmt.Errorf("build image: %w", buildErr)
 		}
 		if result.ExitCode != 0 {
-			return nil, fmt.Errorf("Command failed: docker build (exit %d): %s", result.ExitCode, string(result.Stderr))
+			return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 		}
 		return opts.imageNames, nil
 	}
