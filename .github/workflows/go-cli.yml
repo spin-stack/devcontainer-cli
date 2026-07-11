@@ -9,6 +9,9 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -23,6 +26,20 @@ jobs:
       - run: task test:integration
       - run: task build
       - run: ./devcontainer --version
+
+      # Convierte el perfil de Go (coverage.out) a Cobertura XML para la
+      # feature nativa de Code Quality de GitHub.
+      - name: Convert coverage to Cobertura XML
+        run: |
+          go install github.com/boumenot/gocover-cobertura@latest
+          gocover-cobertura < coverage.out > coverage.xml
+      - name: Upload coverage report
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: coverage.xml
+          language: Go
+          label: code-coverage/go
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
