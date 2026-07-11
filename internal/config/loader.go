@@ -95,27 +95,51 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 		return nil, &ConfigNotFoundError{Path: defaultPath}
 	}
 
-	// Read from override or primary
-	readPath := configPath
-	if overrideConfigPath != "" {
-		readPath = overrideConfigPath
-	}
-
-	data, err := os.ReadFile(readPath)
-	if err != nil {
-		return nil, fmt.Errorf("read config %s: %w", readPath, err)
-	}
-
-	// Parse JSONC
+	// Read the base config and (when given) deep-merge the override on top.
+	//
+	// NOTE: deliberate Go divergence. TS replaces the config wholesale with the
+	// override file (readDocument(overrideConfigFile ?? configFile)); Go deep-merges
+	// so an orchestrator can supply a partial override without restating the whole
+	// devcontainer.json. When there is no readable base, the override stands alone
+	// (identical to the TS/replace behavior).
 	var raw map[string]interface{}
-	if err := jsonc.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parse config %s: %w", readPath, err)
+	if configPath != "" {
+		if baseData, berr := os.ReadFile(configPath); berr == nil {
+			if perr := jsonc.Unmarshal(baseData, &raw); perr != nil {
+				return nil, fmt.Errorf("parse config %s: %w", configPath, perr)
+			}
+		}
+	}
+	if overrideConfigPath != "" {
+		overrideData, oerr := os.ReadFile(overrideConfigPath)
+		if oerr != nil {
+			return nil, fmt.Errorf("read override config %s: %w", overrideConfigPath, oerr)
+		}
+		var overrideRaw map[string]interface{}
+		if perr := jsonc.Unmarshal(overrideData, &overrideRaw); perr != nil {
+			return nil, fmt.Errorf("parse override config %s: %w", overrideConfigPath, perr)
+		}
+		raw = deepMergeConfig(raw, overrideRaw)
+	}
+	if raw == nil {
+		// No override and the base could not be read: surface the base read error.
+		readPath := configPath
+		if overrideConfigPath != "" {
+			readPath = overrideConfigPath
+		}
+		data, err := os.ReadFile(readPath)
+		if err != nil {
+			return nil, fmt.Errorf("read config %s: %w", readPath, err)
+		}
+		if err := jsonc.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("parse config %s: %w", readPath, err)
+		}
 	}
 
-	// Unmarshal into typed struct
+	// Derive the typed struct from the (possibly merged) raw config.
 	var config DevContainerConfig
-	if err := jsonc.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("unmarshal config %s: %w", readPath, err)
+	if err := remarshal(raw, &config); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
 	// Migrate deprecated properties
@@ -144,9 +168,6 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 
 	substituted := SubstituteHost(ctx, raw)
 	if m, ok := substituted.(map[string]interface{}); ok {
-		// Re-unmarshal the substituted raw into the typed config
-		subData, _ := jsonc.StripComments(data)
-		_ = subData // keep original data for raw
 		raw = m
 	}
 
@@ -175,6 +196,35 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 		Raw:             raw,
 		WorkspaceConfig: wsConfig,
 	}, nil
+}
+
+// deepMergeConfig deep-merges the override map onto the base map: nested objects
+// are merged recursively; scalars and arrays in the override replace the base.
+// A nil base returns the override (and vice-versa), so it composes cleanly when
+// only one side is present.
+func deepMergeConfig(base, override map[string]interface{}) map[string]interface{} {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	out := make(map[string]interface{}, len(base))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, ov := range override {
+		if bv, ok := out[k]; ok {
+			if bm, bok := bv.(map[string]interface{}); bok {
+				if om, ook := ov.(map[string]interface{}); ook {
+					out[k] = deepMergeConfig(bm, om)
+					continue
+				}
+			}
+		}
+		out[k] = ov
+	}
+	return out
 }
 
 // GetDockerComposeFilePaths resolves the docker-compose file paths.

@@ -381,10 +381,17 @@ con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
   contenedor creado, "skipping build and feature install"). Cobertura automática
   del happy-path/compose-guard queda para la lane runtime (hoy bloqueada por disco
   en CI, ver más abajo).
-- **T4.3 — deep-merge de `--override-config`.** Hoy es reemplazo total de archivo.
-  **Riesgo de paridad:** confirmar la semántica de TS (`resolve(...
-  overrideConfigFile ...)`) antes de tocar; si TS reemplaza, un merge diverge del
-  oráculo.
+- **T4.3 — deep-merge de `--override-config`. HECHO (divergencia de paridad
+  aprobada).** TS reemplaza el config con el override
+  (`readDocument(overrideConfigFile ?? configFile)`); Go ahora deep-mergea el
+  override sobre el base (objetos anidados recursivo; escalares/arrays reemplazan),
+  para que un orquestador pase un override parcial sin restatear todo el
+  devcontainer.json. Sin base legible, el override queda solo (idéntico a TS).
+  **Divergencia deliberada del oráculo.** Impacto en matriz: nulo — el único caso
+  de override-config (`up.missing-workspace-or-override-config`) es el error-path
+  (falta workspace+override), no ejercita merge-vs-replace; contract+semantic
+  siguen verdes. Unit tests del helper (`deepMergeConfig`: anidado, replace de
+  escalar/array, nil) y del loader con override parcial.
 
 ## Decisiones que deben quedar explícitas
 
