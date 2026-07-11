@@ -6,73 +6,71 @@ import (
 	"testing"
 )
 
-func TestUnmarshal_Basic(t *testing.T) {
-	input := []byte(`{"image": "ubuntu", "features": {}}`)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
-	}
-}
-
-func TestUnmarshal_UTF8BOM(t *testing.T) {
-	// Editors on Windows may prepend a UTF-8 BOM; the Node CLI accepts it.
-	input := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"image": "ubuntu"}`)...)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err != nil {
-		t.Fatalf("BOM-prefixed JSONC should parse: %v", err)
-	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
-	}
-}
-
-func TestUnmarshal_LineComment(t *testing.T) {
-	input := []byte(`{
+func TestUnmarshal(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []byte
+		wantErr   bool
+		wantImage any
+	}{
+		{
+			name:      "Basic",
+			input:     []byte(`{"image": "ubuntu", "features": {}}`),
+			wantImage: "ubuntu",
+		},
+		{
+			// Editors on Windows may prepend a UTF-8 BOM; the Node CLI accepts it.
+			name:      "UTF8BOM",
+			input:     append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"image": "ubuntu"}`)...),
+			wantImage: "ubuntu",
+		},
+		{
+			name: "LineComment",
+			input: []byte(`{
 		// this is a comment
 		"image": "ubuntu"
-	}`)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err != nil {
-		t.Fatal(err)
+	}`),
+			wantImage: "ubuntu",
+		},
+		{
+			name:      "BlockComment",
+			input:     []byte(`{"image": "ubuntu" /* block comment */}`),
+			wantImage: "ubuntu",
+		},
+		{
+			name:      "TrailingComma",
+			input:     []byte(`{"image": "ubuntu", "features": {},}`),
+			wantImage: "ubuntu",
+		},
+		{
+			name:      "CommentBetweenProperties",
+			input:     []byte(`{"image": "ubuntu", /* inline */ "features": {}}`),
+			wantImage: "ubuntu",
+		},
+		{
+			name:    "InvalidJSON",
+			input:   []byte(`{not json`),
+			wantErr: true,
+		},
 	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
-	}
-}
 
-func TestUnmarshal_BlockComment(t *testing.T) {
-	input := []byte(`{"image": "ubuntu" /* block comment */}`)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
-	}
-}
-
-func TestUnmarshal_TrailingComma(t *testing.T) {
-	input := []byte(`{"image": "ubuntu", "features": {},}`)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
-	}
-}
-
-func TestUnmarshal_CommentBetweenProperties(t *testing.T) {
-	input := []byte(`{"image": "ubuntu", /* inline */ "features": {}}`)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var m map[string]any
+			err := Unmarshal(tt.input, &m)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error for invalid JSON")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unmarshal should parse: %v", err)
+			}
+			if m["image"] != tt.wantImage {
+				t.Errorf("image = %v, want %v", m["image"], tt.wantImage)
+			}
+		})
 	}
 }
 
@@ -100,14 +98,6 @@ func TestStripComments(t *testing.T) {
 	}
 	if m["image"] != "ubuntu" {
 		t.Errorf("image = %v", m["image"])
-	}
-}
-
-func TestUnmarshal_InvalidJSON(t *testing.T) {
-	input := []byte(`{not json`)
-	var m map[string]any
-	if err := Unmarshal(input, &m); err == nil {
-		t.Error("expected error for invalid JSON")
 	}
 }
 
