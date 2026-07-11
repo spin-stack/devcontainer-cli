@@ -40,6 +40,7 @@ type buildOpts struct {
 	experimentalFrozenLockfile bool
 	noLockfile                 bool
 	frozenLockfile             bool
+	secretsFile                string
 	// lockfileExcludeIDs is populated after merging --additional-features; it lists
 	// userFeatureIds supplied only via that flag, which 0.88 keeps out of the lockfile.
 	lockfileExcludeIDs map[string]bool
@@ -80,6 +81,7 @@ func newBuildCmd() *cobra.Command {
 	f.BoolVar(&opts.experimentalFrozenLockfile, "experimental-frozen-lockfile", false, "")
 	f.BoolVar(&opts.noLockfile, "no-lockfile", false, "Disable lockfile generation and verification.")
 	f.BoolVar(&opts.frozenLockfile, "frozen-lockfile", false, "Ensure lockfile exists and remains unchanged; fail otherwise.")
+	f.StringVar(&opts.secretsFile, "secrets-file", "", "Path to a JSON file with build secrets ({\"KEY\":\"VALUE\"}); each is passed to BuildKit as a build secret (requires buildx).")
 	f.Bool("omit-syntax-directive", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
 	cmd.Flags().MarkHidden("skip-persisting-customizations-from-features")
@@ -328,6 +330,23 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, imageNames, cacheFrom, opts.cacheTo)
 	defer authCleanup()
 
+	// Build secrets (Go extension; TS build has no --secrets-file). Passed to
+	// BuildKit as `--secret id=KEY,env=KEY`, so a Dockerfile can `RUN
+	// --mount=type=secret,id=KEY` without baking the value into a layer. Requires
+	// buildx; ignored (with a warning) otherwise.
+	var buildSecrets []string
+	if opts.secretsFile != "" {
+		secrets, secErr := readSecretsFile(opts.secretsFile)
+		if secErr != nil {
+			return nil, fmt.Errorf("read secrets file: %w", secErr)
+		}
+		if useBuildx {
+			buildSecrets = secrets
+		} else if len(secrets) > 0 {
+			logger.Write("--secrets-file requires BuildKit (buildx); secrets ignored for the legacy builder", log.LevelWarning)
+		}
+	}
+
 	buildOpts := docker.BuildOptions{
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
@@ -344,6 +363,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		Output:      baseOutput,
 		CacheTo:     opts.cacheTo,
 		Env:         authEnv,
+		Secrets:     buildSecrets,
 	}
 
 	result, err := dockerClient.Build(buildOpts)

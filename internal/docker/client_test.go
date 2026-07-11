@@ -143,6 +143,8 @@ func TestBuildArgs(t *testing.T) {
 		{
 			// buildx: --platform + --push are mutually consistent (no --load),
 			// and --cache-to / cache-from / tags all coexist in a realistic combo.
+			// With an inline cache-to, BUILDKIT_INLINE_CACHE=1 is omitted (it is
+			// redundant/rejected there) — matching TS isBuildxCacheToInline.
 			name: "BuildxPlatformPushCombo",
 			opts: BuildOptions{
 				UseBuildx:   true,
@@ -156,7 +158,7 @@ func TestBuildArgs(t *testing.T) {
 			},
 			want: []string{
 				"buildx", "build", "--platform", "linux/arm64", "--push",
-				"--cache-to", "type=inline", "--build-arg", "BUILDKIT_INLINE_CACHE=1",
+				"--cache-to", "type=inline",
 				"-f", "Dockerfile", "-t", "reg/img:1", "-t", "reg/img:latest",
 				"--cache-from", "reg/img:cache", "/ctx",
 			},

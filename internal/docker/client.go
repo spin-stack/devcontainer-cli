@@ -71,8 +71,11 @@ func (c *Client) Run(args ...string) (*ExecResult, error) {
 // --cache-to, without mutating the ambient environment).
 func (c *Client) Build(opts BuildOptions) (*ExecResult, error) {
 	args := c.buildArgs(opts)
-	if len(opts.Env) > 0 {
-		return c.runWithEnv(opts.Env, args...)
+	// Secret values reach BuildKit through the subprocess environment (referenced
+	// by `--secret id=KEY,env=KEY`), never on the command line.
+	extraEnv := append(append([]string{}, opts.Env...), opts.Secrets...)
+	if len(extraEnv) > 0 {
+		return c.runWithEnv(extraEnv, args...)
 	}
 	return c.Run(args...)
 }
@@ -105,6 +108,7 @@ type BuildOptions struct {
 	Pull        bool
 	ExtraArgs   []string // additional --build-context, etc.
 	Env         []string // extra env for the subprocess (e.g. DOCKER_CONFIG=...)
+	Secrets     []string // build secrets as "KEY=VALUE"; passed to buildx as --secret id=KEY,env=KEY with KEY=VALUE in the subprocess env
 
 	// Buildx-specific
 	UseBuildx bool
@@ -145,6 +149,14 @@ func (c *Client) buildArgs(opts BuildOptions) []string {
 		// inline cache exporter; match TS, which skips the build-arg in that case.
 		if !isBuildxCacheToInline(opts.CacheTo) {
 			args = append(args, "--build-arg", "BUILDKIT_INLINE_CACHE=1")
+		}
+		// Build secrets (buildx-only): the value is read from the subprocess env
+		// (set in Build), so only the id/env reference appears on the command line.
+		for _, s := range opts.Secrets {
+			if i := strings.IndexByte(s, '='); i > 0 {
+				key := s[:i]
+				args = append(args, "--secret", "id="+key+",env="+key)
+			}
 		}
 	} else {
 		args = append(args, "build")

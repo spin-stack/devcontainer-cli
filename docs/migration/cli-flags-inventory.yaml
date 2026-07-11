@@ -386,6 +386,11 @@ commands:
       frozen-lockfile:
         type: boolean
         default: false
+      # Go-only divergence: TS `build` has no secrets-file. Passes build secrets
+      # to BuildKit (--secret id=KEY,env=KEY). No TS oracle; covered by unit tests.
+      secrets-file:
+        type: string
+        description: "Path to a JSON file with build secrets, passed to BuildKit as build secrets (requires buildx)."
       omit-syntax-directive:
         type: boolean
         default: false

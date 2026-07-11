@@ -44,3 +44,40 @@ func TestBuildArgsInlineCacheGuard(t *testing.T) {
 		t.Errorf("expected inline-cache build-arg when no cache-to: %s", none)
 	}
 }
+
+func TestBuildArgsSecrets(t *testing.T) {
+	c := &Client{DockerPath: "docker", Log: log.Null}
+	args := c.buildArgs(BuildOptions{UseBuildx: true, ContextPath: ".", Secrets: []string{"TOKEN=abc", "NPM=xyz", "BAD"}})
+	s := strings.Join(args, " ")
+	if !strings.Contains(s, "--secret id=TOKEN,env=TOKEN") || !strings.Contains(s, "--secret id=NPM,env=NPM") {
+		t.Fatalf("missing --secret refs: %s", s)
+	}
+	// The secret VALUE must never appear on the command line.
+	if strings.Contains(s, "abc") || strings.Contains(s, "xyz") {
+		t.Fatalf("secret value leaked into args: %s", s)
+	}
+	// Malformed entry (no '=') is skipped, not turned into a flag.
+	if strings.Contains(s, "id=BAD") {
+		t.Fatalf("malformed secret should be skipped: %s", s)
+	}
+	// Legacy (non-buildx) build emits no --secret flags.
+	legacy := strings.Join(c.buildArgs(BuildOptions{UseBuildx: false, ContextPath: ".", Secrets: []string{"TOKEN=abc"}}), " ")
+	if strings.Contains(legacy, "--secret") {
+		t.Fatalf("legacy build must not emit --secret: %s", legacy)
+	}
+}
+
+// TestBuildSecretsRouteThroughEnv proves the secret values are handed to the
+// runner as environment, never as args (via the injected fake runner).
+func TestBuildSecretsRouteThroughEnv(t *testing.T) {
+	fr := &fakeRunner{stdout: []byte("ok"), code: 0}
+	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
+	if _, err := c.Build(BuildOptions{UseBuildx: true, ContextPath: ".", Secrets: []string{"TOKEN=abc"}}); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for _, a := range fr.gotArgs {
+		if strings.Contains(a, "abc") {
+			t.Fatalf("secret value leaked into args: %v", fr.gotArgs)
+		}
+	}
+}

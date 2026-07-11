@@ -350,12 +350,14 @@ con el oráculo TS salvo donde se indica; se secuencian por valor/riesgo.
     ruta (`oci` cliente propio) — cubierto para pull del CLI, no bridgeado porque
     no lo necesita. Si en el futuro el pull de base necesitara el mismo puente,
     reusar `oci.ResolveBuildAuth`.
-- **T3.1 — `--secrets-file` en `build`. DECISIÓN DE SCOPE (pendiente).** TS `build`
-  (`buildOptions`, líneas 523-563) **no** tiene `--secrets-file` (sólo `up` y
-  `run-user-commands`), así que Go ya está en paridad. Agregarlo + passthrough a
-  buildx `--secret` sería una **divergencia Go-only deliberada** (build gana un
-  flag que TS no expone), no un fix. Requiere confirmación explícita antes de
-  tocar; si se aprueba, va documentado como divergencia + inventario + unit tests.
+- **T3.1 — `--secrets-file` en `build`. HECHO (divergencia Go-only, aprobada).** TS
+  `build` no expone `--secrets-file`; Go lo agrega y pasa cada secreto a BuildKit
+  como build secret (`--secret id=KEY,env=KEY`, valor por env del subproceso —
+  nunca en la línea de comandos), de modo que un Dockerfile puede `RUN
+  --mount=type=secret,id=KEY`. Requiere buildx; con el builder legacy se ignora
+  con warning. Marcado como divergencia en el inventario. Sin oráculo TS →
+  unit tests del ensamblado de `--secret`, del ruteo por env y del no-leak del
+  valor.
 - **T3.2 — `BUILDKIT_INLINE_CACHE=1` condicional. HECHO.** Go lo hardcodeaba en
   todos los builds buildx; TS lo omite cuando `--cache-to` es un exportador inline
   (`isBuildxCacheToInline`: `/type\s*=\s*inline/i`). Replicado en
