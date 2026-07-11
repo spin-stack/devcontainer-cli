@@ -49,12 +49,12 @@ const newFeaturePath = "ghcr.io/devcontainers/features"
 
 // migratedFeatures are legacy shorthands that map 1:1 to the same id under the
 // new registry path (with the :1 pin). Matches the TS migratedfeatures list.
-var migratedFeatures = map[string]bool{
-	"aws-cli": true, "azure-cli": true, "desktop-lite": true,
-	"docker-in-docker": true, "docker-from-docker": true, "dotnet": true,
-	"git": true, "git-lfs": true, "github-cli": true, "java": true,
-	"kubectl-helm-minikube": true, "node": true, "powershell": true,
-	"python": true, "ruby": true, "rust": true, "sshd": true, "terraform": true,
+var migratedFeatures = map[string]struct{}{
+	"aws-cli": {}, "azure-cli": {}, "desktop-lite": {},
+	"docker-in-docker": {}, "docker-from-docker": {}, "dotnet": {},
+	"git": {}, "git-lfs": {}, "github-cli": {}, "java": {},
+	"kubectl-helm-minikube": {}, "node": {}, "powershell": {},
+	"python": {}, "ruby": {}, "rust": {}, "sshd": {}, "terraform": {},
 }
 
 // renamedFeatures maps a legacy shorthand to its renamed id (TS renamedFeatures).
@@ -78,7 +78,7 @@ var DeprecatedFeatureIntoOptions = map[string]struct {
 // IsKnownLegacyFeature reports whether a legacy shorthand name is one the CLI
 // auto-maps (migrated 1:1, renamed, or folded into another Feature's options).
 func IsKnownLegacyFeature(name string) bool {
-	if migratedFeatures[name] || renamedFeatures[name] != "" {
+	if _, migrated := migratedFeatures[name]; migrated || renamedFeatures[name] != "" {
 		return true
 	}
 	_, ok := DeprecatedFeatureIntoOptions[name]

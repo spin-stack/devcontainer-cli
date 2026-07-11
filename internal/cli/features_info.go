@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var validInfoModes = map[string]bool{
-	"manifest": true, "tags": true, "dependencies": true, "verbose": true,
+var validInfoModes = map[string]struct{}{
+	"manifest": {}, "tags": {}, "dependencies": {}, "verbose": {},
 }
 
 func realFeaturesInfoCmd() *cobra.Command {
@@ -26,7 +26,7 @@ func realFeaturesInfoCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode := args[0]
-			if !validInfoModes[mode] {
+			if _, ok := validInfoModes[mode]; !ok {
 				return fmt.Errorf("Invalid mode %q. Choose from: manifest, tags, dependencies, verbose", mode)
 			}
 			featureID := args[1]
