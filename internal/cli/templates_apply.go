@@ -43,7 +43,9 @@ func realTemplatesApplyCmd() *cobra.Command {
 			var options map[string]string
 			if templateArgs != "" {
 				if err := jsonc.Unmarshal([]byte(templateArgs), &options); err != nil {
-					return fmt.Errorf("Invalid template arguments: %w", err)
+					// TS emits a fixed message (no parser detail) so both the
+					// non-object and malformed-JSON paths canonicalize identically.
+					return fmt.Errorf("Invalid template arguments provided.")
 				}
 			}
 			if options == nil {

@@ -59,6 +59,11 @@ func newSetUpCmd() *cobra.Command {
 			if err := validateTerminalImplications(terminalColumns, terminalRows); err != nil {
 				return writeValidationError(out, err.Error())
 			}
+			// TS parity: set-up rejects malformed --remote-env at parse time like
+			// its siblings (exec/up/run-user-commands); Go was missing this.
+			if err := validateRemoteEnvs(remoteEnvs); err != nil {
+				return writeValidationError(out, err.Error())
+			}
 
 			logDst, closeLog, logErr := logWriter(logFile, terminalLogFile)
 			if logErr != nil {

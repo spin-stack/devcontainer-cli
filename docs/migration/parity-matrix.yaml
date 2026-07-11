@@ -184,6 +184,95 @@ initial_cases:
     current_status: match
     notes: "config sin features → TS error a stderr exit 1; Go antes imprimía {installOrder:[]} exit 0."
 
+  # --- Wave A: casos nuevos (algunos destaparon divergencias, ya corregidas) ---
+  - id: features-publish.missing-required
+    lane: contract
+    command: features-publish
+    priority: p1
+    docker_required: false
+    ts_cmd: "features publish src/test/configs"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+    notes: "TS: 'Missing required argument: namespace'. Go emitía el phrasing de cobra (MarkFlagRequired); ahora publishCollection valida namespace vacío con el mismo mensaje."
+
+  - id: templates.publish-missing-namespace
+    lane: contract
+    command: templates
+    priority: p1
+    docker_required: false
+    ts_cmd: "templates publish src/test/configs"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+    notes: "Idéntico a features-publish.missing-required: mensaje 'Missing required argument: namespace'."
+
+  - id: up.invalid-default-user-env-probe
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --default-user-env-probe bogus"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+    notes: "TS rechaza el enum yargs; Go valida el mismo enum antes de tocar Docker."
+
+  - id: build.compose-output-not-supported
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-with-features --output type=local"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: wired-flags
+    current_status: match
+    notes: "compose + --output → TS lanza '--output not supported.'"
+
+  - id: features.test-reject-global-scenarios-and-features
+    lane: contract
+    command: features
+    priority: p1
+    docker_required: false
+    ts_cmd: "features test --global-scenarios-only --features x"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+    notes: "Mutua-exclusión. Go emitía otro wording; ahora usa el del oráculo ('Cannot combine --global-scenarios-only and --features')."
+
+  - id: features.test-reject-skip-scenarios-and-global-scenarios
+    lane: contract
+    command: features
+    priority: p1
+    docker_required: false
+    ts_cmd: "features test --skip-scenarios --global-scenarios-only"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+    notes: "Go alineado al texto+orden del oráculo ('Cannot combine --skip-scenarios and --global-scenarios-only')."
+
+  - id: templates.apply-invalid-template-args-exit1
+    lane: contract
+    command: templates
+    priority: p1
+    docker_required: false
+    ts_cmd: "templates apply --template-id ghcr.io/x/y:1 --template-args [1,2,3]"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+    notes: "Go emitía el detalle del parser; ahora mensaje fijo 'Invalid template arguments provided.' como TS."
+
+  - id: set-up.invalid-remote-env
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --remote-env BROKEN"
+    asserts: [exit_code, stderr_normalized]
+    class: format-validation
+    current_status: match
+    notes: "set-up no validaba --remote-env; ahora llama validateRemoteEnvs como sus comandos hermanos."
+
   - id: read-configuration.missing-required
     lane: contract
     command: read-configuration

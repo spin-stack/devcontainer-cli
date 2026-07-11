@@ -75,7 +75,6 @@ func realFeaturesPublishCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&registry, "registry", "r", "ghcr.io", "OCI registry.")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Collection namespace.")
 	cmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level.")
-	cmd.MarkFlagRequired("namespace")
 
 	return cmd
 }
@@ -105,7 +104,6 @@ func realTemplatesPublishCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&registry, "registry", "r", "ghcr.io", "OCI registry.")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Collection namespace.")
 	cmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level.")
-	cmd.MarkFlagRequired("namespace")
 
 	return cmd
 }
@@ -191,10 +189,10 @@ func realFeaturesTestCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Validate conflicting flags (matches TS behavior)
 			if globalOnly && len(featuresList) > 0 {
-				return fmt.Errorf("--global-scenarios-only and --features cannot be used together")
+				return fmt.Errorf("Cannot combine --global-scenarios-only and --features")
 			}
 			if globalOnly && skipScenarios {
-				return fmt.Errorf("--global-scenarios-only and --skip-scenarios cannot be used together")
+				return fmt.Errorf("Cannot combine --skip-scenarios and --global-scenarios-only")
 			}
 
 			target := projectFolder
@@ -344,6 +342,11 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 // with a fake oci.Registry and a capturing Output to drive the partial-publish
 // error path hermetically.
 func publishCollection(targetFolder, registry, namespace, collectionType, logLevelStr string) error {
+	// TS parity: yargs demandOption → "Missing required argument: namespace"
+	// (canonicalized by the harness), not cobra's "required flag(s) ... not set".
+	if namespace == "" {
+		return fmt.Errorf("Missing required argument: namespace")
+	}
 	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
 	// silently defaulting to Info (collectionCommonUtils/publish.ts:14).
 	if err := validateEnum("log-level", logLevelStr, []string{"info", "debug", "trace"}); err != nil {
