@@ -2068,6 +2068,17 @@ initial_cases:
     current_status: match
     notes: "stdout = grafo mermaid + JSON installOrder. El mermaid se genera con roundPriority 0 (default TS) y alias del feature id (fallback a ref.ID cuando falta la annotation); los hashes de nodo se scrubbean por reMermaidNode. installOrder resuelto vía ComputeInstallationOrder."
 
+  - id: templates.metadata-success
+    lane: runtime
+    command: templates
+    priority: p1
+    network_required: true
+    ts_cmd: "templates metadata ghcr.io/devcontainers/templates/typescript-node"
+    asserts: [exit_code, stdout_normalized]
+    class: templates-runtime
+    current_status: match
+    notes: "templates metadata emite la annotation dev.containers.metadata compactada preservando el orden de keys de origen (json.Compact, no re-marshal que ordenaría). Ambos lados consultan el mismo registry."
+
 groups:
   mode-validation:
     rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"

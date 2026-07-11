@@ -12,15 +12,14 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// TestFeaturesPublishParity publishes the same feature collection through the TS
+// TestPublishParity publishes the same feature/template collection through the TS
 // oracle and the Go CLI into a throwaway registry:3 container (via testcontainers)
 // under separate namespaces, and asserts the normalized result JSON matches. The
-// per-feature layer digest differs (tar headers embed non-deterministic mtimes) but
-// is scrubbed by normalizeOutput, so publishedTags + version are what get compared.
-func TestFeaturesPublishParity(t *testing.T) {
+// per-item layer digest differs (tar headers embed non-deterministic mtimes) but is
+// scrubbed by normalizeOutput, so publishedTags + version are what get compared.
+func TestPublishParity(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 
-	// Needs the compiled TS oracle, the Go binary and Docker.
 	if _, err := os.Stat(filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")); err != nil {
 		t.Skip("TS reference not compiled")
 	}
@@ -56,24 +55,36 @@ func TestFeaturesPublishParity(t *testing.T) {
 	}
 	registry := host + ":" + port.Port()
 
-	collection := filepath.Join(repoRoot, "reference", "src", "test", "container-features", "example-v2-features-sets", "simple", "src")
-
-	publish := func(cli []string, namespace string) string {
-		args := append([]string{}, cli[1:]...)
-		args = append(args, "features", "publish", collection, "-r", registry, "-n", namespace)
-		cmd := exec.CommandContext(ctx, cli[0], args...)
-		cmd.Dir = repoRoot
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("publish %v failed: %v", cli, err)
-		}
-		return string(out)
+	cases := []struct {
+		name       string
+		subcommand string // "features" | "templates"
+		collection string
+	}{
+		{"features", "features", filepath.Join(repoRoot, "reference", "src", "test", "container-features", "example-v2-features-sets", "simple", "src")},
+		{"templates", "templates", filepath.Join(repoRoot, "reference", "src", "test", "container-templates", "example-templates-sets", "simple", "src")},
 	}
 
-	tsOut := normalizeOutput(publish([]string{"node", filepath.Join(repoRoot, "reference", "devcontainer.js")}, "tsns/features"))
-	goOut := normalizeOutput(publish([]string{goCLI}, "gons/features"))
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			publish := func(cli []string, namespace string) string {
+				args := append([]string{}, cli[1:]...)
+				args = append(args, tc.subcommand, "publish", tc.collection, "-r", registry, "-n", namespace)
+				cmd := exec.CommandContext(ctx, cli[0], args...)
+				cmd.Dir = repoRoot
+				out, err := cmd.Output()
+				if err != nil {
+					t.Fatalf("publish %v failed: %v", cli, err)
+				}
+				return string(out)
+			}
 
-	if tsOut != goOut {
-		t.Errorf("publish result differs:\n--- TS\n%s\n--- Go\n%s", tsOut, goOut)
+			tsOut := normalizeOutput(publish([]string{"node", filepath.Join(repoRoot, "reference", "devcontainer.js")}, "tsns/"+tc.name))
+			goOut := normalizeOutput(publish([]string{goCLI}, "gons/"+tc.name))
+
+			if tsOut != goOut {
+				t.Errorf("publish result differs:\n--- TS\n%s\n--- Go\n%s", tsOut, goOut)
+			}
+		})
 	}
 }

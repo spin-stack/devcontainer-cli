@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -55,11 +56,14 @@ func runTemplatesMetadata(templateID, logLevel string) error {
 		return fmt.Errorf("template resolved to %q but does not contain metadata", manifest.CanonicalID)
 	}
 
-	// Parse and re-emit for clean formatting
-	var metadata interface{}
-	json.Unmarshal([]byte(metadataJSON), &metadata)
-	out, _ := json.Marshal(metadata)
-	fmt.Fprintln(os.Stdout, string(out))
+	// Emit the metadata compacted but with its source key order preserved (like the
+	// TS JSON.stringify of the parsed annotation); re-marshaling a Go map would sort.
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, []byte(metadataJSON)); err != nil {
+		fmt.Fprintln(os.Stdout, "{}")
+		return fmt.Errorf("template %q has invalid metadata: %w", templateID, err)
+	}
+	fmt.Fprintln(os.Stdout, buf.String())
 
 	return nil
 }
