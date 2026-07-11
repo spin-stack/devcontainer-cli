@@ -83,8 +83,9 @@ func newBuildCmd() *cobra.Command {
 }
 
 func runBuild(opts *buildOpts) error {
+	// 0.88: --workspace-folder defaults to the current directory when not given.
 	if opts.workspaceFolder == "" {
-		return writeValidationError("Missing required argument: --workspace-folder")
+		opts.workspaceFolder, _ = os.Getwd()
 	}
 	for _, v := range []struct {
 		flag, val string

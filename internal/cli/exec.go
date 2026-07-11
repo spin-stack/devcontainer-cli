@@ -111,8 +111,9 @@ func runExec(opts *execOpts, cmdArgs []string) error {
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
 		return err
 	}
+	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
-		return fmt.Errorf("Missing required argument: workspace-folder or id-label or container-id")
+		opts.workspaceFolder, _ = os.Getwd()
 	}
 	for _, v := range []struct {
 		flag, val string

@@ -578,15 +578,35 @@ func extractErrorReason(stdout, stderr string) string {
 		return "implications|" + strings.TrimSpace(match[1])
 	}
 
-	// Fallback: last non-empty line
+	// Fallback: last meaningful line, ignoring the version banner (only TS emits
+	// it) and Node.js stack frames (0.88 lets a few error paths throw with a
+	// trace). This lets a TS "Error: X" + trace line up with a Go "X" message,
+	// and a banner-only silent-exit line up with Go's empty stderr.
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
-		if line != "" {
-			return line
+		if line == "" || isBannerLine(line) || isStackFrame(line) {
+			continue
 		}
+		// Strip the TS log timestamp prefix ("[2026-...Z] ") and a leading
+		// "Error: " so a TS-thrown error lines up with Go's plain message.
+		line = reLogTimestamp.ReplaceAllString(line, "")
+		return strings.TrimPrefix(line, "Error: ")
 	}
 	return ""
+}
+
+var reLogTimestamp = regexp.MustCompile(`^\[[^\]]*\]\s*`)
+
+// isBannerLine reports whether a line is the CLI version banner
+// ("[ts] @devcontainers/cli X. Node.js ...") that only the TS CLI prints.
+func isBannerLine(line string) bool {
+	return strings.Contains(line, "@devcontainers/cli") && strings.Contains(line, "Node.js")
+}
+
+// isStackFrame reports whether a line is a Node.js stack frame ("at ...").
+func isStackFrame(line string) bool {
+	return strings.HasPrefix(line, "at ")
 }
 
 var reChoiceYargs = regexp.MustCompile(`(?m)Argument:\s*([^,]+),\s*Given:\s*"([^"]+)",\s*Choices:\s*(.+)$`)

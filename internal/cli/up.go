@@ -156,11 +156,10 @@ func runUp(opts *upOpts) error {
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return writeValidationError(err.Error())
 	}
-	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 {
-		return writeValidationError("Missing required argument: workspace-folder or id-label")
-	}
-	if opts.workspaceFolder == "" && opts.configPath == "" && opts.overrideConfig == "" {
-		return writeValidationError("Missing required argument: workspace-folder or override-config")
+	// 0.88: default --workspace-folder to the current directory when neither
+	// --workspace-folder, --id-label nor --override-config is given.
+	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.overrideConfig == "" {
+		opts.workspaceFolder, _ = os.Getwd()
 	}
 
 	workspaceFolder := ""
@@ -238,7 +237,7 @@ func runUp(opts *upOpts) error {
 
 		// No existing container found with --id-label, fall through to config-based creation.
 		if workspaceFolder == "" {
-			return writeErrorResult("No existing container found for the provided id-label(s) and no workspace-folder specified.")
+			return writeErrorResult("No dev container config and no workspace found.")
 		}
 	}
 

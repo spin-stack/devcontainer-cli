@@ -12,6 +12,17 @@ import (
 	"github.com/devcontainers/cli/internal/core/pfs"
 )
 
+// ConfigNotFoundError is returned when no devcontainer.json can be discovered.
+// It is distinguished from parse/other errors so callers (e.g. read-configuration)
+// can mirror the TS CLI, which exits 1 silently when config is absent.
+type ConfigNotFoundError struct {
+	Path string
+}
+
+func (e *ConfigNotFoundError) Error() string {
+	return fmt.Sprintf("Dev container config (%s) not found.", e.Path)
+}
+
 // LoadResult contains a loaded and substituted devcontainer configuration.
 type LoadResult struct {
 	Config          *DevContainerConfig
@@ -80,7 +91,7 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 	}
 	if configPath == "" && overrideConfigPath == "" {
 		defaultPath := filepath.Join(workspaceFolder, ".devcontainer", "devcontainer.json")
-		return nil, fmt.Errorf("Dev container config (%s) not found.", defaultPath)
+		return nil, &ConfigNotFoundError{Path: defaultPath}
 	}
 
 	// Read from override or primary

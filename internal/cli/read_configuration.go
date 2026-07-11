@@ -3,11 +3,13 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/devcontainers/cli/internal/config"
+	coreerrors "github.com/devcontainers/cli/internal/core/errors"
 	"github.com/devcontainers/cli/internal/core/log"
 	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/imagemeta"
@@ -98,8 +100,9 @@ func runReadConfiguration(opts *readConfigOpts) error {
 	}
 
 	workspaceFolder := opts.workspaceFolder
+	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
 	if workspaceFolder == "" && opts.containerID == "" && len(opts.idLabels) == 0 {
-		return fmt.Errorf("Missing required argument: workspace-folder or id-label or container-id")
+		workspaceFolder, _ = os.Getwd()
 	}
 
 	// Resolve to absolute path
@@ -125,6 +128,13 @@ func runReadConfiguration(opts *readConfigOpts) error {
 		var loadErr error
 		result, loadErr = config.LoadDevContainerConfig(workspaceFolder, configPath, overridePath)
 		if loadErr != nil {
+			// 0.88: read-configuration exits 1 silently (banner only) when no
+			// config is found — it does not print an error envelope. Parse/other
+			// errors still surface normally.
+			var notFound *config.ConfigNotFoundError
+			if errors.As(loadErr, &notFound) {
+				return &coreerrors.ExitCodeError{Code: 1}
+			}
 			return loadErr
 		}
 
