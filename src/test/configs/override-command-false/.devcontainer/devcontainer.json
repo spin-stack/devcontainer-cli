@@ -1,0 +1,4 @@
+{
+	"image": "redis:7-alpine",
+	"overrideCommand": false
+}

@@ -1,0 +1,2002 @@
+# =============================================================================
+# @devcontainers/cli — Parity Matrix TS ↔ Go
+# Fuente complementaria a cli-flags-inventory.yaml
+# Objetivo: reducir iteraciones separando paridad por lanes y por casos chicos
+# =============================================================================
+
+meta:
+  generated_for_branch: go-rewrite
+  scope:
+    languages: [ts, go]
+    commands: [features-info, read-configuration, exec, run-user-commands, set-up, up, build]
+  lanes:
+    contract:
+      description: "Parseo, required args, enums, formatos de error, shape de salida"
+      docker_required: false
+    semantic:
+      description: "Comportamiento lógico con fixtures o metadata controlada"
+      docker_required: mixed
+    runtime:
+      description: "Flujos con Docker real, compose, lifecycle, buildx"
+      docker_required: true
+  statuses:
+    - missing
+    - mismatch
+    - match
+    - blocked-infra
+    - deferred-runtime
+
+execution_order:
+  - phase: 1
+    lane: contract
+    commands: [features-info, read-configuration, exec, run-user-commands, set-up]
+    reason: "Mayor retorno por costo; detecta gaps de contrato sin ruido de Docker"
+  - phase: 2
+    lane: contract
+    commands: [up, build]
+    reason: "Cierra validaciones y envelopes antes de runtime"
+  - phase: 3
+    lane: semantic
+    commands: [features-info, read-configuration, exec, run-user-commands]
+    reason: "Detecta flags cableados parcialmente o semántica divergente"
+  - phase: 4
+    lane: runtime
+    commands: [set-up, up]
+    reason: "Happy path y error path mínimos"
+  - phase: 5
+    lane: runtime
+    commands: [build]
+    reason: "Mayor ruido de infraestructura; dejar último"
+
+normalization:
+  stdout_json:
+    - sort_keys
+    - drop_nulls
+    - drop_absolute_paths
+    - drop_volatile_ids
+  stderr:
+    - redact_timestamps
+    - redact_host_paths
+    - redact_container_ids
+    - optionally_non_fatal
+  assertions:
+    - exit_code
+    - stdout_normalized
+    - stderr_normalized
+
+initial_cases:
+  - id: features-info.invalid-mode
+    lane: contract
+    command: features-info
+    priority: p0
+    docker_required: false
+    ts_cmd: "features info invalid ghcr.io/devcontainers/features/go"
+    asserts: [exit_code, stderr_normalized]
+    class: mode-validation
+    current_status: match
+    notes: "Mantener como guardrail; antes faltaba en Go"
+
+  - id: features-info.manifest-json
+    lane: contract
+    command: features-info
+    priority: p0
+    docker_required: false
+    network_required: true
+    ts_cmd: "features info manifest ghcr.io/devcontainers/features/go --output-format json"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+
+  - id: features-info.tags-json
+    lane: contract
+    command: features-info
+    priority: p0
+    docker_required: false
+    network_required: true
+    ts_cmd: "features info tags ghcr.io/devcontainers/features/go --output-format json"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+
+  - id: features-info.dependencies-text
+    lane: semantic
+    command: features-info
+    priority: p0
+    docker_required: false
+    network_required: true
+    ts_cmd: "features info dependencies ghcr.io/devcontainers/features/go"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: dependency-graph
+    current_status: match
+    notes: "La salida normalizada ahora converge en la comparación A/B"
+
+  - id: features-info.invalid-output-format
+    lane: contract
+    command: features-info
+    priority: p1
+    docker_required: false
+    ts_cmd: "features info manifest ghcr.io/devcontainers/features/go --output-format yaml"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: features-info.invalid-log-level
+    lane: contract
+    command: features-info
+    priority: p1
+    docker_required: false
+    ts_cmd: "features info manifest ghcr.io/devcontainers/features/go --log-level warning"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: features-info.invalid-feature-id-text
+    lane: contract
+    command: features-info
+    priority: p1
+    docker_required: false
+    ts_cmd: "features info manifest not-a-feature-id"
+    asserts: [exit_code, stderr_normalized]
+    class: parse-validation
+    current_status: match
+
+  - id: features-info.invalid-feature-id-json
+    lane: contract
+    command: features-info
+    priority: p1
+    docker_required: false
+    ts_cmd: "features info manifest not-a-feature-id --output-format json"
+    asserts: [exit_code, stdout_normalized]
+    class: parse-validation
+    current_status: match
+
+  - id: read-configuration.missing-required
+    lane: contract
+    command: read-configuration
+    priority: p0
+    docker_required: false
+    ts_cmd: "read-configuration"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: read-configuration.invalid-log-level
+    lane: contract
+    command: read-configuration
+    priority: p0
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image --log-level warning"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+    notes: "Alineado en Go con info|debug|trace"
+
+  - id: read-configuration.invalid-log-format
+    lane: contract
+    command: read-configuration
+    priority: p0
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image --log-format yaml"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: read-configuration.fixture-image
+    lane: semantic
+    command: read-configuration
+    priority: p0
+    docker_required: true
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stdout_normalized]
+    class: baseline-fixture
+    current_status: match
+
+  - id: read-configuration.features-configuration
+    lane: semantic
+    command: read-configuration
+    priority: p0
+    docker_required: false
+    network_required: true
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image-with-features --include-features-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: feature-resolution
+    current_status: match
+
+  - id: read-configuration.compose-path-terminal
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/compose-with-name --docker-compose-path docker-compose --terminal-columns 80 --terminal-rows 24"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: wired-flags
+    current_status: match
+    notes: "Verificado con la matriz Go; requiere entorno con Docker/compose operativo para revalidaciones"
+
+  - id: read-configuration.subfolder-config
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/dockerfile-without-features --config src/test/configs/dockerfile-without-features/.devcontainer/subfolder/devcontainer.json"
+    asserts: [exit_code, stdout_normalized]
+    class: baseline-fixture
+    current_status: match
+
+  - id: read-configuration.invalid-id-label
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "read-configuration --id-label broken"
+    asserts: [exit_code, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: read-configuration.terminal-columns-implies-rows
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image --terminal-columns 80"
+    asserts: [exit_code, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: read-configuration.terminal-rows-implies-columns
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image --terminal-rows 24"
+    asserts: [exit_code, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: exec.missing-required
+    lane: contract
+    command: exec
+    priority: p0
+    docker_required: false
+    ts_cmd: "exec echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: exec.invalid-id-label
+    lane: contract
+    command: exec
+    priority: p0
+    docker_required: false
+    ts_cmd: "exec --id-label broken echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: exec.invalid-remote-env
+    lane: contract
+    command: exec
+    priority: p0
+    docker_required: false
+    ts_cmd: "exec --workspace-folder src/test/configs/image --remote-env broken echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: exec.invalid-log-format
+    lane: contract
+    command: exec
+    priority: p1
+    docker_required: false
+    ts_cmd: "exec --workspace-folder src/test/configs/image --log-format yaml echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: exec.invalid-log-level
+    lane: contract
+    command: exec
+    priority: p1
+    docker_required: false
+    ts_cmd: "exec --workspace-folder src/test/configs/image --log-level warning echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: exec.wired-flags
+    lane: semantic
+    command: exec
+    priority: p0
+    docker_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/image --docker-compose-path docker-compose --default-user-env-probe loginShell --terminal-columns 80 --terminal-rows 24 echo hello"
+    asserts: [exit_code]
+    class: wired-flags
+    current_status: match
+    notes: "La comparación A/B actual no muestra divergencia observable para este contrato"
+
+  - id: exec.terminal-columns-implies-rows
+    lane: contract
+    command: exec
+    priority: p1
+    docker_required: false
+    ts_cmd: "exec --workspace-folder src/test/configs/image --terminal-columns 80 echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: exec.terminal-rows-implies-columns
+    lane: contract
+    command: exec
+    priority: p1
+    docker_required: false
+    ts_cmd: "exec --workspace-folder src/test/configs/image --terminal-rows 24 echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: run-user-commands.missing-required
+    lane: contract
+    command: run-user-commands
+    priority: p0
+    docker_required: false
+    ts_cmd: "run-user-commands"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: run-user-commands.invalid-remote-env
+    lane: contract
+    command: run-user-commands
+    priority: p0
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --remote-env broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: run-user-commands.invalid-default-user-env-probe
+    lane: contract
+    command: run-user-commands
+    priority: p0
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --default-user-env-probe broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: run-user-commands.stop-for-personalization
+    lane: semantic
+    command: run-user-commands
+    priority: p0
+    docker_required: true
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --container-id fake123 --stop-for-personalization"
+    asserts: [exit_code]
+    class: lifecycle-semantics
+    current_status: match
+    notes: "Both fail with container not found; flag is accepted without error"
+
+  - id: run-user-commands.invalid-id-label
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --id-label broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: run-user-commands.invalid-log-format
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --log-format yaml"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: run-user-commands.invalid-log-level
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --log-level warning"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: run-user-commands.terminal-columns-implies-rows
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --terminal-columns 80"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: run-user-commands.terminal-rows-implies-columns
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --terminal-rows 24"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: run-user-commands.config-not-found
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder path-that-does-not-exist"
+    asserts: [exit_code, stdout_normalized]
+    class: required-args
+    current_status: match
+
+  - id: set-up.missing-container-id
+    lane: contract
+    command: set-up
+    priority: p0
+    docker_required: false
+    ts_cmd: "set-up"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: set-up.invalid-default-user-env-probe
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --default-user-env-probe broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: set-up.invalid-log-format
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --log-format yaml"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: set-up.invalid-log-level
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --log-level warning"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: set-up.terminal-columns-implies-rows
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --terminal-columns 80"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: set-up.terminal-rows-implies-columns
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --terminal-rows 24"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: up.invalid-buildkit
+    lane: contract
+    command: up
+    priority: p0
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --buildkit broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: up.invalid-gpu-availability
+    lane: contract
+    command: up
+    priority: p0
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --gpu-availability broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: up.invalid-update-remote-user-uid-default
+    lane: contract
+    command: up
+    priority: p0
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --update-remote-user-uid-default broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: build.invalid-buildkit
+    lane: contract
+    command: build
+    priority: p0
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/image --buildkit broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: build.invalid-log-format
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/image --log-format yaml"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: build.invalid-log-level
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/image --log-level warning"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: build.missing-workspace-folder
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: build.config-not-found
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder path-that-does-not-exist"
+    asserts: [exit_code, stdout_normalized]
+    class: required-args
+    current_status: match
+
+  - id: build.platform-without-dockerfile
+    lane: contract
+    command: build
+    priority: p0
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image --platform linux/amd64"
+    asserts: [exit_code, stdout_normalized]
+    class: cross-flag-validation
+    current_status: match
+
+  - id: build.buildkit-never-platform-failure
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --buildkit=never --platform linux/amd64"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: wired-flags
+    current_status: match
+    notes: "Cerrado: la comparación actual ya converge entre TS y Go en el harness de paridad"
+
+  - id: build.compose-platform-not-supported
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-with-features --platform linux/amd64"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: wired-flags
+    current_status: match
+
+  - id: build.compose-cache-to-not-supported
+    lane: contract
+    command: build
+    priority: p1
+    docker_required: false
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-with-features --cache-to=type=local,dest=/tmp/test-build-cache"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: wired-flags
+    current_status: match
+
+  - id: up.invalid-log-format
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --log-format yaml"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: up.invalid-log-level
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --log-level warning"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: enum-validation
+    current_status: match
+
+  - id: up.missing-workspace-or-id-label
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: up.missing-workspace-or-override-config
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --id-label test=value"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: required-args
+    current_status: match
+
+  - id: up.invalid-id-label
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --id-label broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: up.invalid-remote-env
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --remote-env broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: up.invalid-mount
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --mount broken"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: format-validation
+    current_status: match
+
+  - id: up.terminal-columns-implies-rows
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --terminal-columns 80"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: up.terminal-rows-implies-columns
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --terminal-rows 24"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+
+  - id: up.config-not-found
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder path-that-does-not-exist"
+    asserts: [exit_code, stdout_normalized]
+    class: required-args
+    current_status: match
+
+  - id: read-configuration.container-config-success
+    lane: runtime
+    command: read-configuration
+    priority: p0
+    docker_required: true
+    ts_cmd: "read-configuration --container-id ${CONTAINER_ID} --config src/test/configs/set-up-with-config/devcontainer.json --include-merged-configuration"
+    setup_cmd: "CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: read-configuration.container-metadata-success
+    lane: runtime
+    command: read-configuration
+    priority: p0
+    docker_required: true
+    ts_cmd: "read-configuration --container-id ${CONTAINER_ID} --include-merged-configuration"
+    setup_cmd: "IMAGE_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; docker build -q -t ${IMAGE_NAME} src/test/configs/set-up-with-metadata >/dev/null; CONTAINER_ID=$(docker run -d -e TEST_CE=TEST_VALUE2 ${IMAGE_NAME} sleep inf); echo IMAGE_NAME=$IMAGE_NAME; echo CONTAINER_ID=$CONTAINER_ID"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.container-config-success
+    lane: runtime
+    command: exec
+    priority: p0
+    docker_required: true
+    ts_cmd: "exec --container-id ${CONTAINER_ID} --config src/test/configs/set-up-with-config/devcontainer.json echo parity-output"
+    setup_cmd: "CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.container-metadata-success
+    lane: runtime
+    command: exec
+    priority: p0
+    docker_required: true
+    ts_cmd: "exec --container-id ${CONTAINER_ID} echo parity-output"
+    setup_cmd: "IMAGE_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; docker build -q -t ${IMAGE_NAME} src/test/configs/set-up-with-metadata >/dev/null; CONTAINER_ID=$(docker run -d ${IMAGE_NAME} sleep inf); echo IMAGE_NAME=$IMAGE_NAME; echo CONTAINER_ID=$CONTAINER_ID"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.workspace-image-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/image --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} echo parity-output"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.workspace-image-json-raw-output-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/image --log-format json --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} echo parity-output"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "B9: en --log-format json el output del comando va como eventos `raw` en el log stream (stderr), no a stdout. stdout queda vacío en ambos (Go antes lo imprimía a stdout). No se aserta el stream (Go usa el SDK de Docker → menos eventos `Run:` que el TS)."
+
+  - id: exec.workspace-compose-success
+    no_compose_isolation: true
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/compose-image-without-features --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} echo parity-output"
+    setup_cmd: "COMPOSE_PROJECT_NAME=parityexec${PARITY_SIDE}; export COMPOSE_PROJECT_NAME; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/compose-image-without-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/compose-image-without-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; echo COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-without-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.workspace-image-with-features-hello-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/image-with-features --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} hello"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then DOCKER_DEFAULT_PLATFORM=linux/amd64 node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/image-with-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else DOCKER_DEFAULT_PLATFORM=linux/amd64 ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/image-with-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.workspace-dockerfile-with-features-hello-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/dockerfile-with-features --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} hello"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then DOCKER_DEFAULT_PLATFORM=linux/amd64 node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/dockerfile-with-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else DOCKER_DEFAULT_PLATFORM=linux/amd64 ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/dockerfile-with-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.workspace-dockerfile-with-target-marker-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/dockerfile-with-target --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} cat /var/test-marker"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then DOCKER_DEFAULT_PLATFORM=linux/amd64 node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/dockerfile-with-target --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else DOCKER_DEFAULT_PLATFORM=linux/amd64 ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/dockerfile-with-target --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: exec.workspace-compose-image-with-features-hello-success
+    no_compose_isolation: true
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "exec --workspace-folder src/test/configs/compose-image-with-features --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} hello"
+    setup_cmd: "COMPOSE_PROJECT_NAME=parityexecfeatures; export COMPOSE_PROJECT_NAME; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then DOCKER_DEFAULT_PLATFORM=linux/amd64 node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/compose-image-with-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else DOCKER_DEFAULT_PLATFORM=linux/amd64 ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/compose-image-with-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; echo COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+
+  - id: run-user-commands.container-config-success
+    lane: runtime
+    command: run-user-commands
+    priority: p0
+    docker_required: true
+    ts_cmd: "run-user-commands --container-id ${CONTAINER_ID} --config src/test/configs/set-up-with-config/devcontainer.json"
+    setup_cmd: "CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} test -f /postAttachCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: run-user-commands.workspace-image-success
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; CONTAINER_ID=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} | head -n1); echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} cat /postCreateCommand.txt"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: run-user-commands.skip-post-attach-success
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/dockerfile-with-parallel-commands --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --skip-post-attach"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/dockerfile-with-parallel-commands --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/dockerfile-with-parallel-commands --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; CONTAINER_ID=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} | head -n1); echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} /bin/sh -lc 'test -f /tmp/postCreateCommand1.testmarker && test -f /tmp/postCreateCommand2.testmarker && test -f /tmp/postStartCommand1.testmarker && test -f /tmp/postStartCommand2.testmarker && ! test -f /tmp/postAttachCommand1.testmarker && ! test -f /tmp/postAttachCommand2.testmarker && printf ok'"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: run-user-commands.workspace-secrets-success
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    ts_cmd: "run-user-commands --workspace-folder ${WORKSPACE} --log-level trace --secrets-file ${SECRETS_FILE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "WORKSPACE=/tmp/parity-secrets-run-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/container-features/configs/lifecycle-hooks-inline-commands/. ${WORKSPACE}; SECRETS_FILE=${WORKSPACE}/test-secrets-temp.json; printf '%s' '{\"SECRET1\":\"SecretValue1\",\"MASK_IT\":\"cycle\"}' > ${SECRETS_FILE}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder ${WORKSPACE} --log-level trace --secrets-file ${SECRETS_FILE} --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder ${WORKSPACE} --log-level trace --secrets-file ${SECRETS_FILE} --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; find ${WORKSPACE} -name '*.testMarker' -delete; echo WORKSPACE=$WORKSPACE; echo SECRETS_FILE=$SECRETS_FILE; CONTAINER_ID=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} | head -n1); echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "cat ${WORKSPACE}/*.devContainer.postCreateCommand.testMarker | grep '^SECRET1=SecretValue1$'"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: run-user-commands.workspace-subfolder-config-success
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/dockerfile-without-features --container-id ${CONTAINER_ID} --config src/test/configs/dockerfile-without-features/.devcontainer/subfolder/devcontainer.json"
+    setup_cmd: "if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/dockerfile-without-features --config src/test/configs/dockerfile-without-features/.devcontainer/subfolder/devcontainer.json --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/dockerfile-without-features --config src/test/configs/dockerfile-without-features/.devcontainer/subfolder/devcontainer.json --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; CONTAINER_ID=$(docker ps -q --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} | head -n1); echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /subfolderConfigPostCreateCommand.txt && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "Cerrado al preservar el comando fallido de lifecycle y emitir el envelope TS para hooks (`postCreateCommand from devcontainer.json failed.`)."
+
+  - id: run-user-commands.container-metadata-success
+    lane: runtime
+    command: run-user-commands
+    priority: p0
+    docker_required: true
+    ts_cmd: "run-user-commands --container-id ${CONTAINER_ID}"
+    setup_cmd: "IMAGE_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; docker build -q -t ${IMAGE_NAME} src/test/configs/set-up-with-metadata >/dev/null; CONTAINER_ID=$(docker run -d ${IMAGE_NAME} sleep inf); echo IMAGE_NAME=$IMAGE_NAME; echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} test -f /postCreateCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: set-up.container-config-success
+    lane: runtime
+    command: set-up
+    priority: p0
+    docker_required: true
+    ts_cmd: "set-up --container-id ${CONTAINER_ID} --config src/test/configs/set-up-with-config/devcontainer.json --include-configuration --include-merged-configuration"
+    setup_cmd: "CONTAINER_ID=$(docker run -d -e TEST_CE=TEST_VALUE alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} test -f /postAttachCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: set-up.container-metadata-success
+    lane: runtime
+    command: set-up
+    priority: p0
+    docker_required: true
+    ts_cmd: "set-up --container-id ${CONTAINER_ID} --include-configuration --include-merged-configuration"
+    setup_cmd: "IMAGE_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; docker build -q -t ${IMAGE_NAME} src/test/configs/set-up-with-metadata >/dev/null; CONTAINER_ID=$(docker run -d -e TEST_CE=TEST_VALUE2 ${IMAGE_NAME} sleep inf); echo IMAGE_NAME=$IMAGE_NAME; echo CONTAINER_ID=$CONTAINER_ID"
+    verify_cmd: "docker exec ${CONTAINER_ID} test -f /postCreateCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+
+  - id: up.image-success
+    lane: runtime
+    command: up
+    priority: p0
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Desbloqueado al corregir el parser de docker events en el oracle TS (aceptar Action=start y JSON sin newline final)"
+
+  - id: up.image-reuses-base-image-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker inspect --format '{{.Config.Image}}' ${CONTAINER_ID}"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-with-name-success
+    no_compose_isolation: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-with-name --buildkit=never --skip-post-create --docker-compose-path trigger-compose-v2 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    cleanup_cmd: "docker compose --project-name custom-project-name down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.compose-image-without-features-success
+    lane: runtime
+    command: up
+    priority: p0
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-without-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.compose-labels-devcontainer-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-without-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "test \"$(docker inspect --format '{{ index .Config.Labels \"parity.case\" }}' ${CONTAINER_ID})\" = \"${PARITY_CASE_ID}-${PARITY_SIDE}\" && test -n \"$(docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID})\" && printf ok"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "B16: el container compose lleva los --id-label custom y el label devcontainer.metadata (antes Go no ponía labels devcontainer.* en compose → discovery/exec rotos). Verifica que el id-label del app service coincida y que el metadata label exista, en Go y TS."
+
+  - id: up.app-port-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/app-port --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "P=$(docker inspect --format '{{json .HostConfig.PortBindings}}' ${CONTAINER_ID}); echo \"$P\" | grep -q '\"HostPort\":\"3000\"' && echo \"$P\" | grep -q '\"HostPort\":\"8080\"' && printf ok"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "appPort → PortBindings (127.0.0.1:N:N para números, verbatim para strings). Antes Go no publicaba puertos."
+
+  - id: up.override-command-false-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/override-command-false --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker inspect --format '{{json .Config.Cmd}}' ${CONTAINER_ID} | grep -q 'redis-server' && printf ok"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "overrideCommand:false → se appendan el entrypoint+cmd de la imagen (redis-server) al script keep-alive (exec \"$@\"). Antes Go descartaba el CMD de la imagen (sleep loop)."
+
+  - id: up.workspace-mount-custom-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/workspace-mount-custom --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker inspect --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' ${CONTAINER_ID} | grep -q '/tmp:/custom-ws' && printf ok"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "workspaceMount custom respetado (antes Go siempre bindeaba el workspace-folder al default)."
+
+  - id: up.compose-dockerfile-without-features-success
+    lane: runtime
+    command: up
+    priority: p0
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-without-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.compose-image-without-features-minimal-reuses-base-image-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-without-features-minimal --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker inspect --format '{{.Config.Image}}' ${CONTAINER_ID}"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-without-features-minimal/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-with-name-using-env-var-success
+    no_compose_isolation: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-with-name-using-env-var --buildkit=never --skip-post-create --docker-compose-path trigger-compose-v2 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo CUSTOM_NAME=custom-name-with-env-var"
+    cleanup_cmd: "docker compose --project-name custom-name-with-env-var down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.compose-with-name-devcontainer-env-success
+    no_compose_isolation: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-with-name-using-env-var --buildkit=never --skip-post-create --docker-compose-path trigger-compose-v2 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo CUSTOM_NAME=devcontainer"
+    cleanup_cmd: "docker compose --project-name devcontainer down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.compose-with-name-custom-yaml-success
+    no_compose_isolation: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-with-name-and-custom-yaml --buildkit=never --skip-post-create --docker-compose-path trigger-compose-v2 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    cleanup_cmd: "docker compose --project-name custom-project-name-custom-yaml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.compose-without-name-success
+    no_compose_isolation: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-without-name --buildkit=never --skip-post-create --docker-compose-path trigger-compose-v2 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    cleanup_cmd: "docker compose --project-name compose-without-name_devcontainer down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Pasa luego del fix en el oracle TS para docker events"
+
+  - id: up.subfolder-config-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/dockerfile-without-features --buildkit=never --config src/test/configs/dockerfile-without-features/.devcontainer/subfolder/devcontainer.json --remove-existing-container"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker exec ${CONTAINER_ID} test -f /subfolderConfigPostCreateCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-post-create-remote-env-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image --buildkit=never --include-configuration --include-merged-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec ${CONTAINER_ID} cat /postCreateCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Cerrado al alinear `configuration.configFilePath` y completar `mergedConfiguration` con campos del config (`image`, `runArgs`) en Go"
+
+  - id: up.image-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image --buildkit=never --omit-config-remote-env-from-metadata --include-configuration --include-merged-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-with-features-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image-with-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-image-without-features-minimal-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-without-features-minimal --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-without-features-minimal/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dockerfile-without-features-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/dockerfile-without-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-image-with-features-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-with-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Desbloqueado al fijar el setup del harness con `docker pull --platform linux/amd64 mongo:latest` antes del compose."
+
+  - id: up.compose-dockerfile-with-features-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Cerrado después de alinear la metadata de builds Dockerfile+features; el setup mantiene `docker pull --platform linux/amd64 mongo:latest` para evitar drift de plataforma en compose."
+
+  - id: up.compose-dockerfile-without-features-omit-config-remote-env-from-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-without-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-Dockerfile-without-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-metadata-container-env-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image-metadata-containerEnv --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec ${CONTAINER_ID} bash -lc 'printf \"%s\\n%s\\n%s\\n\" \"$JAVA_HOME\" \"$VAR_WITH_SPACES\" \"$(eval \\\"$ENV_WITH_COMMAND\\\")\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-with-features-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image-with-features --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker exec ${CONTAINER_ID} cat /postCreateCommand.txt"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-with-git-feature-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image-with-git-feature --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker exec ${CONTAINER_ID} git --version"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' 'env | sort > /tmp/.dotfileEnvs' > ${DOTFILES_REPO}/install.sh; chmod +x ${DOTFILES_REPO}/install.sh; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add install.sh; git -C ${DOTFILES_REPO} commit -qm init; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-with-secrets-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --secrets-file ${SECRETS_FILE} --log-level trace --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-secrets-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' 'env | sort > /tmp/.dotfileEnvs' > ${DOTFILES_REPO}/install.sh; chmod +x ${DOTFILES_REPO}/install.sh; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add install.sh; git -C ${DOTFILES_REPO} commit -qm init; SECRETS_FILE=${WORKSPACE}/test-secrets-temp.json; printf '%s' '{\"SECRET1\":\"SecretValue1\",\"MASK_IT\":\"container\"}' > ${SECRETS_FILE}; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo SECRETS_FILE=$SECRETS_FILE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && grep -q \"^SECRET1=SecretValue1$\" /tmp/.dotfileEnvs && grep -q \"^TEST_REMOTE_ENV=Value 1$\" /tmp/.dotfileEnvs && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-custom-install-relative-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --dotfiles-install-command ./install.sh --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-rel-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' > ${DOTFILES_REPO}/install.sh; chmod +x ${DOTFILES_REPO}/install.sh; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add install.sh; git -C ${DOTFILES_REPO} commit -qm init; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-custom-install-absolute-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --dotfiles-install-command /home/node/dotfiles/install.sh --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-abs-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' > ${DOTFILES_REPO}/install.sh; chmod +x ${DOTFILES_REPO}/install.sh; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add install.sh; git -C ${DOTFILES_REPO} commit -qm init; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-non-executable-install-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --dotfiles-install-command .run-my-dotfiles-script --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-nonexec-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' > ${DOTFILES_REPO}/.run-my-dotfiles-script; chmod 0644 ${DOTFILES_REPO}/.run-my-dotfiles-script; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add .run-my-dotfiles-script; git -C ${DOTFILES_REPO} commit -qm init; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-custom-install-filename-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --dotfiles-install-command install.sh --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-file-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' > ${DOTFILES_REPO}/install.sh; chmod +x ${DOTFILES_REPO}/install.sh; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add install.sh; git -C ${DOTFILES_REPO} commit -qm init; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dotfiles-local-non-executable-absolute-install-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --dotfiles-repository ${REMOTE_DOTFILES_REPO} --dotfiles-install-command /home/node/dotfiles/.run-my-dotfiles-script --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-dotfiles-nonexec-abs-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-git-feature/. ${WORKSPACE}; DOTFILES_REPO=${WORKSPACE}/dotfiles-repo; mkdir -p ${DOTFILES_REPO}; printf '%s\n' '#!/bin/sh' 'touch /tmp/.dotfilesMarker' > ${DOTFILES_REPO}/.run-my-dotfiles-script; chmod 0644 ${DOTFILES_REPO}/.run-my-dotfiles-script; git -C ${DOTFILES_REPO} init -q; git -C ${DOTFILES_REPO} config user.email parity@example.com; git -C ${DOTFILES_REPO} config user.name parity; git -C ${DOTFILES_REPO} add .run-my-dotfiles-script; git -C ${DOTFILES_REPO} commit -qm init; REMOTE_DOTFILES_REPO=file:///workspaces/$(basename ${WORKSPACE})/dotfiles-repo; echo WORKSPACE=$WORKSPACE; echo REMOTE_DOTFILES_REPO=$REMOTE_DOTFILES_REPO"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -lc 'test -f /tmp/.dotfilesMarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-dockerfile-with-features-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec ${CONTAINER_ID} cat /postCreateCommand.txt"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Cerrado al corregir el entrypoint compose generado por Go para que use saltos de línea reales y mantenga vivo el contenedor"
+
+  - id: up.compose-dockerfile-with-features-reuse-stopped-container-with-persisted-overrides-success
+    no_compose_isolation: true
+    serial: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER}"
+    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; USER_DATA_FOLDER=/tmp/parity-user-data-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; fi; ORIGINAL_CONTAINER_ID=$(docker ps -aq --filter label=com.docker.compose.project=compose-dockerfile-with-features_devcontainer --filter label=com.docker.compose.service=app | head -n1); docker compose --project-name compose-dockerfile-with-features_devcontainer stop >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; echo USER_DATA_FOLDER=${USER_DATA_FOLDER}; echo ORIGINAL_CONTAINER_ID=${ORIGINAL_CONTAINER_ID}"
+    verify_cmd: "test \"${CONTAINER_ID#$ORIGINAL_CONTAINER_ID}\" != \"${CONTAINER_ID}\" && test \"$(find ${USER_DATA_FOLDER}/docker-compose -maxdepth 1 -type f | wc -l | tr -d ' ')\" = \"2\" && find ${USER_DATA_FOLDER}/docker-compose -maxdepth 1 -type f -name 'docker-compose.devcontainer.build-*' | grep -q . && find ${USER_DATA_FOLDER}/docker-compose -maxdepth 1 -type f -name 'docker-compose.devcontainer.containerFeatures-*' | grep -q . && printf ok"
+    cleanup_cmd: "docker compose --project-name compose-dockerfile-with-features_devcontainer -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true; rm -rf ${USER_DATA_FOLDER}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Único gap real restante: incluso con el setup alineado al oracle TS, TS falla el segundo `docker compose up --no-recreate` con overrides persistidos y Go devuelve success."
+
+  - id: up.compose-dockerfile-with-features-reuse-stopped-container-without-persisted-overrides-success
+    no_compose_isolation: true
+    serial: true
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER}"
+    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; USER_DATA_FOLDER=/tmp/parity-user-data-reset-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; fi; ORIGINAL_CONTAINER_ID=$(docker ps -aq --filter label=com.docker.compose.project=compose-dockerfile-with-features_devcontainer --filter label=com.docker.compose.service=app | head -n1); docker compose --project-name compose-dockerfile-with-features_devcontainer stop >/dev/null; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; echo USER_DATA_FOLDER=${USER_DATA_FOLDER}; echo ORIGINAL_CONTAINER_ID=${ORIGINAL_CONTAINER_ID}"
+    verify_cmd: "docker inspect ${CONTAINER_ID} >/dev/null && printf ok"
+    cleanup_cmd: "docker compose --project-name compose-dockerfile-with-features_devcontainer -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true; rm -rf ${USER_DATA_FOLDER}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Cerrado como cobertura de re-run sin overrides persistidos. La aserción de reuso exacto del container ID era demasiado estricta: ambos lados pueden recrear."
+
+  - id: up.compose-container-env-issue-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image-containerEnv-issue --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec ${CONTAINER_ID} bash -lc 'printf \"%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n\" \"$SOME_PATH\" \"$VAR_WITH_SPACES\" \"$(eval \\\"$ENV_WITH_COMMAND\\\")\" \"$ROSCONSOLE_FORMAT\" \"$VAR_WITH_QUOTES_WE_WANT_TO_KEEP\" \"$VAR_WITH_DOLLAR_SIGN\" \"$VAR_WITH_BACK_SLASH\"'"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/image-containerEnv-issue/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-with-mounts-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/image-with-mounts --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker inspect --format '{{range .Mounts}}{{if eq .Destination \"/home/test_devcontainer_config\"}}{{.Type}}:{{.Destination}}:{{if ne .Name \"undefined\"}}ok{{else}}bad{{end}}{{end}}{{end}}' ${CONTAINER_ID}"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-image-with-mounts-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-with-mounts --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo COMPOSE_PROJECT_NAME=paritymounts"
+    verify_cmd: "docker inspect --format '{{range .Mounts}}{{if eq .Destination \"/home/test_devcontainer_config\"}}{{.Type}}:{{.Destination}}:{{if ne .Name \"undefined\"}}ok{{else}}bad{{end}}{{end}}{{end}}' ${CONTAINER_ID}"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-with-mounts/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.image-with-parallel-initialize-command-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-init-${PARITY_CASE_ID}; mkdir -p ${WORKSPACE}; cp -R src/test/configs/image-with-parallel-initialize-command/. ${WORKSPACE}; find ${WORKSPACE} -name '*.testMarker' -delete; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "test -f ${WORKSPACE}/initializeCommand.1.testMarker && test -f ${WORKSPACE}/initializeCommand.2.testMarker && printf ok"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.dockerfile-with-parallel-commands-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/dockerfile-with-parallel-commands --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec ${CONTAINER_ID} /bin/sh -lc 'test -f /tmp/postCreateCommand1.testmarker && test -f /tmp/postCreateCommand2.testmarker && test -f /tmp/postStartCommand1.testmarker && test -f /tmp/postStartCommand2.testmarker && test -f /tmp/postAttachCommand1.testmarker && test -f /tmp/postAttachCommand2.testmarker && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.compose-dockerfile-with-target-post-commands-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-target --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo COMPOSE_PROJECT_NAME=paritytarget"
+    verify_cmd: "docker exec ${CONTAINER_ID} /bin/sh -lc 'test -f /tmp/postCreateCommand.testmarker && test -f /tmp/postStartCommand.testmarker && test -f /tmp/postAttachCommand.testmarker && printf ok'"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-Dockerfile-with-target/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUID --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-only-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDOnly --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "echo LOCAL_GID=$(id -g)"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-disabled-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUID --update-remote-user-uid-default never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc '[ \"$(id -u)\" = \"1234\" ] && [ \"$(id -g)\" = \"4321\" ] && printf ok'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-amd64-platform-option-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDamd64-platform-option --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-arm64-platform-option-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDarm64-platform-option --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-amd64-dockerfile-platform-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDamd64 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-arm64-dockerfile-platform-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDarm64 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-arm64v8-dockerfile-platform-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDarm64v8 --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.update-uid-arm64v8-platform-option-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/updateUIDarm64v8-platform-option --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -lc 'printf \"%s:%s\" \"$(id -u)\" \"$(id -g)\"'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: up.workspace-secrets-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --log-level trace --secrets-file ${SECRETS_FILE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-secrets-up-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; cp -R src/test/container-features/configs/lifecycle-hooks-inline-commands/. ${WORKSPACE}; SECRETS_FILE=${WORKSPACE}/test-secrets-temp.json; printf '%s' '{\"SECRET1\":\"SecretValue1\"}' > ${SECRETS_FILE}; echo WORKSPACE=$WORKSPACE; echo SECRETS_FILE=$SECRETS_FILE"
+    verify_cmd: "cat ${WORKSPACE}/*.devContainer.postCreateCommand.testMarker | grep '^SECRET1=SecretValue1$'"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+
+  - id: build.image-success
+    lane: runtime
+    command: build
+    priority: p0
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness para alinear el builder con la imagen base local"
+
+  - id: build.image-metadata-label-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.image-metadata-local-features-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-metadata --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64; DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -q -t image-metadata-test-base src/test/configs/image-metadata/base-image >/dev/null"
+    verify_cmd: "docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'baseFeature' && docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'localFeatureA' && docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'localFeatureB' && printf ok"
+    cleanup_cmd: "docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.skip-persisting-customizations-from-features-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-metadata --buildkit=never --skip-persisting-customizations-from-features --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64; DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -q -t image-metadata-test-base src/test/configs/image-metadata/base-image >/dev/null"
+    verify_cmd: "docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'localFeatureA' && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'extensionA' && printf ok"
+    cleanup_cmd: "docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.labels-success
+    lane: runtime
+    command: build
+    priority: p0
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/example --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE} --label name=label-test --label type=multiple-labels"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.local-feature-failure
+    lane: runtime
+    command: build
+    priority: p0
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-with-local-feature --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.no-cache-features-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-with-features --image-name ${IMAGE_NAME} --no-cache"
+    setup_cmd: "BASE_IMAGE=mcr.microsoft.com/devcontainers/typescript-node:1-18-bookworm; ORIGINAL_IMAGE=parity-${PARITY_CASE_ID}-${PARITY_SIDE}-original; CACHED_IMAGE=parity-${PARITY_CASE_ID}-${PARITY_SIDE}-cached; TARGET_IMAGE=parity-${PARITY_CASE_ID}-${PARITY_SIDE}-nocache; docker pull ${BASE_IMAGE} >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then node ${PARITY_REPO_ROOT}/devcontainer.js build --workspace-folder src/test/configs/image-with-features --image-name ${ORIGINAL_IMAGE} >/dev/null; node ${PARITY_REPO_ROOT}/devcontainer.js build --workspace-folder src/test/configs/image-with-features --image-name ${CACHED_IMAGE} >/dev/null; else ${PARITY_REPO_ROOT}/devcontainer build --workspace-folder src/test/configs/image-with-features --image-name ${ORIGINAL_IMAGE} >/dev/null; ${PARITY_REPO_ROOT}/devcontainer build --workspace-folder src/test/configs/image-with-features --image-name ${CACHED_IMAGE} >/dev/null; fi; echo BASE_IMAGE=${BASE_IMAGE}; echo IMAGE_NAME=${TARGET_IMAGE}; echo ORIGINAL_IMAGE=${ORIGINAL_IMAGE}; echo CACHED_IMAGE=${CACHED_IMAGE}; echo CACHE_COMPARE_PATH=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}-cache-compare"
+    verify_cmd: "docker inspect --type image ${IMAGE_NAME} >/dev/null && printf ok"
+    cleanup_cmd: "docker rmi -f ${IMAGE_NAME} ${ORIGINAL_IMAGE} ${CACHED_IMAGE} >/dev/null 2>&1 || true; rm -rf ${CACHE_COMPARE_PATH}"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Cerrado como cobertura de ejecución `--no-cache` con features. La comparación de capas era demasiado estricta para buildx y fallaba en ambos lados."
+
+  - id: build.compose-dockerfile-multi-image-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/compose-Dockerfile-alpine --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}-1 --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}-2"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE}-1 parity-${PARITY_CASE_ID}-${PARITY_SIDE}-2 >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.dockerfile-multi-image-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-features --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}-1 --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}-2"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE}-1 parity-${PARITY_CASE_ID}-${PARITY_SIDE}-2 >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+
+  - id: build.image-multi-image-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}-1 --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}-2"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE}-1 parity-${PARITY_CASE_ID}-${PARITY_SIDE}-2 >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+
+  - id: build.push-and-output-failure
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --output type=oci,dest=output.tar --push true"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.compose-image-without-features-minimal-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-without-features-minimal --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.compose-image-without-features-minimal-metadata-label-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-without-features-minimal --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'TEST_ESCAPING' && printf ok"
+    cleanup_cmd: "docker rmi -f ${IMAGE_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+
+  - id: build.subfolder-config-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-without-features --buildkit=never --config src/test/configs/dockerfile-without-features/.devcontainer/subfolder/devcontainer.json --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' ${IMAGE_NAME} | grep '^SUBFOLDER_CONFIG_IMAGE_ENV=true$'"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Pasa en parity runtime fijando DOCKER_DEFAULT_PLATFORM=linux/amd64 desde el harness"
+
+  - id: build.apply-build-options-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{ index .Config.Labels \"test_build_options\" }}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.image-extra-cache-from-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image --cache-from ubuntu:latest --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "docker pull ubuntu:latest >/dev/null"
+    verify_cmd: "docker inspect --type image ${IMAGE_NAME} >/dev/null && printf ok"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Cerrado usando una fuente de cache válida (`ubuntu:latest`); el ref remoto inexistente bloqueaba TS antes de comparar Go."
+
+  - id: build.image-metadata-container-env-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-metadata-containerEnv --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm ${IMAGE_NAME} bash -lc 'printf \"%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n\" \"$JAVA_HOME\" \"$VAR_WITH_SPACES\" \"$VAR_WITH_LOTS_OF_SPACES\" \"$VAR_WITH_QUOTES_WE_WANT_TO_KEEP\" \"$VAR_WITH_DOLLAR_SIGN\" \"$VAR_WITH_BACK_SLASH\" \"$ENV_WITH_COMMAND\"'"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.compose-image-extra-cache-from-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-with-features --cache-from ghcr.io/devcontainers/notFound --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' ${IMAGE_NAME} | grep '^DOCKER_BUILDKIT=1$'"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.output-oci-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --output type=oci,dest=${OUTPUT_PATH}"
+    setup_cmd: "BUILDER_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; OUTPUT_PATH=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}.tar; docker buildx rm ${BUILDER_NAME} >/dev/null 2>&1 || true; docker buildx create --name ${BUILDER_NAME} >/dev/null; docker buildx inspect --bootstrap ${BUILDER_NAME} >/dev/null; echo BUILDER_NAME=$BUILDER_NAME; echo BUILDX_BUILDER=$BUILDER_NAME; echo OUTPUT_PATH=$OUTPUT_PATH; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "test -s ${OUTPUT_PATH}"
+    cleanup_cmd: "rm -f ${OUTPUT_PATH}; docker buildx rm ${BUILDER_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.cache-to-local-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-features --log-level trace --cache-to=type=local,dest=${CACHE_PATH}"
+    setup_cmd: "BUILDER_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; CACHE_PATH=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}-cache; docker buildx rm ${BUILDER_NAME} >/dev/null 2>&1 || true; docker buildx create --name ${BUILDER_NAME} --driver docker-container >/dev/null; docker buildx inspect --bootstrap ${BUILDER_NAME} >/dev/null; echo BUILDER_NAME=$BUILDER_NAME; echo BUILDX_BUILDER=$BUILDER_NAME; echo CACHE_PATH=$CACHE_PATH"
+    verify_cmd: "test -f ${CACHE_PATH}/index.json"
+    cleanup_cmd: "rm -rf ${CACHE_PATH}; docker buildx rm ${BUILDER_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.cache-to-local-image-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-with-features --log-level trace --cache-to=type=local,dest=${CACHE_PATH}"
+    setup_cmd: "BUILDER_NAME=parity-${PARITY_CASE_ID}-${PARITY_SIDE}; CACHE_PATH=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}-cache; docker buildx rm ${BUILDER_NAME} >/dev/null 2>&1 || true; docker buildx create --name ${BUILDER_NAME} --driver docker-container >/dev/null; docker buildx inspect --bootstrap ${BUILDER_NAME} >/dev/null; echo BUILDER_NAME=$BUILDER_NAME; echo BUILDX_BUILDER=$BUILDER_NAME; echo CACHE_PATH=$CACHE_PATH"
+    verify_cmd: "test -f ${CACHE_PATH}/index.json"
+    cleanup_cmd: "rm -rf ${CACHE_PATH}; docker buildx rm ${BUILDER_NAME} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Cerrado al alinear el nombre por defecto de builds `image` con features: sin `--image-name`, TS devuelve `<folder>-features`."
+
+  - id: build.platform-supported-dockerfile-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --platform linux/amd64 --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "test \"$(docker inspect --format '{{.Architecture}}' ${IMAGE_NAME})\" = \"amd64\" && docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' ${IMAGE_NAME} | grep '^DOCKER_BUILDKIT=1$' >/dev/null && test \"$(docker inspect --format '{{ index .Config.Labels \"test_build_options\" }}' ${IMAGE_NAME})\" = \"success\" && docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'ghcr.io/devcontainers/feature-starter/hello:1' && docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'ghcr.io/devcontainers/features/docker-in-docker:2' && docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${IMAGE_NAME} | grep -q 'postCreateCommand' && printf ok"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Cerrado al resolver correctamente la base image del target Dockerfile, preservar metadata base+config+features y comparar semántica del resultado en lugar de `docker inspect` completo."
+
+  - id: build.platform-supported-image-with-features-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/image-with-features --platform linux/amd64 --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' ${IMAGE_NAME} | grep '^DOCKER_BUILDKIT=1$'"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.unsupported-platform-failure
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/dockerfile-with-target --platform fake/platform"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: build.compose-image-with-features-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-with-features --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    verify_cmd: "docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' ${IMAGE_NAME} | grep '^DOCKER_BUILDKIT=1$'"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+
+  - id: templates.apply-docker-existing-success
+    lane: runtime
+    command: templates
+    priority: p1
+    network_required: true
+    ts_cmd: "templates apply --workspace-folder /tmp/parity-tmpl-${PARITY_CASE_ID}-${PARITY_SIDE} --template-id ghcr.io/devcontainers/templates/docker-existing-docker-compose:latest"
+    setup_cmd: "rm -rf /tmp/parity-tmpl-${PARITY_CASE_ID}-${PARITY_SIDE}; mkdir -p /tmp/parity-tmpl-${PARITY_CASE_ID}-${PARITY_SIDE}; echo TMPL_DIR=/tmp/parity-tmpl-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "test -f ${TMPL_DIR}/.devcontainer/devcontainer.json && test -f ${TMPL_DIR}/.devcontainer/docker-compose.yml && ! test -f ${TMPL_DIR}/devcontainer-template.json && ! test -f ${TMPL_DIR}/README.md && printf ok"
+    cleanup_cmd: "rm -rf /tmp/parity-tmpl-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: templates-runtime
+    current_status: match
+    notes: "templates apply extrae el tarball y aplica los archivos (antes {\"files\":null}); omite devcontainer-template.json/README/NOTES y aplica defaults de opciones + substitución ${templateOption:x}."
+
+groups:
+  mode-validation:
+    rationale: "Cerrar una familia completa de bugs de contrato con un solo sweep"
+  enum-validation:
+    rationale: "Alinea Cobra con yargs en flags choice"
+  format-validation:
+    rationale: "Reduce divergencias tempranas y falsos positivos en runtime"
+  wired-flags:
+    rationale: "Detecta flags expuestos pero sin efecto"
+  lifecycle-semantics:
+    rationale: "Aísla diferencias reales de comportamiento en hooks"
+  dependency-graph:
+    rationale: "Captura la divergencia restante en features info dependencies"
+  container-runtime:
+    rationale: "Compara comandos contra contenedores reales con configuración o metadata cargada"
+  lifecycle-runtime:
+    rationale: "Valida hooks reales y envelopes JSON sobre contenedores vivos"
+  up-runtime:
+    rationale: "Cubre creación real de contenedor y compose project name"
+  build-runtime:
+    rationale: "Cubre builds reales, tagging y rutas compose/dockerfile"
+
+recommended_next_steps:
+  - "Usar esta matriz para un harness A/B chico, separado del golden-test-harness actual"
+  - "Implementar primero todos los casos lane=contract y priority=p0"
+  - "Promover a runtime solo los casos que sigan rojos después de contract+semantic"

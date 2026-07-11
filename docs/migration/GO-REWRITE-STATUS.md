@@ -1,0 +1,448 @@
+# Estado del rewrite Go — Auditoría multi-agente (2026-07-09)
+
+Auditoría adversarial del binario Go (`cmd/`, `internal/`) contra el CLI TypeScript de referencia
+(v0.74.0, `dist/spec-node/devContainersSpecCLI.js`). Todos los hallazgos listados fueron
+**confirmados** por verificación independiente (lectura de código en ambos lados + ejecución en vivo
+de ambos binarios con Docker donde aplicaba). Los hallazgos reportados por más de un área fueron
+deduplicados.
+
+---
+
+## 0. Progreso de implementación (log en vivo)
+
+> Sección viva: se actualiza a medida que se cierran hallazgos. Cada ítem lista el commit/verificación.
+> Arranque de la Fase 1 el **2026-07-10**.
+
+**Baseline al iniciar (2026-07-10):** `go test ./internal/...` → 351 passed, **27 failed**, 95 skipped.
+Los 27 fallos = `TestParityMatrix` (26 casos contract + el padre).
+
+| Estado | Ítem | Verificación |
+|--------|------|--------------|
+| ✅ Hecho | **26 casos contract rojos → verdes** (major "errores de validación a stdout"). Nueva `writeValidationError` rutea los errores de validación de flags (enum, formato id-label/mount/remote-env, implicaciones terminal, required args) a **stderr con stdout vacío y exit 1**, como yargs; los errores de runtime siguen en stdout como JSON. `internal/cli/{build,up,setup,run_user_commands}.go` | `go test ./internal/...` → **412 passed, 0 failed**. `TestParityMatrix` 61/61. |
+| ✅ Hecho | **B1 — opciones de features y `_REMOTE_USER`/`_CONTAINER_USER` ahora llegan a `install.sh`**. El env se prefija sobre `install.sh` en vez de sobre el `chmod` previo (en POSIX sh la asignación inline solo aplicaba a `chmod`). `internal/imagemeta/extend.go` (ambos sitios: single-container y compose). | **E2E con docker**: feature local con opción `greeting:"hola-mundo"` → `install.sh` recibe `GREETING_RECEIVED=[hola-mundo]` y `_REMOTE_USER=[root]` (antes: vacíos). Test de regresión `TestGenerateExtendImageBuild_FeatureEnvScopedToInstall`. |
+| ✅ Hecho | **B2 — features irresolubles abortan** (antes: skip silencioso + `success`/exit 0). Los 4 `continue` (path local inexistente, ParseRef, FetchManifest, manifest sin layers) → error `ERR: Feature '<id>' could not be processed…` con cleanup del tmpDir; se propaga a `up`/`build` como outcome error + exit 1. `internal/cli/feature_install.go`. | `go build`/tests verdes; propagación vía `An error occurred setting up the container: …` (exit 1). |
+| ✅ Hecho | **B4 — fallo de lifecycle hook aborta `up`** (antes: warning + `success`/exit 0). `runLifecycleForUp` devuelve error; envelope `{"outcome":"error","description":"<phase> from devcontainer.json failed."}` + exit 1. `internal/cli/up.go`, `internal/lifecycle/hooks.go`. | **E2E con docker**: `postCreateCommand:"exit 7"` → Go emite `description:"postCreateCommand from devcontainer.json failed."` **idéntico al TS**, exit **1** (antes exit 0). |
+| ✅ Hecho | **B6 — hooks y userEnvProbe corren como `remoteUser`**. `NewShellServer` acepta `user` y agrega `docker exec -u <remoteUser>`; resolución de remoteUser (metadata→config) cableada en up/run-user-commands/set-up/exec (6 call sites). `internal/lifecycle/shell.go` + callers. | `go build`/tests verdes. |
+| ✅ Hecho | **B8 — `exec` corre en el workspace folder** (`docker exec -w <remoteWorkspaceFolder>`), antes en el WORKDIR de la imagen. `internal/cli/exec.go`. | **E2E con docker**: `exec pwd` → `/workspaces/gorw-test` (idéntico al TS; antes `/`). |
+| ✅ Hecho | **B9 — `exec --log-format json` emite el output como eventos `raw`** (antes lo escribía a stdout, corrompiendo el stream que consume VS Code). En modo json el stdout/stderr del comando se enrutan a `logger.Raw(..., LevelDebug)` (stdout del proceso queda **vacío**, igual que el TS); en modo texto/TTY sigue el passthrough directo (`docker exec -it` hereda el terminal). El crash de `-t` sin TTY ya estaba resuelto. `internal/cli/exec.go` (`rawLogWriter`). No se cablea `ExecWithPTY` (el passthrough por herencia del TTY ya cubre el caso interactivo). | **E2E vs TS**: `exec --log-format json sh -c 'echo OUT; echo ERR >&2'` → Go stdout **vacío** + 2 eventos `raw` lvl 2 con el output (idéntico al contrato TS; antes Go imprimía a stdout). Caso de paridad `exec.workspace-image-json-raw-output-success`. |
+| ✅ Hecho | **Contrato de logging (Tier 1): `--log-level` filtra + banner de versión**. (1) El text handler ahora dropea eventos con `Level < minLevel` (a `info` oculta los `Run:`/debug; a `debug`/`trace` los muestra), mientras el **JSON handler emite todo** sin filtrar — exactamente como el TS (el consumidor filtra client-side). Antes `defaultLevel` se guardaba y nunca se consultaba. (2) Se emite el banner de versión como primer text event (info): `@devcontainers/cli <ver>. Go <gover>. <os> <release> <arch>.` — mismo formato que el header TS (`omitHeader=false`), cableado en los 6 comandos core (up/build/exec/read-config/run-user-commands/set-up). `internal/core/log/log.go`, `internal/cli/helpers.go` + 6 comandos. | **E2E vs TS**: banner Go `@devcontainers/cli dev. Go go1.26.0. linux … amd64.` = mismo shape que TS (difieren versión y runtime). Test `TestLogLevelFilter_TerminalVsJSON`. |
+| 🟡 Parcial | **Eventos `Run:` por subproceso**: se agregó el par start/stop `Run: <cmd>` (nivel debug) alrededor de la ejecución de `docker compose` (`ComposeClient.Run`), como el TS envuelve cada comando externo. **Límite arquitectónico documentado**: las operaciones de Docker Engine en Go van por el **SDK**, no por shell-out al `docker` CLI, así que no producen eventos `Run: docker ps/inspect/...` — el TS sí (shell-out para todo). Por eso el stream Go tiene menos eventos `Run:` que el TS (~8 vs ~105); **la paridad byte-exacta del stream no es un objetivo** (sería fabricar strings de CLI sintéticos, frágil, o regresar a shell-out). Los eventos que el consumidor necesita (resultado final, output `raw` de exec, banner, filtrado por nivel) sí están. `internal/docker/compose.go`. | Build + matriz completa verde. |
+| ✅ Hecho | **initializeCommand fallido aborta** (major, antes warning + success). Envelope `The initializeCommand in the devcontainer.json failed.` + exit 1. `internal/cli/up.go`. | Code review + build. |
+| ✅ Hecho | **`exec --help`/`-h` imprime usage y exit 0** (major, antes fallaba con "requires at least 1 arg"). `internal/cli/exec.go`. | **En vivo**: `exec --help` → exit 0. |
+| ✅ Hecho | **B7 — secrets enmascarados en logs** (regresión de seguridad; antes el valor aparecía en claro). El logger recibe los valores de secretos (`log.Options.Secrets`) y los reemplaza por `********` en todo texto emitido; cableado en up/run-user-commands. `internal/core/log/log.go`, `internal/cli/{up,run_user_commands,helpers}.go`. | **E2E con docker**: `postCreateCommand:"echo using $MYTOKEN"` con `--secrets-file` → log muestra `using ********`; grep del valor en claro = 0. Tests `TestSecretMasking`. |
+| ✅ Hecho | **GPU detection corregida** (major, antes `up` fallaba en hosts sin nvidia). Detect ahora busca el substring `nvidia-container-runtime` (antes "no vacío", y `<no value>` es no-vacío → falso positivo); además `gpu:false` deja de activar `--gpus all` (se interpretaba `len(raw)>0` como truthy). `internal/cli/{helpers,up}.go`. | **E2E con docker** (host reporta `<no value>`): `hostRequirements.gpu:true` → `up` exit 0 sin `--gpus all`. Test `TestGPURequested`. |
+| ✅ Hecho | **git root con `--show-cdup`** (major, antes `workspaceFolder`/mount corruptos con symlinks macOS `/tmp`→`/private/tmp`). `detectGitRoot` usa `--show-cdup` (relativo, preserva symlinks) en vez de `--show-toplevel`. `internal/config/loader.go`. | **E2E**: repo git en `/tmp` → `workspaceFolder:/workspaces/gorw-git`, mount `source=/tmp/gorw-git` **idéntico al TS** (antes `/private/tmp/...` + posible `../..`). |
+| ✅ Hecho | **JSONC acepta BOM UTF-8** (minor, editores Windows; hujson lo rechazaba, Node lo acepta). Strip del BOM antes de parsear. `internal/core/jsonc/jsonc.go`. | Test `TestUnmarshal_UTF8BOM`. |
+| ✅ Hecho | **B14 — lifecycle en reattach + label `devcontainer.metadata` en containers image**. (1) Los containers image-based ahora llevan el label (image+config, respetando el omit flag) — antes faltaba (rompía interop/discovery y el reattach). (2) `runReattachLifecycle` corre los hooks en reattach vía `--id-label` desde la metadata del container: postAttach siempre, postStart si reinició, resto gateado por markers — antes `finishUp` no corría ninguno. (3) El `mergedConfiguration` del output lee la metadata de la **imagen** (no la del container) para no duplicar los lifecycle commands. `internal/cli/up.go`. | **E2E vs TS**: reattach corre postAttach 1x, skipea postCreate por marker; container tiene el metadata label; `up.image-*` (24 casos incl. omit/post-create-remote-env) en verde. |
+| ✅ Hecho | **B13 — merged sin container lee metadata de imagen + features** (getImageBuildInfo). Antes solo usaba el config → perdía remoteUser/lifecycle/customizations de la imagen antes de crear el container (VS Code lo llama así). `internal/cli/read_configuration.go`. | **E2E**: merged sin container de base:ubuntu → `remoteUser=vscode` (antes None). |
+| ✅ Hecho | **B12 — `mergedConfiguration`/`configuration` menos lossy**. merged: spread de campos config-only (features/build/dockerComposeFile/service/workspaceFolder/name/overrideFeatureInstallOrder) en up y read-config; `remoteEnv` deja de ser omitempty (TS siempre lo incluye). configuration: preserva props desconocidas/vendor (desde `LoadResult.Raw`), manteniendo removidos los legacy migrados. `internal/cli/{read_configuration,up}.go`, `internal/imagemeta/merge.go`. | **E2E**: merged incluye features/remoteEnv; `customVendorField` se conserva en configuration. |
+| 🟡 Parcial | **B3 — orden de instalación de features**. **Fase 1 (installsAfter) hecha**: `populateSoftDepEdges` arma los edges installsAfter de cada FNode desde su metadata (soft-dep stub con el OCI resource, sin fetch); `ComputeInstallationOrder` los usa y prunea los que no matchean. Antes los edges iban vacíos → orden lexicográfico. **Todos los features oficiales usan installsAfter (no dependsOn)**, así que esto cubre el caso real. `internal/cli/feature_install.go`. **Pendiente Fase 2**: `dependsOn` transitivo (worklist con fetch recursivo) — ningún feature oficial lo usa (sin caso E2E), y el fetch transitivo es un refactor grande del path que funciona; diferido para hacerlo con test dedicado. | **E2E discriminante vs TS**: `aws-cli`+`common-utils` (aws-cli installsAfter common-utils, alfabéticamente al revés) → orden **`[common-utils, aws-cli]`** en Go y TS (no el lexicográfico `[aws-cli, common-utils]`). |
+| ✅ Hecho | **`internal/oci/` migrado por completo a `oras-go/v2`** (pull **y** push). Además de FetchManifest/FetchBlob/GetPublishedTags, `PushArtifact` usa `repo.Blobs().Push` + `repo.PushReference`. Se eliminó **todo** el HTTP a mano (authenticatedRequest, authenticatedDo, fetchBearerToken, uploadBlob, pushManifest, GetImageIndexEntry-dead, regexes, campos http/authCache). `repository()` setea PlainHTTP para registries locales. `getCredential`+docker-config/helpers se mantienen (auth devcontainer que la librería no cubre) y oras-go los consume vía Credential func. `ParseRef`/`Ref` intactos. | **E2E**: pull byte-idéntico al TS (manifest/tags); **push a `registry:2` local** → 4 tags + manifest estructuralmente idéntico al TS. Tests oci verdes; `features-info`/`read-configuration.features-configuration` en verde. |
+| ✅ Hecho | **OCI pull path migrado a `oras-go/v2`** (antes: cliente HTTP/auth hecho a mano, 22% coverage). `FetchManifest`/`FetchBlob`/`GetPublishedTags` usan `remote.Repository` + `auth.Client` (negociación de scope bearer incl. push, retries, credential stores) envolviendo la resolución de credenciales existente. API pública y validación devcontainer intactas; consumidores sin cambios. `internal/oci/{orasclient,client,types}.go`. | **E2E byte a byte vs TS**: `features info manifest`/`tags` idénticos; `read-configuration.features-configuration` (descarga+extrae tarballs) verde. Push sigue en `authenticatedDo` (B18); `ParseRef`/`GetImageIndexEntry` sin tocar. |
+| ✅ Hecho | **B5 — marker files (hooks idempotentes)**: onCreate/updateContent/postCreate corren solo si su marker (`<HOME>/.devcontainer/.<hook>Marker`) no registra ya el `createdAt` del container; postStart solo si no registra su `startedAt`; postAttach siempre. Antes cada `up` re-ejecutaba todos los hooks (rompía hooks no idempotentes en cada reconexión del editor). `internal/cli/up.go`. | **E2E**: `up` dos veces sobre el mismo container corre postCreate solo la 1ra — idéntico al TS (up#1: corre, up#2: skip). |
+| ✅ Hecho | **B18 — publish OCI negocia scope push**: nueva `authenticatedDo` (variante con body de `authenticatedRequest`) que ante 401/403 parsea `WWW-Authenticate` y obtiene un token con el scope del challenge (pull,push) vía `fetchBearerToken`, lo cachea y reintenta; las 3 operaciones de push (POST init blob, PUT blob, PUT manifest) se rutean por ahí. Antes usaban el token cacheado con scope pull → publish fallaba determinísticamente. `internal/oci/{client,push}.go`. | Build + tests oci verdes. (Verificable E2E solo contra registry real — cambio de código revisado). |
+| ✅ Hecho | **B16 — labels `devcontainer.*` en containers compose** + **reuse de compose robusto**. Ahora el override runtime del service `app` se crea **siempre** (no solo con features) y lleva los `--id-label` (local_folder, config_file, custom) + el label `devcontainer.metadata` (merge de la metadata de la imagen base del servicio + config, respetando `--omit-config-remote-env-from-metadata`), como el TS. Requirió arreglar el **reuse de compose** que esto destapaba: (1) el `up` ahora levanta el **proyecto completo** cuando `runServices` está vacío (como TS) en vez de filtrar a `app` — así la dependencia `db` (que `app` comparte vía `network_mode: service:db`) arranca; (2) el reuse de una config compose se rutea por `upFromCompose` (compose up) en vez de `StartContainer` directo del SDK (que fallaba con `db` parada); (3) la resolución de `remoteUser` cae al metadata de la **imagen** del container si el label del container no lo trae; (4) la imagen base para el metadata se resuelve vía `docker compose config` (no el guess `<project>-<service>`, que con project name genérico agarraba imágenes stale de otros fixtures). `internal/cli/up.go`, `internal/cli/helpers.go` (`composeServiceImage`), `internal/docker/composeoverride.go` (`Labels`/`AddLabel`). | **E2E vs TS**: container compose lleva `parity.case`/`local_folder`/`config_file`/`devcontainer.metadata` (idéntico al TS). Casos reuse (with/without persisted) + `omit-config-remote-env` + los 3 image-based (`container-env`, `image-with-mounts`, `with-name-env-var`) en verde. Nuevo caso `up.compose-labels-devcontainer-success`. Matriz completa `-parallel 6` **0 FAIL**. |
+| ✅ Hecho | **B15 — `exec` encuentra containers compose por label**: con B16 los containers compose llevan `devcontainer.local_folder`, así que `exec --workspace-folder` (sin `--id-label`) los resuelve por label como en single-container, no solo por project name. Antes dependía de la resolución por project name (frágil en layouts atípicos). | **E2E**: `up` compose → `exec --workspace-folder` (sin id-label) → `B15-OK` resuelto por `devcontainer.local_folder`. |
+| ✅ Hecho | **B10 — label `devcontainer.metadata` ya no es lossy**: se agregaron al `Entry` los campos `portsAttributes`/`otherPortsAttributes`/`shutdownAction`/`hostRequirements` (antes se destruían en el round-trip), se quitó la clave no-spec `image`, `GenerateMetadataLabel` escribe object cuando hay 1 entry (como TS) y `configToMetadataEntry` popula los nuevos campos. `internal/imagemeta/{metadata,merge}.go`, `internal/cli/read_configuration.go`. | **E2E**: build de config con `forwardPorts`/`portsAttributes`/`shutdownAction` → label Go = `{"forwardPorts":[3000],"portsAttributes":{...},"shutdownAction":"stopContainer"}` (antes `[{"image":"alpine:3"}]`), idéntico al TS. Casos `build.image-metadata-*` y `read-configuration.*` pasan. |
+| ✅ Hecho | **B11 — semántica de merge de imagemeta corregida**: `customizations` ahora se agrupa por clave en arrays (`map[string][]interface{}`, como TS) en vez de last-wins plano — ya no se pierden extensiones/settings de features; `init`/`privileged` son OR de todas las entries (antes last-non-nil-wins podía tirar un `init:true` de una feature → container sin tini). `internal/imagemeta/merge.go`. | Tests `TestMergeConfiguration_InitPrivileged_OR`, `TestMergeConfiguration_Customizations_ArraysByKey`. Suite 14/14. |
+| ✅ Hecho | **`containerEnv` de features con `${VAR}` (p.ej. `PATH="...:${PATH}"`) rompía el build** (feature java → `env: 'bash': No such file or directory`, exit 127 → `up`/`build` fallaban por completo). Go metía el containerEnv del feature en el env inline de install **con comillas simples** → `${PATH}` quedaba literal → PATH destruido. Fix: emitir el containerEnv como `ENV KEY="value"` **antes** del RUN de install (Docker expande `${VAR}`), igual que el TS, y sacarlo del env inline. `internal/imagemeta/extend.go` (ambas variantes). | **E2E + harness en Linux**: `up`/`build` `image-metadata-container-env` **y** `build.labels-success` (config `example` con feature `go`, mismo `${PATH}`) pasan de FAIL a **PASS** (3 casos). `up` java+containerEnv da `success` con JAVA_HOME/VAR_WITH_SPACES/ENV_WITH_COMMAND correctos. Test `TestGenerateFeatureBuildEnvVars` actualizado. |
+| ✅ Hecho | **B17 — `updateRemoteUserUID` ahora corre en el path Dockerfile de `up`** (antes solo en `upFromImage` → en Linux los containers con `remoteUser` no podían escribir el workspace bind-mounted). Se extrajo la lógica a `maybeUpdateRemoteUserUID` y se llama en ambos paths. El script `scripts/updateUID.Dockerfile` ya manejaba bien el caso de GID pre-existente. `internal/cli/up.go`. | **E2E + harness en Linux**: los 4 casos `up.update-uid-*` (amd64) pasan de FAIL a **PASS**. `update-uid` → `1000:1000`, `update-uid-only` (grupo `bar` con gid del host preexistente) → `1000:4321` — ambos idénticos al TS (antes Go: `1234:4321`, sin remapear). |
+| ✅ Hecho | **Features locales (`./x`) nunca se resolvían en `up`** (bug preexistente que el fix de B2 destapó al convertir el skip silencioso en error). `upFromDockerfile`/`upFromImage`/`upFromCompose(dockerfile)` llamaban `extendImageWithFeatures(..., nil)` → `featuresBasePath=""` → `./panda` resolvía a `panda` (sin el dir del config) → "Local Feature path not found". Antes de B2: la feature se saltaba en silencio (imagen incorrecta). Ahora se pasa `FeatureBuildOptions{FeaturesBasePath: filepath.Dir(cfg.ConfigFilePath), SkipFeatureAutoMapping}` en los 3 call sites (mismo patrón que `build.go`). `internal/cli/up.go`. | **E2E en Linux con docker**: config Dockerfile con `./tiger`+`./panda` → `up` `outcome:success` y container creado (antes: `outcome:error, Local Feature path 'panda' not found`). Detectado por el caso runtime `run-user-commands.workspace-secrets-success`. |
+| ✅ Hecho | **Tier 3 — `features`/`templates publish` seguro** (antes: retag incondicional que podía mover `latest`/major hacia atrás, exit 0 aunque fallaran los pushes, sin collection metadata, layer title `devcontainer-feature-*` para templates). Ahora: (1) `oci.GetSemanticTags` — computa los tags a partir de los **ya publicados** (`GetPublishedTags`): **skip** si la versión exacta ya existe, y los floating tags (major/major.minor/latest) solo avanzan si la nueva versión es la mayor de su rango (nunca hacia atrás); versión inválida → error; (2) `PushCollectionMetadata` publica el `devcontainer-collection.json` de la colección (tag `latest`, media type collection, annotation `com.github.package.type=devcontainer_collection`); (3) exit **≠0** si cualquier push falla; (4) layer title `devcontainer-<type>-<id>.tgz` (correcto para templates). `internal/oci/push.go`, `internal/cli/collection_commands.go`. | **E2E vs TS contra `registry:2` local**: `hey` v0.0.16 → tags `[0,0.0,0.0.16,latest]` idénticos al TS + collection metadata `latest` en ambos; re-publish de 0.0.16 → **skip** con WARNING (no retag); registry inalcanzable → **exit 1**. Test `TestGetSemanticTags` (skip/forward-only/inválida). |
+| ✅ Hecho | **Empaquetado del tarball alineado con TS** (formato + enriquecimiento). Antes Go generaba un `.tgz` **gzip sin prefijo `./`** bajo el media type `...layer.v1+tar` (inconsistente); ahora `createTarArchive` produce un **tar POSIX plano** con entries `./`, `./devcontainer-feature.json`, … — idéntico en formato al TS (`tar.create({cwd}, ["."])`) y correcto para el media type. Además el `devcontainer-collection.json` ahora incluye `sourceInformation: {source: "devcontainer-cli"}` como el TS. **La paridad byte del digest NO es alcanzable ni un objetivo**: el tar embebe mtime/uid, así que dos empaquetados del **propio TS** dan digests distintos (verificado). `internal/cli/collection_commands.go`. | **E2E vs TS**: listado del tar **idéntico** (`./`, `./devcontainer-feature.json`, `./install.sh`), formato POSIX tar plano en ambos, `sourceInformation` presente. Round-trip: feature plano publicado por Go → `up` con ese feature → `outcome:success`. |
+| ✅ Hecho | **`templates apply` — merge de features preserva JSONC** (antes `json.Unmarshal` fallaba con comentarios y `MarshalIndent` destruía el formato del `devcontainer.json`). Ahora se aplica un **JSON Patch vía `hujson`** (RFC 6902) que preserva comentarios y formato; se saltan features ya presentes; el `hasFeatures`/dedup se lee de una **copia** standardizada (Standardize blanquea comentarios in-place). `internal/templates/apply.go`. | Tests `TestMergeFeatures_PreservesJSONC` (comentarios líder+inline y `forwardPorts` sobreviven, features agregados) y `TestMergeFeatures_SkipsExisting` (no sobrescribe). |
+| ✅ Hecho | **`--version` bare + progress name `Running <phase>...`**. `--version` imprimía `devcontainer version dev` (template de Cobra); ahora imprime solo la versión (`0.74.0`-style) como el TS (yargs `.version()`). Y los eventos `progress` de lifecycle usan `name: "Running <phase>..."` (con status running/succeeded/failed) alineado con el `progressName` del TS que consume la extensión VS Code. (El valor "dev" del version es por ldflags, tema de release.) `internal/cli/root.go`, `internal/lifecycle/hooks.go`. | **E2E**: `--version` → bare; progress name alineado al TS. |
+| ✅ Hecho | **`features test`: leak de containers arreglado**. `cleanupTestContainers` filtra por `label=devcontainer.is_test_run=true`, pero `upTestContainer` **nunca aplicaba ese label** → cada corrida dejaba containers huérfanos. Ahora el `up` de test agrega `--id-label devcontainer.is_test_run=true`, así el cleanup los encuentra y remueve. (`--skip-duplicated` queda como flag aceptado-noop: Go no genera tests duplicados.) `internal/cli/features_test_runner.go`. | **E2E**: container up'd con el label → cleanup lo remueve (0, sin leak). |
+| ✅ Hecho | **Lockfile de features cableado (`--experimental-lockfile` / `--experimental-frozen-lockfile`)** (antes eran no-ops: no se escribía el lockfile, y frozen pasaba exit 0 sin validar). Las primitivas (`GenerateLockfile`/`WriteLockfile`) ya existían pero solo las usaba `outdated`; ahora se cablean en `up` y `build`: con `--experimental-lockfile` se escribe `devcontainer-lock.json` (version + `resolved` registry/path@sha256 + `integrity`) tras resolver los features; con `--experimental-frozen-lockfile` se valida contra el commiteado y **aborta con error si hay drift**. `FeatureBuildOptions.{Lockfile,FrozenLockfile,ConfigPath}`, `internal/cli/{feature_install,up,build}.go`. | **E2E vs TS**: `build --experimental-lockfile` con feature `git:1` → `devcontainer-lock.json` **byte-idéntico** al TS; frozen sin cambios → exit 0; lockfile corrompido → `lockfile does not match`, exit≠0; **pinning-on-read**: con un lockfile presente, los features OCI se fetchean por el `integrity` (digest) del lockfile — verificado con digest bogus (build falla) y válido (build OK), como el TS. |
+| ✅ Hecho | **Features por tarball directo (`https://…tgz`)** (antes clasificados como `SourceDirectTarball` pero **sin handler** → caían al path OCI, `ParseRef` de la URL fallaba). Ahora un handler descarga el tarball (`downloadFeatureTarball`, HTTP con timeout + cap de 512 MiB), lo extrae, lee su `devcontainer-feature.json` y arma el `FeatureSet`/`FNode` con `TarballSource`, como cualquier feature. `internal/cli/feature_install.go`. | **E2E**: feature empaquetado servido por HTTP local → `up` con `features:{"http://…/hellotarball.tgz":{}}` → `outcome:success`, `install.sh` del feature ejecutado. |
+| ✅ Hecho | **Auto-mapping legacy de features con pin `:1` + opciones** (antes mapeaba sin pin → instalaba `latest`, major distinto; y `gradle`/`maven`/`jupyterlab` mapeaban a java/python **sin** la opción). Ahora, como el TS `getBackwardCompatibleFeatureId`: (1) todas las legacy se **pinnean a `:1`** (`versionBackwardComp`), honrando una versión explícita si se da; (2) `migratedFeatures` (1:1) + `renamedFeatures` (golang→go, common→common-utils); (3) `gradle`→java+`installGradle:true`, `maven`→java+`installMaven:true`, `jupyterlab`→python+`installJupyterlab:true` (transformación a opción en el caller, con WARNING); (4) `aws-cli` agregado. `internal/features/resolve.go`, `internal/cli/feature_install.go`, `internal/cli/build.go`. | **E2E**: `features:{git:{},gradle:{}}` → `git` resuelve a `.../git:1`; `gradle` → WARNING + build de java con `INSTALLGRADLE='true'`. Tests `TestResolveFeatureID_*`, `TestDeprecatedFeatureIntoOptions`. |
+| ✅ Hecho | **Dotfiles: orden, usuario, marker** (antes se instalaban **antes** de onCreate/postCreate y sin idempotencia). Ahora: (1) **orden** — corren después de `postCreateCommand` y antes de `postStartCommand`, vía un callback `AfterPostCreate` en `RunHooks`, como el TS; (2) **usuario** — corren como `remoteUser` (el executor ya usa `docker exec -u`); (3) **marker de idempotencia** — `$HOME/.devcontainer/.dotfilesMarker`, así reconexiones del editor (up repetidos) no re-clonan/re-ejecutan; (4) **secrets** — el executor ya lleva `mergedRemoteEnv` (incl. secrets) en el env. `internal/lifecycle/{hooks,dotfiles}.go`, `internal/cli/up.go`. | **E2E**: `up` con `--dotfiles-repository` → repo clonado como `vscode` (no root) tras postCreate; marker creado en `$HOME/.devcontainer/.dotfilesMarker`; 2do `up` skipea por marker. |
+| ✅ Hecho | **Lifecycle robusto** (3 majors). (1) **stderr de hooks al log**: `ShellServer.Exec` descartaba el stderr del comando (`drainUntilEOT`) → debugging ciego cuando un hook fallaba; ahora lo captura (`readSegment`) y lo emite al log, como el TS. (2) **Comandos array-form como argv**: `commandToString` aplanaba `["echo","hello world"]` con join simple → re-tokenización y expansión de variables vía shell; ahora **shell-quotea** cada arg (`shellQuote`) → semántica argv (sin re-tokenizar, sin expandir), como la spec/TS. (3) **userEnvProbe robusto**: usa el **shell de login del usuario** (`getent passwd`), no `bash` hardcodeado (alpine/zsh/fish caían a `env` plano); wrap con **`timeout 10`** (un `.bashrc` que lea stdin ya no cuelga `up` para siempre); borra `PWD`; sin `su` (el shell server ya corre como remoteUser vía `docker exec -u`); **merge de PATH** con el PATH base del container (`mergePaths`, inserta entradas faltantes, salta `/sbin` para non-root), como el TS. `internal/lifecycle/{shell,hooks,probe}.go`. | **E2E vs TS**: postCreate array-form `[\"bash\",\"-c\",\"...'ARG=[$HOME] one two'...\"]` → arg literal preservado idéntico; stderr del hook (`to-stderr`) visible en el log en ambos; `up` de **alpine** (sin bash) no cuelga y arranca. Tests `TestCommandToString_ArrayQuoted`. |
+| ✅ Hecho | **Majors runtime single-container** (5 divergencias de `docker run`). (1) **`overrideCommand:false`**: antes Go descartaba el CMD de la imagen (todo container quedaba en el sleep-loop → dind/DBs rotos); ahora, si `merged.OverrideCommand==false`, se appendan el `Entrypoint`+`Cmd` de la imagen al script keep-alive (el `exec \"$@\"` los corre), como TS. (2) **`appPort`**: antes sin PortBindings; ahora `appPort` (number|string|array) → `-p 127.0.0.1:N:N` (números) / verbatim (strings). (3) **`workspaceMount` custom**: antes Go siempre bindeaba el workspace-folder al default; ahora parsea el `WorkspaceMount` computado (honra custom + git-root source); `ParseMountSpec`/`CreateContainerArgs` soportan `consistency`. (4) **`--docker-compose-path`**: el flag estaba registrado pero `lookupString` era un stub que devolvía `""` siempre; ahora se cablea a un campo real y llega a `NewComposeClient`. (5) **`containerEnv` de imagen** (prebuilds): el single-container ahora aplica `merged.ContainerEnv` (imagen+config), no solo `cfg.ContainerEnv`. **Bug raíz**: `featureMetadataEntry` grababa el `containerEnv` del feature en el metadata label (p.ej. `PATH` con auto-referencia), que al re-aplicarse por `-e` rompía PATH — el TS lo **excluye** (`pickFeatureProperties` no incluye `containerEnv`; se hornea como ENV en el build). Quitado de la Entry del feature → el metadata label y `merged.ContainerEnv` matchean el TS y aplicar merged es seguro. `internal/cli/feature_install.go`, `internal/cli/up.go`, `internal/cli/helpers.go` (`appPortPublishArgs`), `internal/docker/runargs.go`. | **E2E vs TS**: appPort → PortBindings **idénticos**; `overrideCommand:false` (redis) → `Cmd` termina en `docker-entrypoint.sh redis-server`; `workspaceMount` custom → mount idéntico; **build metadata label sin PATH** (= TS) y `up` con feature java arranca con PATH correcto + containerEnv aplicado. Casos `up.app-port-success`, `up.override-command-false-success`, `up.workspace-mount-custom-success`, `up.image-metadata-container-env-success`. |
+| ✅ Hecho | **Tier 3 — `templates apply` extrae el tarball y aplica los archivos** (antes descargaba el blob y **nunca lo extraía** → `{"files":null}`, 0 archivos, exit 0). Ahora: (1) `pfs.ExtractTarGz` (gzip-or-plain, con guard de path-traversal) extrae el tarball; (2) se omiten siempre `devcontainer-template.json`/`README.md`/`NOTES.md` (+ `omitPaths`) como el TS; (3) se aplican los **defaults de opciones** desde `devcontainer-template.json` para las opciones no provistas (string/boolean) y se sustituye `${templateOption:x}`; (4) los paths se reportan como `./<rel>` con forward slashes, como el TS. `internal/templates/apply.go`, `internal/core/pfs/pfs.go`. | **E2E vs TS**: `templates apply docker-existing-docker-compose` → mismos archivos, `devcontainer.json` **byte-idéntico**; `typescript-node` (con opciones) → defaults aplicados, `devcontainer.json` idéntico. Nuevo caso de paridad `templates.apply-docker-existing-success`. |
+| ✅ Hecho | **Matriz de paridad runtime paralelizada (~26 min → ~5.5 min, ~4.6x)**. Antes el lane runtime corría secuencial (`t.Parallel()` solo en contract). Ahora cada caso corre en paralelo acotado por `go test -parallel N`, con aislamiento **por caso**: (1) los single-container ya usaban `--id-label parity.case=<id>-<side>` único; (2) los compose reciben un `COMPOSE_PROJECT_NAME` único por caso (`parityEnv`, mismo nombre en ambos lados porque ts/go corren secuencialmente dentro del caso — el cleanup diferido de ts corre antes de que arranque go); (3) los build cache/output usan un `BUILDX_BUILDER` único en vez de tocar el builder default global (`--use`). Se arreglaron 3 fuentes de colisión: `docker ps -ql` (último container global) → filtro por `parity.case`; buildx `--use` → `BUILDX_BUILDER`; project name derivado compartido → inyección. Casos que asertan un project name específico (`name:`, env-var, derivado) o el reuse hacen opt-out vía `no_compose_isolation`/`serial`. `internal/cli/parity_matrix_test.go`, `docs/migration/parity-matrix.yaml`. | **Matriz completa `PARITY_LANE=all -parallel 6`: `ok`, 0 FAIL, 339s** (antes ~1560s secuencial). Determinista tras cerrar las 3 colisiones (corridas repetidas verdes). |
+| ✅ Resuelto | **B16 (reintento previo diferido) — ahora cerrado**: el intento anterior (override runtime siempre creado + `AddLabel`) rompía el reuse (`db-1 is exited`) porque el reuse de Go no arrancaba la dependencia `db`. Cerrado al robustecer el reuse (up de proyecto completo + ruteo por `upFromCompose`) antes de agregar los labels — ver la fila **B16** arriba. | Ver B16 (fila ✅). |
+| ✅ Hecho | **Portabilidad Linux: `internal/lifecycle/terminal.go` no compilaba en Linux** (usaba `unix.TIOCGETA`/`TIOCSETA`, constantes ioctl solo-Darwin/BSD → `undefined` en Linux). Se extrajeron las requests ioctl a constantes por-plataforma (`ioctlReadTermios`/`ioctlWriteTermios`): `terminal_linux.go` (`TCGETS`/`TCSETS`) y `terminal_bsd.go` (`TIOCGETA`/`TIOCSETA`), patrón de `golang.org/x/term`. | `go build ./...` y `go test ./internal/...` **verdes en linux/amd64** (go 1.26). Antes: `[build failed]`. |
+
+**Matriz runtime completa en Linux (`PARITY_LANE=all`, 26 min).** Primera corrida autoritativa: **137 PASS / 9 SKIP / 9 FAIL**. Los 9 FAIL se resolvieron/clasificaron así:
+
+| Caso(s) runtime que fallaban | Causa | Estado |
+|---|---|---|
+| `up.update-uid-*` (4) | B17: updateRemoteUserUID no corría en path Dockerfile | ✅ arreglado (`68179cd`) — 4 pasan |
+| `up`/`build.image-metadata-container-env` (2) + `build.labels` (1) | containerEnv de feature con `${PATH}` inline single-quoted → PATH roto → exit 127 | ✅ arreglado (`2fff0d3`) — 3 pasan |
+| `up.dockerfile-without-features-omit-config-remote-env-from-metadata` (1) | fallo por cascada/caching en la corrida grande | ✅ pasa al re-correr aislado |
+| `up.compose-…-reuse-stopped-container-with-persisted-overrides` (1) | **no era bug de producto**: el `verify_cmd` comparaba el container ID corto (setup) contra el completo (post-up) con `test =` → siempre distinto. La feature de overrides persistidos **sí funciona**. | ✅ arreglado (test `test "${CONTAINER_ID#$ORIGINAL_CONTAINER_ID}" != ...`, prefix-match) — pasa |
+
+**Resultado: los 9 fallos runtime cerrados y verificados** (8 fixes de producto + 1 bug del harness de test). Ninguna feature de compose queda `missing` real: la de overrides persistidos pasa una vez corregido el oracle de verificación.
+
+**Corrida final de confirmación (`PARITY_LANE=all -parallel 6`, tras los fixes): `ok`, 0 FAIL, 339s** (~5.5 min). Los SKIP son los casos arm64 (estamos en amd64, cross-platform da infra error en TS). Sin regresiones y sin FAIL.
+
+**Estado de la red de tests (Linux, linux/amd64, docker accesible):** `go test ./internal/...` = **14/14 paquetes OK**. Lane contract verde. Lane runtime: **todos los casos efectivos verdes** en paralelo.
+
+**Blockers cerrados:** B1, B2, B4, B6, B7, B8 (+ B9 parcial). **Majors cerrados:** validación→stderr (26 casos), initializeCommand, exec --help, GPU detection, git root symlinks. **Minor:** BOM UTF-8.
+
+**Pendientes de Fase 1 (no tocados aún):**
+- **B3** — `dependsOn`/`installsAfter` transitivo (large, único trabajo grande).
+- **B5** — marker files (idempotencia de hooks entre reconexiones).
+- **B10–B14** — capa imagemeta (label lossy, merge customizations/init, mergedConfiguration, getImageBuildInfo sin container, pickUpdateableConfigProperties en reattach). Bloque `medium` transversal.
+- **B17** — `updateRemoteUserUID` en path compose (el de Dockerfile ya está). (B15/B16 cerrados.)
+- **B18** — push OCI con scope push (features/templates publish).
+- **`${devcontainerId}`** en toda la config — la función `SubstituteDevContainerID` existe pero cablearla sobre el struct tipado (containerEnv/remoteEnv/name/runArgs/hooks) es mayor que un one-liner; requiere un paso de sustitución que recorra los campos string de la config. **Diferido** para hacerlo con cuidado (riesgo de romper otras sustituciones).
+
+---
+
+## 1. Veredicto ejecutivo
+
+**El binario Go NO puede usarse hoy como reemplazo del CLI Node en producción.**
+
+La superficie CLI está esencialmente completa (10 comandos, flags con paridad de inventario,
+labels de identidad compatibles en ambas direcciones, `read-configuration` byte-idéntico en los 36
+fixtures del repo) y varios bugs listados en PROGRESS.md ya no se reproducen. Pero la auditoría
+encontró **18 blockers deduplicados**, concentrados en cuatro zonas: features, manejo de errores
+silencioso, exec, y metadata de imagen. El patrón más peligroso es transversal: **el binario Go
+falla en silencio** (outcome `success` / exit 0) donde el TS falla explícito — features
+irresolubles, lifecycle hooks fallidos, initializeCommand fallido, templates que no se aplican,
+publishes que no publican.
+
+### Escenarios donde SÍ sirve hoy
+
+- Uso interactivo humano con configs single-container basados en `image` o `Dockerfile`
+  **sin features** (o con features sin opciones y sin dependencias), en macOS.
+- `read-configuration` simple (sin `--include-merged-configuration`).
+- `up`/`exec`/`build` manuales donde el usuario verifica el resultado a ojo y no depende
+  de exit codes, del cwd de exec ni del stream de logs.
+
+### Escenarios donde NO sirve
+
+- **Cualquier config con features con opciones**: las opciones nunca llegan a `install.sh`
+  (imágenes silenciosamente incorrectas o builds rotos — es la causa de los 2 fallos actuales de
+  `cli.up.test.ts`).
+- **CI / consumidores programáticos** (extensión VS Code incluida): exit 0 con hooks/features
+  fallidos, `exec --log-format json` con stdin pipe falla, sin eventos start/stop, secrets sin
+  enmascarar en logs.
+- **Compose más allá del happy path**: containers sin labels `devcontainer.*`, `exec` no encuentra
+  los containers que el propio `up` creó, `--remove-existing-container` no-op.
+- **Prebuilds / interop con imágenes existentes**: el label `devcontainer.metadata` que escribe y
+  lee el Go es incompatible (pierde metadata de la base, merge incorrecto).
+- **Linux con `remoteUser`** en el path Dockerfile (sin remap de UID → permisos rotos en bind mounts).
+- **`templates apply/publish` y `features publish/test`**: funcionalmente rotos o peligrosos
+  (sobrescritura de tags en registries, exit 0 con fallos).
+
+---
+
+## 2. Blockers
+
+| # | Blocker | Evidencia (Go ⟷ TS) | fix_scope |
+|---|---------|---------------------|-----------|
+| B1 | **Opciones de features y `_REMOTE_USER`/`_CONTAINER_USER` nunca llegan a `install.sh`**: `RUN K='v' chmod +x … && install.sh` — en POSIX sh las asignaciones inline solo aplican a `chmod`. Features con validación (git, java) rompen el build; el resto instala con opciones vacías en silencio. | `internal/imagemeta/extend.go:84-88` y `:156-160` ⟷ `src/spec-configuration/containerFeaturesConfiguration.ts:253-281` (env-file + wrapper con `set -a`) | small |
+| B2 | **Features que fallan al resolverse (404, auth, typo, path local inexistente) se saltan con warning y `up`/`build` terminan `success`/exit 0** — imágenes silenciosamente incompletas. TS: `outcome error`/exit 1. | `internal/cli/feature_install.go:96-196` (4 rutas `continue`) ⟷ `src/spec-configuration/containerFeaturesOrder.ts:360` | small |
+| B3 | **`dependsOn` no se resuelve ni instala transitivo; `installsAfter` nunca genera aristas**: el orden de instalación es lexicográfico. Casi todos los features oficiales declaran `installsAfter`. | `internal/cli/feature_install.go:163-170,275-311` (FNodes con aristas vacías) ⟷ `src/spec-configuration/containerFeaturesOrder.ts:414-467` | large |
+| B4 | **Fallo de lifecycle hooks (postCreate, etc.) no falla `up`**: warning + `{"outcome":"success"}` exit 0. TS emite `outcome error` + description + exit 1. | `internal/cli/up.go:1332-1339,344-353` ⟷ `src/spec-common/injectHeadless.ts:529-535` | small |
+| B5 | **No hay marker files**: cada `up` sobre un container existente re-ejecuta onCreate/updateContent/postCreate/postStart. Hooks no idempotentes se corrompen en cada reconexión del editor. | `internal/lifecycle/hooks.go` (sin markers), `up.go:344-346` ⟷ `src/spec-common/injectHeadless.ts:427-446` | medium |
+| B6 | **Los hooks corren como el usuario default del container, no como `remoteUser`**: el ShellServer lanza `docker exec` sin `-u`. Con imágenes estándar (`remoteUser` desde metadata) o compose, postCreate crea archivos owned por root. | `internal/lifecycle/shell.go:37-41` ⟷ `src/spec-node/utils.ts:428-431` + `dockerUtils.ts:363-365` | small |
+| B7 | **Secrets (`--secrets-file`) sin enmascarar en logs**: el valor aparece en claro en el output de `up`. TS reemplaza por `********`. Regresión de seguridad silenciosa. | grep `mask` en `internal/` = 0 ⟷ `src/spec-node/devContainers.ts:270-278`, `src/spec-utils/log.ts:290` | small |
+| B8 | **`exec` no fija el working directory** (`docker exec` sin `-w`): los comandos corren en el WORKDIR de la imagen en vez del workspace. Todo `devcontainer exec npm test`-style corre en el directorio equivocado en silencio. | `internal/cli/exec.go:249-288` ⟷ `src/spec-node/devContainersSpecCLI.ts:1367-1369` | small |
+| B9 | **`exec --log-format json` con stdin no-TTY falla** ("cannot attach stdin to a TTY-enabled container"): agrega `-it` sin PTY. Es exactamente la forma en que invoca la extensión de VS Code. `ExecWithPTY` (creack/pty) existe pero es código muerto sin callers. | `internal/cli/exec.go:252-257`, `internal/lifecycle/pty.go:19` (0 callers) ⟷ `devContainersSpecCLI.ts:1293` (node-pty) | medium |
+| B10 | **El label `devcontainer.metadata` es lossy en escritura y lectura**: `build` escribe 1 sola entrada (descarta metadata de la imagen base), omite `forwardPorts`/`portsAttributes`/`shutdownAction`/`hostRequirements` y añade la clave no-spec `image`; el struct `Entry` no declara esos campos, así que también se destruyen al re-serializar labels de imágenes TS. Rompe round-trip TS↔Go y consumidores (VS Code, Codespaces). | `internal/imagemeta/metadata.go:14-39`, `internal/cli/read_configuration.go:290-329`, `build.go:436-438` ⟷ `src/spec-node/imageMetadata.ts:16-95,290-315` | medium |
+| B11 | **Semántica de merge incorrecta**: `customizations` last-wins como objeto plano (TS: arrays de entradas por clave — se pierden todas las extensiones/settings de features y cambia el shape del JSON) e `init`/`privileged` last-wins en vez de OR (el container arranca sin tini aunque una feature lo requiera; afecta `docker run` real vía `up.go:1136-1147`). | `internal/imagemeta/merge.go:87-124` ⟷ `src/spec-node/imageMetadata.ts:157-173` | small |
+| B12 | **El JSON de `read-configuration` es lossy**: `configuration` pierde propiedades desconocidas/vendor y colecciones vacías (struct tipado con `omitempty` en vez del raw JSON), y `mergedConfiguration` pierde `build`, `dockerComposeFile`, `service`, `workspaceFolder`, `hostRequirements` (incluso seteados explícitamente), `remoteEnv`, `shutdownAction`. | `internal/config/types.go:10-65`, `internal/cli/read_configuration.go:135`, `internal/imagemeta/merge.go:5-31` ⟷ `src/spec-node/imageMetadata.ts:167-196`, `devContainersSpecCLI.ts:1088` | medium |
+| B13 | **`--include-merged-configuration` sin container ignora la metadata de la imagen y de features**: no existe equivalente de `getImageBuildInfo`. VS Code llama esto antes de crear el container y pierde remoteUser/lifecycle/customizations/capAdd de imagen+features. | `internal/cli/read_configuration.go:233-255` ⟷ `devContainersSpecCLI.ts:1081-1082`, `imageMetadata.ts:382-392` | medium |
+| B14 | **En reattach a un container existente, Go aplica el config completo en vez de solo las props actualizables** (`remoteUser`/`userEnvProbe`/`remoteEnv`): hooks duplicados (postAttach corre 2 veces por `up`, verificado en vivo) y merged config que miente sobre el estado real del container. | `internal/cli/read_configuration.go:249-253`, `up.go:620` (sin `pickUpdateableConfigProperties`) ⟷ `imageMetadata.ts:420-441` | medium |
+| B15 | **`exec` no encuentra containers compose**: project name hardcodeado a `<basename>_devcontainer` (ignora `.env`, `name:` y el layout real), mientras el `up` del mismo binario resuelve la cadena completa. Round-trip `up`→`exec` roto con compose file fuera de `.devcontainer/`. | `internal/cli/exec.go:333-337` ⟷ `src/spec-node/dockerCompose.ts:650-694` | medium |
+| B16 | **Containers compose creados por Go no llevan labels `devcontainer.*` ni `--id-label`**: ni `local_folder`, ni `config_file`, ni `metadata`, ni los custom (aceptados y descartados). Rompe discovery (VS Code/TS), `run-user-commands`, reutilización e interop. | `internal/docker/composeoverride.go:17-29` (sin campo labels), `up.go:1045-1197` ⟷ `dockerCompose.ts:411,577-579` | medium |
+| B17 | **`updateRemoteUserUID` no se ejecuta en el path Dockerfile de `up`** (el caso más común): en Linux, containers con `remoteUser` no pueden escribir el workspace bind-mounted. Solo `upFromImage` lo llama. | `internal/cli/up.go:473-556` (sin llamada) vs `up.go:598` ⟷ `src/spec-node/singleContainer.ts:49` | small |
+| B18 | **El push OCI (`features`/`templates publish`) no negocia autenticación**: usa un token cacheado con scope pull; no existe code path que obtenga scope push → publish falla determinísticamente contra ghcr/ACR/Hub. | `internal/oci/push.go:112-194` ⟷ `src/spec-configuration/httpOCIRegistry.ts:39-134` | small |
+
+Nota: 10 de 18 blockers tienen `fix_scope: small` — la mayor parte del camino a "reemplazo diario"
+es plumbing acotado, no rediseño. El único `large` es B3 (grafo de dependencias de features).
+
+---
+
+## 3. Majors (agrupados, deduplicados)
+
+### Manejo de errores y contrato de salida
+- **Errores de validación de flags van a stdout como JSON envelope; TS imprime usage en stderr con
+  stdout vacío** — es la causa de los **26 subtests rojos de `TestParityMatrix` hoy** (up/set-up/
+  run-user-commands) que la matriz sigue marcando `match`. `internal/cli/up.go:130-163`,
+  `build.go:514-526` ⟷ yargs. (small)
+- Fallo de `initializeCommand` se ignora (warning + success/exit 0); TS aborta con description
+  exacta. `internal/cli/up.go:246-251` ⟷ `src/spec-node/utils.ts:533-540`. (small)
+- Error envelope: Go duplica el error completo en `message` y `description`; TS usa description
+  estable + message corto. `internal/core/errors/errors.go:65-68`. (small)
+
+### Logging / contrato con la extensión de VS Code
+- Stream JSON sin eventos `start`/`stop` ni banner de versión (~8 eventos vs ~105 en el mismo `up`);
+  los `Run:` salen como `text` level 1. Los tipos existen en el logger pero nadie los emite.
+  `internal/core/log/log.go:161-181` (0 callers). (medium)
+- `--log-level` no filtra nada: `defaultLevel` se asigna y nunca se consulta (`log.go:132,218`);
+  eventos trace salen con `--log-level info` en todos los comandos. (small)
+- `--terminal-columns/rows` aceptados pero write-only (`GetDimensions` sin callers); los lifecycle
+  hooks corren sin PTY. (medium)
+- Modo texto: siempre `[N ms]` relativo sin banner ni colores; TS usa ISO-8601 cuando stdout es pipe. (small)
+- `--version` imprime `devcontainer version dev` (template cobra + build local sin `VERSION`); TS
+  imprime `0.74.0` pelado; subcomandos rechazan `--version`. `internal/cli/root.go:30`. (small)
+- `exec --help` falla con exit 1 ("exec requires at least 1 arg") en vez de mostrar la ayuda.
+  `internal/cli/exec.go:42,66-68`. (small)
+
+### Config y sustitución de variables
+- Git root con `--show-toplevel` canonicaliza symlinks (macOS `/tmp`→`/private/tmp`): produce
+  `workspaceFolder` corrupto (`/workspaces/x/../../..`) y mounts distintos. TS usa `--show-cdup`
+  deliberadamente. `internal/config/loader.go:241-275` ⟷ `src/spec-common/git.ts:20-29`. (small)
+- `${devcontainerId}` solo se sustituye en mounts/volumes; TS lo sustituye en toda la config
+  (containerEnv/remoteEnv/name/runArgs/hooks). `config.SubstituteDevContainerID` existe con 0
+  call sites. `internal/config/varsub.go:46`. (small)
+- Parser JSONC estricto (hujson): rechaza BOM UTF-8 (típico de editores Windows) que el CLI Node
+  acepta. `internal/core/jsonc/jsonc.go:10-16`. (small, strip BOM)
+- `--override-config` sin config local: `configFilePath` apunta al override en vez del path default
+  del workspace → paths relativos (dockerfile/context) resuelven contra el directorio equivocado
+  (repro: build que TS logra y Go falla). `internal/config/loader.go:113-159`. (small)
+
+### Features
+- `overrideFeatureInstallOrder` ignorado en build/up (se pasa `nil`; el algoritmo existe y solo lo
+  usa `features resolve-dependencies`). `internal/cli/feature_install.go:311`. (small)
+- `--experimental-lockfile`/`--experimental-frozen-lockfile` son no-ops en up/build: el lockfile no
+  se lee (sin pinning), no se escribe, y frozen pasa exit 0 sin validar (supply-chain en CI).
+  `internal/cli/up.go:56-57,118-119`, `build.go:71-77`. (medium)
+- Features por tarball directo (`https://…tgz`) clasificados pero sin handler → skip silencioso.
+  `internal/features/resolve.go:22`, `feature_install.go:77-183`. (medium)
+- Auto-mapping legacy divergente: sin pin `:1` (instala latest → major distinto),
+  gradle/maven/jupyterlab sin `installGradle/…: true`, falta `aws-cli`, `docker-from-docker` mapea
+  a otro feature. `internal/features/resolve.go:44-77`. (small)
+
+### Docker build/run (single container)
+- GPU: `docker info -f '{{.Runtimes.nvidia}}'` devuelve `<no value>` (no vacío) → siempre detecta
+  GPU; y `"gpu": false`/`"optional"` activan `--gpus all` → `up` falla en hosts sin nvidia y deja
+  un container huérfano. `internal/cli/helpers.go:135-145`, `up.go:680-685`. (small)
+- `--docker-path` ignorado por todas las operaciones de engine (list/inspect/start/rm/pull van por
+  SDK); `--docker-compose-path` es un stub que devuelve `""` siempre. Rompe podman/wrappers.
+  `internal/docker/engine.go:52-84`, `up.go:1240-1245`. (medium)
+- `overrideCommand: false` ignorado: el entrypoint/CMD de la imagen nunca corre (docker:dind, DBs
+  quedan en sleep-loop). `internal/docker/runargs.go:97-103`. (small)
+- `appPort` ignorado: sin `PortBindings`. Única referencia: `internal/config/types.go:17`. (small)
+- `workspaceMount` custom (volume) y mount del git root ignorados: `runContainer` siempre hace bind
+  del workspace-folder. `internal/cli/up.go:651-655` vs `loader.go:228-262`. (small)
+- `updateRemoteUserUID` divergente cuando sí corre: `IMAGE_USER=remoteUser` cambia el USER final de
+  la imagen, corre en macOS (TS solo Linux), ignora `never` y el remoteUser de metadata.
+  `internal/docker/updateuid.go:37-49`. (medium)
+- Containers image-based sin el label `devcontainer.metadata` (TS lo agrega con `-l`); attach de
+  herramientas externas pierde metadata. `up.go:687-700`. (small)
+- `build.cacheFrom` del devcontainer.json nunca se usa (solo el flag CLI); `--pull` bajo
+  `--no-cache` solo con buildx. `internal/config/types.go:73` (0 lecturas). (small)
+- `containerEnv` de la metadata de imagen no se aplica al container (solo el del config; el path
+  compose sí usa el merged) — rompe prebuilds. `up.go:646`. (small)
+
+### Compose
+- `compose build` sin `--project-name`: imagen construida bajo el project default + rebuild
+  implícito en `up` (doble build + imagen huérfana en cada up frío). `internal/docker/compose.go:115-132`,
+  `up.go:1023,1204` (el subcomando `build` sí lo pasa). (small)
+- `--remove-existing-container` no-op para compose (upFromCompose nunca lee el flag; hace
+  `up --no-recreate` y devuelve el mismo container). `up.go:816-825,1216`. (small)
+- `overrideCommand` ignorado y entrypoint keep-alive solo con features; `Command=[]` se pierde por
+  `omitempty` → con `overrideCommand:true` sin command el container muere con outcome success.
+  `up.go:1107-1145`, `composeoverride.go:21`. (medium)
+- Sin `updateRemoteUserUID` en el flujo compose (permisos rotos en Linux). (small)
+- `compose config` sin `--profile '*'` ni validación de servicio: servicios con `profiles:` +
+  build/features se tratan como image-only; `build` reporta success con imagen inexistente (falso
+  éxito en CI). `internal/docker/compose.go:93-112`, `up.go:828-855`. (small)
+- Overrides no restaurados desde el label `config_files`; sin `--user-data-folder` se generan en
+  tmpdir borrado al salir → el label apunta a archivos muertos (rompe `docker compose` externo);
+  sin `cache_from` compose. `up.go:992-1115`. (medium)
+- Feature injection escribe `Dockerfile-with-features` y `_dev_container_feature_N/` **dentro del
+  build context del usuario**: contamina el working tree y la imagen construida (verificado:
+  `COPY . /app` hornea los artefactos). TS usa carpeta temporal + additional_contexts.
+  `up.go:968-988`. (medium)
+
+### Lifecycle / probe / dotfiles
+- Comandos array-form se aplanan a string sin quoting y corren vía shell: re-tokenización, pérdida
+  de redirecciones literales, inyección accidental (spec: array = sin shell).
+  `internal/lifecycle/hooks.go:210-248`. (small)
+- Output de hooks no en vivo y **stderr de los hooks descartado por completo**
+  (`drainUntilEOT(s.stderr)`) — debugging ciego justo cuando un hook falla.
+  `internal/lifecycle/shell.go:93,216-222`. (medium)
+- userEnvProbe: `bash` hardcodeado (alpine/zsh/fish caen a `env` plano), sin timeout (un `.bashrc`
+  que lea stdin cuelga `up` para siempre), sin merge de PATH, `PWD` no eliminado, `su -c` en vez de
+  `docker exec -u`, parsing por líneas frágil. `internal/lifecycle/probe.go:41-146`. (medium)
+- Dotfiles se instalan **antes** de onCreate/postCreate (TS: después de postCreate) y como root;
+  sin marker de idempotencia ni secrets. `up.go:1324-1330`. (medium)
+- `waitFor: initializeCommand` nunca matchea (fase ausente del loop) y `cfg.WaitFor` no se propaga:
+  `--skip-non-blocking-commands` ejecuta TODO. `internal/lifecycle/hooks.go:88-101`. (small)
+
+### Templates y publish (área completa por debajo del claim "completada")
+- `templates apply` funcionalmente roto: descarga el tarball y **nunca lo extrae** (0 archivos,
+  `{"files":null}`, exit 0); además no aplica defaults de opciones del metadata, deja
+  `${templateOption:x}` literal, no omite `devcontainer-template.json`/README/NOTES, y el merge de
+  features rompe con JSONC comentado y destruye el formato. `internal/templates/apply.go:63-203`. (small+medium)
+- `templates/features publish`: no publica el collection metadata (`devcontainer-collection.json` se
+  escribe en un tmpdir que se borra) → colecciones invisibles para containers.dev; **sobrescribe
+  versiones existentes y mueve `latest`/major hacia atrás** sin guardas semver; exit 0 aunque
+  fallen todos los pushes; sin `sourceInformation`; layer title `devcontainer-feature-*.tgz` incluso
+  para templates; single-template publica 0 items con exit 0; packaging sin enriquecimiento
+  (`type`/`files`/`fileCount`/`featureIds`) ni validación de id/version/name.
+  `internal/cli/collection_commands.go:252-410`, `internal/oci/push.go:66,209-222`. (medium)
+- `features test`: `--skip-duplicated` se ignora (los duplicate tests no existen), y el cleanup
+  filtra por un label (`devcontainer.is_test_run`) que nunca se aplica → leak de containers en cada
+  corrida. `internal/cli/features_test_runner.go:79,312-360`. (medium)
+- Mounts del merge sin dedup por target: feature + config al mismo target → `Duplicate mount point`
+  en docker create; forwardPorts sin normalizar. `internal/imagemeta/merge.go:77-78`. (small)
+
+### Verificación (estado de la red de tests)
+- **26 casos contract de la matriz están rojos hoy** aunque figuran `current_status: match`
+  (ver arriba); los `current_status` no se re-verifican tras cambios.
+- **93/155 casos runtime (60%) son opt-in** (`PARITY_LANE`) y CI nunca los corre; peor: CI ejecuta
+  `task test` sin compilar TS, así que `TestParityMatrix` se salta COMPLETO en CI.
+- Cero casos de paridad y cero tests para: `features test/package/publish`, `templates *`,
+  `outdated`, `upgrade` (los comandos destructivos contra registries — el área más ciega).
+- `internal/oci/auth.go` (0% coverage), `upFromCompose`/`finishUp`/`runLifecycleForUp` (0%),
+  `lifecycle/initialize.go`, `docker/updateuid.go`, `runargs.go` sin tests.
+- Suites TS aún sin corrida registrada contra el binario Go: `cli.exec.*`, `container-features/e2e`,
+  `lifecycleHooks` (la primera suite no verificada que se corrió — dotfiles — destapó B1).
+
+---
+
+## 4. Minors (resumen)
+
+Divergencias reales pero de edge case o con workaround trivial (~28, deduplicadas):
+
+- **CLI**: `--omit-syntax-directive` no-op (aunque el default Go ya cumple su propósito);
+  `--workspace-mount-consistency` sin validación de enum ni efecto (se descarta al serializar el
+  mount); `outdated` texto imprime "No features configured." en vez del header de tabla; errores de
+  parseo a stdout-JSON (formato coherente con el envelope de runtime).
+- **Config/varsub**: `devcontainerId` diverge si los id-labels contienen `&<>` (HTML-escaping de
+  `encoding/json`); default de `${localEnv:V:a:b}` conserva todo tras el primer `:` (TS trunca);
+  `${localEnv}` sin nombre no falla; variables dentro de `settings`/`extensions` legacy sin
+  sustituir tras la migración; trailing slash de `--workspace-folder` se filtra al mount y al
+  id-label; `.code-workspace` aceptado (TS crashea).
+- **Templates**: `generate-docs` con estructura distinta y orden no determinista (map iteration);
+  `templates metadata` reordena claves alfabéticamente (contenido idéntico).
+- **Compose**: `.env` para `COMPOSE_PROJECT_NAME` leído desde el dir del config (solo diverge en
+  layouts atípicos); `hostRequirements.gpu` sin override `deploy.resources`; `--docker-compose-path`
+  stub (solo relevante en entornos v1-only).
+- **Lifecycle/exec**: precedencia de `--remote-env` invertida (el flag pisa al config); ruido
+  "Probing remote env…" en stderr de cada exec.
+- **OCI**: retry del token ACR reusa un body consumido (mensaje de error confuso); credential
+  helper default Linux `secretservice` vs `secret` (Go es de hecho más correcto).
+- **Runtime**: JSON malformado rechazado (TS lo recupera best-effort — discutible cuál es correcto);
+  `read-configuration --include-merged-configuration` con imagen no resoluble exit 0 vs 1;
+  naming de `dstFolder`/`cachePath` distinto (y el tmpdir se borra antes de retornar);
+  logs stderr `[N ms]` vs ISO + banner.
+- **ENV de features**: claves ordenadas alfabéticamente + quoting `%q` (semántica igual en el caso
+  común; edge con `${X}` cross-referenciado).
+- **Docs**: coverage <80% en 9 paquetes (templates 7.3%, oci 22.1%, lifecycle 35.1%); PROGRESS.md
+  internamente inconsistente; Windows compilado pero jamás validado (pty.go es código muerto).
+
+---
+
+## 5. Use cases no contemplados / sin cobertura de test
+
+| Área | Estado |
+|------|--------|
+| Features con `dependsOn`/`installsAfter`/`overrideFeatureInstallOrder` | Sin implementar en el path real (B3) y sin tests de escenarios OCI (TS: 29.3K de tests de orden; Go: grafos sintéticos básicos) |
+| Features legacy v1 / GitHub Releases (`github-repo`) | No existe la ruta; configs antiguas fallan en silencio (via B2) |
+| Features por tarball directo | Clasificado, sin handler |
+| Lockfile (pinning, frozen, integrity en fetch) | Primitivas implementadas, cero cableado en up/build |
+| Feature advisories y disallowed features | Implementados (`internal/features/advisory.go`), nunca invocados |
+| `templates apply/publish`, `features test/package/publish`, `outdated`, `upgrade` | Cero casos de paridad, cero E2E, cero unit tests dedicados; el primer smoke (`features package`) ya muestra tgz estructuralmente incompatibles y falta `sourceInformation` |
+| Auth OCI enterprise (ACR/ECR) y todo el path de push | `internal/oci/auth.go` 0% coverage; los tests contra registries reales que PRD-000 §8.4 exigía no existen |
+| Compose `up` completo | `upFromCompose` (~500 líneas) 0% coverage; único caso `missing` de la matriz es justo el de overrides persistidos |
+| WSL / Windows | Sin soporte real ni validación; spike ConPTY nunca hecho; limitación no documentada |
+| Golden tests (gate maestro de PRD-000 §4.1) | Snapshots jamás capturados; el harness ni corre en bash 3.2 de macOS; ningún workflow lo invoca |
+| Lane runtime de la matriz en CI | Opt-in, nunca cableada; CI actual ni siquiera ejecuta la lane contract (falta `dist/`) |
+
+---
+
+## 6. Claims de PROGRESS.md que no se sostienen
+
+| Claim (PROGRESS.md) | Realidad verificada |
+|---|---|
+| "Beta release — parity achieved, ready to ship" (:24) | 18 blockers confirmados; el gate de aceptación maestro nunca corrió; la propia suite de paridad del repo falla hoy (26 rojos) |
+| "100% PARITY: 36/36 fixtures match" (:120) | Cierto pero cubre **solo** `read-configuration` (compare-parity.sh normaliza configFilePath/nulls). build/up/exec/features/templates nunca pasaron por golden comparison |
+| parity-matrix.yaml: 154/155 `current_status: match` | Re-ejecutado hoy: 26 casos contract FAIL; 93 runtime skipped por defecto (estado no verificable); CI nunca ejecuta la matriz |
+| "[x] Golden test harness" + criterio PRD-000 §4.1 | El harness existe pero los snapshots jamás se capturaron (`docs/migration/golden-snapshots/` no existe; .gitignore además lo ignora) |
+| E8 "PTY via creack/pty + raw terminal + SIGWINCH" completado | `ExecWithPTY` tiene 0 callers en todo el repo; `exec` pasa `-it` sin PTY y falla con stdin pipe (B9) |
+| "Zero stubs" | Literalmente cierto (sin TODOs/panics), pero hay stubs semánticos: `lookupString` devuelve `""` siempre (`--docker-compose-path`), flags lockfile/omit-syntax bindeados sin lecturas, advisories/`SubstituteDevContainerID`/`ExecWithPTY`/`CollectionLayerMediaType` implementados sin callers |
+| Spikes OCI (oras-go) y Dockerfile "pendiente" con decisiones "pendiente" | Decisiones tomadas de facto por otra vía: cliente OCI hecho a mano (sin oras-go en go.mod, 22.1% coverage), parser Dockerfile regex portado con tests. El registro nunca se actualizó |
+| "CI workflow: pendiente" / "Branch: go-rewrite (pendiente de crear)" | Desactualizado en sentido inverso: `.github/workflows/go-cli.yml` existe con 5 jobs; el branch existe y es el actual |
+| Bugs conocidos (2026-04-12): composeProjectName, containerEnv con `--container-id` | **Ya corregidos** y verificados en vivo. También desactualizado a favor: cli.test pasa 7/7 (decía 4/7) y cli.up 17/19 (decía 7/18) — los 2 fallos restantes son B1 |
+| "features test/publish WIP internals" pero E10 "completado" | features test: flag ignorado + leak de containers; publish: sin collection metadata, exit 0 con fallos, retag incondicional (B18 + majors) |
+| Objetivo PRD-000 §8.1 ">=80% coverage por paquete" | Solo 4 paquetes cumplen; templates 7.3%, oci 22.1%, lifecycle 35.1% — justo los de mayor riesgo |
+
+**Conclusión sobre PROGRESS.md**: no sirve como artefacto de decisión sin re-verificación; está
+desactualizado en ambas direcciones (peor en paridad real, mejor en CI y en varios bugs ya
+corregidos).
+
+---
+
+## 7. Plan de acción
+
+### Fase 1 — llegar a "reemplazo diario" (up/build/exec/read-configuration confiables)
+
+Ordenado por impacto/esfuerzo. Los pasos 1–4 son casi todos `fix_scope: small` y eliminan los
+fallos silenciosos.
+
+1. **Features correctas** (rompe casi todo config real hoy):
+   - B1: wrapper env-file o `sh -c` en `internal/imagemeta/extend.go:84,156` (small) — desbloquea
+     además los 2 fallos de `cli.up.test.ts`.
+   - B2: convertir los 4 `continue` de `fetchFeatureSets` en errores con mensaje TS-compatible (small).
+   - overrideFeatureInstallOrder cableado (small) + sanitización `getSafeId` de nombres de opciones (small).
+2. **Errores dejan de ser silenciosos**:
+   - B4: propagar `hookErr` → envelope `{"outcome":"error","description":"<fase> from devcontainer.json failed."}` + exit 1 (small).
+   - initializeCommand fallido → abort (small). Errores de validación de flags → stderr+usage
+     (small; pone en verde los 26 casos contract).
+3. **exec usable por tooling**:
+   - B8: `-w <remoteWorkspaceFolder>` (small). B6: `-u <remoteUser>` en el ShellServer (~4 call
+     sites, small; arregla también hooks y probe). B9: cablear `ExecWithPTY` + output como eventos
+     `raw` en modo json (medium). `exec --help` (small).
+4. **Seguridad y semántica de hooks**:
+   - B7: masking de secrets en el logger (small). B5: marker files (medium). B14:
+     `pickUpdateableConfigProperties` en reattach (medium; elimina hooks duplicados).
+   - Array-form como argv/quoted (small); stderr de hooks al log (medium).
+5. **Capa imagemeta completa** (el bloque medium más transversal — B10, B11, B12, B13):
+   - Añadir portsAttributes/otherPortsAttributes/shutdownAction/hostRequirements a `Entry` y
+     `MergedConfig`; customizations como `map[string][]interface{}`; init/privileged OR; dedup de
+     mounts; quitar la clave `image`; label con base metadata + pick de 24 props; `configuration`
+     desde el raw JSON; `getImageBuildInfo` equivalente para merged sin container.
+6. **Single-container runtime**: B17 updateUID en path Dockerfile (small) + GPU detection (small) +
+   workspaceMount custom (small) + overrideCommand:false (small) + appPort (small) + containerEnv
+   merged (small) + git root `--show-cdup` (small).
+7. **Compose mínimo viable**: labels devcontainer.* en el override + resolución de project name
+   compartida up/exec (B15+B16, medium) + `--project-name` en build (small) +
+   `--remove-existing-container` (small) + `--profile '*'` y validación de servicio (small).
+8. **B3 dependsOn/installsAfter** (large — el único trabajo grande de la fase; portar
+   `_buildDependencyGraph` con fetch transitivo).
+9. **Verificación en verde y creíble**: matriz contract 0 rojos, lane runtime cableada a CI (con
+   `dist/` compilado), correr `cli.exec.*`/`e2e`/`lifecycleHooks` contra el binario Go, re-generar
+   `current_status`, actualizar PROGRESS.md.
+
+**Criterio de salida Fase 1**: suites TS core (cli, cli.up, cli.build, cli.exec.*, cli.set-up,
+lifecycleHooks) 100% contra el binario Go + matriz completa (contract + runtime) en verde en CI.
+
+### Fase 2 — llegar a "release"
+
+1. **Publish seguro** (hoy es peligroso, no solo incompleto): B18 auth con scope push, guardas
+   semver (`getSemanticTags`), skip de versiones existentes, collection metadata, exit != 0 en
+   fallos, layer title por tipo, single-template, packaging enriquecido + validación. Añadir lane de
+   paridad con registry local + tests contra ghcr/ACR reales (PRD-000 §8.4).
+2. **Templates**: extracción del tarball, defaults de metadata, omits automáticos, merge JSONC
+   text-preserving, generate-docs determinista.
+3. **Lockfile end-to-end** (pinning + frozen + write) y features por tarball directo; auto-mapping
+   legacy con pin `:1`; advisories/disallowed cableados.
+4. **Contrato de logging**: eventos start/stop + banner + filtro por `--log-level` + handler ISO
+   para pipes + `--terminal-columns/rows` en PTY; `--version` con ldflags y formato semver pelado.
+5. **Compose fidelidad**: overrides persistidos/restaurados desde `config_files`, build fuera del
+   context del usuario (additional_contexts), updateUID, overrideCommand, cache_from, GPU deploy.
+6. **userEnvProbe robusto** (shell real del usuario, timeout 10s, merge PATH) y dotfiles (orden,
+   usuario, marker).
+7. **Cobertura**: subir oci/lifecycle/templates/docker a >=80%; portar los escenarios densos de
+   imageMetadata/containerFeaturesOrder/featureHelpers; golden harness ejecutado o formalmente
+   reemplazado por la matriz (actualizar PRD-000 §4.1).
+8. **Plataformas**: validar o documentar limitaciones de Windows (ConPTY) y WSL; `--docker-path`/
+   `--docker-compose-path` reales (podman).
+9. **Higiene**: borrar código muerto engañoso (pty.go sin callers, lookupString stub) o cablearlo;
+   PROGRESS.md reescrito como registro veraz con fecha y comando de verificación por claim.
+
+---
+
+*Generado por la auditoría multi-agente del 2026-07-09. Cada hallazgo tiene verificación
+adversarial registrada (código en ambos repos + ejecución en vivo). Binarios usados:
+`./devcontainer` / `./devcontainer-go` (Go, compilado desde HEAD de `go-rewrite`) y
+`node dist/spec-node/devContainersSpecCLI.js` (TS v0.74.0).*

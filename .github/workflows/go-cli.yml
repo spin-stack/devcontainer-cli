@@ -1,0 +1,103 @@
+name: Go CLI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task lint
+      - run: task test
+      - run: task build
+      - run: ./devcontainer --version
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task test:e2e
+      - if: always()
+        run: task docker:clean
+
+  # Hermetic parity gate: read-configuration golden comparison + the contract
+  # lane of the parity matrix (flag validation / output contract, no Docker).
+  parity:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task ts:install
+      - run: task parity
+      - run: task parity:matrix:contract
+
+  # Runtime lane of the parity matrix (creates real containers via Docker).
+  # ubuntu-latest ships with Docker preinstalled.
+  parity-runtime:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task ts:install
+      - run: task parity:matrix:runtime
+      - if: always()
+        run: task docker:clean
+
+
+  cross-compile:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - run: task build:cross
+      - run: ls -lh dist/

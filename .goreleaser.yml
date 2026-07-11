@@ -1,0 +1,73 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: devcontainer
+    main: ./cmd/devcontainer
+    binary: devcontainer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/devcontainers/cli/internal/core/product.version={{.Version}}
+      - -X github.com/devcontainers/cli/internal/core/product.name=devcontainer
+
+archives:
+  - id: default
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "devcontainer_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^Update PROGRESS"
+
+release:
+  github:
+    owner: devcontainers
+    name: cli
+  draft: true
+  prerelease: auto
+  name_template: "Go CLI v{{.Version}}"
+  header: |
+    ## Dev Container CLI (Go)
+
+    This is the Go rewrite of the @devcontainers/cli.
+
+    ### Installation
+
+    Download the binary for your platform and add it to your PATH:
+
+    ```bash
+    # Linux amd64
+    curl -Lo devcontainer https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_amd64.tar.gz
+    tar xzf devcontainer_{{.Version}}_linux_amd64.tar.gz
+    chmod +x devcontainer
+    sudo mv devcontainer /usr/local/bin/
+
+    # macOS arm64 (Apple Silicon)
+    curl -Lo devcontainer https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_darwin_arm64.tar.gz
+    tar xzf devcontainer_{{.Version}}_darwin_arm64.tar.gz
+    chmod +x devcontainer
+    sudo mv devcontainer /usr/local/bin/
+    ```

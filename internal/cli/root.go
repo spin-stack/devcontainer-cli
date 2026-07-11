@@ -1,0 +1,62 @@
+package cli
+
+import (
+	"errors"
+	"fmt"
+	"os"
+
+	coreerrors "github.com/devcontainers/cli/internal/core/errors"
+	"github.com/devcontainers/cli/internal/core/product"
+	"github.com/spf13/cobra"
+)
+
+// NewRootCommand creates the root `devcontainer` command with all subcommands.
+func NewRootCommand() *cobra.Command {
+	cfg := product.GetConfig()
+
+	root := &cobra.Command{
+		Use:     cfg.Name,
+		Short:   "Dev Container CLI",
+		Version: cfg.Version,
+		// Disable default completion command
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
+		},
+		// Match yargs: boolean-negation disabled, strict mode
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	// Print just the bare version (e.g. "0.74.0"), matching the TS CLI (yargs
+	// .version()) instead of Cobra's "<name> version <v>" template.
+	root.SetVersionTemplate("{{.Version}}\n")
+
+	// Register subcommands
+	root.AddCommand(
+		newReadConfigurationCmd(),
+		newBuildCmd(),
+		newUpCmd(),
+		newSetUpCmd(),
+		newRunUserCommandsCmd(),
+		newExecCmd(),
+		newOutdatedCmd(),
+		newUpgradeCmd(),
+		newFeaturesCmd(),
+		newTemplatesCmd(),
+	)
+
+	return root
+}
+
+// Execute runs the CLI.
+func Execute() {
+	root := NewRootCommand()
+	if err := root.Execute(); err != nil {
+		var exitErr *coreerrors.ExitCodeError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.Code)
+		}
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

@@ -1,0 +1,6 @@
+/devcontainer
+/dist/
+coverage.out
+coverage.html
+*.test
+.claude/

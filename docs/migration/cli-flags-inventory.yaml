@@ -1,0 +1,1011 @@
+# =============================================================================
+# @devcontainers/cli — Inventario completo de flags
+# Fuente: src/spec-node/devContainersSpecCLI.ts + featuresCLI/* + templatesCLI/*
+# Generado: 2026-04-10
+# Uso: Contrato de paridad para la migración a Go
+# =============================================================================
+
+# Nota sobre convenciones:
+#   required: true   → yargs: required/demandOption
+#   array: true      → el flag puede repetirse (--flag a --flag b)
+#   hidden: true     → no aparece en --help (experimental/internal)
+#   implies: [x]     → requiere que se pase también --x
+#   alias: x         → forma corta
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Yargs global config
+# ─────────────────────────────────────────────────────────────────────────────
+parser_configuration:
+  boolean_negation: false          # --no-<flag> deshabilitado (para soportar --no-cache)
+  halt_at_non_option: conditional  # Solo para 'exec' cuando no es --help
+  strict: true
+  demand_command: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Validaciones globales (compartidas por múltiples comandos)
+# ─────────────────────────────────────────────────────────────────────────────
+validations:
+  id_label_format: "name=value"          # regex: /.+=.+/
+  mount_format: "type=<bind|volume>,source=<s>,target=<t>[,external=<true|false>]"
+  remote_env_format: "name=value"        # regex: /.+=.*/
+
+# =============================================================================
+# COMANDO: devcontainer up
+# =============================================================================
+commands:
+  up:
+    description: "Create and run dev container"
+    handler: provisionHandler
+    json_output: true  # outcome: success|error
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      docker-path:
+        type: string
+        description: "Docker CLI path."
+      docker-compose-path:
+        type: string
+        description: "Docker Compose CLI path."
+      container-data-folder:
+        type: string
+        description: "Container data folder where user data inside the container will be stored."
+      container-system-data-folder:
+        type: string
+        description: "Container system data folder where system data inside the container will be stored."
+      workspace-folder:
+        type: string
+        description: "Workspace folder path. The devcontainer.json will be looked up relative to this path."
+        notes: "Required unless --id-label is provided"
+      workspace-mount-consistency:
+        type: choice
+        choices: [consistent, cached, delegated]
+        default: cached
+        description: "Workspace mount consistency."
+      gpu-availability:
+        type: choice
+        choices: [all, detect, none]
+        default: detect
+        description: "Availability of GPUs in case the dev container requires any."
+      mount-workspace-git-root:
+        type: boolean
+        default: true
+        description: "Mount the workspace using its Git root."
+      id-label:
+        type: string
+        array: true
+        description: "Id label(s) of the format name=value."
+      config:
+        type: string
+        description: "devcontainer.json path."
+      override-config:
+        type: string
+        description: "devcontainer.json path to override any devcontainer.json in the workspace folder."
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+        description: "Log level."
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+        description: "Log format."
+      terminal-columns:
+        type: number
+        implies: [terminal-rows]
+        description: "Number of columns to render the output for."
+      terminal-rows:
+        type: number
+        implies: [terminal-columns]
+        description: "Number of rows to render the output for."
+      default-user-env-probe:
+        type: choice
+        choices: [none, loginInteractiveShell, interactiveShell, loginShell]
+        default: loginInteractiveShell
+        description: "Default value for the devcontainer.json's 'userEnvProbe'."
+      update-remote-user-uid-default:
+        type: choice
+        choices: [never, "on", "off"]
+        default: "on"
+        description: "Default for updating the remote user's UID and GID to the local user's one."
+      remove-existing-container:
+        type: boolean
+        default: false
+        description: "Removes the dev container if it already exists."
+      build-no-cache:
+        type: boolean
+        default: false
+        description: "Builds the image with --no-cache if the container does not exist."
+      expect-existing-container:
+        type: boolean
+        default: false
+        description: "Fail if the container does not exist."
+      skip-post-create:
+        type: boolean
+        default: false
+        description: "Do not run onCreateCommand, updateContentCommand, postCreateCommand, postStartCommand or postAttachCommand and do not install dotfiles."
+      skip-non-blocking-commands:
+        type: boolean
+        default: false
+        description: "Stop running user commands after running the command configured with waitFor or the updateContentCommand by default."
+      prebuild:
+        type: boolean
+        default: false
+        description: "Stop after onCreateCommand and updateContentCommand."
+      user-data-folder:
+        type: string
+        description: "Host path to a directory that is intended to be persisted and share state between sessions."
+      mount:
+        type: string
+        array: true
+        description: "Additional mount point(s). Format: type=<bind|volume>,source=<source>,target=<target>[,external=<true|false>]"
+      remote-env:
+        type: string
+        array: true
+        description: "Remote environment variables of the format name=value."
+      cache-from:
+        type: string
+        array: true
+        description: "Additional image to use as potential layer cache during image building."
+      cache-to:
+        type: string
+        description: "Additional image to use as potential layer cache during image building."
+      buildkit:
+        type: choice
+        choices: [auto, never]
+        default: auto
+        description: "Control whether BuildKit should be used."
+      additional-features:
+        type: string
+        description: "Additional features to apply to the dev container (JSON as per 'features' section in devcontainer.json)."
+      skip-feature-auto-mapping:
+        type: boolean
+        default: false
+        hidden: true
+        description: "Temporary option for testing."
+      skip-post-attach:
+        type: boolean
+        default: false
+        description: "Do not run postAttachCommand."
+      dotfiles-repository:
+        type: string
+        description: "URL of a dotfiles Git repository."
+      dotfiles-install-command:
+        type: string
+        description: "The command to run after cloning the dotfiles repository."
+      dotfiles-target-path:
+        type: string
+        default: "~/dotfiles"
+        description: "The path to clone the dotfiles repository to."
+      container-session-data-folder:
+        type: string
+        description: "Folder to cache CLI data, for example userEnvProbe results."
+      omit-config-remote-env-from-metadata:
+        type: boolean
+        default: false
+        hidden: true
+        description: "Omit remoteEnv from devcontainer.json for container metadata label."
+      secrets-file:
+        type: string
+        description: "Path to a json file containing secret environment variables as key-value pairs."
+      experimental-lockfile:
+        type: boolean
+        default: false
+        hidden: true
+        description: "Write lockfile."
+      experimental-frozen-lockfile:
+        type: boolean
+        default: false
+        hidden: true
+        description: "Ensure lockfile remains unchanged."
+      omit-syntax-directive:
+        type: boolean
+        default: false
+        hidden: true
+        description: "Omit Dockerfile syntax directives."
+      include-configuration:
+        type: boolean
+        default: false
+        description: "Include configuration in result."
+      include-merged-configuration:
+        type: boolean
+        default: false
+        description: "Include merged configuration in result."
+    custom_checks:
+      - "id-label must match name=value format"
+      - "workspace-folder OR id-label is required"
+      - "workspace-folder OR override-config is required"
+      - "mount must match type=<bind|volume>,source=<s>,target=<t>[,external=<true|false>]"
+      - "remote-env must match name=value format"
+
+  # ===========================================================================
+  # COMANDO: devcontainer set-up
+  # ===========================================================================
+  set-up:
+    description: "Set up an existing container as a dev container"
+    handler: setUpHandler
+    json_output: true
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      docker-path:
+        type: string
+        description: "Docker CLI path."
+      container-data-folder:
+        type: string
+        description: "Container data folder."
+      container-system-data-folder:
+        type: string
+        description: "Container system data folder."
+      container-id:
+        type: string
+        required: true
+        description: "Id of the container."
+      config:
+        type: string
+        description: "devcontainer.json path."
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+      terminal-columns:
+        type: number
+        implies: [terminal-rows]
+      terminal-rows:
+        type: number
+        implies: [terminal-columns]
+      default-user-env-probe:
+        type: choice
+        choices: [none, loginInteractiveShell, interactiveShell, loginShell]
+        default: loginInteractiveShell
+      skip-post-create:
+        type: boolean
+        default: false
+      skip-non-blocking-commands:
+        type: boolean
+        default: false
+      user-data-folder:
+        type: string
+      remote-env:
+        type: string
+        array: true
+      dotfiles-repository:
+        type: string
+      dotfiles-install-command:
+        type: string
+      dotfiles-target-path:
+        type: string
+        default: "~/dotfiles"
+      container-session-data-folder:
+        type: string
+      include-configuration:
+        type: boolean
+        default: false
+      include-merged-configuration:
+        type: boolean
+        default: false
+    custom_checks:
+      - "remote-env must match name=value format"
+
+  # ===========================================================================
+  # COMANDO: devcontainer build
+  # ===========================================================================
+  build:
+    description: "Build a dev container image"
+    positional: "[path]"
+    handler: buildHandler
+    json_output: true
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      user-data-folder:
+        type: string
+      docker-path:
+        type: string
+      docker-compose-path:
+        type: string
+      workspace-folder:
+        type: string
+        required: true
+        description: "Workspace folder path."
+      config:
+        type: string
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+      no-cache:
+        type: boolean
+        default: false
+        description: "Builds the image with --no-cache."
+      image-name:
+        type: string
+        array: true
+        description: "Image name."
+      cache-from:
+        type: string
+        array: true
+      cache-to:
+        type: string
+      buildkit:
+        type: choice
+        choices: [auto, never]
+        default: auto
+      platform:
+        type: string
+        description: "Set target platforms."
+      push:
+        type: boolean
+        default: false
+        description: "Push to a container registry."
+      label:
+        type: string
+        array: true
+        description: "Provide key and value configuration that adds metadata to an image."
+      output:
+        type: string
+        description: "Overrides the default behavior to load built images into the local docker registry."
+      additional-features:
+        type: string
+      skip-feature-auto-mapping:
+        type: boolean
+        default: false
+        hidden: true
+      skip-persisting-customizations-from-features:
+        type: boolean
+        default: false
+        hidden: true
+      experimental-lockfile:
+        type: boolean
+        default: false
+        hidden: true
+      experimental-frozen-lockfile:
+        type: boolean
+        default: false
+        hidden: true
+      omit-syntax-directive:
+        type: boolean
+        default: false
+        hidden: true
+
+  # ===========================================================================
+  # COMANDO: devcontainer run-user-commands
+  # ===========================================================================
+  run-user-commands:
+    description: "Run user commands"
+    handler: runUserCommandsHandler
+    json_output: true
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      user-data-folder:
+        type: string
+      docker-path:
+        type: string
+      docker-compose-path:
+        type: string
+      container-data-folder:
+        type: string
+      container-system-data-folder:
+        type: string
+      workspace-folder:
+        type: string
+      mount-workspace-git-root:
+        type: boolean
+        default: true
+      container-id:
+        type: string
+        description: "Id of the container to run the user commands for."
+      id-label:
+        type: string
+        array: true
+      config:
+        type: string
+      override-config:
+        type: string
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+      terminal-columns:
+        type: number
+        implies: [terminal-rows]
+      terminal-rows:
+        type: number
+        implies: [terminal-columns]
+      default-user-env-probe:
+        type: choice
+        choices: [none, loginInteractiveShell, interactiveShell, loginShell]
+        default: loginInteractiveShell
+      skip-non-blocking-commands:
+        type: boolean
+        default: false
+      prebuild:
+        type: boolean
+        default: false
+      stop-for-personalization:
+        type: boolean
+        default: false
+        description: "Stop for personalization."
+      remote-env:
+        type: string
+        array: true
+      skip-feature-auto-mapping:
+        type: boolean
+        default: false
+        hidden: true
+      skip-post-attach:
+        type: boolean
+        default: false
+      dotfiles-repository:
+        type: string
+      dotfiles-install-command:
+        type: string
+      dotfiles-target-path:
+        type: string
+        default: "~/dotfiles"
+      container-session-data-folder:
+        type: string
+      secrets-file:
+        type: string
+    custom_checks:
+      - "id-label must match name=value format"
+      - "remote-env must match name=value format"
+      - "One of --container-id, --id-label or --workspace-folder is required"
+
+  # ===========================================================================
+  # COMANDO: devcontainer read-configuration
+  # ===========================================================================
+  read-configuration:
+    description: "Read configuration"
+    handler: readConfigurationHandler
+    json_output: true  # Outputs config directly, not with outcome envelope
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      user-data-folder:
+        type: string
+      docker-path:
+        type: string
+      docker-compose-path:
+        type: string
+      workspace-folder:
+        type: string
+      mount-workspace-git-root:
+        type: boolean
+        default: true
+      container-id:
+        type: string
+      id-label:
+        type: string
+        array: true
+      config:
+        type: string
+      override-config:
+        type: string
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+      terminal-columns:
+        type: number
+        implies: [terminal-rows]
+      terminal-rows:
+        type: number
+        implies: [terminal-columns]
+      include-features-configuration:
+        type: boolean
+        default: false
+        description: "Include features configuration."
+      include-merged-configuration:
+        type: boolean
+        default: false
+      additional-features:
+        type: string
+      skip-feature-auto-mapping:
+        type: boolean
+        default: false
+        hidden: true
+    custom_checks:
+      - "id-label must match name=value format"
+      - "One of --container-id, --id-label or --workspace-folder is required"
+    output_notes: >
+      read-configuration NO usa envolvente outcome. Emite directamente:
+      { configuration, workspace, featuresConfiguration, mergedConfiguration }
+
+  # ===========================================================================
+  # COMANDO: devcontainer outdated
+  # ===========================================================================
+  outdated:
+    description: "Show current and available versions"
+    handler: outdatedHandler
+    json_output: conditional  # depends on --output-format
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      user-data-folder:
+        type: string
+      workspace-folder:
+        type: string
+        required: true
+      config:
+        type: string
+      output-format:
+        type: choice
+        choices: [text, json]
+        default: text
+        description: "Output format."
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+      terminal-columns:
+        type: number
+        implies: [terminal-rows]
+      terminal-rows:
+        type: number
+        implies: [terminal-columns]
+    output_notes: >
+      --output-format text: text-table con columnas [Feature, Current, Wanted, Latest].
+      --output-format json: JSON con indentación si TTY.
+
+  # ===========================================================================
+  # COMANDO: devcontainer upgrade
+  # ===========================================================================
+  upgrade:
+    description: "Upgrade lockfile"
+    handler: featuresUpgradeHandler
+    json_output: false  # writes lockfile to disk or stdout with --dry-run
+    exit_codes: { success: 0, error: 1 }
+    flags:
+      workspace-folder:
+        type: string
+        required: true
+      docker-path:
+        type: string
+        default: docker
+      docker-compose-path:
+        type: string
+        default: docker-compose
+      config:
+        type: string
+      log-level:
+        type: choice
+        choices: [error, info, debug, trace]
+        default: info
+      dry-run:
+        type: boolean
+        description: "Write generated lockfile to standard out instead of to disk."
+      feature:
+        type: string
+        alias: f
+        hidden: true
+        description: "Upgrade the version requirements of a given Feature."
+      target-version:
+        type: string
+        alias: v
+        hidden: true
+        description: "The major (x), minor (x.y), or patch version (x.y.z) of the Feature to pin."
+    custom_checks:
+      - "--feature and --target-version must be used together"
+      - "--target-version must match /^\\d+(\\.\\d+(\\.\\d+)?)?$/"
+
+  # ===========================================================================
+  # COMANDO: devcontainer exec
+  # ===========================================================================
+  exec:
+    description: "Execute a command on a running dev container"
+    positional: "<cmd> [args..]"
+    handler: execHandler
+    json_output: false
+    exit_codes:
+      success: 0
+      error: 1
+      signal: "128 + signal_number"
+    flags:
+      user-data-folder:
+        type: string
+      docker-path:
+        type: string
+      docker-compose-path:
+        type: string
+      container-data-folder:
+        type: string
+      container-system-data-folder:
+        type: string
+      workspace-folder:
+        type: string
+      mount-workspace-git-root:
+        type: boolean
+        default: true
+      container-id:
+        type: string
+      id-label:
+        type: string
+        array: true
+      config:
+        type: string
+      override-config:
+        type: string
+      log-level:
+        type: choice
+        choices: [info, debug, trace]
+        default: info
+      log-format:
+        type: choice
+        choices: [text, json]
+        default: text
+      terminal-columns:
+        type: number
+        implies: [terminal-rows]
+      terminal-rows:
+        type: number
+        implies: [terminal-columns]
+      default-user-env-probe:
+        type: choice
+        choices: [none, loginInteractiveShell, interactiveShell, loginShell]
+        default: loginInteractiveShell
+      remote-env:
+        type: string
+        array: true
+      skip-feature-auto-mapping:
+        type: boolean
+        default: false
+        hidden: true
+    positional_args:
+      cmd:
+        type: string
+        required: true
+        description: "Command to execute."
+      args:
+        type: string
+        array: true
+        description: "Arguments to the command."
+    custom_checks:
+      - "id-label must match name=value format"
+      - "remote-env must match name=value format"
+      - "One of --container-id, --id-label or --workspace-folder is required"
+    tty_notes: >
+      Si stdin y stdout son TTY (o log-format es json), usa PTY.
+      En ese caso, terminal dimensions se leen de process.stdout.columns/rows
+      y se escucha 'resize' event.
+
+  # ===========================================================================
+  # SUBCOMANDOS: devcontainer features *
+  # ===========================================================================
+  features:
+    description: "Features commands"
+    subcommands:
+
+      test:
+        description: "Test Features"
+        positional: "[target] (deprecated — usar --project-folder)"
+        handler: featuresTestHandler
+        exit_codes: { success: 0, error: 1 }
+        flags:
+          project-folder:
+            type: string
+            alias: p
+            default: "."
+            description: "Path to folder containing 'src' and 'test' sub-folders."
+          features:
+            type: string
+            array: true
+            alias: f
+            description: "Feature(s) to test as space-separated parameters."
+          filter:
+            type: string
+            description: "Filter current tests to only run scenarios containing this string."
+          global-scenarios-only:
+            type: boolean
+            default: false
+          skip-scenarios:
+            type: boolean
+            default: false
+          skip-autogenerated:
+            type: boolean
+            default: false
+          skip-duplicated:
+            type: boolean
+            default: false
+          permit-randomization:
+            type: boolean
+            default: false
+          base-image:
+            type: string
+            alias: i
+            default: "ubuntu:focal"
+          remote-user:
+            type: string
+            alias: u
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+          preserve-test-containers:
+            type: boolean
+            default: false
+          quiet:
+            type: boolean
+            alias: q
+            default: false
+        custom_checks:
+          - "--global-scenarios-only and --features cannot be combined"
+          - "--skip-scenarios and --global-scenarios-only cannot be combined"
+          - "--filter-scenarios and --skip-scenarios cannot be combined"
+
+      package:
+        description: "Package Features"
+        positional: "<target>"
+        handler: featuresPackageHandler
+        flags:
+          target:
+            type: string
+            positional: true
+            default: "."
+          output-folder:
+            type: string
+            alias: o
+            default: "./output"
+          force-clean-output-folder:
+            type: boolean
+            alias: f
+            default: false
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+
+      publish:
+        description: "Package and publish Features"
+        positional: "<target>"
+        handler: featuresPublishHandler
+        flags:
+          target:
+            type: string
+            positional: true
+            default: "."
+          registry:
+            type: string
+            alias: r
+            default: "ghcr.io"
+          namespace:
+            type: string
+            alias: "n"
+            required: true
+            description: "Unique identifier for the collection. Example: <owner>/<repo>"
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+
+      info:
+        description: "Fetch metadata for a published Feature"
+        positional: "<mode> <feature>"
+        handler: featuresInfoHandler
+        flags:
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+          output-format:
+            type: choice
+            choices: [text, json]
+            default: text
+        positional_args:
+          mode:
+            choices: [manifest, tags, dependencies, verbose]
+          feature:
+            type: string
+            required: true
+
+      resolve-dependencies:
+        description: "Read and resolve dependency graph from a configuration"
+        handler: featuresResolveDependenciesHandler
+        flags:
+          log-level:
+            type: choice
+            choices: [error, info, debug, trace]
+            default: error
+          workspace-folder:
+            type: string
+            required: true
+
+      generate-docs:
+        description: "Generate documentation"
+        handler: featuresGenerateDocsHandler
+        flags:
+          project-folder:
+            type: string
+            alias: p
+            default: "."
+          registry:
+            type: string
+            alias: r
+            default: "ghcr.io"
+          namespace:
+            type: string
+            alias: "n"
+            required: true
+          github-owner:
+            type: string
+            default: ""
+          github-repo:
+            type: string
+            default: ""
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+
+  # ===========================================================================
+  # SUBCOMANDOS: devcontainer templates *
+  # ===========================================================================
+  templates:
+    description: "Templates commands"
+    subcommands:
+
+      apply:
+        description: "Apply a template to the project"
+        handler: templateApplyHandler
+        flags:
+          workspace-folder:
+            type: string
+            alias: w
+            required: true
+            default: "."
+          template-id:
+            type: string
+            alias: t
+            required: true
+          template-args:
+            type: string
+            alias: a
+            default: "{}"
+            description: "Arguments to replace within the provided Template, provided as JSON."
+          features:
+            type: string
+            alias: f
+            default: "[]"
+            description: "Features to add to the provided Template, provided as JSON."
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+          tmp-dir:
+            type: string
+            description: "Directory to use for temporary files."
+          omit-paths:
+            type: string
+            default: "[]"
+            description: "List of paths within the Template to omit applying, provided as JSON."
+
+      publish:
+        description: "Package and publish templates"
+        positional: "<target>"
+        handler: templatesPublishHandler
+        flags:
+          target:
+            type: string
+            positional: true
+            default: "."
+          registry:
+            type: string
+            alias: r
+            default: "ghcr.io"
+          namespace:
+            type: string
+            alias: "n"
+            required: true
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+
+      metadata:
+        description: "Fetch a published Template's metadata"
+        positional: "<templateId>"
+        handler: templateMetadataHandler
+        flags:
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+        positional_args:
+          templateId:
+            type: string
+            required: true
+
+      generate-docs:
+        description: "Generate documentation"
+        handler: templatesGenerateDocsHandler
+        flags:
+          project-folder:
+            type: string
+            alias: p
+            default: "."
+          github-owner:
+            type: string
+            default: ""
+          github-repo:
+            type: string
+            default: ""
+          log-level:
+            type: choice
+            choices: [info, debug, trace]
+            default: info
+
+# =============================================================================
+# RESUMEN JSON OUTPUT ENVELOPES
+# =============================================================================
+json_output_envelopes:
+  success_with_container:  # up
+    fields: [outcome, containerId, remoteUser, remoteWorkspaceFolder, composeProjectName, configuration, mergedConfiguration]
+  success_setup:  # set-up
+    fields: [outcome, configuration, mergedConfiguration]
+  success_build:  # build
+    fields: [outcome, imageName]
+  success_run_user_commands:  # run-user-commands
+    fields: [outcome, result]
+  error:  # all commands with outcome envelope
+    fields: [outcome, message, description, containerId, disallowedFeatureId, didStopContainer, learnMoreUrl]
+  read_configuration:  # read-configuration (NO outcome envelope)
+    fields: [configuration, workspace, featuresConfiguration, mergedConfiguration]
+
+# =============================================================================
+# ENVIRONMENT VARIABLES LEIDAS
+# =============================================================================
+environment_variables:
+  - name: DOCKER_CONFIG
+    used_in: httpOCIRegistry.ts:213
+    purpose: "Path to Docker config directory for credentials (~/.docker by default)"
+  - name: DEVCONTAINERS_OCI_AUTH
+    used_in: httpOCIRegistry.ts:152
+    purpose: "Comma-separated list of registry credentials. Format: registry1|user1|token1,registry2|user2|token2"
+    format_example: "ghcr.io|myuser|ghp_xxx,myregistry.azurecr.io|admin|password123"
+    notes: "Each entry is pipe-delimited: service|username|token. The username:token pair is then base64-encoded for Basic auth."
+  - name: GITHUB_TOKEN
+    used_in: httpOCIRegistry.ts:179
+    purpose: "GitHub PAT for ghcr.io authentication (used as USERNAME:{token} Basic auth)"
+    notes: "Only used when registry is ghcr.io AND GITHUB_HOST is unset or 'github.com'"
+  - name: GITHUB_HOST
+    used_in: httpOCIRegistry.ts:175
+    purpose: "GitHub host for GHES environments. When set to something other than 'github.com', GITHUB_TOKEN is NOT used for ghcr.io auth."
+    default: "github.com (implicit)"
+  - name: NODE_EXTRA_CA_CERTS
+    used_in: httpRequest.ts
+    purpose: "Extra CA certificates for HTTPS (Node.js convention; Go equivalent: SSL_CERT_FILE)"
+  - name: COMPOSE_FILE
+    used_in: configuration.ts:242
+    purpose: "Colon-separated (or semicolon on Windows) list of Compose file paths"
+    notes: "Also read from .env file as fallback"
+  - name: COMPOSE_PROJECT_NAME
+    used_in: dockerCompose.ts:641
+    purpose: "Override Compose project name. Highest priority in the project name resolution chain."
+    notes: "Also read from .env file. Takes precedence over 'name' in compose YAML."
+  - name: http_proxy
+    used_in: proxy-agent (transitive)
+    purpose: "HTTP proxy URL"
+  - name: https_proxy
+    used_in: proxy-agent (transitive)
+    purpose: "HTTPS proxy URL"
+  - name: no_proxy
+    used_in: proxy-agent (transitive)
+    purpose: "Proxy bypass list"
+  - name: DOCKER_BUILDKIT
+    used_in: singleContainer.ts
+    purpose: "Enable/disable BuildKit (0 or 1)"
