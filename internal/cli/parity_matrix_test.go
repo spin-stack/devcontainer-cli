@@ -141,17 +141,39 @@ func TestParityMatrix(t *testing.T) {
 			tsRes := runParitySide(t, tsCtx, repoRoot, cliTS, tc, "ts")
 			tsStatus := classifyParitySide(tsCtx.Err(), tsRes.Stdout, tsRes.Stderr, tsRes.ExitCode)
 			tsCancel()
-			if tsStatus.Skip {
-				t.Skipf("TS %s", tsStatus.Reason)
-				return
-			}
 
+			// Always run the Go side, even when TS is skipped — a TS-side infra/timeout
+			// must never silently delete Go's coverage (W6). We decide what to do with
+			// the results afterwards.
 			goCtx, goCancel := context.WithTimeout(t.Context(), perCaseTimeout)
 			goRes := runParitySide(t, goCtx, repoRoot, cliGO, tc, "go")
 			goStatus := classifyParitySide(goCtx.Err(), goRes.Stdout, goRes.Stderr, goRes.ExitCode)
 			goCancel()
 			if goStatus.Timeout {
 				t.Fatalf("Go timed out")
+			}
+
+			// Assert the Go side reached the outcome the case name declares, independent
+			// of TS (W1). This turns "both failed identically on a success case" — the
+			// classic vacuous pass — into a real failure. Skipped when Go infra-failed.
+			if expectSuccess, known := caseExpectsOutcome(tc.ID); known && !goStatus.Infra {
+				if expectSuccess && goRes.ExitCode != 0 {
+					t.Errorf("expected success but Go exited %d\n--- Go stdout\n%s\n--- Go stderr\n%s",
+						goRes.ExitCode, strings.TrimSpace(goRes.Stdout), strings.TrimSpace(goRes.Stderr))
+				}
+				if !expectSuccess && goRes.ExitCode == 0 {
+					t.Errorf("expected failure but Go exited 0\n--- Go stdout\n%s", strings.TrimSpace(goRes.Stdout))
+				}
+			}
+
+			// TS unavailable as an oracle (infra/timeout): record it (auditable) but
+			// don't compare. Go already ran and was outcome-checked above.
+			if tsStatus.Skip {
+				if goStatus.Infra {
+					t.Fatalf("Go infra error while TS was skipped (%s): Go exit %d", tsStatus.Reason, goRes.ExitCode)
+				}
+				t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
+				return
 			}
 			if goStatus.Infra && tsRes.ExitCode == 0 {
 				t.Fatalf("Go failed with infra error (exit %d)", goRes.ExitCode)
@@ -161,7 +183,7 @@ func TestParityMatrix(t *testing.T) {
 
 			// Skip when TS fails due to infra but Go succeeds; this is not a product mismatch.
 			if tsRes.ExitCode != 0 && goRes.ExitCode == 0 && tsStatus.Infra {
-				t.Skipf("TS infra error (exit %d)", tsRes.ExitCode)
+				t.Skipf("TS infra error (exit %d) [case=%s]", tsRes.ExitCode, tc.ID)
 				return
 			}
 
@@ -232,6 +254,26 @@ func TestParityMatrix(t *testing.T) {
 			}
 		})
 	}
+}
+
+// caseExpectsOutcome infers the intended outcome from the case id naming
+// convention: "...-success" is success-intended (exit 0), while the failure/
+// invalid-invocation family is failure-intended (non-zero). The second return is
+// false when the id carries no clear intent (don't assert an outcome then).
+func caseExpectsOutcome(id string) (expectSuccess bool, known bool) {
+	switch {
+	case strings.Contains(id, "-success"):
+		return true, true
+	case strings.Contains(id, "-failure"),
+		strings.Contains(id, "invalid"),
+		strings.Contains(id, "missing"),
+		strings.Contains(id, "not-found"),
+		strings.Contains(id, "unsupported"),
+		strings.Contains(id, "required"),
+		strings.Contains(id, "disallowed"):
+		return false, true
+	}
+	return false, false
 }
 
 // --- CLI execution ---
@@ -363,10 +405,14 @@ func runShellCommand(ctx context.Context, repoRoot, shellCmd string, env map[str
 var (
 	reTimestampGo      = regexp.MustCompile(`\[\d+ ms\]`)
 	reTimestampTS      = regexp.MustCompile(`\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]`)
-	reHostPath         = regexp.MustCompile(`/Users/[^\s"'\n]+`)
-	reHomePath         = regexp.MustCompile(`/home/[^\s"'\n]+`)
-	reTmpPath          = regexp.MustCompile(`/tmp/[^\s"'\n]+`)
-	reVarFolders       = regexp.MustCompile(`/var/folders/[^\s"'\n]+`)
+	// Host/tmp path scrubbers stop at structural delimiters (comma, '=', ';', ')')
+	// so a mount spec like source=/home/x,target=/y,type=bind keeps its
+	// target/type for comparison instead of collapsing everything after the host
+	// prefix into one token.
+	reHostPath   = regexp.MustCompile(`/Users/[^\s"'\n,;=)]+`)
+	reHomePath   = regexp.MustCompile(`/home/[^\s"'\n,;=)]+`)
+	reTmpPath    = regexp.MustCompile(`/tmp/[^\s"'\n,;=)]+`)
+	reVarFolders = regexp.MustCompile(`/var/folders/[^\s"'\n,;=)]+`)
 	reSHA256           = regexp.MustCompile(`sha256:[a-f0-9]{64}`)
 	reHexID            = regexp.MustCompile(`\b[a-f0-9]{12,64}\b`)
 	reMermaidNode      = regexp.MustCompile(`[a-f0-9]{6}\[`)
@@ -391,7 +437,14 @@ func normalizeString(s string) string {
 	s = reTmpPath.ReplaceAllString(s, "<TMP_PATH>")
 	s = reVarFolders.ReplaceAllString(s, "<TMP_PATH>")
 	s = reSHA256.ReplaceAllString(s, "sha256:<HASH>")
-	s = reHexID.ReplaceAllString(s, "<ID>")
+	// Only scrub hex-looking runs that actually contain a hex letter — a pure
+	// decimal run (epoch-ms, large uid) is a real value and must stay comparable.
+	s = reHexID.ReplaceAllStringFunc(s, func(m string) string {
+		if strings.ContainsAny(m, "abcdef") {
+			return "<ID>"
+		}
+		return m
+	})
 	s = reMermaidNode.ReplaceAllString(s, "<NODE>[")
 	// Normalize parity side identifiers in image/container names
 	s = reParitySideSuffix.ReplaceAllString(s, "-<SIDE>$2")
@@ -404,9 +457,8 @@ func normalizeOutput(raw string) string {
 		return ""
 	}
 
-	// Try JSON parse
-	var parsed interface{}
-	if json.Unmarshal([]byte(raw), &parsed) == nil {
+	// Try JSON parse (UseNumber preserves numeric precision)
+	if parsed, ok := decodeJSONNumber(raw); ok {
 		normalized := normalizeValue(parsed)
 		out, _ := json.Marshal(normalized)
 		return string(out)
@@ -414,7 +466,7 @@ func normalizeOutput(raw string) string {
 
 	// TS occasionally prefixes JSON with banner/noise on stderr/stdout; recover the payload.
 	if candidate := extractJSONCandidate(raw); candidate != "" && candidate != raw {
-		if json.Unmarshal([]byte(candidate), &parsed) == nil {
+		if parsed, ok := decodeJSONNumber(candidate); ok {
 			normalized := normalizeValue(parsed)
 			out, _ := json.Marshal(normalized)
 			return string(out)
@@ -470,8 +522,24 @@ func normalizeEmbeddedJSON(raw string) interface{} {
 }
 
 func parseEmbeddedJSON(raw string) (interface{}, bool) {
+	t := strings.TrimSpace(raw)
+	// Only treat a string as an embedded JSON *document* when it is an object or
+	// array. Parsing bare scalars ("123", "true", "1.0") would coerce a string
+	// into a number/bool and hide string-vs-typed divergences that Docker and
+	// downstream tooling care about.
+	if !strings.HasPrefix(t, "{") && !strings.HasPrefix(t, "[") {
+		return nil, false
+	}
+	return decodeJSONNumber(t)
+}
+
+// decodeJSONNumber parses JSON with UseNumber so large/precise numbers survive
+// the round-trip instead of being coerced through float64.
+func decodeJSONNumber(raw string) (interface{}, bool) {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
 	var parsed interface{}
-	if json.Unmarshal([]byte(raw), &parsed) == nil {
+	if dec.Decode(&parsed) == nil {
 		return parsed, true
 	}
 	return nil, false
