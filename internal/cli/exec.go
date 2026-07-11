@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
@@ -320,11 +321,30 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	err = execCmd.Run()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return &coreerrors.ExitCodeError{Code: exitErr.ExitCode(), Err: err}
+			return &coreerrors.ExitCodeError{Code: execExitCode(exitErr), Err: err}
 		}
 		return &coreerrors.ExitCodeError{Code: 1, Err: err}
 	}
 	return nil
+}
+
+// execExitCode derives the process exit code for the 128+N contract.
+//
+// os/exec reports ExitCode()==-1 when the child was terminated by a signal
+// rather than exiting normally. That happens here when the host `docker`
+// process itself is signaled (e.g. the terminal delivers SIGINT/SIGTERM to
+// the CLI's docker child). Returning -1 would surface as 255 and diverge from
+// the TS CLI, which reports 128+signal (e.g. 143 for SIGTERM). On Unix we can
+// recover the signal from the WaitStatus and reconstruct 128+N.
+func execExitCode(exitErr *exec.ExitError) int {
+	code := exitErr.ExitCode()
+	if code != -1 {
+		return code
+	}
+	if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return code
 }
 
 // rawLogWriter emits everything written to it as `raw` log events at debug
