@@ -446,3 +446,41 @@ lifecycleHooks) 100% contra el binario Go + matriz completa (contract + runtime)
 adversarial registrada (código en ambos repos + ejecución en vivo). Binarios usados:
 `./devcontainer` / `./devcontainer-go` (Go, compilado desde HEAD de `go-rewrite`) y
 `node dist/spec-node/devContainersSpecCLI.js` (TS v0.74.0).*
+
+---
+
+## Paridad contra v0.88.0 (submódulo `reference/`, 2026-07-11)
+
+La referencia TS se fijó al submódulo `reference/` en **v0.88.0**. Correr la matriz contra
+0.88 expuso los cambios que upstream introdujo entre 0.74 y 0.88; todos cerrados y verificados
+contra el oráculo 0.88 (lanes contract + runtime, `PARITY_LANE=all`).
+
+- **`--workspace-folder` opcional (default cwd)** — 0.88 (#1104) hace que `up`, `build`, `exec`,
+  `read-configuration`, `run-user-commands`, `outdated` y `upgrade` usen `process.cwd()` cuando no
+  se pasa workspace (y, según el comando, tampoco `--id-label`/`--container-id`/`--override-config`).
+  Replicado en cada comando.
+- **`read-configuration` sin config → exit 1 silencioso** — 0.88 no emite envelope de error cuando
+  no encuentra config (solo el banner). Se introdujo `config.ConfigNotFoundError` para distinguir
+  "no encontrado" de errores de parseo y devolver `ExitCodeError{Code:1}` sin imprimir.
+- **`up --id-label` sin container ni workspace** — mensaje alineado a
+  "No dev container config and no workspace found.".
+- **`devcontainer.metadata` siempre array JSON** — 0.88 (#1199) escribe el label como array incluso
+  con una sola entrada (antes objeto bare).
+- **Lockfile excluye `--additional-features`** — 0.88 (#11616) no escribe al lockfile las features
+  que vienen solo por `--additional-features`; se hilan los userFeatureId excluidos hasta
+  `GenerateLockfile`.
+- **`build --output`/`--push` con Dockerfile + features** — la imagen base es intermedia y debe
+  quedar en el store local para que el build de features resuelva `$_DEV_CONTAINERS_BASE_IMAGE`;
+  `--output`/`--push` se difieren al build final (como TS).
+
+### Ajustes de la matriz (no producto)
+
+- `setup_cmd`/`verify_cmd` ahora invocan el TS vía `${PARITY_REPO_ROOT}/reference/devcontainer.js`
+  (el submódulo) en vez del path del repo raíz previo.
+- `extractErrorReason` ignora el banner de versión y los stack frames de Node, y quita el prefijo de
+  timestamp + `Error: ` para alinear un throw de TS con el mensaje plano de Go.
+- `parityEnv` fija `BUILDX_NO_DEFAULT_ATTESTATIONS=1` en ambos lados: el BuildKit nuevo adjunta
+  attestations por defecto y rompe el `COPY --from` del build de features del TS.
+- Nuevo flag `expect_ts_failure` para divergencias documentadas donde Go es más correcto (TS falla
+  no-infra, Go tiene éxito); el test avisa si TS cambia. Aplicado al caso compose reuse-stopped con
+  overrides persistidos.
