@@ -3,7 +3,9 @@
 Este documento es la **única fuente operativa del trabajo pendiente** para llevar
 el CLI Go a paridad demostrada con `devcontainers/cli` v0.88.0. El estado resumido vive en
 [`GO-REWRITE-STATUS.md`](GO-REWRITE-STATUS.md) y el gate final en
-[`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md).
+[`RELEASE-CHECKLIST.md`](RELEASE-CHECKLIST.md). El plan de ejecución por ítem
+(esfuerzo, dependencias, paralelización con agentes) vive en
+[`EXECUTION-PLAN.md`](EXECUTION-PLAN.md).
 
 ## Regla de cierre
 
@@ -122,23 +124,22 @@ decisión documentada.
 **Aceptación:** matriz de integración protegida por secrets, sin imprimir secretos,
 con pull, tags y push.
 
-### RW-009 — Podman y Compose v1
+### RW-009 — Podman y Compose v1 — CERRADO: no soportado
 
-**Estado actual:** hay detección y lógica unitaria, pero no provisioning real
-regular en CI.
+**Decisión (firme):** el CLI Go soporta **sólo Docker** y **sólo `docker compose` v2**.
+Podman y Compose v1 **no se soportan** — divergencia deliberada. Ninguna lógica de
+detección de Podman ofrece garantía ni test de paridad; es best-effort no soportado.
 
-**Trabajo:** ejecutar fixtures discriminantes con Podman y Compose v1; documentar
-divergencias inevitables; comprobar BuildKit/buildx alternatives.
+**Trabajo restante:** sólo documentación (nota en `GO-REWRITE-STATUS.md`) y retirar
+cualquier flag/mensaje que insinúe soporte de Podman.
 
-**Aceptación:** jobs opcionales o programados con resultados artefactados.
+### RW-010 — Paths y ejecución Windows — CERRADO: no soportado
 
-### RW-010 — Paths y ejecución Windows
+**Decisión (firme):** el CLI Go se soporta **sólo en Linux** (amd64/arm64). Windows y
+macOS **no** son objetivos: sin runtime, sin E2E, sin release, sin lane `windows-latest`,
+sin ConPTY. La lógica `platform="win32"` se conserva sólo por paridad con el oráculo TS.
 
-**Trabajo:** agregar tests de drive letters, UNC, URI conversion, workspace mounts y
-cross-build; definir interactive exec y señales en Windows.
-
-**Aceptación:** job `windows-latest` que compile y ejecute tests sin Docker, más el
-contrato PTY decidido en RW-003.
+**Trabajo restante:** sólo documentación ("sólo Linux" en README + `GO-REWRITE-STATUS.md`).
 
 ## P2 — Calidad orientada a riesgo
 
@@ -243,15 +244,18 @@ oráculo y JSON de cada lane guardados, checklist completa.
 
 ## Decisiones que deben quedar explícitas
 
-Estos puntos no deben permanecer ambiguos:
+Decisiones ya tomadas (firmes):
 
-- soporte oficial de Podman;
-- soporte de Compose v1;
-- interactive exec en Windows;
-- necesidad del PTY propio vs. terminal heredado;
+- **Plataforma: sólo Linux** (amd64/arm64). Sin Windows ni macOS. → RW-010 cerrado.
+- **Runtime: sólo Docker.** Podman no soportado. → RW-009 cerrado.
+- **Compose: sólo v2** (`docker compose`). Compose v1 no soportado. → RW-009 cerrado.
+- **exec: terminal heredado** (`docker exec -it`), sin PTY propio. → RW-003 Branch A.
+
+Puntos que aún no deben permanecer ambiguos:
+
 - fallback de legacy Features por GitHub Releases;
 - paridad byte-a-byte del tarball, que hoy se considera no alcanzable por `mtime`;
-- alcance de ACR/ECR en CI regular o programado.
+- alcance de ACR/ECR en CI regular o programado (helpers sólo Linux: `secretservice`/`pass`).
 
 Una decisión de no soportar un comportamiento cierra el ítem sólo si se documenta
 como divergencia deliberada, se retira la surface engañosa y existe un test del

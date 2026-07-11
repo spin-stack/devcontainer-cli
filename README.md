@@ -19,6 +19,15 @@ Node.js/TypeScript application. Re-implementing it in Go buys us:
 - **A codebase we can evolve** — streamline the internals, add features, and change
   behavior deliberately, instead of tracking an upstream we don't control.
 
+## Supported platform
+
+> **Linux only, Docker only.** This CLI is supported and validated **exclusively on
+> Linux** (amd64 and arm64). Windows and macOS are **not** targets — there is no runtime,
+> E2E, or release for them. The only supported container runtime is **Docker**; **Podman
+> is not supported**, and only Compose **v2** (`docker compose`) is used. Any cross-platform
+> or Podman-detection logic that exists is kept only for parity with the TS oracle and
+> carries no support guarantee.
+
 ## What it is for
 
 The goal is behavioral compatibility with the TS CLI for the commands people rely on:
