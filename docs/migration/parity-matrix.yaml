@@ -2114,8 +2114,3 @@ groups:
     rationale: "Cubre creación real de contenedor y compose project name"
   build-runtime:
     rationale: "Cubre builds reales, tagging y rutas compose/dockerfile"
-
-recommended_next_steps:
-  - "Usar esta matriz para un harness A/B chico, separado del golden-test-harness actual"
-  - "Implementar primero todos los casos lane=contract y priority=p0"
-  - "Promover a runtime solo los casos que sigan rojos después de contract+semantic"

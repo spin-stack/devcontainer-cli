@@ -107,7 +107,10 @@ func (r *parityReport) record(id string, outcome parityOutcome) {
 func (r *parityReport) snapshot() map[parityOutcome][]string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	result := map[parityOutcome][]string{}
+	result := map[parityOutcome][]string{
+		parityMatched: {}, parityFailed: {}, paritySkippedDocker: {},
+		paritySkippedNetwork: {}, parityInconclusive: {}, parityNotSelected: {},
+	}
 	for id, outcome := range r.outcomes {
 		result[outcome] = append(result[outcome], id)
 	}
@@ -139,6 +142,24 @@ func strictParityError(snapshot map[parityOutcome][]string) error {
 	return fmt.Errorf("strict parity gate: %d inconclusive case(s): %s", len(ids), strings.Join(ids, ", "))
 }
 
+func writeParityReport(path string, snapshot map[parityOutcome][]string) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create parity report directory: %w", err)
+	}
+	data, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal parity report: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write parity report: %w", err)
+	}
+	return nil
+}
+
 // --- Main test ---
 
 func TestParityMatrix(t *testing.T) {
@@ -162,6 +183,9 @@ func TestParityMatrix(t *testing.T) {
 	t.Cleanup(func() {
 		snapshot := report.snapshot()
 		fmt.Fprint(os.Stdout, formatParityReport(snapshot))
+		if err := writeParityReport(os.Getenv("PARITY_REPORT_FILE"), snapshot); err != nil {
+			t.Error(err)
+		}
 		if os.Getenv("PARITY_STRICT") == "true" {
 			if err := strictParityError(snapshot); err != nil {
 				t.Error(err)

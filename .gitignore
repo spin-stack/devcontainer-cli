@@ -1,5 +1,6 @@
 /devcontainer
 /dist/
+/artifacts/
 coverage.out
 coverage.html
 *.test

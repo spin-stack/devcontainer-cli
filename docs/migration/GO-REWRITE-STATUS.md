@@ -1,9 +1,15 @@
 # Estado de paridad — Go CLI vs devcontainers/cli 0.88
 
 Estado **actual** de la paridad del CLI Go contra el oráculo TypeScript (submódulo
-`reference/`, v0.88.0). Este documento describe *dónde estamos y qué falta*, no la
-historia de cómo llegamos — para eso está el `git log` y
-[`AUDIT-2026-07-09.md`](AUDIT-2026-07-09.md) (auditoría inicial que arrancó el trabajo).
+`reference/`, v0.88.0). Este documento resume dónde estamos; el detalle pendiente
+vive en el backlog y la historia en `git log`.
+
+**Estado de release:** candidato, todavía no declarado en paridad completa. La
+salida requiere cumplir [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) y conservar
+los artefactos de una corrida limpia contra el pin v0.88.0.
+
+El backlog detallado y priorizado se mantiene únicamente en
+[REMAINING-WORK.md](REMAINING-WORK.md).
 
 ## Resumen
 
@@ -22,9 +28,10 @@ historia de cómo llegamos — para eso está el `git log` y
 | `features test` (build + run de scripts por feature) | 🟡 implementación endurecida; E2E A/B agregado, pendiente de ejecución Docker |
 | Seguridad: `disallowed-features` (blocklist del control-manifest) | ✅ cableado, envelope idéntico |
 
-## Qué falta
+## Gates inmediatos
 
-Muy poco, y de bajo impacto:
+Este resumen no reemplaza el backlog. Los gates inmediatos antes de declarar
+paridad completa son:
 
 1. **Validación y refinamientos de `features test`** — los errores de preparación ya
    se distinguen de tests fallidos y escenarios omitidos, y existe un caso E2E A/B
@@ -38,6 +45,9 @@ Muy poco, y de bajo impacto:
 3. **Higiene de aislamiento en la matriz** — algunos casos compose son *flaky* bajo
    ejecución paralela (comparten recursos docker); pasan aislados. Mejora de test, no
    de producto.
+4. **Corrida limpia de release** — falta una ejecución CI sin `failed` ni
+   `inconclusive`, con los JSON de contract/network/runtime y el SHA del oráculo
+   guardados como artefactos. El workflow ya produce esos archivos.
 
 No hay divergencias de producto abiertas conocidas en los comandos core ni en los
 auxiliares cubiertos.
@@ -48,8 +58,6 @@ auxiliares cubiertos.
   (`TestParityMatrix`): ~170 casos que corren el mismo comando por el binario Go y el
   oráculo TS y comparan salida/estado. Lanes: `contract` (sin docker) y `runtime`
   (`PARITY_LANE=all`). Cada caso documenta su intención en `notes:`.
-- **`docs/migration/compare-parity.sh`**: comparación rápida de `read-configuration`
-  por cada fixture.
 - El harness está **endurecido** contra falsos positivos:
   - los casos `-success` fallan si Go no llega a exit 0 con TS en 0 (W1);
   - Go siempre corre aunque TS se salte, y los skips se loguean con `[case=…]` (W6);

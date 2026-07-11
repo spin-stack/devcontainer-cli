@@ -47,6 +47,9 @@ this repo as a git submodule.
     per case (unique `--id-label` / `COMPOSE_PROJECT_NAME` / `BUILDX_BUILDER`).
 - **`docs/migration/GO-REWRITE-STATUS.md`** is the current parity status: what is
   covered and what remains (not a changelog — that lives in `git log`).
+- **`docs/migration/REMAINING-WORK.md`** is the single actionable backlog.
+- **`docs/migration/RELEASE-CHECKLIST.md`** defines the gates required before the
+  project may claim complete parity or publish a release.
 
 Unit, integration and parity tests are separate workflows. `task test:unit` only
 targets `cmd/` and `internal/`, so it neither discovers packages under

@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,6 +46,25 @@ func TestMatchesFilter_NetworkOnly(t *testing.T) {
 	}
 	if !matchesFilter(parityCase{ID: "remote", Lane: "runtime", NetworkRequired: true}) {
 		t.Fatal("network case was not selected")
+	}
+}
+
+func TestWriteParityReport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "report.json")
+	want := map[parityOutcome][]string{parityMatched: {"a"}, parityInconclusive: {"b"}}
+	if err := writeParityReport(path, want); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[parityOutcome][]string
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got[parityMatched]) != 1 || len(got[parityInconclusive]) != 1 {
+		t.Fatalf("report = %#v", got)
 	}
 }
 

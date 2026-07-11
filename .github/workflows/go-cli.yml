@@ -19,10 +19,16 @@ jobs:
           version: 3.x
 
       - run: task lint
-      - run: task test:unit
+      - run: task coverage
       - run: task test:integration
       - run: task build
       - run: ./devcontainer --version
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-coverage
+          path: coverage.out
+          if-no-files-found: error
 
   e2e:
     runs-on: ubuntu-latest
@@ -62,6 +68,16 @@ jobs:
       - run: task reference
       - run: task parity:contract
       - run: task parity:network
+      - if: always()
+        run: |
+          mkdir -p artifacts
+          git -C reference rev-parse HEAD > artifacts/reference-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parity-contract-network-v0.88.0
+          path: artifacts/
+          if-no-files-found: error
 
   # Runtime lane of the parity matrix (creates real containers via Docker).
   # ubuntu-latest ships with Docker preinstalled.
@@ -84,6 +100,16 @@ jobs:
 
       - run: task reference
       - run: task parity:runtime
+      - if: always()
+        run: |
+          mkdir -p artifacts
+          git -C reference rev-parse HEAD > artifacts/reference-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parity-runtime-v0.88.0
+          path: artifacts/
+          if-no-files-found: error
       - if: always()
         run: task clean
 
