@@ -726,7 +726,7 @@ func extractTarGz(archivePath, destDir string) error {
 			if err != nil {
 				return err
 			}
-			io.Copy(out, tr)
+			_, _ = io.Copy(out, tr)
 			out.Close()
 			if header.Mode != 0 {
 				os.Chmod(target, os.FileMode(header.Mode))

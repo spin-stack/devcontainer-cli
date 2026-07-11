@@ -156,7 +156,7 @@ func newSetUpCmd() *cobra.Command {
 			executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger}
 
 			if dotfilesRepo != "" {
-				lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
+				_ = lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
 					Repository:     dotfilesRepo,
 					InstallCommand: dotfilesCommand,
 					TargetPath:     dotfilesTarget,

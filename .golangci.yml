@@ -1,0 +1,42 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Best-effort operations whose error is unactionable.
+      exclude-functions:
+        - os.Remove
+        - os.RemoveAll
+        - os.Chmod
+        - os.MkdirAll
+        - os.Chtimes
+        - os.Rename
+        - os.WriteFile
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*github.com/spf13/pflag.FlagSet).MarkHidden
+        - (*github.com/spf13/cobra.Command).MarkFlagRequired
+        - github.com/devcontainers/cli/internal/pfs.Remove
+        - github.com/devcontainers/cli/internal/pfs.MkdirAll
+        # Best-effort metadata/config parsing: on failure the target stays zero
+        # (an accepted fallback throughout); behavioral divergences are caught by
+        # the parity matrix, not by these unchecked returns.
+        - encoding/json.Unmarshal
+        - github.com/devcontainers/cli/internal/jsonc.Unmarshal
+  exclusions:
+    paths:
+      # The TS oracle submodule vendors some Go under node_modules — not our code.
+      - reference
+    rules:
+      # Our user-facing error strings deliberately mirror the TS CLI's messages
+      # (capitalized / trailing period) for output parity; ST1005 doesn't apply.
+      - linters: [staticcheck]
+        text: "ST1005"
+      # Test helpers ignore cleanup/marshal errors by design.
+      - path: '_test\.go'
+        linters: [errcheck]
+      # .Close() errors are unactionable in this CLI (read paths) or handled by the
+      # subsequent failure (write paths); the idiom here ignores them.
+      - linters: [errcheck]
+        source: '\.Close\('

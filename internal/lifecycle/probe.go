@@ -173,7 +173,7 @@ func writeEnvCache(s shellExec, env map[string]string, strategy UserEnvProbeStra
 	}
 	cachePath := fmt.Sprintf("%s/env-%s.json", sessionDataFolder, strategy)
 	cmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s' << 'ENVJSON'\n%s\nENVJSON", sessionDataFolder, cachePath, string(data))
-	s.Exec(cmd)
+	_, _, _ = s.Exec(cmd)
 }
 
 // parseEnvOutput parses `env` command output into a map.

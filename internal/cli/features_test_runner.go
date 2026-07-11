@@ -447,7 +447,7 @@ func cleanupTestContainers(logger log.Log) {
 	if len(ids) > 0 {
 		logger.Write(fmt.Sprintf("Cleaning up %d test containers...", len(ids)), log.LevelInfo)
 		for _, id := range ids {
-			exec.Command("docker", "rm", "-f", id).Run()
+			_ = exec.Command("docker", "rm", "-f", id).Run()
 		}
 	}
 }

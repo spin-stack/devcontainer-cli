@@ -266,7 +266,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 
 	// Install dotfiles
 	if opts.dotfilesRepo != "" {
-		lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
+		_ = lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
 			Repository:     opts.dotfilesRepo,
 			InstallCommand: opts.dotfilesCommand,
 			TargetPath:     opts.dotfilesTarget,

@@ -102,7 +102,7 @@ func (s *ShellServer) Exec(command string) (stdout string, exitCode int, err err
 
 	code := 0
 	if codeStr != "" {
-		fmt.Sscanf(codeStr, "%d", &code)
+		_, _ = fmt.Sscanf(codeStr, "%d", &code)
 	}
 
 	return stdoutResult, code, nil

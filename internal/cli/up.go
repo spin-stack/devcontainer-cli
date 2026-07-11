@@ -238,7 +238,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 		if len(existingIDs) > 0 && opts.removeExisting {
 			logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
-			engine.RemoveContainer(ctx, existingIDs[0])
+			_ = engine.RemoveContainer(ctx, existingIDs[0])
 			existingIDs = nil
 		}
 
@@ -330,7 +330,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 	if len(existingIDs) > 0 && opts.removeExisting {
 		logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
-		engine.RemoveContainer(ctx, existingIDs[0])
+		_ = engine.RemoveContainer(ctx, existingIDs[0])
 		existingIDs = nil
 	}
 

@@ -161,7 +161,7 @@ func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevel
 	}
 
 	cfg := loadResult.Config
-	if cfg.Features == nil || len(cfg.Features) == 0 {
+	if len(cfg.Features) == 0 {
 		if outputFormat == "json" {
 			fmt.Fprintln(out.Stdout(), `{"features":{}}`)
 		} else {

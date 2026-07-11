@@ -311,7 +311,7 @@ func TestParityMatrix(t *testing.T) {
 				// A failure-intended case whose TS side fails with an infra-looking
 				// error IS the expected behavior (e.g. invalid --platform). When Go
 				// also failed, compare exit codes instead of marking inconclusive.
-				if !(tc.ExpectInfraFailure && tsStatus.Infra && goRes.ExitCode != 0) {
+				if !tc.ExpectInfraFailure || !tsStatus.Infra || goRes.ExitCode == 0 {
 					outcome = parityInconclusive
 					t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
 					return
@@ -597,8 +597,6 @@ var (
 	}
 )
 
-func normalizeString(s string) string { return normalizeStringOpts(s, true) }
-
 func normalizeStringOpts(s string, scrubHashes bool) string {
 	s = reHostPath.ReplaceAllString(s, "<HOST_PATH>")
 	s = reHomePath.ReplaceAllString(s, "<HOST_PATH>")
@@ -650,8 +648,6 @@ func normalizeOutputOpts(raw string, scrubHashes, keepNulls bool) string {
 	// Fallback: normalize as text
 	return normalizeStringOpts(raw, scrubHashes)
 }
-
-func normalizeValue(v interface{}) interface{} { return normalizeValueOpts(v, true, false) }
 
 func normalizeValueOpts(v interface{}, scrubHashes, keepNulls bool) interface{} {
 	switch val := v.(type) {
@@ -729,8 +725,6 @@ func sortedMap(m map[string]interface{}) map[string]interface{} {
 	// json.Marshal already sorts keys in Go 1.12+
 	return m
 }
-
-func normalizeText(raw string) string { return normalizeTextOpts(raw, true) }
 
 func normalizeTextOpts(raw string, scrubHashes bool) string {
 	var lines []string
