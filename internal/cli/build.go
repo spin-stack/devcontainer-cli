@@ -21,6 +21,7 @@ type buildOpts struct {
 	workspaceFolder            string
 	configPath                 string
 	dockerPath                 string
+	dockerComposePath          string
 	logLevel                   string
 	logFormat                  string
 	noCache                    bool
@@ -68,7 +69,7 @@ func newBuildCmd() *cobra.Command {
 	f.BoolVar(&opts.push, "push", false, "Push to registry.")
 	f.StringArrayVar(&opts.labels, "label", nil, "Image labels.")
 	f.StringVar(&opts.output, "output", "", "Build output.")
-	f.String("docker-compose-path", "", "Docker Compose CLI path.")
+	f.StringVar(&opts.dockerComposePath, "docker-compose-path", "", "Docker Compose CLI path.")
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
 	f.String("user-data-folder", "", "User data folder.")
 	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
@@ -600,7 +601,7 @@ func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx boo
 		return nil, fmt.Errorf("resolve compose files: %w", err)
 	}
 
-	composeClient, err := docker.NewComposeClient(opts.dockerPath, "", nil, logger)
+	composeClient, err := docker.NewComposeClient(opts.dockerPath, opts.dockerComposePath, nil, logger)
 	if err != nil {
 		return nil, fmt.Errorf("compose client: %w", err)
 	}
