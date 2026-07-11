@@ -489,3 +489,43 @@ contra el oráculo 0.88 (lanes contract + runtime, `PARITY_LANE=all`).
 > La divergencia sospechada en `compose reuse-stopped-with-persisted-overrides` (TS fallaba el
 > segundo `docker compose up --no-recreate`) resultó ser artefacto del setup con el path TS viejo;
 > con el setup apuntando al submódulo, TS y Go coinciden. No hay divergencia real registrada.
+
+---
+
+## Auditoría de metodología + endurecimiento del harness (2026-07-11)
+
+Workflow multi-agente (run wf_c33a7fe9-aa0) auditó *cómo* comparamos comportamiento.
+Veredicto: enfoque de fondo correcto pero sesgado a falsos positivos. Cambios aplicados:
+
+### Harness endurecido (`parity_matrix_test.go`)
+- **W1 — chequeo de outcome por intención del nombre**: un caso `-success` donde TS=0 y Go≠0
+  ahora es RED (regresión); si ambos fallan es SKIP inconclusive (visible), nunca pass silencioso.
+  Casos `-failure`/`invalid`/… red si TS falla y Go=0.
+- **W6 — correr Go siempre** aunque TS se salte (no borrar cobertura); skips logueados con `[case=…]`;
+  un límite de entorno compartido (arm64 en amd64) es SKIP, no fatal.
+- **W3 — normalización menos lossy**: no coercionar strings escalares (`"true"`→bool), regex de paths
+  anclados a delimitadores (preservan `target=`/`type=`), `reHexID` solo scrubbea si hay letra hex,
+  `UseNumber` para precisión numérica.
+- **infra patterns**: quitado `"docker buildx"` (aparecía en el help de `--output` → clasificaba mal
+  cualquier error de validación de `build` como infra y lo saltaba en silencio). Recuperó
+  `build.invalid-buildkit/log-level/log-format`.
+
+Resultado matriz endurecida: 0 fallos de producto reales; los compose flaky pasan aislados
+(pendiente: higiene de aislamiento paralelo, W6).
+
+### Bugs de producto cerrados (destapados por cobertura)
+- **Seguridad — disallowed-features NO se enforce**: TS bloquea features del control-manifest en cada
+  lectura de config; Go tenía la maquinaria pero nunca la invocaba. Cableado en up/build con matching
+  correcto (boundary `/:@`) y envelope idéntico a TS.
+- **`outdated`**: key con tag completo, `current`/`wanted` a versión concreta, `wantedMajor`/`latestMajor`.
+- **`upgrade`/lockfile**: `version` = versión resuelta (annotation `dev.containers.metadata` o resolución
+  de tag), no el tag.
+- **`resolve-dependencies`**: cwd-default 0.88.
+
+### Backlog documentado (divergencias en comandos auxiliares, bajo impacto de usuario)
+- `features/templates generate-docs`: reimplementación hand-rolled, orden no determinista, formato distinto.
+- `features resolve-dependencies`: Go no resuelve deps transitivas (FNodes sin dependsOn/installsAfter) +
+  omite el grafo mermaid.
+- `features info manifest/tags` (texto): anchos/indentación; solo se testea `--output-format json`.
+- `features package`: encoding del header del tarball → digest distinto (afecta `publish`).
+- Cobertura pendiente: `features package/publish/test`, `templates publish/generate-docs/metadata`.
