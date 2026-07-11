@@ -112,6 +112,55 @@ func TestBuildArgs(t *testing.T) {
 			},
 			want: []string{"build", "-f", "Dockerfile", "--build-arg", "NODE_VERSION=18", "."},
 		},
+		{
+			// Legacy build with multiple --cache-from sources, in order.
+			name: "CacheFrom",
+			opts: BuildOptions{
+				Dockerfile:  "Dockerfile",
+				ContextPath: ".",
+				CacheFrom:   []string{"img:cache1", "img:cache2"},
+			},
+			want: []string{"build", "-f", "Dockerfile", "--cache-from", "img:cache1", "--cache-from", "img:cache2", "."},
+		},
+		{
+			// Empty ContextPath must default to "." as the final positional arg.
+			name: "DefaultContext",
+			opts: BuildOptions{
+				Dockerfile: "Dockerfile",
+			},
+			want: []string{"build", "-f", "Dockerfile", "."},
+		},
+		{
+			// ExtraArgs are appended verbatim, immediately before the context path.
+			name: "ExtraArgs",
+			opts: BuildOptions{
+				Dockerfile:  "Dockerfile",
+				ContextPath: "/ctx",
+				ExtraArgs:   []string{"--build-context", "shared=/tmp/shared", "--add-host", "foo:127.0.0.1"},
+			},
+			want: []string{"build", "-f", "Dockerfile", "--build-context", "shared=/tmp/shared", "--add-host", "foo:127.0.0.1", "/ctx"},
+		},
+		{
+			// buildx: --platform + --push are mutually consistent (no --load),
+			// and --cache-to / cache-from / tags all coexist in a realistic combo.
+			name: "BuildxPlatformPushCombo",
+			opts: BuildOptions{
+				UseBuildx:   true,
+				Platform:    "linux/arm64",
+				Push:        true,
+				CacheTo:     "type=inline",
+				CacheFrom:   []string{"reg/img:cache"},
+				Tags:        []string{"reg/img:1", "reg/img:latest"},
+				Dockerfile:  "Dockerfile",
+				ContextPath: "/ctx",
+			},
+			want: []string{
+				"buildx", "build", "--platform", "linux/arm64", "--push",
+				"--cache-to", "type=inline", "--build-arg", "BUILDKIT_INLINE_CACHE=1",
+				"-f", "Dockerfile", "-t", "reg/img:1", "-t", "reg/img:latest",
+				"--cache-from", "reg/img:cache", "/ctx",
+			},
+		},
 	}
 
 	c := NewClient("docker", nil, log.Null)
