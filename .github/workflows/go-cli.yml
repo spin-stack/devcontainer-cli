@@ -101,10 +101,18 @@ jobs:
   parity-runtime:
     runs-on: ubuntu-latest
     needs: lint-and-test
+    env:
+      # Los casos update-uid-arm64* arrancan contenedores arm64 reales; en un
+      # runner amd64 se ejecutan emulados vía QEMU (binfmt), que es lento.
+      PARITY_RUNTIME_TIMEOUT: "10m"
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+      - name: Set up QEMU (emulación arm64)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod

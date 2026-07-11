@@ -196,7 +196,15 @@ func TestParityMatrix(t *testing.T) {
 	cliTS := envOr("CLI_TS", "node "+filepath.Join(repoRoot, "reference", "devcontainer.js"))
 	cliGO := envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer"))
 	defaultTimeout := 60 * time.Second
+	// Runtime lane default; overridable via PARITY_RUNTIME_TIMEOUT (e.g. "10m")
+	// so CI can grant headroom to QEMU-emulated arm64 cases without slowing the
+	// amd64 cases here.
 	runtimeTimeout := 300 * time.Second
+	if v := os.Getenv("PARITY_RUNTIME_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			runtimeTimeout = d
+		}
+	}
 
 	// Check TS CLI exists
 	if _, err := os.Stat(filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")); err != nil {
