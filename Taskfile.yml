@@ -3,7 +3,8 @@ version: "3"
 vars:
   BINARY: devcontainer
   MODULE: github.com/devcontainers/cli
-  VERSION: '{{default "dev" .VERSION}}'
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
   LDFLAGS: -s -w -X {{.MODULE}}/internal/core/product.version={{.VERSION}} -X {{.MODULE}}/internal/core/product.name={{.BINARY}}
   FIXTURES_DIR: src/test/configs
   TS_CLI: node reference/devcontainer.js
@@ -12,7 +13,9 @@ vars:
 tasks:
   # ── Build ──────────────────────────────────────────────────────────
   build:
-    desc: Build the Go CLI binary
+    desc: Build the Go CLI binary (statically linked, CGO disabled)
+    env:
+      CGO_ENABLED: "0"
     cmds:
       - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/devcontainer/
     sources:
@@ -24,7 +27,9 @@ tasks:
       - "{{.BINARY}}"
 
   build:cross:
-    desc: Cross-compile for all platforms
+    desc: Cross-compile for all platforms (statically linked, CGO disabled)
+    env:
+      CGO_ENABLED: "0"
     cmds:
       - mkdir -p dist
       - GOOS=linux   GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-amd64       ./cmd/devcontainer/
