@@ -4,9 +4,12 @@ Estado **actual** de la paridad del CLI Go contra el oráculo TypeScript (submó
 `reference/`, v0.88.0). Este documento resume dónde estamos; el detalle pendiente
 vive en el backlog y la historia en `git log`.
 
-**Estado de release:** candidato, todavía no declarado en paridad completa. La
-salida requiere cumplir [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) y conservar
-los artefactos de una corrida limpia contra el pin v0.88.0.
+**Estado de release:** candidato con **corrida limpia lograda** contra el pin v0.88.0
+(oracle `f683c29`): parity contract 68/0/0, network 13/0/0, runtime **189 matched / 0
+failed / 0 inconclusive** + TestPublishParity, más lint/coverage/integration/e2e/build:cross;
+artefactos JSON por lane + coverage.out + reference-commit.txt guardados. Falta
+formalizarla en CI con `goreleaser`/`syft` instalados (RW-015/016) para declarar paridad
+completa; ver [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
 
 **arm64 runtime: experimental, sin soporte por ahora.** Los binarios cross-compilan a
 `linux/arm64`, pero correr contenedores arm64 (vía emulación QEMU/binfmt en hosts amd64)

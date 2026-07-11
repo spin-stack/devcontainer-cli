@@ -19,9 +19,10 @@ Un ítem sólo se considera cerrado cuando:
 ## Estado (al día)
 
 Cerrados o hechos: RW-001, RW-002, RW-003, RW-004, RW-007, RW-009, RW-010, RW-011,
-RW-012, RW-013, RW-014, RW-015, RW-016, RW-017. Parciales (falta cola de evidencia o
-CI con secrets): RW-005, RW-006, RW-008. **Pendiente real:** **RW-018** (corrida
-limpia — gate final).
+RW-012, RW-013, RW-014, RW-015, RW-016, RW-017. **RW-018** (gate final): corrida limpia
+lograda contra v0.88.0 (189/0/0 runtime, artefactos guardados); queda formalizarla en CI
+con `goreleaser`/`syft` instalados. Parciales menores: RW-005/006/008 (colas de evidencia
+absorbidas por la corrida limpia; matriz cloud de RW-008 gated por secrets).
 
 ## P0 — Paridad funcional
 
@@ -246,7 +247,21 @@ commit candidato de RW-018. Se anota —sin frenar el release— startup > 1.5×
 que el oráculo Node, binario > 1.2× base, o gzip > 1.2× base. Cruzar el umbral exige
 una nota en `GO-REWRITE-STATUS.md`; no invalida el release.
 
-### RW-018 — Corrida limpia de paridad v0.88.0 — ❌ PENDIENTE (gate final)
+### RW-018 — Corrida limpia de paridad v0.88.0 — 🟢 CORRIDA LIMPIA LOGRADA (gate final)
+
+**Corrida limpia contra el pin v0.88.0 (oracle `f683c29`), artefactos en `artifacts/`:**
+lint ✅ · coverage ✅ 47.6% · test:integration ✅ · test:e2e ✅ · build:cross ✅ (linux
+amd64/arm64) · parity:contract ✅ 68/0/0 · parity:network ✅ 13/0/0 · parity:runtime ✅
+**189 matched / 0 failed / 0 inconclusive** (+ TestPublishParity ✅) · skipped-arm64 4
+(experimental). Reportes JSON por lane + `reference-commit.txt` + `coverage.out` guardados.
+
+**Caveats de la corrida:** (1) el runtime lane necesitó `-parallel 2` — a `-parallel 4`
+1 caso compose flakea por contención docker (todos matchean aislados; issue de
+aislamiento, no de producto). (2) `task release -- --snapshot` (RW-015) queda sin
+verificar: `goreleaser`/`syft` no instalados. Para el gate CI oficial: instalar esas
+herramientas y correr el runtime lane con paralelismo estable para el host.
+
+
 
 Ejecutar en el commit candidato, en un runner con Docker + red + oráculo compilado:
 
