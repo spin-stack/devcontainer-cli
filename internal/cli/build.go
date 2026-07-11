@@ -49,7 +49,7 @@ func newBuildCmd() *cobra.Command {
 		Use:   "build [path]",
 		Short: "Build a dev container image",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBuild(&opts)
+			return runBuild(cmd.Context(), &opts)
 		},
 	}
 
@@ -95,7 +95,7 @@ type buildRunner struct {
 	opts   *buildOpts
 }
 
-func runBuild(opts *buildOpts) error {
+func runBuild(ctx context.Context, opts *buildOpts) error {
 	// 0.88: --workspace-folder defaults to the current directory when not given.
 	if opts.workspaceFolder == "" {
 		opts.workspaceFolder, _ = os.Getwd()
@@ -143,7 +143,6 @@ func runBuild(opts *buildOpts) error {
 	// Setup Docker clients
 	dockerClient := docker.NewClient(opts.dockerPath, nil, logger)
 
-	ctx := context.Background()
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
 		return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))

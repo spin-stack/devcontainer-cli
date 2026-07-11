@@ -49,7 +49,7 @@ func newReadConfigurationCmd() *cobra.Command {
 		Use:   "read-configuration",
 		Short: "Read configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReadConfiguration(&opts)
+			return runReadConfiguration(cmd.Context(), &opts)
 		},
 	}
 
@@ -79,7 +79,7 @@ func newReadConfigurationCmd() *cobra.Command {
 	return cmd
 }
 
-func runReadConfiguration(opts *readConfigOpts) error {
+func runReadConfiguration(ctx context.Context, opts *readConfigOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return err
 	}
@@ -189,7 +189,6 @@ func runReadConfiguration(opts *readConfigOpts) error {
 	}
 
 	// Find container for containerEnv substitution
-	ctx := context.Background()
 	lgr := log.New(log.Options{Version: cliVersion(), Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: os.Stderr, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
 	engine, engineErr := docker.NewEngineClient(lgr)
 	if engineErr != nil {

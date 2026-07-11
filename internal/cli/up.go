@@ -88,7 +88,7 @@ func newUpCmd() *cobra.Command {
 		Use:   "up",
 		Short: "Create and run dev container",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUp(&opts)
+			return runUp(cmd.Context(), &opts)
 		},
 	}
 
@@ -142,7 +142,7 @@ func newUpCmd() *cobra.Command {
 	return cmd
 }
 
-func runUp(opts *upOpts) error {
+func runUp(ctx context.Context, opts *upOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return writeValidationError(err.Error())
 	}
@@ -199,7 +199,6 @@ func runUp(opts *upOpts) error {
 	})
 
 	// Engine SDK client for container/image operations
-	ctx := context.Background()
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
 		return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))

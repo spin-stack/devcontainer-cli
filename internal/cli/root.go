@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	coreerrors "github.com/devcontainers/cli/internal/core/errors"
 	"github.com/devcontainers/cli/internal/core/product"
@@ -48,10 +51,15 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
-// Execute runs the CLI.
+// Execute runs the CLI. The command tree is driven by a context that is
+// cancelled on SIGINT/SIGTERM so an in-flight `up`/`build` can unwind cleanly
+// on Ctrl-C instead of being killed mid-operation.
 func Execute() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	root := NewRootCommand()
-	if err := root.Execute(); err != nil {
+	if err := root.ExecuteContext(ctx); err != nil {
 		var exitErr *coreerrors.ExitCodeError
 		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.Code)

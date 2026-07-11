@@ -76,7 +76,7 @@ func newExecCmd() *cobra.Command {
 			if len(cmdArgs) == 0 {
 				return fmt.Errorf("exec requires at least 1 arg")
 			}
-			return runExec(&opts, cmdArgs)
+			return runExec(cmd.Context(), &opts, cmdArgs)
 		},
 	}
 
@@ -104,7 +104,7 @@ func newExecCmd() *cobra.Command {
 	return cmd
 }
 
-func runExec(opts *execOpts, cmdArgs []string) error {
+func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return err
 	}
@@ -154,7 +154,6 @@ func runExec(opts *execOpts, cmdArgs []string) error {
 		}
 	}
 
-	ctx := context.Background()
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
 		return fmt.Errorf("Docker engine: %w", err)

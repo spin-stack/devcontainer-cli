@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -67,7 +66,7 @@ func newSetUpCmd() *cobra.Command {
 				Dimensions: logDimensions(terminalColumns, terminalRows),
 			})
 
-			ctx := context.Background()
+			ctx := cmd.Context()
 			engine, err := docker.NewEngineClient(logger)
 			if err != nil {
 				return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))

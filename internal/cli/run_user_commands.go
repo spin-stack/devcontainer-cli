@@ -46,7 +46,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 		Use:   "run-user-commands",
 		Short: "Run user commands",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUserCommands(&opts)
+			return runUserCommands(cmd.Context(), &opts)
 		},
 	}
 
@@ -84,7 +84,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 	return cmd
 }
 
-func runUserCommands(opts *runUserCommandsOpts) error {
+func runUserCommands(ctx context.Context, opts *runUserCommandsOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return writeValidationError(err.Error())
 	}
@@ -136,7 +136,6 @@ func runUserCommands(opts *runUserCommandsOpts) error {
 		}
 	}
 
-	ctx := context.Background()
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
 		return writeErrorResult(fmt.Sprintf("Docker engine: %v", err))
