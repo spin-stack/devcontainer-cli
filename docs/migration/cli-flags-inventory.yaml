@@ -160,8 +160,7 @@ commands:
       skip-feature-auto-mapping:
         type: boolean
         default: false
-        # BUG(RW-013): Go up.go omits MarkHidden — flag is visible in --help.
-        # In the TS CLI (and build/read-configuration in Go) this flag is hidden.
+        hidden: true
         description: "Temporary option for testing."
       skip-post-attach:
         type: boolean
@@ -183,7 +182,7 @@ commands:
       omit-config-remote-env-from-metadata:
         type: boolean
         default: false
-        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
+        hidden: true
         description: "Omit remoteEnv from devcontainer.json for container metadata label."
       secrets-file:
         type: string
@@ -191,17 +190,17 @@ commands:
       experimental-lockfile:
         type: boolean
         default: false
-        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
+        hidden: true
         description: "Write lockfile."
       experimental-frozen-lockfile:
         type: boolean
         default: false
-        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
+        hidden: true
         description: "Ensure lockfile remains unchanged."
       omit-syntax-directive:
         type: boolean
         default: false
-        # BUG(RW-013): Go up.go omits MarkHidden — should be hidden.
+        hidden: true
         description: "Omit Dockerfile syntax directives."
       include-configuration:
         type: boolean
@@ -454,7 +453,7 @@ commands:
       skip-feature-auto-mapping:
         type: boolean
         default: false
-        # BUG(RW-013): Go run_user_commands.go omits MarkHidden — should be hidden.
+        hidden: true
       skip-post-attach:
         type: boolean
         default: false
@@ -623,13 +622,13 @@ commands:
         description: "Write generated lockfile to standard out instead of to disk."
       feature:
         type: string
-        # BUG(RW-013): Go outdated.go registers this without shorthand `-f` and
-        # without MarkHidden — the TS CLI exposes it as a hidden `-f` alias.
+        alias: f
+        hidden: true
         description: "Upgrade the version requirements of a given Feature."
       target-version:
         type: string
-        # BUG(RW-013): Go outdated.go registers this without shorthand `-v` and
-        # without MarkHidden — the TS CLI exposes it as a hidden `-v` alias.
+        alias: v
+        hidden: true
         description: "The major (x), minor (x.y), or patch version (x.y.z) of the Feature to pin."
       log-file:
         type: string
@@ -702,7 +701,7 @@ commands:
       skip-feature-auto-mapping:
         type: boolean
         default: false
-        # BUG(RW-013): Go exec.go omits MarkHidden — should be hidden.
+        hidden: true
       log-file:
         type: string
         description: "Log file path."

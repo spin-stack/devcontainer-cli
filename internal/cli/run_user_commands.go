@@ -74,6 +74,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 	f.StringVar(&opts.defaultUserEnvProbe, "default-user-env-probe", "loginInteractiveShell", "")
 	f.Bool("stop-for-personalization", false, "")
 	f.Bool("skip-feature-auto-mapping", false, "")
+	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
 	f.StringVar(&opts.containerSessionDataFolder, "container-session-data-folder", "", "")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "")
 	f.String("user-data-folder", "", "")

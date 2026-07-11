@@ -285,8 +285,10 @@ func newUpgradeCmd() *cobra.Command {
 	f.StringVar(&composePath, "docker-compose-path", "docker-compose", "Compose path.")
 	f.StringVar(&logLevel, "log-level", "info", "Log level.")
 	f.BoolVar(&dryRun, "dry-run", false, "Write to stdout.")
-	f.String("feature", "", "")
-	f.String("target-version", "", "")
+	f.StringP("feature", "f", "", "")
+	f.StringP("target-version", "v", "", "")
+	_ = f.MarkHidden("feature")        // hidden aliased flag (TS parity: alias -f)
+	_ = f.MarkHidden("target-version") // hidden aliased flag (TS parity: alias -v)
 	_ = dockerPath
 	_ = composePath
 

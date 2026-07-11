@@ -136,6 +136,16 @@ func newUpCmd() *cobra.Command {
 	f.BoolVar(&opts.experimentalFrozenLockfile, "experimental-frozen-lockfile", false, "")
 	f.BoolVar(&opts.omitSyntaxDirective, "omit-syntax-directive", false, "")
 	f.BoolVar(&opts.omitConfigRemoteEnvFromMeta, "omit-config-remote-env-from-metadata", false, "")
+	// Hidden experimental/testing flags (match the TS CLI's hidden: true).
+	for _, h := range []string{
+		"skip-feature-auto-mapping",
+		"experimental-lockfile",
+		"experimental-frozen-lockfile",
+		"omit-syntax-directive",
+		"omit-config-remote-env-from-metadata",
+	} {
+		_ = f.MarkHidden(h)
+	}
 	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
 	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
 	addLogFileFlags(cmd)

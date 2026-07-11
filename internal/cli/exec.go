@@ -97,6 +97,7 @@ func newExecCmd() *cobra.Command {
 	f.Bool("mount-workspace-git-root", true, "")
 	f.String("default-user-env-probe", "loginInteractiveShell", "")
 	f.Bool("skip-feature-auto-mapping", false, "")
+	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
 	f.String("user-data-folder", "", "")
 	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
 	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
