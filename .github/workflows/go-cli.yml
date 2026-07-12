@@ -69,7 +69,13 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: task test:e2e
+      - run: task coverage:e2e
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-coverage
+          path: artifacts/coverage/e2e.out
+          if-no-files-found: error
       - if: always()
         run: task clean
 
@@ -96,6 +102,10 @@ jobs:
       - run: task reference
       - run: task parity:contract
       - run: task parity:network
+      # Coverage is measured separately with an instrumented Go binary. Keep the
+      # functional parity run above release-like, and avoid conflating subprocess
+      # coverage with the hermetic unit profile.
+      - run: task coverage:parity-contract
       - if: always()
         run: |
           mkdir -p artifacts

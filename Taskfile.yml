@@ -29,6 +29,14 @@ tasks:
     sources: [cmd/**/*.go, internal/**/*.go, go.mod, go.sum]
     generates: ["{{.BINARY}}"]
 
+  build:coverage:
+    desc: Build an instrumented CLI for subprocess/integration coverage
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - mkdir -p artifacts/coverage/bin artifacts/coverage/data
+      - go build -cover -ldflags "{{.LDFLAGS}}" -o artifacts/coverage/bin/{{.BINARY}} ./cmd/devcontainer/
+
   build:cross:
     desc: Cross-compile release binaries
     env:
@@ -73,6 +81,32 @@ tasks:
             if (t+0 < m+0) { printf "FAIL: coverage %.1f%% is below the %s%% floor\n", t, m; exit 1 }
             printf "OK: coverage %.1f%% >= %s%% floor\n", t, m
           }'
+
+  coverage:e2e:
+    desc: Measure the real in-process E2E paths (requires Docker)
+    preconditions:
+      - sh: docker info >/dev/null 2>&1
+        msg: Docker is required for E2E coverage
+    cmds:
+      - mkdir -p artifacts/coverage
+      # -coverpkg instruments the whole module, not only internal/cli. These E2E
+      # tests invoke NewRootCommand directly, so their coverage is captured by
+      # go test without replacing Docker or introducing test doubles.
+      - go test ./internal/cli -run '^TestE2E' -count=1 -timeout 5m -coverpkg=./... -coverprofile=artifacts/coverage/e2e.out -v {{.CLI_ARGS}}
+      - go tool cover -func=artifacts/coverage/e2e.out
+
+  coverage:parity-contract:
+    desc: Measure the instrumented Go binary through the hermetic parity contract lane
+    deps: [build:coverage, reference:compile]
+    cmds:
+      - rm -rf artifacts/coverage/data/contract
+      - mkdir -p artifacts/coverage/data/contract
+      # Go 1.20+ emits coverage from an instrumented application into
+      # GOCOVERDIR. CLI_GO makes the existing parity harness execute that binary;
+      # the TypeScript oracle and comparison behavior remain unchanged.
+      - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/contract CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-contract-coverage.json PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run '^TestParityMatrix$' -count=1 -timeout 10m -v {{.CLI_ARGS}}
+      - go tool covdata textfmt -i=artifacts/coverage/data/contract -o=artifacts/coverage/parity-contract.out
+      - go tool cover -func=artifacts/coverage/parity-contract.out
 
   test:e2e:
     desc: Run Go E2E tests with Docker

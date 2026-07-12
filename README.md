@@ -139,6 +139,21 @@ task lint             # linters
 task build:cross      # static binaries for linux/{amd64,arm64}
 ```
 
+Coverage is reported by execution layer instead of folding unlike suites into a
+single percentage:
+
+```sh
+task coverage                 # hermetic unit profile + ratchet gate
+task coverage:e2e             # real Docker E2E profile (requires Docker)
+task coverage:parity-contract # instrumented CLI subprocess vs the TS oracle
+```
+
+The subprocess profile uses Go's application coverage (`go build -cover` plus
+`GOCOVERDIR`), so command paths exercised by parity are measured without replacing
+Docker, Node, registries, or internal collaborators with mocks. Profiles live under
+`artifacts/coverage/` and remain separate so a broad E2E run cannot hide a drop in
+fast unit coverage.
+
 Running the parity matrix (needs the submodule + Node + Docker):
 
 ```sh

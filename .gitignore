@@ -3,6 +3,7 @@
 /artifacts/
 coverage.out
 coverage.html
+coverage.xml
 *.test
 .claude/
 .task/
