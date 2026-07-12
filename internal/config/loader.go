@@ -29,6 +29,9 @@ type LoadResult struct {
 	Config          *DevContainer
 	Raw             map[string]interface{} // pre-substitution
 	WorkspaceConfig *WorkspaceConfig
+	// HostSub is the host-side substitution context used for the config; reuse it
+	// so Feature metadata (mounts/containerEnv) resolves ${localEnv:…} the same way.
+	HostSub HostSubContext
 }
 
 // WorkspaceConfig describes the workspace mount and folder inside the container.
@@ -195,6 +198,7 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 		Config:          &config,
 		Raw:             raw,
 		WorkspaceConfig: wsConfig,
+		HostSub:         ctx,
 	}, nil
 }
 

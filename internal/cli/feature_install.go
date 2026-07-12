@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/httpx"
@@ -26,7 +27,10 @@ import (
 
 // FeatureBuildOptions holds extra build options to thread through feature install.
 type FeatureBuildOptions struct {
-	NoCache                bool
+	NoCache bool
+	// HostSub, when set, resolves ${localEnv:…}/${localWorkspaceFolder}/… in each
+	// Feature's containerEnv/mounts — same as the config's own substitution.
+	HostSub                *config.HostSubContext
 	CacheFrom              []string
 	CacheTo                string
 	Labels                 []string
@@ -447,6 +451,29 @@ func realignFeatureDirs(tmpDir string, sets []*features.Set) error {
 // extendImageWithFeatures fetches features from OCI, generates the extended
 // Dockerfile, and builds the image with features installed.
 // Returns the new image name.
+// substituteFeatureHostVars resolves host-side variables (${localEnv:…},
+// ${localWorkspaceFolder}, …) in each Feature's containerEnv values and mounts,
+// so a Feature mount like "${localEnv:HOME}/.cfg" reaches Docker resolved —
+// matching how the config's own containerEnv/mounts are substituted (upstream
+// #308, which only substituted devcontainer.json's own values).
+func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) {
+	for _, fs := range sets {
+		for i := range fs.Features {
+			f := &fs.Features[i]
+			for k, v := range f.ContainerEnv {
+				if s, ok := config.SubstituteHost(hs, v).(string); ok {
+					f.ContainerEnv[k] = s
+				}
+			}
+			if len(f.Mounts) > 0 {
+				if m, ok := config.SubstituteHost(hs, f.Mounts).([]interface{}); ok {
+					f.Mounts = m
+				}
+			}
+		}
+	}
+}
+
 func extendImageWithFeatures(
 	ctx context.Context,
 	logger log.Logger,
@@ -482,6 +509,12 @@ func extendImageWithFeatures(
 	featureSets := result.FeatureSets
 	tmpDir := result.TmpDir
 	defer os.RemoveAll(tmpDir)
+
+	// Resolve ${localEnv:…} / ${localWorkspaceFolder} / … in each Feature's
+	// containerEnv and mounts, like the config's own values (upstream #308).
+	if fbOpts != nil && fbOpts.HostSub != nil {
+		substituteFeatureHostVars(featureSets, *fbOpts.HostSub)
+	}
 
 	// Write/validate the features lockfile when requested (opt-in via the
 	// --experimental-lockfile / --experimental-frozen-lockfile flags). Writing

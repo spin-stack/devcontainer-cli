@@ -204,6 +204,15 @@ func GenerateExtendImageBuildForCompose(
 	return df.String()
 }
 
+// getEntPasswdExpr returns a shell expression that prints the /etc/passwd line
+// for a username OR uid, preferring getent and falling back to grep on
+// getent-less images (alpine/busybox) — matching the TS getEntPasswdShellCommand.
+func getEntPasswdExpr(userNameOrID string) string {
+	shellEsc := strings.ReplaceAll(userNameOrID, "'", `'\''`)
+	reEsc := regexp.QuoteMeta(userNameOrID)
+	return fmt.Sprintf(`(command -v getent >/dev/null 2>&1 && getent passwd '%s' || grep -E '^%s|^[^:]*:[^:]*:%s:' /etc/passwd || true)`, shellEsc, reEsc, reEsc)
+}
+
 // safeID converts a string to a safe environment variable name.
 // Matches TS getSafeId().
 func safeID(s string) string {
@@ -223,6 +232,12 @@ func generateFeatureBuildEnvVars(feat features.Feature, containerUser, remoteUse
 	envs = append(envs,
 		fmt.Sprintf("_CONTAINER_USER=%s", shellSingleQuote(containerUser)),
 		fmt.Sprintf("_REMOTE_USER=%s", shellSingleQuote(remoteUser)),
+		// Resolve the users' home dirs from /etc/passwd at RUN time (a feature like
+		// common-utils may have just created the user, so a later feature must see
+		// its home) — matching the TS CLI's _REMOTE_USER_HOME / _CONTAINER_USER_HOME
+		// builtins. Command substitution, so these must not be single-quoted.
+		fmt.Sprintf(`_CONTAINER_USER_HOME="$(%s | cut -d: -f6)"`, getEntPasswdExpr(containerUser)),
+		fmt.Sprintf(`_REMOTE_USER_HOME="$(%s | cut -d: -f6)"`, getEntPasswdExpr(remoteUser)),
 	)
 
 	// Main value — TS normalizes option objects to true and only emits the

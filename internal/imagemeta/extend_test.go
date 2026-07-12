@@ -89,6 +89,11 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 				if !strings.Contains(df, "_CONTAINER_USER='vscode' _REMOTE_USER='vscode'") {
 					t.Error("missing scoped feature install env vars")
 				}
+				// upstream #331: _REMOTE_USER_HOME must be resolved per-RUN from
+				// /etc/passwd (not omitted), so common-utils-created users resolve.
+				if !strings.Contains(df, `_REMOTE_USER_HOME="$(`) || !strings.Contains(df, "getent passwd 'vscode'") {
+					t.Errorf("missing per-RUN _REMOTE_USER_HOME getent resolution:\n%s", df)
+				}
 
 				// Should have metadata label
 				if !strings.Contains(df, "devcontainer.metadata") {

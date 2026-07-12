@@ -776,6 +776,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 			NoLockfile:                  opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
+			HostSub:                     &loadResult.HostSub,
 		})
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -817,6 +818,7 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 			NoLockfile:                  opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
+			HostSub:                     &loadResult.HostSub,
 		})
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -1361,6 +1363,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 					NoLockfile:                  opts.noLockfile,
 					ConfigPath:                  cfg.ConfigFilePath,
 					LockfileExcludeIDs:          opts.lockfileExcludeIDs,
+					HostSub:                     &loadResult.HostSub,
 				})
 				if extErr != nil {
 					return "", fmt.Errorf("install features on compose service: %w", extErr)
