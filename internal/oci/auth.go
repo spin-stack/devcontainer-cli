@@ -1,6 +1,7 @@
 package oci
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
@@ -163,12 +165,21 @@ type credHelperResult struct {
 }
 
 func getCredentialFromHelper(registry, helperName string, logger log.Logger) *credential {
-	cmd := exec.Command("docker-credential-"+helperName, "get")
+	// Bound the helper: a stuck docker-credential-* (locked keyring,
+	// docker-credential-desktop waiting on a GUI, ...) must not block the whole
+	// feature/image pull forever — time out and fall through to other auth.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker-credential-"+helperName, "get")
 	cmd.Stdin = strings.NewReader(registry)
 
 	output, err := cmd.Output()
 	if err != nil {
-		logger.Write(fmt.Sprintf("[httpOci] Credential helper %q failed for %q: %v", helperName, registry, err), log.LevelTrace)
+		if ctx.Err() == context.DeadlineExceeded {
+			logger.Write(fmt.Sprintf("[httpOci] Credential helper %q timed out after 15s for %q; skipping it (falling back to GITHUB_TOKEN / anonymous).", helperName, registry), log.LevelWarning)
+		} else {
+			logger.Write(fmt.Sprintf("[httpOci] Credential helper %q failed for %q: %v", helperName, registry, err), log.LevelTrace)
+		}
 		return nil
 	}
 	if len(output) == 0 {

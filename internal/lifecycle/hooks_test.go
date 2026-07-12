@@ -154,10 +154,11 @@ func TestCommandToString(t *testing.T) {
 
 func TestInstallDotfiles(t *testing.T) {
 	tests := []struct {
-		name         string
-		config       DotfilesConfig
-		wantCount    int      // -1 to skip the count assertion
-		wantContains []string // substrings expected in commands[0]
+		name            string
+		config          DotfilesConfig
+		wantCount       int      // -1 to skip the count assertion
+		wantContains    []string // substrings expected in commands[0]
+		wantNotContains []string // substrings that must NOT appear in commands[0]
 	}{
 		{
 			name:      "empty repo",
@@ -184,6 +185,18 @@ func TestInstallDotfiles(t *testing.T) {
 			wantCount:    -1,
 			wantContains: []string{"my-setup.sh"},
 		},
+		{
+			// upstream #683: a leading ~/ in the install command must expand.
+			name: "install command with leading ~/ expands to $HOME",
+			config: DotfilesConfig{
+				Repository:     "owner/dotfiles",
+				InstallCommand: "~/install.sh",
+				TargetPath:     "~/dotfiles",
+			},
+			wantCount:       -1,
+			wantContains:    []string{`"$HOME/install.sh"`},
+			wantNotContains: []string{`"~/install.sh"`},
+		},
 	}
 
 	for _, tt := range tests {
@@ -202,6 +215,11 @@ func TestInstallDotfiles(t *testing.T) {
 				}
 				if !strings.Contains(exec.commands[0], sub) {
 					t.Errorf("commands[0] = %q, should contain %q", exec.commands[0], sub)
+				}
+			}
+			for _, sub := range tt.wantNotContains {
+				if len(exec.commands) > 0 && strings.Contains(exec.commands[0], sub) {
+					t.Errorf("commands[0] = %q, should NOT contain %q", exec.commands[0], sub)
 				}
 			}
 		})

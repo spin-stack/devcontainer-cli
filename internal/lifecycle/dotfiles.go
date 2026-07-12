@@ -44,6 +44,14 @@ if [ -e "$MARKER" ]; then echo "dotfiles already installed"; exit 0; fi
 mkdir -p "$(dirname "$MARKER")" && : > "$MARKER"
 `
 
+	// Expand a leading `~/` to `$HOME/`: the command is embedded in double quotes,
+	// where `$HOME` expands but a bare `~` does not, so `~/install.sh` would be run
+	// as a literal directory named `~` and fail.
+	installCmd := config.InstallCommand
+	if strings.HasPrefix(installCmd, "~/") {
+		installCmd = "$HOME/" + installCmd[2:]
+	}
+
 	var script string
 	if config.InstallCommand != "" {
 		script = fmt.Sprintf(`command -v git >/dev/null 2>&1 || exit 1
@@ -61,13 +69,13 @@ else
 fi`,
 			targetPath, repo, targetPath,
 			targetPath,
-			config.InstallCommand,
-			config.InstallCommand, config.InstallCommand,
-			config.InstallCommand,
-			config.InstallCommand,
-			config.InstallCommand, config.InstallCommand,
-			config.InstallCommand,
-			config.InstallCommand,
+			installCmd,
+			installCmd, installCmd,
+			installCmd,
+			installCmd,
+			installCmd, installCmd,
+			installCmd,
+			installCmd,
 		)
 	} else {
 		script = fmt.Sprintf(`command -v git >/dev/null 2>&1 || exit 1
