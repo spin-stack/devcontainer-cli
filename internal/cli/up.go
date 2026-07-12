@@ -160,15 +160,17 @@ func newUpCmd() *cobra.Command {
 	return cmd
 }
 
-func runUp(ctx context.Context, out Output, opts *upOpts) error {
+// validateUpOpts checks the up command's flag values, returning the first
+// invalid one (nil if all are valid). Enum choices mirror the TS CLI.
+func validateUpOpts(opts *upOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
-		return writeValidationError(out, err.Error())
+		return err
 	}
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
-		return writeValidationError(out, err.Error())
+		return err
 	}
 	if err := validateMounts(opts.mounts); err != nil {
-		return writeValidationError(out, err.Error())
+		return err
 	}
 	for _, v := range []struct {
 		flag, val string
@@ -183,10 +185,29 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		{"update-remote-user-uid-default", opts.updateRemoteUserUIDDefault, []string{"on", "off", "never"}},
 	} {
 		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return writeValidationError(out, err.Error())
+			return err
 		}
 	}
-	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
+	return validateTerminalImplications(opts.terminalColumns, opts.terminalRows)
+}
+
+// resolveUpPaths resolves the workspace/config/override paths to absolute form.
+// Each result is empty when its corresponding flag was not set.
+func resolveUpPaths(opts *upOpts) (workspaceFolder, configPath, overridePath string) {
+	if opts.workspaceFolder != "" {
+		workspaceFolder = resolvePath(opts.workspaceFolder)
+	}
+	if opts.configPath != "" {
+		configPath = resolvePath(opts.configPath)
+	}
+	if opts.overrideConfig != "" {
+		overridePath = resolvePath(opts.overrideConfig)
+	}
+	return
+}
+
+func runUp(ctx context.Context, out Output, opts *upOpts) error {
+	if err := validateUpOpts(opts); err != nil {
 		return writeValidationError(out, err.Error())
 	}
 	// Non-blocking hint (interactive TTY only) if the host was never checked or a
@@ -198,18 +219,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
 
-	workspaceFolder := ""
-	if opts.workspaceFolder != "" {
-		workspaceFolder = resolvePath(opts.workspaceFolder)
-	}
-	configPath := ""
-	if opts.configPath != "" {
-		configPath = resolvePath(opts.configPath)
-	}
-	overridePath := ""
-	if opts.overrideConfig != "" {
-		overridePath = resolvePath(opts.overrideConfig)
-	}
+	workspaceFolder, configPath, overridePath := resolveUpPaths(opts)
 
 	logDst, closeLog, logErr := logWriter(opts.logFile, opts.terminalLogFile)
 	if logErr != nil {
@@ -1067,6 +1077,54 @@ func overrideDirFor(userDataFolder, tmpPattern string) (dir string, cleanup func
 	return dir, func() { os.RemoveAll(dir) }, nil
 }
 
+// composeServiceBuild captures the image and `build:` fields of a compose
+// service that fromCompose needs, parsed once from `docker compose config`
+// output instead of re-walking the untyped map at each use.
+type composeServiceBuild struct {
+	Image      string
+	HasBuild   bool
+	Dockerfile string
+	Context    string
+	Target     string
+	Args       map[string]string
+}
+
+func parseComposeServiceBuild(composeConfig map[string]interface{}, service string) composeServiceBuild {
+	var out composeServiceBuild
+	services, ok := composeConfig["services"].(map[string]interface{})
+	if !ok {
+		return out
+	}
+	svc, ok := services[service].(map[string]interface{})
+	if !ok {
+		return out
+	}
+	if img, ok := svc["image"].(string); ok {
+		out.Image = img
+	}
+	build, ok := svc["build"].(map[string]interface{})
+	if !ok {
+		return out
+	}
+	out.HasBuild = true
+	if df, ok := build["dockerfile"].(string); ok {
+		out.Dockerfile = df
+	}
+	if bctx, ok := build["context"].(string); ok {
+		out.Context = bctx
+	}
+	if tgt, ok := build["target"].(string); ok {
+		out.Target = tgt
+	}
+	if args, ok := build["args"].(map[string]interface{}); ok {
+		out.Args = make(map[string]string, len(args))
+		for k, v := range args {
+			out.Args[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	return out
+}
+
 func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
@@ -1104,32 +1162,15 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 	if len(cfg.Features) > 0 {
 		// Read compose config to determine service setup
 		composeConfig, configErr := composeClient.Config(ctx, composeFiles, "")
-		serviceHasBuild := false
-		serviceImage := ""
-		serviceDockerfile := ""
-		serviceBuildContext := ""
-		serviceBuildTarget := ""
+		var svcBuild composeServiceBuild
 		if configErr == nil {
-			if services, ok := composeConfig["services"].(map[string]interface{}); ok {
-				if svc, ok := services[cfg.Service].(map[string]interface{}); ok {
-					if img, ok := svc["image"].(string); ok {
-						serviceImage = img
-					}
-					if build, ok := svc["build"].(map[string]interface{}); ok {
-						serviceHasBuild = true
-						if df, ok := build["dockerfile"].(string); ok {
-							serviceDockerfile = df
-						}
-						if ctx, ok := build["context"].(string); ok {
-							serviceBuildContext = ctx
-						}
-						if tgt, ok := build["target"].(string); ok {
-							serviceBuildTarget = tgt
-						}
-					}
-				}
-			}
+			svcBuild = parseComposeServiceBuild(composeConfig, cfg.Service)
 		}
+		serviceHasBuild := svcBuild.HasBuild
+		serviceImage := svcBuild.Image
+		serviceDockerfile := svcBuild.Dockerfile
+		serviceBuildContext := svcBuild.Context
+		serviceBuildTarget := svcBuild.Target
 
 		// Fetch and resolve features
 		fetchResult, fetchErr := fetchFeatureSets(logger, nil, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
@@ -1165,22 +1206,8 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 			}
 
 			// Find base image for metadata — pass compose build args for variable resolution
-			composeBuildArgs := map[string]string{}
-			if configErr == nil {
-				if services, ok := composeConfig["services"].(map[string]interface{}); ok {
-					if svc, ok := services[cfg.Service].(map[string]interface{}); ok {
-						if build, ok := svc["build"].(map[string]interface{}); ok {
-							if args, ok := build["args"].(map[string]interface{}); ok {
-								for k, v := range args {
-									composeBuildArgs[k] = fmt.Sprintf("%v", v)
-								}
-							}
-						}
-					}
-				}
-			}
 			df := docker.ExtractDockerfile(string(dockerfileContent))
-			baseImage := docker.FindBaseImage(df, composeBuildArgs, serviceBuildTarget)
+			baseImage := docker.FindBaseImage(df, svcBuild.Args, serviceBuildTarget)
 
 			// Inspect base image once for metadata and user resolution.
 			baseImageInspect, _ := engine.InspectImage(ctx, baseImage)
