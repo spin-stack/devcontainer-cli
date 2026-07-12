@@ -1,3 +1,4 @@
+// Package httpx provides a proxy- and custom-CA-aware HTTP client shared by the CLI.
 package httpx
 
 import (
@@ -64,7 +65,13 @@ func NewTransport() *http.Transport {
 		caFile = os.Getenv("SSL_CERT_FILE")
 	}
 	if caFile != "" {
-		if pool, err := loadCACerts(caFile); err == nil && pool != nil {
+		pool, err := loadCACerts(caFile)
+		if err != nil {
+			// A bad NODE_EXTRA_CA_CERTS/SSL_CERT_FILE otherwise fails silently and
+			// then every HTTPS request behind a TLS-intercepting proxy breaks,
+			// looking like "the proxy is ignored". Surface it instead of swallowing.
+			fmt.Fprintf(os.Stderr, "warning: could not load CA certs from %s: %v\n", caFile, err)
+		} else if pool != nil {
 			if transport.TLSClientConfig == nil {
 				transport.TLSClientConfig = &tls.Config{}
 			}

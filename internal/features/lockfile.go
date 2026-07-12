@@ -2,6 +2,7 @@ package features
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -97,7 +98,7 @@ func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 	path := LockfilePath(configPath)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -127,17 +128,17 @@ func WriteLockfile(configPath string, lockfile *Lockfile, frozen bool, force boo
 
 	oldData, readErr := os.ReadFile(path)
 
-	if !force && readErr != nil && !os.IsNotExist(readErr) {
+	if !force && readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return readErr
 	}
 
 	// If no old lockfile and not explicitly enabled, skip
-	if !force && os.IsNotExist(readErr) {
+	if !force && errors.Is(readErr, os.ErrNotExist) {
 		return nil
 	}
 
 	if frozen {
-		if os.IsNotExist(readErr) {
+		if errors.Is(readErr, os.ErrNotExist) {
 			return fmt.Errorf("lockfile does not exist")
 		}
 		if string(oldData) != string(newData) {

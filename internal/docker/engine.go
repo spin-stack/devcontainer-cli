@@ -143,6 +143,11 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 		}
 	}()
 
+	// One timer reused across retries instead of a fresh time.After each
+	// iteration (whose timers would linger until they fire).
+	timer := time.NewTimer(retryTimeout)
+	defer timer.Stop()
+
 	for i := range maxRetries {
 		_, err := e.API.ContainerRemove(ctx, id, mobyclient.ContainerRemoveOptions{Force: true})
 		if err == nil {
@@ -164,12 +169,19 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 			eventsCh, errCh = evRes.Messages, evRes.Err
 		}
 
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(retryTimeout)
 		select {
 		case <-eventsCh:
 			return nil // destroyed
 		case err := <-errCh:
 			return fmt.Errorf("events stream: %w", err)
-		case <-time.After(retryTimeout):
+		case <-timer.C:
 			// retry
 		case <-ctx.Done():
 			return ctx.Err()

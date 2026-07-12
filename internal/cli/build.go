@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -654,13 +655,13 @@ func writeErrorResult(out Output, description string) error {
 // Runtime failures keep using writeErrorResult (JSON envelope on stdout).
 func writeValidationError(out Output, message string) error {
 	fmt.Fprintln(out.Stderr(), message)
-	return &coreerrors.ExitCodeError{Code: 1, Err: fmt.Errorf("%s", message)}
+	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(message)}
 }
 
 func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
 	b, _ := json.Marshal(errOutput)
 	fmt.Fprintln(out.Stdout(), string(b))
-	return &coreerrors.ExitCodeError{Code: 1, Err: fmt.Errorf("%s", errOutput.Description)}
+	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(errOutput.Description)}
 }
 
 func isUserFacingBuildError(err error) bool {

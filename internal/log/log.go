@@ -1,3 +1,4 @@
+// Package log provides the CLI's structured, TS-compatible logger.
 package log
 
 import (
@@ -320,7 +321,10 @@ func newJSONHandler(w io.Writer) Handler {
 }
 
 func (h *jsonHandler) HandleEvent(e Event) {
-	data, _ := json.Marshal(e)
+	data, err := json.Marshal(e)
+	if err != nil {
+		return // an Event is always serializable; drop rather than emit a broken line
+	}
 	fmt.Fprintf(h.w, "%s\n", data)
 }
 

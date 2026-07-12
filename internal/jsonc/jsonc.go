@@ -1,3 +1,4 @@
+// Package jsonc parses JSON with comments and trailing commas (JSONC), as used by devcontainer.json.
 package jsonc
 
 import (

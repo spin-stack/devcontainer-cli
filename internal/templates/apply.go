@@ -1,3 +1,4 @@
+// Package templates applies and publishes dev container Templates.
 package templates
 
 import (

@@ -1,3 +1,4 @@
+// Package pfs provides small filesystem helpers (safe tar extraction, file access).
 package pfs
 
 import (

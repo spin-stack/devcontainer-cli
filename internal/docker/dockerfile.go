@@ -184,8 +184,8 @@ func FindBaseImage(df *Dockerfile, buildArgs map[string]string, target string) s
 	return ""
 }
 
-// FindUserStatement finds the last USER statement in the target stage or its base stages.
-func FindUserStatement(df *Dockerfile, buildArgs, baseImageEnv map[string]string, target string) string {
+// findUserStatement finds the last USER statement in the target stage or its base stages.
+func findUserStatement(df *Dockerfile, buildArgs, baseImageEnv map[string]string, target string) string {
 	var stage *Stage
 	if target != "" {
 		stage = df.StagesByLabel[target]

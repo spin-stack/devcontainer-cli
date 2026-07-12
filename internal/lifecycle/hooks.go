@@ -1,3 +1,4 @@
+// Package lifecycle runs dev container lifecycle commands (hooks) and user-env probes.
 package lifecycle
 
 import (

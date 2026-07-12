@@ -1,3 +1,4 @@
+// Package config loads, parses and variable-substitutes devcontainer.json configuration.
 package config
 
 import (

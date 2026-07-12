@@ -1,3 +1,4 @@
+// Package imagemeta reads, merges and extends dev container image metadata.
 package imagemeta
 
 import (

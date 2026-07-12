@@ -1,3 +1,4 @@
+// Package docker wraps the Docker CLI and Engine API the CLI drives.
 package docker
 
 import (

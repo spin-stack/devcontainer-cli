@@ -232,7 +232,7 @@ RUN echo hello
 	}
 }
 
-// --- FindUserStatement ---
+// --- findUserStatement ---
 
 func TestFindUser(t *testing.T) {
 	tests := []struct {
@@ -308,7 +308,7 @@ USER third
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			df := ExtractDockerfile(tt.dockerfile)
-			user := FindUserStatement(df, tt.args, map[string]string{}, tt.stage)
+			user := findUserStatement(df, tt.args, map[string]string{}, tt.stage)
 			if user != tt.want {
 				t.Errorf("user = %q, want %q", user, tt.want)
 			}

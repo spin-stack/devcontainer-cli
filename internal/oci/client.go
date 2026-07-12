@@ -1,3 +1,4 @@
+// Package oci pushes and pulls Features and Templates as OCI registry artifacts.
 package oci
 
 import (

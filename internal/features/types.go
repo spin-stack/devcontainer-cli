@@ -1,3 +1,4 @@
+// Package features resolves, orders, installs and locks dev container Features.
 package features
 
 // Set represents a resolved feature with its source and metadata.

@@ -1,3 +1,4 @@
+// Package errors defines the CLI's structured error types and JSON error envelope.
 package errors
 
 import (

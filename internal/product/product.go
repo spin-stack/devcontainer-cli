@@ -1,3 +1,4 @@
+// Package product exposes the CLI's name and version.
 package product
 
 var (
