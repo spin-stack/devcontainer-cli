@@ -1314,6 +1314,9 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 				return "", fmt.Errorf("write combined Dockerfile: %w", err)
 			}
 			defer os.Remove(combinedPath)
+			// Preserve the service Dockerfile's sibling .dockerignore (upstream #969).
+			copyDockerignore(originalDockerfilePath, combinedPath)
+			defer os.Remove(combinedPath + ".dockerignore")
 
 			// Persist the build override when possible so a stopped compose container
 			// can be restarted without re-injecting features or losing the override.

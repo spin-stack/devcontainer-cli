@@ -249,6 +249,19 @@ type dockerfileBuildPrep struct {
 // Cleanup removes any temporary Dockerfile written by prepareDockerfileBuild.
 func (p *dockerfileBuildPrep) Cleanup() { p.cleanup() }
 
+// copyDockerignore copies a Dockerfile's sibling `<name>.dockerignore` next to a
+// renamed/generated build Dockerfile, so BuildKit's per-Dockerfile ignore lookup
+// (`<dockerfile>.dockerignore`) still finds the user's rules instead of leaking
+// excluded files into the build context (upstream #969). Best-effort: absent
+// ignore file → no-op.
+func copyDockerignore(origDockerfile, newDockerfile string) {
+	data, err := os.ReadFile(origDockerfile + ".dockerignore")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(newDockerfile+".dockerignore", data, 0644)
+}
+
 // prepareDockerfileBuild resolves cfg's Dockerfile relative to the config dir,
 // reads it, ensures the final stage has a name (writing a temp Dockerfile when a
 // name must be injected), and parses it. The caller must defer prep.Cleanup().
@@ -282,7 +295,13 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 			if err := os.WriteFile(tmpDockerfile, []byte(modified), 0644); err != nil {
 				return nil, fmt.Errorf("write build dockerfile: %w", err)
 			}
-			prep.cleanup = func() { os.Remove(tmpDockerfile) }
+			// Mirror the user's sibling <Dockerfile>.dockerignore next to the
+			// renamed file so BuildKit still applies it (upstream #969).
+			copyDockerignore(dockerfilePath, tmpDockerfile)
+			prep.cleanup = func() {
+				os.Remove(tmpDockerfile)
+				os.Remove(tmpDockerfile + ".dockerignore")
+			}
 			dockerfilePath = tmpDockerfile
 		}
 	}
