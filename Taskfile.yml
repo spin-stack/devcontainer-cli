@@ -10,11 +10,11 @@ vars:
   LDFLAGS: -s -w -X {{.MODULE}}/internal/product.version={{.VERSION}} -X {{.MODULE}}/internal/product.name={{.BINARY}}
   # Minimum hermetic-unit statement coverage the `coverage` gate enforces. Set as a
   # ratchet just below the current level; raise it as coverage grows (never lower).
-  COVERAGE_MIN: "48"
+  COVERAGE_MIN: "52"
   # Package ratchets prevent well-covered parsing packages from masking a
   # regression in the orchestration layers. Keep these just below the measured
   # hermetic baseline and only move them upward.
-  COVERAGE_CLI_MIN: "28"
+  COVERAGE_CLI_MIN: "32"
   COVERAGE_DOCKER_MIN: "77"
   COVERAGE_LIFECYCLE_MIN: "73"
   COVERAGE_OCI_MIN: "85"
