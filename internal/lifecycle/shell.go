@@ -1,198 +1,67 @@
 package lifecycle
 
 import (
-	"bufio"
+	"context"
 	"fmt"
-	"io"
-	"os/exec"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// EOT is the End-Of-Transmission marker used to delimit command output.
-// Matches the TS '\u2404' character.
-const EOT = "\u2404"
-
-// ShellServer launches a persistent shell inside a container via `docker exec`
-// and serializes command execution using EOT markers.
-type ShellServer struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
-	stderr *bufio.Reader
-	mu     sync.Mutex
-	log    log.Log
+// ContainerExecutor runs a single command inside a container (one exec per call)
+// and returns its stdout, stderr and exit code. *docker.EngineClient implements
+// it via the Docker exec API, so the lifecycle shell needs no `docker exec`
+// subprocess.
+type ContainerExecutor interface {
+	ExecInContainer(ctx context.Context, containerID, user string, env []string, command string) (stdout, stderr string, exitCode int, err error)
 }
 
-// NewShellServer starts a shell inside the container.
-// When user is non-empty the shell runs as that user (docker exec -u), matching
-// the TS CLI which runs lifecycle hooks and the userEnvProbe as the remoteUser.
-// remoteEnv entries ("KEY=VALUE") are injected via docker exec -e flags.
-func NewShellServer(dockerPath, containerID, user string, logger log.Log, remoteEnv ...string) (*ShellServer, error) {
-	if dockerPath == "" {
-		dockerPath = "docker"
-	}
+// ShellServer runs lifecycle commands inside a container as the remote user via
+// the Docker exec API. Each command is an independent `/bin/sh -c` exec — the
+// devcontainer lifecycle hooks and the userEnvProbe do not rely on shell state
+// carried across commands (each probe command spawns its own login/interactive
+// shell), so there is no persistent shell to manage.
+type ShellServer struct {
+	ctx         context.Context
+	exec        ContainerExecutor
+	containerID string
+	user        string
+	env         []string // remoteEnv "KEY=VALUE", applied to every exec
+	log         log.Log
+}
 
-	args := []string{"exec", "-i"}
-	if user != "" {
-		args = append(args, "-u", user)
-	}
-	for _, e := range remoteEnv {
-		args = append(args, "-e", e)
-	}
-	args = append(args, containerID, "/bin/sh")
-	cmd := exec.Command(dockerPath, args...)
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stdin pipe: %w", err)
-	}
-
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stdout pipe: %w", err)
-	}
-
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start shell: %w", err)
-	}
-
+// NewShellServer binds a ShellServer to a container. user (docker exec -u) and
+// remoteEnv entries ("KEY=VALUE", docker exec -e) are applied to every command,
+// matching the TS CLI which runs lifecycle hooks and the userEnvProbe as the
+// remote user.
+func NewShellServer(ctx context.Context, exec ContainerExecutor, containerID, user string, logger log.Log, remoteEnv ...string) (*ShellServer, error) {
 	return &ShellServer{
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: bufio.NewReader(stdoutPipe),
-		stderr: bufio.NewReader(stderrPipe),
-		log:    logger,
+		ctx:         ctx,
+		exec:        exec,
+		containerID: containerID,
+		user:        user,
+		env:         remoteEnv,
+		log:         logger,
 	}, nil
 }
 
-// Exec runs a command inside the shell server and returns stdout and exit code.
-// Commands are serialized — only one runs at a time.
+// Exec runs a command inside the container and returns its stdout and exit code.
+// The command's stderr is surfaced on the log (the TS CLI streams hook stderr)
+// rather than returned, so a failing hook still produces diagnostics.
 func (s *ShellServer) Exec(command string) (stdout string, exitCode int, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Protocol: echo EOT marker, run command, echo EOT+exitcode+EOT, echo EOT to stderr
-	wrapped := fmt.Sprintf("echo -n %s; ( %s ); echo -n %s$?%s; echo -n %s >&2\n", EOT, command, EOT, EOT, EOT)
-
-	if _, err := io.WriteString(s.stdin, wrapped); err != nil {
-		return "", -1, fmt.Errorf("write command: %w", err)
-	}
-
-	// Read stdout until we get the exit code between EOT markers
-	stdoutResult, codeStr, err := readUntilEOT(s.stdout)
+	out, errText, code, err := s.exec.ExecInContainer(s.ctx, s.containerID, s.user, s.env, command)
 	if err != nil {
-		return "", -1, fmt.Errorf("read stdout: %w", err)
+		return "", -1, err
 	}
-
-	// Read the command's stderr up to the EOT marker and surface it on the log
-	// instead of discarding it — otherwise a failing lifecycle hook gives no
-	// diagnostics (the TS CLI streams hook stderr).
-	if stderrText, _ := readSegment(s.stderr); strings.TrimSpace(stderrText) != "" && s.log != nil {
-		s.log.Write(stderrText, log.LevelInfo)
+	if strings.TrimSpace(errText) != "" && s.log != nil {
+		s.log.Write(errText, log.LevelInfo)
 	}
-
-	code := 0
-	if codeStr != "" {
-		_, _ = fmt.Sscanf(codeStr, "%d", &code)
-	}
-
-	return stdoutResult, code, nil
+	return out, code, nil
 }
 
-// Close terminates the shell server.
-func (s *ShellServer) Close() error {
-	if s.stdin != nil {
-		_, _ = io.WriteString(s.stdin, "exit\n")
-		_ = s.stdin.Close()
-	}
-
-	waitCh := make(chan error, 1)
-	go func() {
-		waitCh <- s.cmd.Wait()
-	}()
-
-	select {
-	case err := <-waitCh:
-		return err
-	case <-time.After(2 * time.Second):
-		if s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
-		}
-		return <-waitCh
-	}
-}
-
-// readUntilEOT reads from the reader collecting text between EOT markers.
-// Returns (stdout_text, exit_code_string, error).
-// Protocol: {EOT}{stdout}{EOT}{exitcode}{EOT}
-func readUntilEOT(r *bufio.Reader) (string, string, error) {
-	// Wait for first EOT (start marker)
-	if err := skipUntilEOT(r); err != nil {
-		return "", "", err
-	}
-
-	// Read stdout until second EOT
-	stdout, err := readSegment(r)
-	if err != nil {
-		return "", "", err
-	}
-
-	// Read exit code until third EOT
-	codeStr, err := readSegment(r)
-	if err != nil {
-		return stdout, "", err
-	}
-
-	return stdout, codeStr, nil
-}
-
-func skipUntilEOT(r *bufio.Reader) error {
-	for {
-		b, err := r.ReadByte()
-		if err != nil {
-			return err
-		}
-		// EOT is multi-byte UTF-8: \xe2\x90\x84
-		if b == 0xe2 {
-			b2, _ := r.ReadByte()
-			b3, _ := r.ReadByte()
-			if b2 == 0x90 && b3 == 0x84 {
-				return nil
-			}
-		}
-	}
-}
-
-func readSegment(r *bufio.Reader) (string, error) {
-	var buf strings.Builder
-	for {
-		b, err := r.ReadByte()
-		if err != nil {
-			return buf.String(), err
-		}
-		if b == 0xe2 {
-			b2, _ := r.ReadByte()
-			b3, _ := r.ReadByte()
-			if b2 == 0x90 && b3 == 0x84 {
-				return buf.String(), nil
-			}
-			buf.WriteByte(b)
-			buf.WriteByte(b2)
-			buf.WriteByte(b3)
-		} else {
-			buf.WriteByte(b)
-		}
-	}
-}
+// Close is a no-op: each command is its own exec, so there is no persistent
+// process to tear down. Retained for API symmetry with callers that defer it.
+func (s *ShellServer) Close() error { return nil }
 
 // ShellExecutor wraps ShellServer to implement the CommandExecutor interface.
 type ShellExecutor struct {

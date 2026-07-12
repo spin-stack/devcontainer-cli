@@ -426,6 +426,30 @@ with the TS oracle except where indicated; they are sequenced by value/risk.
   and a real-daemon smoke (`up` + `up --remove-existing-container`) exercises the
   reshaped `RemoveContainer`/`Events`/`ListContainers`/`PullImage` paths.
 
+## Self-containment (fewer external commands)
+
+The CLI drives containers through Go libraries where it is parity-neutral to do
+so, keeping the big shell-outs only where a library would regress behavior or
+bloat the binary.
+
+- **Docker context + git root — ✅ DONE (zero new deps).** `docker context inspect`
+  is replaced by a direct read of the context store (`internal/docker/context.go`);
+  `git rev-parse --show-cdup` by a lexical `.git` parent walk. Removes the last hard
+  runtime deps on the external `docker`/`git` binaries in the connect/config paths.
+- **Lifecycle shell → Docker exec API — ✅ DONE.** The lifecycle shell server (hooks
+  + userEnvProbe) no longer shells out to `docker exec`; it runs each command as an
+  independent `/bin/sh -c` via the moby client exec API (`EngineClient.ExecInContainer`
+  — ExecCreate/Attach/Inspect + stdcopy demux), dropping the EOT framing protocol.
+  Safe because no hook/probe relies on shell state carried across commands (each
+  probe command spawns its own login/interactive shell). Validated: 35
+  run-user-commands + exec runtime cases match against the oracle.
+- **Kept as shell-outs (deliberate):** `docker buildx build` (buildx feature breadth
+  + the user's builder/context; a library would regress buildx or pull the heavy
+  buildkit client), `docker compose` (its output is not in the compared stream, so a
+  library adds huge deps for zero parity gain), interactive `docker exec -it` (the
+  inherited-TTY design avoids re-adding PTY/SIGWINCH/128+N complexity), and the
+  credential-helper protocol (external executables by design).
+
 ## Decisions that must be made explicit
 
 Decisions already taken (firm):

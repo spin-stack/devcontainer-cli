@@ -615,7 +615,7 @@ func (r *upRunner) runReattachLifecycle(containerID string) {
 		probeStrategy = lifecycle.UserEnvProbeStrategy(merged.UserEnvProbe)
 	}
 	if probeStrategy != lifecycle.ProbeNone {
-		if probeServer, probeErr := lifecycle.NewShellServer(opts.dockerPath, containerID, remoteUser, logger); probeErr == nil {
+		if probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger); probeErr == nil {
 			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, opts.containerSessionDataFolder)
 			probeServer.Close()
 			for k, v := range probedEnv {
@@ -635,7 +635,7 @@ func (r *upRunner) runReattachLifecycle(containerID string) {
 		}
 	}
 
-	shellServer, err := lifecycle.NewShellServer(opts.dockerPath, containerID, remoteUser, logger, mergedRemoteEnv...)
+	shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Could not start shell server for reattach hooks: %v", err), log.LevelWarning)
 		return
@@ -1566,7 +1566,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 // a non-nil error (a *coreerrors.ContainerError with a TS-compatible description)
 // only when a lifecycle hook fails; probe/dotfiles issues stay non-fatal warnings.
 func (r *upRunner) runLifecycleForUp(containerID string, cfg *config.DevContainerConfig, workDir string, remoteUser string) error {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+	ctx, logger, engine, opts := r.ctx, r.log, r.engine, r.opts
 	// Build merged remote env: probed shell env → CLI --remote-env → config remoteEnv
 	probeStrategy := lifecycle.UserEnvProbeStrategy(opts.defaultUserEnvProbe)
 	if cfg.UserEnvProbe != "" {
@@ -1577,7 +1577,7 @@ func (r *upRunner) runLifecycleForUp(containerID string, cfg *config.DevContaine
 
 	// Probe user environment inside the container (with caching)
 	if probeStrategy != lifecycle.ProbeNone {
-		probeServer, probeErr := lifecycle.NewShellServer(dockerClient.DockerPath, containerID, remoteUser, logger)
+		probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
 		if probeErr == nil {
 			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, opts.containerSessionDataFolder)
 			probeServer.Close()
@@ -1605,7 +1605,7 @@ func (r *upRunner) runLifecycleForUp(containerID string, cfg *config.DevContaine
 		}
 	}
 
-	shellServer, err := lifecycle.NewShellServer(dockerClient.DockerPath, containerID, remoteUser, logger, mergedRemoteEnv...)
+	shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Could not start shell server for lifecycle hooks: %v", err), log.LevelWarning)
 		return nil

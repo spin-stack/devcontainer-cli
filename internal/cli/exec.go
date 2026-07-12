@@ -225,11 +225,7 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 
 	// Probed env (lowest priority)
 	if probeStrategy != lifecycle.ProbeNone {
-		dockerPath := opts.dockerPath
-		if dockerPath == "" {
-			dockerPath = "docker"
-		}
-		probeServer, probeErr := lifecycle.NewShellServer(dockerPath, containerID, remoteUser, logger)
+		probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
 		if probeErr == nil {
 			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser)
 			probeServer.Close()

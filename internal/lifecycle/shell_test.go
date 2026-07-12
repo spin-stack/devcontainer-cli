@@ -1,208 +1,96 @@
 package lifecycle
 
 import (
-	"bufio"
-	"io"
-	"strings"
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
 )
 
-func TestEOTConstant(t *testing.T) {
-	if EOT != "\u2404" {
-		t.Errorf("EOT = %q, want \\u2404", EOT)
-	}
-	b := []byte(EOT)
-	if len(b) != 3 || b[0] != 0xe2 || b[1] != 0x90 || b[2] != 0x84 {
-		t.Errorf("EOT bytes = %x, want [e2 90 84]", b)
-	}
+// fakeExecutor is an in-memory ContainerExecutor for testing the shell server
+// without a real container.
+type fakeExecutor struct {
+	fn          func(command string) (stdout, stderr string, code int, err error)
+	lastUser    string
+	lastEnv     []string
+	lastCommand string
+	calls       int
 }
 
-func TestReadSegment(t *testing.T) {
-	input := "hello world" + EOT
-	br := bufio.NewReader(strings.NewReader(input))
-
-	segment, err := readSegment(br)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if segment != "hello world" {
-		t.Errorf("segment = %q", segment)
-	}
+func (f *fakeExecutor) ExecInContainer(_ context.Context, _, user string, env []string, command string) (string, string, int, error) {
+	f.calls++
+	f.lastUser, f.lastEnv, f.lastCommand = user, env, command
+	return f.fn(command)
 }
 
-func TestReadSegment_Empty(t *testing.T) {
-	br := bufio.NewReader(strings.NewReader(EOT))
-
-	segment, err := readSegment(br)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if segment != "" {
-		t.Errorf("segment = %q, want empty", segment)
-	}
-}
-
-func TestReadUntilEOT(t *testing.T) {
-	tests := []struct {
-		name       string
-		input      string
-		wantStdout string
-		wantCode   string
-	}{
-		{
-			name:       "full protocol",
-			input:      EOT + "command output" + EOT + "0" + EOT,
-			wantStdout: "command output",
-			wantCode:   "0",
-		},
-		{
-			name:       "non-zero exit",
-			input:      EOT + "error output" + EOT + "1" + EOT,
-			wantStdout: "error output",
-			wantCode:   "1",
-		},
-		{
-			name:       "empty output",
-			input:      EOT + "" + EOT + "0" + EOT,
-			wantStdout: "",
-			wantCode:   "0",
-		},
-		{
-			name:       "multiline output",
-			input:      EOT + "line1\nline2\nline3" + EOT + "0" + EOT,
-			wantStdout: "line1\nline2\nline3",
-			wantCode:   "0",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			br := bufio.NewReader(strings.NewReader(tt.input))
-
-			stdout, code, err := readUntilEOT(br)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if stdout != tt.wantStdout {
-				t.Errorf("stdout = %q, want %q", stdout, tt.wantStdout)
-			}
-			if code != tt.wantCode {
-				t.Errorf("code = %q, want %q", code, tt.wantCode)
-			}
-		})
-	}
-}
-
-func TestReadSegment_EOFBeforeEOT(t *testing.T) {
-	// A stream that ends without an EOT returns the partial text plus the error,
-	// so a truncated/aborted shell response is surfaced rather than hanging.
-	br := bufio.NewReader(strings.NewReader("partial output no marker"))
-	segment, err := readSegment(br)
-	if err == nil {
-		t.Fatal("expected EOF error on unterminated segment")
-	}
-	if segment != "partial output no marker" {
-		t.Errorf("segment = %q, want the partial text", segment)
-	}
-}
-
-func TestReadSegment_MultibyteNonEOT(t *testing.T) {
-	// A 3-byte UTF-8 rune that starts with 0xe2 but is NOT EOT (U+2192 '→',
-	// bytes e2 86 92) must be preserved verbatim, not mistaken for a marker.
-	input := "a→b" + EOT
-	br := bufio.NewReader(strings.NewReader(input))
-	segment, err := readSegment(br)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if segment != "a→b" {
-		t.Errorf("segment = %q, want %q", segment, "a→b")
-	}
-}
-
-func TestReadUntilEOT_Truncated(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"no start marker", "no eot at all"},
-		{"start only", EOT + "stdout but no closing markers"},
-		{"missing exit code segment", EOT + "out" + EOT + "code-never-terminated"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			br := bufio.NewReader(strings.NewReader(tt.input))
-			if _, _, err := readUntilEOT(br); err == nil {
-				t.Errorf("expected error for truncated stream %q", tt.input)
-			}
-		})
-	}
-}
-
-// TestShellServer_ExecProtocol drives Exec against an in-memory pipe playing the
-// container side of the EOT protocol: it echoes the wrapper's EOT framing plus a
-// synthetic exit code, so the read loop is exercised with no real Docker.
-func TestShellServer_ExecProtocol(t *testing.T) {
-	inR, inW := io.Pipe()   // shell server writes commands here
-	outR, outW := io.Pipe() // shell server reads responses here
-	errR, errW := io.Pipe() // shell server reads stderr (EOT-terminated) here
-
-	s := &ShellServer{
-		stdin:  inW,
-		stdout: bufio.NewReader(outR),
-		stderr: bufio.NewReader(errR),
-		log:    log.Null,
-	}
-
-	// Fake container: consume each command line and reply with framed stdout,
-	// then close the per-command stderr segment with its EOT — mirroring the
-	// wrapper's `echo -n {EOT} >&2`.
-	go func() {
-		br := bufio.NewReader(inR)
-		replies := []string{
-			EOT + "hello\n" + EOT + "0" + EOT,
-			EOT + "" + EOT + "42" + EOT,
+func TestShellServerExec(t *testing.T) {
+	fe := &fakeExecutor{fn: func(command string) (string, string, int, error) {
+		if command == "false" {
+			return "", "boom\n", 42, nil
 		}
-		for _, reply := range replies {
-			if _, err := br.ReadString('\n'); err != nil {
-				return
-			}
-			if _, err := io.WriteString(outW, reply); err != nil {
-				return
-			}
-			if _, err := io.WriteString(errW, EOT); err != nil {
-				return
-			}
-		}
-	}()
+		return "hello\n", "", 0, nil
+	}}
+	s, err := NewShellServer(context.Background(), fe, "cid", "vscode", log.Null, "FOO=bar")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	stdout, code, err := s.Exec("echo hello")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stdout != "hello\n" || code != 0 {
-		t.Errorf("first Exec = (%q, %d), want (\"hello\\n\", 0)", stdout, code)
+		t.Errorf("Exec = (%q, %d), want (hello, 0)", stdout, code)
+	}
+	// User and remoteEnv are forwarded to every exec.
+	if fe.lastUser != "vscode" || len(fe.lastEnv) != 1 || fe.lastEnv[0] != "FOO=bar" {
+		t.Errorf("user/env = %q/%v", fe.lastUser, fe.lastEnv)
 	}
 
-	// A second, serialized command reads the non-zero exit code correctly.
+	// A non-zero exit code is surfaced (stderr goes to the log, not the return).
 	stdout, code, err = s.Exec("false")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stdout != "" || code != 42 {
-		t.Errorf("second Exec = (%q, %d), want (\"\", 42)", stdout, code)
+		t.Errorf("Exec(false) = (%q, %d), want (\"\", 42)", stdout, code)
+	}
+
+	if err := s.Close(); err != nil {
+		t.Errorf("Close = %v, want nil", err)
 	}
 }
 
-func TestShellServer_ExecWriteError(t *testing.T) {
-	// A closed stdin makes the command write fail: Exec must report it, not hang.
-	_, inW := io.Pipe()
-	inW.Close()
-	s := &ShellServer{stdin: inW, log: log.Null}
+func TestShellServerExecError(t *testing.T) {
+	fe := &fakeExecutor{fn: func(string) (string, string, int, error) {
+		return "", "", -1, errors.New("attach failed")
+	}}
+	s, _ := NewShellServer(context.Background(), fe, "cid", "", log.Null)
 	if _, _, err := s.Exec("echo hi"); err == nil {
-		t.Fatal("expected write error on closed stdin")
+		t.Fatal("expected the underlying exec error to propagate")
+	}
+}
+
+func TestShellExecutorWorkdirAndFailure(t *testing.T) {
+	fe := &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 0, nil }}
+	s, _ := NewShellServer(context.Background(), fe, "cid", "", log.Null)
+	ex := &ShellExecutor{Server: s, Log: log.Null, WorkDir: "/workspaces/project"}
+
+	if err := ex.Exec("make build"); err != nil {
+		t.Fatal(err)
+	}
+	// WorkDir is applied by prefixing a `cd`.
+	if fe.lastCommand != "cd '/workspaces/project' && make build" {
+		t.Errorf("command = %q", fe.lastCommand)
+	}
+
+	// A non-zero exit becomes a CommandError carrying the original command.
+	fe.fn = func(string) (string, string, int, error) { return "", "", 2, nil }
+	err := ex.Exec("false")
+	var cmdErr *CommandError
+	if !errors.As(err, &cmdErr) || cmdErr.ExitCode != 2 || cmdErr.Command != "false" {
+		t.Fatalf("err = %v, want CommandError{false, 2}", err)
 	}
 }
 
@@ -212,23 +100,10 @@ func TestShellSingleQuote(t *testing.T) {
 		input string
 		want  string
 	}{
-		{
-			name:  "empty",
-			input: "",
-			want:  "''",
-		},
-		{
-			name:  "plain",
-			input: "/workspaces/project",
-			want:  "'/workspaces/project'",
-		},
-		{
-			name:  "embedded single quote",
-			input: "/tmp/it's-here",
-			want:  "'/tmp/it'\"'\"'s-here'",
-		},
+		{"empty", "", "''"},
+		{"plain", "/workspaces/project", "'/workspaces/project'"},
+		{"embedded single quote", "/tmp/it's-here", "'/tmp/it'\"'\"'s-here'"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := shellSingleQuote(tt.input); got != tt.want {

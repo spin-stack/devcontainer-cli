@@ -30,6 +30,30 @@ type mockAPI struct {
 	imagePullFn        func(ctx context.Context, ref string, opts mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error)
 	imageTagFn         func(ctx context.Context, opts mobyclient.ImageTagOptions) error
 	serverVersionFn    func(ctx context.Context, opts mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error)
+	execCreateFn       func(ctx context.Context, containerID string, opts mobyclient.ExecCreateOptions) (mobyclient.ExecCreateResult, error)
+	execAttachFn       func(ctx context.Context, execID string, opts mobyclient.ExecAttachOptions) (mobyclient.ExecAttachResult, error)
+	execInspectFn      func(ctx context.Context, execID string) (mobyclient.ExecInspectResult, error)
+}
+
+func (m *mockAPI) ExecInspect(ctx context.Context, execID string, _ mobyclient.ExecInspectOptions) (mobyclient.ExecInspectResult, error) {
+	if m.execInspectFn != nil {
+		return m.execInspectFn(ctx, execID)
+	}
+	return mobyclient.ExecInspectResult{}, errors.New("not implemented")
+}
+
+func (m *mockAPI) ExecCreate(ctx context.Context, containerID string, opts mobyclient.ExecCreateOptions) (mobyclient.ExecCreateResult, error) {
+	if m.execCreateFn != nil {
+		return m.execCreateFn(ctx, containerID, opts)
+	}
+	return mobyclient.ExecCreateResult{}, errors.New("not implemented")
+}
+
+func (m *mockAPI) ExecAttach(ctx context.Context, execID string, opts mobyclient.ExecAttachOptions) (mobyclient.ExecAttachResult, error) {
+	if m.execAttachFn != nil {
+		return m.execAttachFn(ctx, execID, opts)
+	}
+	return mobyclient.ExecAttachResult{}, errors.New("not implemented")
 }
 
 func (m *mockAPI) Close() error { return nil }

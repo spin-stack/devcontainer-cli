@@ -129,7 +129,7 @@ func newSetUpCmd() *cobra.Command {
 
 			var mergedRemoteEnv []string
 			if probeStrategy != lifecycle.ProbeNone {
-				probeServer, probeErr := lifecycle.NewShellServer(dockerPath, containerID, remoteUser, logger)
+				probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
 				if probeErr == nil {
 					probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, containerSessionDataFolder)
 					probeServer.Close()
@@ -147,7 +147,7 @@ func newSetUpCmd() *cobra.Command {
 				}
 			}
 
-			shellServer, err := lifecycle.NewShellServer(dockerPath, containerID, remoteUser, logger, mergedRemoteEnv...)
+			shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
 			if err != nil {
 				return writeErrorResult(out, fmt.Sprintf("Failed to start shell: %v", err))
 			}

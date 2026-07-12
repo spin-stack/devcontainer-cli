@@ -29,6 +29,9 @@ type DockerAPI interface {
 	ContainerRemove(ctx context.Context, containerID string, options mobyclient.ContainerRemoveOptions) (mobyclient.ContainerRemoveResult, error)
 	ContainerStart(ctx context.Context, containerID string, options mobyclient.ContainerStartOptions) (mobyclient.ContainerStartResult, error)
 	Events(ctx context.Context, options mobyclient.EventsListOptions) mobyclient.EventsResult
+	ExecCreate(ctx context.Context, containerID string, options mobyclient.ExecCreateOptions) (mobyclient.ExecCreateResult, error)
+	ExecAttach(ctx context.Context, execID string, options mobyclient.ExecAttachOptions) (mobyclient.ExecAttachResult, error)
+	ExecInspect(ctx context.Context, execID string, options mobyclient.ExecInspectOptions) (mobyclient.ExecInspectResult, error)
 	ImageInspect(ctx context.Context, imageID string, options ...mobyclient.ImageInspectOption) (mobyclient.ImageInspectResult, error)
 	ImagePull(ctx context.Context, refStr string, options mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error)
 	ImageTag(ctx context.Context, options mobyclient.ImageTagOptions) (mobyclient.ImageTagResult, error)

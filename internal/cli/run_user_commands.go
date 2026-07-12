@@ -229,7 +229,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 
 	var mergedRemoteEnv []string
 	if probeStrategy != lifecycle.ProbeNone {
-		probeServer, probeErr := lifecycle.NewShellServer(opts.dockerPath, containerID, remoteUser, logger)
+		probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
 		if probeErr == nil {
 			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, opts.containerSessionDataFolder)
 			probeServer.Close()
@@ -252,7 +252,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 		}
 	}
 
-	shellServer, err := lifecycle.NewShellServer(opts.dockerPath, containerID, remoteUser, logger, mergedRemoteEnv...)
+	shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
 	if err != nil {
 		return writeErrorResult(out, fmt.Sprintf("Failed to start shell server: %v", err))
 	}
