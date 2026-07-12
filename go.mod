@@ -2,6 +2,11 @@ module github.com/devcontainers/cli
 
 go 1.26
 
+// Pin the patched toolchain: go1.26.0's crypto/x509 has known vulnerabilities
+// (GO-2026-4599/4600, reachable via TLS verification on image pulls), fixed in
+// go1.26.1. Keep this at or above the latest patch; `task vuln` gates it.
+toolchain go1.26.5
+
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/iancoleman/orderedmap v0.3.0

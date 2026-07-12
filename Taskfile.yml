@@ -8,6 +8,9 @@ vars:
   VERSION:
     sh: echo "$(git describe --tags --exact-match 2>/dev/null || echo "$(date -u +%Y%m%d).${BUILD_NUMBER:-01}")"
   LDFLAGS: -s -w -X {{.MODULE}}/internal/product.version={{.VERSION}} -X {{.MODULE}}/internal/product.name={{.BINARY}}
+  # Minimum hermetic-unit statement coverage the `coverage` gate enforces. Set as a
+  # ratchet just below the current level; raise it as coverage grows (never lower).
+  COVERAGE_MIN: "48"
 
 tasks:
   default:
@@ -46,11 +49,30 @@ tasks:
     cmds:
       - go test ./internal/httpx -run TestClient -count=1 {{.CLI_ARGS}}
 
+  test:race:
+    desc: Run hermetic unit tests under the race detector (needs cgo)
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go test ./cmd/... ./internal/... -skip 'TestClient|TestE2E|TestParityMatrix|TestPublishParity' -race -count=1 {{.CLI_ARGS}}
+
+  vuln:
+    desc: Scan module and code paths for known vulnerabilities (govulncheck)
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   coverage:
-    desc: Generate the hermetic unit coverage report
+    desc: Generate the hermetic unit coverage report and enforce the COVERAGE_MIN floor
     cmds:
       - go test ./cmd/... ./internal/... -skip 'TestClient|TestE2E|TestParityMatrix|TestPublishParity' -coverprofile=coverage.out -count=1
       - go tool cover -func=coverage.out
+      # Ratchet gate: fail if total statement coverage drops below COVERAGE_MIN.
+      - cmd: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/{sub(/%/,"",$3); print $3}')
+          awk -v t="$total" -v m="{{.COVERAGE_MIN}}" 'BEGIN{
+            if (t+0 < m+0) { printf "FAIL: coverage %.1f%% is below the %s%% floor\n", t, m; exit 1 }
+            printf "OK: coverage %.1f%% >= %s%% floor\n", t, m
+          }'
 
   test:e2e:
     desc: Run Go E2E tests with Docker
