@@ -10,7 +10,7 @@
 # command-local narrow the run; everything else falls through to "all". The
 # daily full run is the backstop for any cross-command effect this misses.
 #
-# Usage:  git diff --name-only base...head | .github/scripts/parity-affected.sh
+# Usage:  git diff --name-only base...head | scripts/parity-affected.sh
 set -euo pipefail
 
 full=0
@@ -28,13 +28,16 @@ while IFS= read -r f; do
       : ;;
     .github/workflows/release.yml | .goreleaser* )
       : ;;
+    # Coverage / CI-runner helper scripts don't change parity behavior.
+    scripts/coverage-*.sh | scripts/pkgcov.awk | scripts/ci-*.sh | scripts/docker-cache-export.sh)
+      : ;;
 
     # --- Harness / matrix data / build config → run everything --------------
     # (listed BEFORE the generic *_test.go ignore so it wins)
     docs/parity/parity-matrix.yaml | \
     internal/cli/parity_matrix_test.go | internal/cli/parity_matrix_helpers_test.go | \
     Taskfile.yml | go.mod | go.sum | \
-    .github/workflows/go-cli.yml | .github/scripts/parity-affected.sh)
+    .github/workflows/go-cli.yml | scripts/parity-affected.sh | scripts/parity-affected-commands.sh)
       full=1 ;;
 
     # --- Isolated leaf command files → just that command's cases ------------

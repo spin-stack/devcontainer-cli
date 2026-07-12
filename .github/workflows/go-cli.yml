@@ -32,6 +32,9 @@ jobs:
       - run: task vuln
       - run: task test:race
       - run: task coverage
+      - name: Coverage summary
+        if: always()
+        run: bash scripts/coverage-report.sh coverage.out "unit (hermetic)" >> "$GITHUB_STEP_SUMMARY"
       - run: task test:integration
       - run: task build
       - run: ./devcontainer --version
@@ -49,11 +52,12 @@ jobs:
           language: Go
           label: code-coverage/go
 
+      # Binary covdata for the cross-lane merge (coverage-report job).
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: unit-coverage
-          path: coverage.out
+          name: covdata-unit
+          path: artifacts/coverage/data/unit
           if-no-files-found: error
 
   e2e:
@@ -70,11 +74,14 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: task coverage:e2e
+      - name: Coverage summary
+        if: always()
+        run: bash scripts/coverage-report.sh artifacts/coverage/data/e2e "e2e" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-coverage
-          path: artifacts/coverage/e2e.out
+          name: covdata-e2e
+          path: artifacts/coverage/data/e2e
           if-no-files-found: error
       - if: always()
         run: task clean
@@ -106,6 +113,9 @@ jobs:
       # functional parity run above release-like, and avoid conflating subprocess
       # coverage with the hermetic unit profile.
       - run: task coverage:parity-contract
+      - name: Coverage summary
+        if: always()
+        run: bash scripts/coverage-report.sh artifacts/coverage/data/contract "parity:contract" >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         run: |
           mkdir -p artifacts
@@ -116,10 +126,16 @@ jobs:
           name: parity-contract-network-v0.88.0
           path: artifacts/
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: covdata-contract
+          path: artifacts/coverage/data/contract
+          if-no-files-found: error
 
   # Runtime lane of the parity matrix (creates real containers via Docker) on
   # push/PR, SCOPED to the commands affected by the change: the full matrix takes
-  # ~45 min, so .github/scripts/parity-affected.sh maps the diff to a
+  # ~45 min, so scripts/parity-affected.sh maps the diff to a
   # PARITY_COMMAND allowlist (or "all"/"none"). The daily parity-runtime-full job
   # is the backstop that always runs the whole thing.
   parity-runtime:
@@ -141,46 +157,11 @@ jobs:
         id: affected
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-            head="${{ github.event.pull_request.head.sha }}"
+            base="${{ github.event.pull_request.base.sha }}"; head="${{ github.event.pull_request.head.sha }}"
           else
-            base="${{ github.event.before }}"
-            head="${{ github.sha }}"
+            base="${{ github.event.before }}"; head="${{ github.sha }}"
           fi
-          # New branch / unknown base (e.g. all-zero before-SHA) → run everything.
-          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            echo "commands=all" >> "$GITHUB_OUTPUT"; echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "unknown base → running the full matrix"; exit 0
-          fi
-          files=$(git diff --name-only "$base" "$head")
-          echo "changed files:"; echo "$files"
-          cmds=$(printf '%s\n' "$files" | .github/scripts/parity-affected.sh)
-          echo "affected parity commands: $cmds"
-          echo "commands=$cmds" >> "$GITHUB_OUTPUT"
-          if [ "$cmds" = "none" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "no runtime-relevant changes → skipping the runtime matrix"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
-      # The runtime matrix builds real images serially; they accumulate and
-      # exhaust the runner's root disk ("No space left on device" — the runner then
-      # dies hard, losing logs). /mnt is the SAME filesystem as / on these runners,
-      # so it buys nothing; instead free the big preinstalled SDKs (Go/Node are
-      # reinstalled by the setup steps that follow) for ~25-30GB of headroom. Also
-      # enable the containerd image store (needed for cache export / --platform).
-      - name: Free disk space + configure Docker (containerd store)
-        if: steps.affected.outputs.run == 'true'
-        run: |
-          echo "before:"; df -h / | tail -1
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-                      /opt/hostedtoolcache/CodeQL /usr/share/swift \
-                      /usr/local/share/boost /usr/lib/jvm || true
-          sudo docker image prune -af >/dev/null 2>&1 || true
-          echo "after:"; df -h / | tail -1
-          echo '{"features":{"containerd-snapshotter":true}}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          docker info -f 'driver={{.DriverStatus}}'
+          bash scripts/parity-affected-commands.sh "$base" "$head" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v6
         if: steps.affected.outputs.run == 'true'
         with:
@@ -194,6 +175,10 @@ jobs:
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # Free disk + enable the containerd image store (build-cache export). Reuses
+      # the Taskfile so the runner prep is identical to release.yml.
+      - if: steps.affected.outputs.run == 'true'
+        run: task ci:prepare-runner
 
       - if: steps.affected.outputs.run == 'true'
         run: task reference
@@ -227,17 +212,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - name: Free disk space + configure Docker (containerd store)
-        run: |
-          echo "before:"; df -h / | tail -1
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-                      /opt/hostedtoolcache/CodeQL /usr/share/swift \
-                      /usr/local/share/boost /usr/lib/jvm || true
-          sudo docker image prune -af >/dev/null 2>&1 || true
-          echo "after:"; df -h / | tail -1
-          echo '{"features":{"containerd-snapshotter":true}}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          docker info -f 'driver={{.DriverStatus}}'
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -248,10 +222,16 @@ jobs:
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: task ci:prepare-runner
 
       - run: task reference
+      # The full lanes run the instrumented binary, so this measures coverage AND
+      # gates parity; coverage:merge unions them into one cross-lane report.
       - run: task coverage:parity-runtime
       - run: task coverage:parity-publish
+      - name: Merged coverage report
+        if: always()
+        run: task coverage:merge | tee -a "$GITHUB_STEP_SUMMARY"
       - if: always()
         run: |
           mkdir -p artifacts
@@ -260,7 +240,9 @@ jobs:
         if: always()
         with:
           name: parity-runtime-full-v0.88.0
-          path: artifacts/
+          path: |
+            artifacts/
+            artifacts/coverage/
           if-no-files-found: error
       - if: always()
         run: task clean
@@ -285,13 +267,6 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
-      - name: Free disk space + configure Docker (containerd store)
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-                      /opt/hostedtoolcache/CodeQL /usr/share/swift \
-                      /usr/local/share/boost /usr/lib/jvm || true
-          echo '{"features":{"containerd-snapshotter":true}}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -302,11 +277,46 @@ jobs:
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: task ci:prepare-runner
       - run: task reference
       - run: task parity:runtime
       - if: always()
         run: task clean
 
+
+  # Cross-lane coverage: merge the per-PR lanes' covdata (unit + e2e + contract)
+  # into the one number no single lane shows, and post it to the run summary.
+  coverage-report:
+    if: always() && (github.event_name == 'push' || github.event_name == 'pull_request')
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, e2e, parity]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download lane covdata
+        uses: actions/download-artifact@v7
+        with:
+          pattern: covdata-*
+          path: artifacts/coverage/data
+      # download-artifact nests each artifact under covdata-<lane>/; flatten to <lane>/.
+      - name: Normalize lane dirs
+        run: |
+          cd artifacts/coverage/data
+          for d in covdata-*; do [ -d "$d" ] && mv "$d" "${d#covdata-}"; done
+          ls -R . || true
+      - name: Merged coverage report
+        run: task coverage:merge | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: covdata-merged
+          path: artifacts/coverage/merged.out
+          if-no-files-found: warn
 
   cross-compile:
     runs-on: ubuntu-latest

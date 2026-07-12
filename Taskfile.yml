@@ -18,6 +18,10 @@ vars:
   COVERAGE_DOCKER_MIN: "77"
   COVERAGE_LIFECYCLE_MIN: "73"
   COVERAGE_OCI_MIN: "85"
+  # Coverage artifact layout. Every lane writes binary covdata under COVER_DATA/<lane>
+  # so `coverage:merge` can union them into the true cross-lane number.
+  COVER_DIR: artifacts/coverage
+  COVER_DATA: artifacts/coverage/data
 
 tasks:
   default:
@@ -77,95 +81,84 @@ tasks:
       - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   coverage:
-    desc: Generate the hermetic unit coverage report and enforce the COVERAGE_MIN floor
+    desc: Hermetic unit coverage — per-package table + enforce the total/package floors
     cmds:
-      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -coverprofile=coverage.out -count=1
-      - go tool cover -func=coverage.out
-      # Ratchet gate: fail if total statement coverage drops below COVERAGE_MIN.
-      - cmd: |
-          total=$(go tool cover -func=coverage.out | awk '/^total:/{sub(/%/,"",$3); print $3}')
-          awk -v t="$total" -v m="{{.COVERAGE_MIN}}" 'BEGIN{
-            if (t+0 < m+0) { printf "FAIL: coverage %.1f%% is below the %s%% floor\n", t, m; exit 1 }
-            printf "OK: coverage %.1f%% >= %s%% floor\n", t, m
-          }'
-      # Weighted statement coverage per package. This catches the failure mode
-      # where gains in parsers hide lost coverage in CLI/OCI orchestration.
-      - cmd: |
-          check_pkg() {
-            pkg="$1"; min="$2"
-            result=$(awk -v p="github.com/devcontainers/cli/internal/${pkg}/" '
-              NR > 1 && index($1,p)==1 { total += $2; if ($3 > 0) covered += $2 }
-              END { if (total == 0) print "missing"; else printf "%.1f", covered*100/total }
-            ' coverage.out)
-            if [ "$result" = missing ]; then
-              echo "FAIL: no coverage data for internal/$pkg"; return 1
-            fi
-            awk -v p="$pkg" -v t="$result" -v m="$min" 'BEGIN {
-              if (t+0 < m+0) { printf "FAIL: internal/%s coverage %.1f%% is below %s%%\n", p,t,m; exit 1 }
-              printf "OK: internal/%s coverage %.1f%% >= %s%%\n", p,t,m
-            }'
-          }
-          check_pkg cli {{.COVERAGE_CLI_MIN}}
-          check_pkg docker {{.COVERAGE_DOCKER_MIN}}
-          check_pkg lifecycle {{.COVERAGE_LIFECYCLE_MIN}}
-          check_pkg oci {{.COVERAGE_OCI_MIN}}
+      # rm -rf first: covdata files accumulate across runs and would inflate the
+      # merged number otherwise.
+      - rm -rf {{.COVER_DATA}}/unit && mkdir -p {{.COVER_DATA}}/unit
+      # -coverprofile keeps coverage.out byte-identical for the gate; the extra
+      # -test.gocoverdir also emits binary covdata so `coverage:merge` can union it
+      # with the e2e/parity lanes.
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -coverprofile=coverage.out -count=1 -args -test.gocoverdir={{.ROOT_DIR}}/{{.COVER_DATA}}/unit
+      - bash scripts/coverage-report.sh coverage.out "unit (hermetic)"
+      # Ratchet: total + per-package floors (parsers must not mask lost CLI/OCI coverage).
+      - bash scripts/coverage-gate.sh coverage.out TOTAL={{.COVERAGE_MIN}} cli={{.COVERAGE_CLI_MIN}} docker={{.COVERAGE_DOCKER_MIN}} lifecycle={{.COVERAGE_LIFECYCLE_MIN}} oci={{.COVERAGE_OCI_MIN}}
 
   coverage:e2e:
-    desc: Measure the real in-process E2E paths (requires Docker)
+    desc: Coverage of the real in-process E2E paths (requires Docker)
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for E2E coverage
     cmds:
-      - mkdir -p artifacts/coverage
-      # -coverpkg instruments the whole module, not only internal/cli. These E2E
-      # tests invoke NewRootCommand directly, so their coverage is captured by
-      # go test without replacing Docker or introducing test doubles.
-      - go test ./internal/cli -run '^TestE2E' -count=1 -timeout 5m -coverpkg=./... -coverprofile=artifacts/coverage/e2e.out -v {{.CLI_ARGS}}
-      - go tool cover -func=artifacts/coverage/e2e.out
+      - rm -rf {{.COVER_DATA}}/e2e && mkdir -p {{.COVER_DATA}}/e2e
+      # -coverpkg instruments the whole module (these tests invoke NewRootCommand
+      # directly); -test.gocoverdir emits binary covdata for the merge.
+      - go test ./internal/cli -run '^TestE2E' -count=1 -timeout 5m -coverpkg=./... -args -test.gocoverdir={{.ROOT_DIR}}/{{.COVER_DATA}}/e2e
+      - bash scripts/coverage-report.sh {{.COVER_DATA}}/e2e "e2e"
 
-  coverage:parity-contract:
-    desc: Measure the instrumented Go binary through the hermetic parity contract lane
+  # coverage:_parity-lane runs the instrumented CLI (build:coverage) through a
+  # parity lane, collecting covdata into COVER_DATA/<LANE> and printing the table.
+  # LANE and RUN (the full `go test ...` invocation) are supplied by the wrappers.
+  coverage:_parity-lane:
+    internal: true
     deps: [build:coverage, reference:compile]
     cmds:
-      - rm -rf artifacts/coverage/data/contract
-      - mkdir -p artifacts/coverage/data/contract
-      # Go 1.20+ emits coverage from an instrumented application into
-      # GOCOVERDIR. CLI_GO makes the existing parity harness execute that binary;
-      # the TypeScript oracle and comparison behavior remain unchanged.
-      - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/contract CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-contract-coverage.json PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run '^TestParityMatrix$' -count=1 -timeout 10m -v {{.CLI_ARGS}}
-      - go tool covdata textfmt -i=artifacts/coverage/data/contract -o=artifacts/coverage/parity-contract.out
-      - go tool cover -func=artifacts/coverage/parity-contract.out
+      - rm -rf {{.COVER_DATA}}/{{.LANE}} && mkdir -p {{.COVER_DATA}}/{{.LANE}}
+      - GOCOVERDIR={{.ROOT_DIR}}/{{.COVER_DATA}}/{{.LANE}} CLI_GO={{.ROOT_DIR}}/{{.COVER_DIR}}/bin/{{.BINARY}} {{.RUN}}
+      - bash scripts/coverage-report.sh {{.COVER_DATA}}/{{.LANE}} "parity:{{.LANE}}"
+
+  coverage:parity-contract:
+    desc: Coverage of the instrumented binary through the hermetic contract parity lane
+    cmds:
+      - task: coverage:_parity-lane
+        vars:
+          LANE: contract
+          RUN: >-
+            PARITY_REPORT_FILE={{.ROOT_DIR}}/{{.COVER_DIR}}/parity-contract.json
+            PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true
+            go test ./internal/cli -run '^TestParityMatrix$' -count=1 -timeout 10m -v
 
   coverage:parity-runtime:
-    desc: Measure the instrumented Go binary through the full Docker parity lane
-    deps: [build:coverage, reference:compile]
+    desc: Coverage of the instrumented binary through the full Docker parity lane
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for runtime parity coverage
-      - sh: |
-          d=$(mktemp -d) && printf 'FROM busybox\n' > "$d/Dockerfile" && \
-          docker buildx build --cache-to=type=local,dest="$d/c" -t parity-coverage-builder-probe "$d" >/dev/null 2>&1; \
-          rc=$?; rm -rf "$d" >/dev/null 2>&1; exit $rc
-        msg: The Docker builder must support cache export for runtime parity coverage
+      - sh: bash scripts/docker-cache-export.sh
+        msg: The Docker builder must support cache export (see scripts/ci-prepare-runner.sh)
     cmds:
-      - rm -rf artifacts/coverage/data/runtime
-      - mkdir -p artifacts/coverage/data/runtime
-      - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/runtime CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run '^TestParityMatrix$' -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 60m -v {{.CLI_ARGS}}
-      - go tool covdata textfmt -i=artifacts/coverage/data/runtime -o=artifacts/coverage/parity-runtime.out
-      - go tool cover -func=artifacts/coverage/parity-runtime.out
+      - task: coverage:_parity-lane
+        vars:
+          LANE: runtime
+          RUN: >-
+            PARITY_REPORT_FILE={{.ROOT_DIR}}/{{.COVER_DIR}}/parity-runtime.json
+            PARITY_STRICT=true PARITY_LANE=all
+            go test ./internal/cli -run '^TestParityMatrix$' -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 60m -v
 
   coverage:parity-publish:
-    desc: Measure real feature/template publication against an ephemeral OCI registry
-    deps: [build:coverage, reference:compile]
+    desc: Coverage of real feature/template publication against an ephemeral OCI registry
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for publish parity coverage
     cmds:
-      - rm -rf artifacts/coverage/data/publish
-      - mkdir -p artifacts/coverage/data/publish
-      - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/publish CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} go test ./internal/cli -run '^TestPublishParity$' -count=1 -timeout 10m -v {{.CLI_ARGS}}
-      - go tool covdata textfmt -i=artifacts/coverage/data/publish -o=artifacts/coverage/parity-publish.out
-      - go tool cover -func=artifacts/coverage/parity-publish.out
+      - task: coverage:_parity-lane
+        vars:
+          LANE: publish
+          RUN: go test ./internal/cli -run '^TestPublishParity$' -count=1 -timeout 10m -v
+
+  coverage:merge:
+    desc: Union every per-lane covdata dir into the true cross-lane coverage report
+    cmds:
+      - bash scripts/coverage-merge.sh {{.COVER_DATA}} {{.COVER_DATA}}/merged "merged (all lanes)"
 
   test:e2e:
     desc: Run Go E2E tests with Docker
@@ -231,16 +224,11 @@ tasks:
       # Fail fast (~1s) if the builder can't export build cache — otherwise the
       # runtime cases (build.cache-to-*, build.output-oci-*) fail ~4 min deep with
       # a cryptic buildkit error. The default `docker` driver lacks cache export.
-      - sh: |
-          d=$(mktemp -d) && printf 'FROM busybox\n' > "$d/Dockerfile" && \
-          docker buildx build --cache-to=type=local,dest="$d/c" -t parity-builder-probe "$d" >/dev/null 2>&1; \
-          rc=$?; rm -rf "$d" >/dev/null 2>&1; exit $rc
+      - sh: bash scripts/docker-cache-export.sh
         msg: |
           The Docker builder cannot export build cache (needed by the runtime parity
           matrix: build.cache-to-*, build.output-oci-*). Enable the containerd image
-          store: put {"features":{"containerd-snapshotter":true}} in
-          /etc/docker/daemon.json and restart docker, or use a docker-container
-          buildx builder.
+          store (scripts/ci-prepare-runner.sh) or use a docker-container buildx builder.
     cmds:
       # -parallel default 2 for gate determinism: higher values overload the docker
       # daemon on contended runners and transiently fail compose/heavy cases (they
@@ -257,6 +245,11 @@ tasks:
         msg: Docker is required for publish parity
     cmds:
       - go test ./internal/cli -run TestPublishParity -count=1 -timeout 10m -v
+
+  ci:prepare-runner:
+    desc: "CI-ONLY: free disk + enable the containerd image store (uses sudo; not for local dev)"
+    cmds:
+      - bash scripts/ci-prepare-runner.sh
 
   clean:
     desc: Remove generated artifacts and test containers
