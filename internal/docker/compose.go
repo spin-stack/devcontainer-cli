@@ -15,9 +15,8 @@ import (
 
 // ComposeClient wraps Docker Compose CLI (v1 or v2).
 type ComposeClient struct {
-	// Command is either ["docker-compose"] (v1) or ["docker", "compose"] (v2)
+	// Command is ["docker", "compose"] (Compose v2).
 	Command []string
-	IsV2    bool
 	Version []int // parsed version e.g. [2, 24, 0]
 	Env     []string
 	Log     log.Log
@@ -26,40 +25,25 @@ type ComposeClient struct {
 	Runner exec.Runner
 }
 
-// NewComposeClient detects the compose CLI and returns a client.
+// NewComposeClient detects Compose v2 (`docker compose`) and returns a client.
+// Compose v1 (`docker-compose`) is out of scope for this CLI; --docker-compose-path
+// is accepted for flag parity but only surfaces in the not-found error.
 func NewComposeClient(dockerPath, composePath string, env []string, logger log.Log) (*ComposeClient, error) {
-	if composePath == "" {
-		composePath = "docker-compose"
-	}
 	if dockerPath == "" {
 		dockerPath = "docker"
 	}
-
-	// Try docker compose (v2) first
 	if out, err := osexec.Command(dockerPath, "compose", "version", "--short").Output(); err == nil {
-		version := strings.TrimSpace(string(out))
 		return &ComposeClient{
 			Command: []string{dockerPath, "compose"},
-			IsV2:    true,
-			Version: parseComposeVersion(version),
+			Version: parseComposeVersion(strings.TrimSpace(string(out))),
 			Env:     env,
 			Log:     logger,
 		}, nil
 	}
-
-	// Fall back to docker-compose (v1)
-	if out, err := osexec.Command(composePath, "version", "--short").Output(); err == nil {
-		version := strings.TrimSpace(string(out))
-		return &ComposeClient{
-			Command: []string{composePath},
-			IsV2:    false,
-			Version: parseComposeVersion(version),
-			Env:     env,
-			Log:     logger,
-		}, nil
+	if composePath != "" {
+		return nil, fmt.Errorf("'docker compose' (v2) not found; --docker-compose-path %q is Compose v1, which is unsupported", composePath)
 	}
-
-	return nil, fmt.Errorf("neither 'docker compose' nor '%s' found", composePath)
+	return nil, fmt.Errorf("'docker compose' (v2) not found")
 }
 
 // Run executes a compose command.
@@ -105,8 +89,6 @@ func (c *ComposeClient) Config(composeFiles []string, envFile string) (map[strin
 
 	var config map[string]interface{}
 	if err := json.Unmarshal(res.Stdout, &config); err != nil {
-		// compose config outputs YAML, but json might work for v2
-		// For simplicity we'll handle the raw output
 		return nil, fmt.Errorf("parse compose config: %w", err)
 	}
 	return config, nil
@@ -151,25 +133,6 @@ func (c *ComposeClient) Up(composeFiles []string, envFile string, globalArgs []s
 	}
 	if res.ExitCode != 0 {
 		return fmt.Errorf("compose up failed (exit %d): %s", res.ExitCode, string(res.Stderr))
-	}
-	return nil
-}
-
-// Down runs `docker compose down`.
-func (c *ComposeClient) Down(composeFiles []string, envFile string, globalArgs []string, projectName string) error {
-	args := c.buildGlobalArgs(composeFiles, envFile)
-	if projectName != "" {
-		args = append(args, "--project-name", projectName)
-	}
-	args = append(args, globalArgs...)
-	args = append(args, "down")
-
-	res, err := c.Run(args...)
-	if err != nil {
-		return err
-	}
-	if res.ExitCode != 0 {
-		return fmt.Errorf("compose down failed (exit %d): %s", res.ExitCode, string(res.Stderr))
 	}
 	return nil
 }

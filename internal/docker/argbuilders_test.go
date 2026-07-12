@@ -167,7 +167,6 @@ func TestFindDockerDriverBuilder(t *testing.T) {
 func newComposeV2(rr *recordingRunner, version []int) *ComposeClient {
 	return &ComposeClient{
 		Command: []string{"docker", "compose"},
-		IsV2:    true,
 		Version: version,
 		Log:     log.Null,
 		Runner:  rr,
@@ -280,24 +279,6 @@ func TestComposeUp_NoProjectNoRecreate(t *testing.T) {
 	want := []string{"compose", "-f", "c.yml", "up", "-d"}
 	if !reflect.DeepEqual(rr.last().args, want) {
 		t.Errorf("up args = %v, want %v", rr.last().args, want)
-	}
-}
-
-func TestComposeDown_Args(t *testing.T) {
-	rr := &recordingRunner{}
-	c := newComposeV2(rr, []int{2, 24, 0})
-	if err := c.Down([]string{"c.yml"}, ".env", []string{"--timeout", "5"}, "proj"); err != nil {
-		t.Fatalf("Down error: %v", err)
-	}
-	want := []string{"compose",
-		"-f", "c.yml",
-		"--env-file", ".env",
-		"--project-name", "proj",
-		"--timeout", "5",
-		"down",
-	}
-	if !reflect.DeepEqual(rr.last().args, want) {
-		t.Errorf("down args =\n  %v\nwant\n  %v", rr.last().args, want)
 	}
 }
 
