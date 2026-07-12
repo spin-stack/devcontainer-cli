@@ -120,6 +120,24 @@ func TestGenerateDocs_IgnoresTopLevelFiles(t *testing.T) {
 	}
 }
 
+// TestWriteCollectionMetadata_WriteError locks the fix that a failed write of
+// devcontainer-collection.json surfaces as an error instead of a false success.
+func TestWriteCollectionMetadata_WriteError(t *testing.T) {
+	// Writing into a directory that does not exist fails; the error must propagate.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	if err := writeCollectionMetadata(missing, "feature", nil); err == nil {
+		t.Fatal("expected an error writing into a missing directory, got nil")
+	}
+	// The happy path still writes the file.
+	ok := t.TempDir()
+	if err := writeCollectionMetadata(ok, "feature", nil); err != nil {
+		t.Fatalf("unexpected error on the happy path: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ok, "devcontainer-collection.json")); err != nil {
+		t.Errorf("collection metadata not written: %v", err)
+	}
+}
+
 func TestGenerateDocs_SkipsMissingMetadata(t *testing.T) {
 	base := t.TempDir()
 	// A directory without a devcontainer-feature.json must be skipped, not error.

@@ -351,7 +351,9 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 		return &coreerrors.ExitCodeError{Code: 1}
 	}
 
-	writeCollectionMetadata(outputDir, collectionType, collection)
+	if err := writeCollectionMetadata(outputDir, collectionType, collection); err != nil {
+		return err
+	}
 
 	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", len(collection), collectionType, outputDir), log.LevelInfo)
 	return nil
@@ -388,7 +390,9 @@ func packageSingleItem(targetFolder, outputDir, collectionType, metaPath string,
 	}
 	logger.Write(fmt.Sprintf("Packaged %s '%s'", collectionType, id), log.LevelInfo)
 
-	writeCollectionMetadata(outputDir, collectionType, []*orderedmap.OrderedMap{meta})
+	if err := writeCollectionMetadata(outputDir, collectionType, []*orderedmap.OrderedMap{meta}); err != nil {
+		return err
+	}
 
 	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", 1, collectionType, outputDir), log.LevelInfo)
 	return nil
@@ -396,14 +400,22 @@ func packageSingleItem(targetFolder, outputDir, collectionType, metaPath string,
 
 // writeCollectionMetadata writes devcontainer-collection.json: sourceInformation
 // first, then the features/templates array — JSON.stringify(collection, null, 4)
-// in TS, so 4-space indentation.
-func writeCollectionMetadata(outputDir, collectionType string, collection []*orderedmap.OrderedMap) {
+// in TS, so 4-space indentation. Returns an error instead of swallowing a
+// marshal/write failure: a full disk or read-only output would otherwise yield an
+// incomplete package that the command still reports as a success.
+func writeCollectionMetadata(outputDir, collectionType string, collection []*orderedmap.OrderedMap) error {
 	collMeta := orderedmap.New()
 	collMeta.Set("sourceInformation", map[string]string{"source": "devcontainer-cli"})
 	collMeta.Set(fmt.Sprintf("%ss", collectionType), collection)
-	collData, _ := json.MarshalIndent(collMeta, "", "    ")
+	collData, err := json.MarshalIndent(collMeta, "", "    ")
+	if err != nil {
+		return fmt.Errorf("serialize collection metadata: %w", err)
+	}
 	collPath := filepath.Join(outputDir, "devcontainer-collection.json")
-	os.WriteFile(collPath, collData, 0644)
+	if err := os.WriteFile(collPath, collData, 0644); err != nil {
+		return fmt.Errorf("write collection metadata: %w", err)
+	}
+	return nil
 }
 
 // publishCollection wires the real OCI registry and process stdout, then
@@ -437,8 +449,12 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 		Writer: os.Stderr,
 	})
 
-	// Package first
-	tmpDir, _ := os.MkdirTemp("", fmt.Sprintf("%s-output-", collectionType))
+	// Package first. A failed MkdirTemp would otherwise leave tmpDir="" and scatter
+	// the packaged artifacts into the current directory.
+	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-output-", collectionType))
+	if err != nil {
+		return fmt.Errorf("create output dir: %w", err)
+	}
 	defer os.RemoveAll(tmpDir)
 
 	if err := packageCollection(targetFolder, tmpDir, collectionType, true, logLevelStr); err != nil {

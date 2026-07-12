@@ -346,12 +346,27 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 // `/workspaces/x/../../..`) and a different mount. Returns "" when dir is not
 // inside a repository.
 func detectGitRoot(dir string) string {
+	return detectGitRootUntil(dir, "")
+}
+
+// detectGitRootUntil is detectGitRoot with an optional ceiling: the walk stops
+// (returning "") once it has checked stopAt, so it never ascends past it. stopAt
+// == "" walks all the way to the filesystem root. The ceiling exists so tests can
+// bound the walk to an isolated tree instead of depending on no ancestor of the
+// system temp dir happening to contain a `.git`.
+func detectGitRootUntil(dir, stopAt string) string {
 	dir = filepath.Clean(dir)
+	if stopAt != "" {
+		stopAt = filepath.Clean(stopAt)
+	}
 	for {
 		// `.git` is a directory in a normal clone and a regular file (a gitlink)
 		// in a worktree or submodule checkout — accept either.
 		if info, err := os.Stat(filepath.Join(dir, ".git")); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
 			return dir
+		}
+		if dir == stopAt {
+			return "" // reached the ceiling without finding a repo
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
