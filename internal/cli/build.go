@@ -798,10 +798,21 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 
 	imageName := baseImageName
 
-	if len(opts.imageNames) > 0 {
-		metadata := []imagemeta.Entry{configToMetadataEntry(cfg)}
-		metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
-		allLabels := append(opts.labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
+	// Apply image labels via a FROM re-tag. compose build itself takes no --label,
+	// so without this a --label with no --image-name is silently dropped
+	// (upstream #930). With --image-name we also stamp the devcontainer.metadata
+	// label onto the distinct output image; a bare re-tag (same name) carries only
+	// the user's --label.
+	if len(opts.imageNames) > 0 || len(opts.labels) > 0 {
+		tags := opts.imageNames
+		labels := append([]string{}, opts.labels...)
+		if len(tags) == 0 {
+			tags = []string{imageName}
+		} else {
+			metadata := []imagemeta.Entry{configToMetadataEntry(cfg)}
+			metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
+			labels = append(labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
+		}
 
 		tmpDir, tmpErr := os.MkdirTemp("", "devcontainer-compose-image-build-")
 		if tmpErr != nil {
@@ -816,8 +827,8 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 		result, buildErr := dockerClient.Build(ctx, docker.BuildOptions{
 			Dockerfile:  dfPath,
 			ContextPath: tmpDir,
-			Tags:        opts.imageNames,
-			Labels:      allLabels,
+			Tags:        tags,
+			Labels:      labels,
 			UseBuildx:   useBuildx,
 		})
 		if buildErr != nil {
@@ -826,7 +837,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 		if result.ExitCode != 0 {
 			return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 		}
-		return opts.imageNames, nil
+		return tags, nil
 	}
 
 	return []string{imageName}, nil

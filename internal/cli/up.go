@@ -332,6 +332,26 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
 	}
 
+	// Derive id labels from workspace if not provided via --id-label.
+	if len(idLabels) == 0 {
+		idLabels = []string{
+			fmt.Sprintf("devcontainer.local_folder=%s", workspaceFolder),
+		}
+		if loadResult.Config.ConfigFilePath != "" {
+			idLabels = append(idLabels, fmt.Sprintf("devcontainer.config_file=%s", loadResult.Config.ConfigFilePath))
+		}
+	}
+
+	// Apply --remove-existing-container up-front, BEFORE initializeCommand, so a
+	// failed initializeCommand (or rebuild) does not leave the old container
+	// running — matching the VS Code extension (upstream #844).
+	existingIDs, _ := engine.ListContainers(ctx, true, idLabels)
+	if len(existingIDs) > 0 && opts.removeExisting {
+		logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
+		_ = engine.RemoveContainer(ctx, existingIDs[0])
+		existingIDs = nil
+	}
+
 	// Run initializeCommand on the host (before container creation).
 	// A failure aborts `up` with an error outcome, matching the TS CLI (which
 	// throws a ContainerError). Swallowing it produced silently-broken setups.
@@ -351,25 +371,6 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if opts.buildkit != "never" {
 		bk := dockerClient.DetectBuildKit(ctx)
 		useBuildx = bk.Available
-	}
-
-	// Derive id labels from workspace if not provided via --id-label
-	if len(idLabels) == 0 {
-		idLabels = []string{
-			fmt.Sprintf("devcontainer.local_folder=%s", workspaceFolder),
-		}
-		if loadResult.Config.ConfigFilePath != "" {
-			idLabels = append(idLabels, fmt.Sprintf("devcontainer.config_file=%s", loadResult.Config.ConfigFilePath))
-		}
-	}
-
-	// Check for existing container
-	existingIDs, _ := engine.ListContainers(ctx, true, idLabels)
-
-	if len(existingIDs) > 0 && opts.removeExisting {
-		logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
-		_ = engine.RemoveContainer(ctx, existingIDs[0])
-		existingIDs = nil
 	}
 
 	var containerID string
