@@ -53,7 +53,15 @@ func newBuildCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build [path]",
 		Short: "Build a dev container image",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The help has always advertised a positional [path]; upstream #8 notes
+			// it did nothing. Honor it as the workspace folder when --workspace-folder
+			// is not given (the explicit flag wins on conflict), so `devcontainer
+			// build ./project` works as users expect.
+			if len(args) == 1 && opts.workspaceFolder == "" {
+				opts.workspaceFolder = args[0]
+			}
 			return runBuild(cmd.Context(), outputFor(cmd), &opts)
 		},
 	}

@@ -122,9 +122,17 @@ func realFeaturesGenerateDocsCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "generate-docs",
+		Use:   "generate-docs [project-folder]",
 		Short: "Generate documentation",
+		Long: "Generate a README.md for each feature under the project folder.\n\n" +
+			"The project folder may either contain one feature per sub-directory\n" +
+			"(each with a devcontainer-feature.json), or be a single feature folder\n" +
+			"itself. It can be given positionally or with --project-folder (default: .).",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				projectFolder = args[0]
+			}
 			return generateDocs(resolvePath(projectFolder), registry, namespace, githubOwner, githubRepo, "feature", logLevel)
 		},
 	}
@@ -149,9 +157,17 @@ func realTemplatesGenerateDocsCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "generate-docs",
+		Use:   "generate-docs [project-folder]",
 		Short: "Generate documentation",
+		Long: "Generate a README.md for each template under the project folder.\n\n" +
+			"The project folder may either contain one template per sub-directory\n" +
+			"(each with a devcontainer-template.json), or be a single template folder\n" +
+			"itself. It can be given positionally or with --project-folder (default: .).",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				projectFolder = args[0]
+			}
 			return generateDocs(resolvePath(projectFolder), "", "", githubOwner, githubRepo, "template", logLevel)
 		},
 	}
@@ -566,19 +582,39 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 		template = templatesReadmeTemplate
 	}
 
-	entries, err := os.ReadDir(projectFolder)
-	if err != nil {
-		return fmt.Errorf("read project folder: %w", err)
+	// Resolve which sub-folders to document. Upstream #876: pointing at a single
+	// collection item (a folder that directly holds devcontainer-<type>.json) used
+	// to iterate that item's own files as if each were a collection member; and
+	// non-directory siblings at the top level were treated as folders too. Handle
+	// both: if the project folder itself is a collection item, document just it;
+	// otherwise document only its sub-directories (never stray files).
+	fi, statErr := os.Stat(projectFolder)
+	if statErr != nil {
+		return fmt.Errorf("read project folder: %w", statErr)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("project folder %q is not a directory", projectFolder)
+	}
+
+	var folders []string
+	if _, err := os.Stat(filepath.Join(projectFolder, metadataFile)); err == nil {
+		folders = []string{"."}
+	} else {
+		entries, err := os.ReadDir(projectFolder)
+		if err != nil {
+			return fmt.Errorf("read project folder: %w", err)
+		}
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".") || !entry.IsDir() {
+				continue
+			}
+			folders = append(folders, entry.Name())
+		}
 	}
 
 	basePathTrimmed := strings.TrimPrefix(projectFolder, "./")
 
-	for _, entry := range entries {
-		f := entry.Name()
-		if strings.HasPrefix(f, ".") {
-			continue
-		}
-
+	for _, f := range folders {
 		readmePath := filepath.Join(projectFolder, f, "README.md")
 		logger.Write(fmt.Sprintf("Generating %s...", readmePath), log.LevelInfo)
 

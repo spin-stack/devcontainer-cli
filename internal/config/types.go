@@ -105,6 +105,10 @@ type Mount struct {
 	Source   string `json:"source,omitempty"`
 	Target   string `json:"target,omitempty"`
 	External *bool  `json:"external,omitempty"`
+	// Readonly maps a mount object to a read-only bind/volume for BOTH the
+	// docker (`--mount ...,readonly`) and docker-compose (`:ro`) paths, so a
+	// single Feature/config mount object works in either mode (upstream #881).
+	Readonly *bool `json:"readonly,omitempty"`
 }
 
 // --- Type discrimination ---

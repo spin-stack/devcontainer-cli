@@ -36,6 +36,9 @@ func metadataMounts(cfg *config.DevContainer) []interface{} {
 			if mountObj.External != nil {
 				serialized["external"] = *mountObj.External
 			}
+			if mountObj.Readonly != nil {
+				serialized["readonly"] = *mountObj.Readonly
+			}
 			mounts = append(mounts, serialized)
 		}
 	}

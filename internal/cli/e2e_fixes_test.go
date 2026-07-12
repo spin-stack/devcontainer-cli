@@ -186,6 +186,41 @@ func TestE2E_SiblingDockerignore(t *testing.T) {
 	}
 }
 
+// TestE2E_ReadonlyMountObject validates #881: a top-level mount OBJECT with
+// readonly:true produces a genuinely read-only bind mount in the container.
+func TestE2E_ReadonlyMountObject(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("Docker not available")
+	}
+	src := writeFixture(t, map[string]string{"file.txt": "hello\n"})
+	ws := writeFixture(t, map[string]string{
+		".devcontainer/devcontainer.json": `{
+			"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+			"overrideCommand": true,
+			"mounts": [
+				{ "type": "bind", "source": "` + src + `", "target": "/ro-mount", "readonly": true }
+			]
+		}`,
+	})
+
+	upOut := runCLI(t, "up", "--workspace-folder", ws, "--skip-post-create")
+	assertOutcome(t, upOut, "success")
+	id, _ := parseJSON(t, upOut)["containerId"].(string)
+	if id == "" {
+		t.Fatal("no containerId")
+	}
+	defer removeByID(id)
+
+	// Writing into the mount must fail because it is read-only.
+	out, err := exec.Command("docker", "exec", id, "sh", "-c", "echo x > /ro-mount/probe 2>&1; echo rc=$?").CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker exec failed: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); !strings.Contains(got, "Read-only file system") || strings.Contains(got, "rc=0") {
+		t.Errorf("#881 mount object readonly:true did not produce a read-only mount: %q", got)
+	}
+}
+
 // TestE2E_UpdateUIDSystemUser validates #109: updateRemoteUserUID's chown no
 // longer aborts the remap build when the remote user has no home dir on disk
 // (system user). Pre-fix the chown failed, the wrapper swallowed it, and the
