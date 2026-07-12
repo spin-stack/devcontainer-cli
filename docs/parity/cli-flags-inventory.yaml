@@ -69,6 +69,10 @@ commands:
         type: boolean
         default: true
         description: "Mount the workspace using its Git root."
+      mount-git-worktree-common-dir:
+        type: boolean
+        default: false
+        description: "Mount the Git worktree common dir for Git operations to work in the container."
       id-label:
         type: string
         array: true
@@ -202,6 +206,14 @@ commands:
         default: false
         hidden: true
         description: "Ensure lockfile remains unchanged."
+      no-lockfile:
+        type: boolean
+        default: false
+        description: "Disable lockfile generation and verification."
+      frozen-lockfile:
+        type: boolean
+        default: false
+        description: "Ensure lockfile exists and remains unchanged; fail otherwise."
       omit-syntax-directive:
         type: boolean
         default: false
@@ -425,6 +437,9 @@ commands:
       mount-workspace-git-root:
         type: boolean
         default: true
+      mount-git-worktree-common-dir:
+        type: boolean
+        default: false
       container-id:
         type: string
         description: "Id of the container to run the user commands for."
@@ -515,6 +530,9 @@ commands:
       mount-workspace-git-root:
         type: boolean
         default: true
+      mount-git-worktree-common-dir:
+        type: boolean
+        default: false
       container-id:
         type: string
       id-label:
@@ -690,6 +708,9 @@ commands:
       mount-workspace-git-root:
         type: boolean
         default: true
+      mount-git-worktree-common-dir:
+        type: boolean
+        default: false
       container-id:
         type: string
       id-label:

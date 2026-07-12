@@ -73,6 +73,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 	f.String("container-data-folder", "", "")
 	f.String("container-system-data-folder", "", "")
 	f.Bool("mount-workspace-git-root", true, "")
+	f.Bool("mount-git-worktree-common-dir", false, "")
 	f.StringVar(&opts.defaultUserEnvProbe, "default-user-env-probe", "loginInteractiveShell", "")
 	f.Bool("stop-for-personalization", false, "")
 	f.Bool("skip-feature-auto-mapping", false, "")

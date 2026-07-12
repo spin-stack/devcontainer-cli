@@ -61,6 +61,7 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.StringVar(&opts.configPath, "config", "", "devcontainer.json path.")
 	f.StringVar(&opts.overrideConfig, "override-config", "", "devcontainer.json path to override.")
 	f.BoolVar(&opts.mountWorkspaceGitRoot, "mount-workspace-git-root", true, "Mount the workspace using its Git root.")
+	f.Bool("mount-git-worktree-common-dir", false, "Mount the Git worktree common dir for Git operations to work in the container.")
 	f.BoolVar(&opts.includeFeaturesCfg, "include-features-configuration", false, "Include features configuration.")
 	f.BoolVar(&opts.includeMergedCfg, "include-merged-configuration", false, "Include merged configuration.")
 	f.StringVar(&opts.logLevel, "log-level", "info", "Log level.")

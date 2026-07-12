@@ -63,6 +63,9 @@ type upOpts struct {
 	secretsFile                 string
 	experimentalLockfile        bool
 	experimentalFrozenLockfile  bool
+	noLockfile                  bool
+	frozenLockfile              bool
+	mountGitWorktreeCommonDir   bool
 	workspaceMountConsistency   string
 	updateRemoteUserUIDDefault  string
 	gpuAvailability             string
@@ -141,6 +144,9 @@ func newUpCmd() *cobra.Command {
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "Secrets file path.")
 	f.BoolVar(&opts.experimentalLockfile, "experimental-lockfile", false, "")
 	f.BoolVar(&opts.experimentalFrozenLockfile, "experimental-frozen-lockfile", false, "")
+	f.BoolVar(&opts.noLockfile, "no-lockfile", false, "Disable lockfile generation and verification.")
+	f.BoolVar(&opts.frozenLockfile, "frozen-lockfile", false, "Ensure lockfile exists and remains unchanged; fail otherwise.")
+	f.BoolVar(&opts.mountGitWorktreeCommonDir, "mount-git-worktree-common-dir", false, "Mount the Git worktree common dir for Git operations to work in the container (requires the worktree created with `git worktree add --relative-paths`).")
 	f.BoolVar(&opts.omitSyntaxDirective, "omit-syntax-directive", false, "")
 	f.BoolVar(&opts.omitConfigRemoteEnvFromMeta, "omit-config-remote-env-from-metadata", false, "")
 	// Hidden experimental/testing flags (match the TS CLI's hidden: true).
@@ -210,6 +216,20 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := validateUpOpts(opts); err != nil {
 		return writeValidationError(out, err.Error())
 	}
+	// --no-lockfile is mutually exclusive with every frozen/write lockfile flag
+	// (matching the TS CLI up command's yargs check).
+	if opts.noLockfile {
+		switch {
+		case opts.frozenLockfile:
+			return writeValidationError(out, "--no-lockfile and --frozen-lockfile are mutually exclusive.")
+		case opts.experimentalFrozenLockfile:
+			return writeValidationError(out, "--no-lockfile and --experimental-frozen-lockfile are mutually exclusive.")
+		case opts.experimentalLockfile:
+			return writeValidationError(out, "--no-lockfile and --experimental-lockfile are mutually exclusive.")
+		}
+	}
+	// TS folds --experimental-frozen-lockfile into --frozen-lockfile.
+	opts.experimentalFrozenLockfile = opts.experimentalFrozenLockfile || opts.frozenLockfile
 	// Non-blocking hint (interactive TTY only) if the host was never checked or a
 	// previous `devcontainer check` found a failing configuration.
 	warnUncheckedHost(out)
@@ -753,6 +773,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 			Lockfile:                    opts.experimentalLockfile,
 			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			NoLockfile:                  opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 		})
@@ -793,6 +814,7 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 			Lockfile:                    opts.experimentalLockfile,
 			FrozenLockfile:              opts.experimentalFrozenLockfile,
+			NoLockfile:                  opts.noLockfile,
 			ConfigPath:                  cfg.ConfigFilePath,
 			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 		})
@@ -1336,6 +1358,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 					SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 					Lockfile:                    opts.experimentalLockfile,
 					FrozenLockfile:              opts.experimentalFrozenLockfile,
+					NoLockfile:                  opts.noLockfile,
 					ConfigPath:                  cfg.ConfigFilePath,
 					LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 				})
