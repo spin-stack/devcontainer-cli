@@ -12,6 +12,7 @@ import (
 
 type stopOpts struct {
 	workspaceFolder string
+	configPath      string
 	idLabels        []string
 	containerID     string
 	dockerPath      string
@@ -68,6 +69,7 @@ Go-only command; not part of the upstream @devcontainers/cli.`,
 func addStopFlags(cmd *cobra.Command, opts *stopOpts) {
 	f := cmd.Flags()
 	f.StringVar(&opts.workspaceFolder, "workspace-folder", "", "Workspace folder path (defaults to [path] or the current directory).")
+	f.StringVar(&opts.configPath, "config", "", "devcontainer.json path — disambiguates a project with multiple configs.")
 	f.StringArrayVar(&opts.idLabels, "id-label", nil, "id label(s) of the target container (name=value); repeatable.")
 	f.StringVar(&opts.containerID, "container-id", "", "Target container id directly.")
 	f.StringVar(&opts.dockerPath, "docker-path", "", "Docker CLI path.")
@@ -131,23 +133,17 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 }
 
 // resolveWorkspaceContainer finds the dev container for a workspace: a directly
-// given --container-id, else the first container matching --id-label or the
-// workspace's devcontainer.local_folder label. all=true so a stopped container
-// is still found (down after a prior stop).
+// given --container-id, else --id-label, else the workspace's container —
+// disambiguated by --config (config_file label) when a project has multiple
+// devcontainer.json configs, falling back to local_folder. all=true so a stopped
+// container is still found (down after a prior stop).
 func resolveWorkspaceContainer(ctx context.Context, engine *docker.EngineClient, opts stopOpts) string {
 	if opts.containerID != "" {
 		return opts.containerID
 	}
-	labels := opts.idLabels
-	if len(labels) == 0 && opts.workspaceFolder != "" {
-		labels = []string{fmt.Sprintf("devcontainer.local_folder=%s", resolvePath(opts.workspaceFolder))}
+	configFile := ""
+	if opts.configPath != "" {
+		configFile = resolvePath(opts.configPath)
 	}
-	if len(labels) == 0 {
-		return ""
-	}
-	ids, err := engine.ListContainers(ctx, true, labels)
-	if err != nil || len(ids) == 0 {
-		return ""
-	}
-	return ids[0]
+	return resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
 }

@@ -214,18 +214,14 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	containerID := opts.containerID
-	if containerID == "" && engine != nil && len(opts.idLabels) > 0 {
-		ids, _ := engine.ListContainers(ctx, true, opts.idLabels)
-		if len(ids) > 0 {
-			containerID = ids[0]
+	if containerID == "" && engine != nil {
+		configFile := ""
+		if result != nil {
+			configFile = result.Config.ConfigFilePath
 		}
-	}
-	if containerID == "" && engine != nil && workspaceFolder != "" {
-		labels := []string{fmt.Sprintf("devcontainer.local_folder=%s", workspaceFolder)}
-		ids, _ := engine.ListContainers(ctx, false, labels)
-		if len(ids) > 0 {
-			containerID = ids[0]
-		}
+		// [local_folder, config_file] so multiple configs in one project resolve
+		// to the right container (fallback to local_folder for legacy ones).
+		containerID = resolveContainerID(ctx, engine, workspaceFolder, configFile, opts.idLabels)
 	}
 
 	if containerID != "" && engine != nil {

@@ -121,9 +121,15 @@ devcontainer down .    # stop AND remove the container (a later `up` builds fres
 - The target is resolved from `--workspace-folder` (or the `[path]` arg), or given
   directly with `--id-label` / `--container-id`. Idempotent: a no-op success when
   no matching container exists.
+- **Multiple configs in one project** (`.devcontainer/frontend/devcontainer.json`,
+  `.devcontainer/backend/devcontainer.json`, …) are disambiguated with `--config`:
+  each config produces its own container (stamped with the `config_file` label), and
+  `stop`/`down`/`exec`/`read-configuration` resolve the right one via
+  `[local_folder, config_file]` (falling back to `local_folder` for legacy
+  containers). Without `--config` on a multi-config project, the first match wins.
 
-Flags: `--workspace-folder`, `--id-label`, `--container-id`, `--docker-path`
-(plus `--remove-volumes` on `down`).
+Flags: `--workspace-folder`, `--config`, `--id-label`, `--container-id`,
+`--docker-path` (plus `--remove-volumes` on `down`).
 
 ## `up --cache-image`
 

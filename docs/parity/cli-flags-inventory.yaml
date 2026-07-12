@@ -1093,6 +1093,9 @@ commands:
       workspace-folder:
         type: string
         description: "Workspace folder path (defaults to [path] or the current directory)."
+      config:
+        type: string
+        description: "devcontainer.json path — disambiguates a project with multiple configs."
       id-label:
         type: string
         array: true
@@ -1111,6 +1114,9 @@ commands:
       workspace-folder:
         type: string
         description: "Workspace folder path (defaults to [path] or the current directory)."
+      config:
+        type: string
+        description: "devcontainer.json path — disambiguates a project with multiple configs."
       id-label:
         type: string
         array: true

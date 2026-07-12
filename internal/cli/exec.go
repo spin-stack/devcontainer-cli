@@ -174,7 +174,11 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	// 2. Find the container
 	containerID := opts.containerID
 	if containerID == "" {
-		containerID = findContainerByOpts(ctx, engine, opts, logger)
+		configFile := ""
+		if loadResult != nil {
+			configFile = loadResult.Config.ConfigFilePath
+		}
+		containerID = findContainerByOpts(ctx, engine, opts, configFile, logger)
 	}
 
 	if containerID == "" {
@@ -369,27 +373,13 @@ func (w *rawLogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Logger) string {
-	labels := opts.idLabels
-	if len(labels) == 0 && opts.workspaceFolder != "" {
-		labels = []string{
-			fmt.Sprintf("devcontainer.local_folder=%s", resolvePath(opts.workspaceFolder)),
-		}
+func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, configFile string, logger log.Logger) string {
+	// [local_folder, config_file] disambiguates when a project has multiple
+	// devcontainer.json configs; falls back to local_folder for legacy containers.
+	if id := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels); id != "" {
+		return id
 	}
-
-	if len(labels) == 0 {
-		return ""
-	}
-
-	ids, err := engine.ListContainers(ctx, false, labels)
-	if err != nil || len(ids) == 0 {
-		ids, err = engine.ListContainers(ctx, true, labels)
-		if err != nil || len(ids) == 0 {
-			return findComposeContainer(ctx, engine, opts, logger)
-		}
-	}
-
-	return ids[0]
+	return findComposeContainer(ctx, engine, opts, logger)
 }
 
 func findComposeContainer(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Logger) string {
