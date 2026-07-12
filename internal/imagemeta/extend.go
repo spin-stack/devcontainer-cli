@@ -124,12 +124,17 @@ func GenerateExtendImageBuild(
 
 	buildArgs := map[string]string{"_DEV_CONTAINERS_BASE_IMAGE": baseImage}
 	buildKitContexts := map[string]string{}
+	prefix := ""
 	if useBuildKitContexts {
 		buildKitContexts["dev_containers_feature_content_source"] = "."
+		// The feature build passes --build-context; that requires a docker/dockerfile
+		// frontend >= 1.4. Declare it as the first line (matching the TS CLI), or the
+		// build fails on a Docker whose default frontend predates build contexts.
+		prefix = "# syntax=docker/dockerfile:1.4\n"
 	}
 
 	return &ExtendImageBuildInfo{
-		DockerfilePrefixContent: "",
+		DockerfilePrefixContent: prefix,
 		DockerfileContent:       df.String(),
 		OverrideTarget:          "dev_containers_target_stage",
 		BuildArgs:               buildArgs,

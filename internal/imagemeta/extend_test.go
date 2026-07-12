@@ -291,3 +291,29 @@ func TestGeneratePersistentContainerEnvVars(t *testing.T) {
 		t.Fatalf("envs[0] = %q", envs[0])
 	}
 }
+
+// TestExtend_SyntaxDirectiveForBuildContexts verifies the fix: when the feature
+// build uses --build-context (useBuildKitContexts), the generated Dockerfile must
+// declare a frontend that supports build contexts (docker/dockerfile >= 1.4) as
+// its first line, or the build fails on an older default frontend.
+func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
+	fss := []*features.Set{{
+		SourceInfo: &features.OCISource{ID: "go"},
+		Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+	}}
+
+	withCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil)
+	full := withCtx.DockerfilePrefixContent + withCtx.DockerfileContent
+	if !strings.HasPrefix(full, "# syntax=docker/dockerfile:1.4\n") {
+		t.Errorf("build-context build must start with the syntax directive, got:\n%s", full)
+	}
+	if _, ok := withCtx.BuildKitContexts["dev_containers_feature_content_source"]; !ok {
+		t.Error("expected the feature-content build context to be declared")
+	}
+
+	// Without build contexts, no syntax directive is forced.
+	noCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", false, nil)
+	if strings.Contains(noCtx.DockerfilePrefixContent, "syntax=") {
+		t.Errorf("non-context build must not force a syntax directive: %q", noCtx.DockerfilePrefixContent)
+	}
+}
