@@ -24,6 +24,16 @@ type HostSubContext struct {
 
 // SubstituteHost resolves ${localEnv:X}, ${localWorkspaceFolder}, etc.
 func SubstituteHost(ctx HostSubContext, value interface{}) interface{} {
+	replace := hostReplacer(ctx)
+	return substituteRecursive(replace, value)
+}
+
+// SubstituteHostString is the typed string variant of SubstituteHost.
+func SubstituteHostString(ctx HostSubContext, value string) string {
+	return resolveString(hostReplacer(ctx), value)
+}
+
+func hostReplacer(ctx HostSubContext) replaceFn {
 	env := ctx.Env
 	if ctx.Platform == "win32" {
 		env = normalizeEnvKeys(env)
@@ -37,9 +47,9 @@ func SubstituteHost(ctx HostSubContext, value interface{}) interface{} {
 		}, ctx.ContainerWorkspaceFolder)
 	}
 
-	return substituteRecursive(func(match, variable string, args []string) string {
+	return func(match, variable string, args []string) string {
 		return replaceHostVar(isWin, env, ctx, match, variable, args)
-	}, value)
+	}
 }
 
 // SubstituteDevContainerID resolves ${devcontainerId} from id-labels.
@@ -50,9 +60,33 @@ func SubstituteDevContainerID(idLabels map[string]string, value interface{}) int
 			if cachedID == "" && idLabels != nil {
 				cachedID = ComputeDevContainerID(idLabels)
 			}
-			if cachedID != "" {
-				return cachedID
-			}
+			return substituteDevContainerID(match, cachedID)
+		}
+		return match
+	}, value)
+}
+
+// SubstituteDevContainerIDString resolves ${devcontainerId} when the ID has
+// already been computed. Keeping the parsing here prevents callers from
+// implementing variable substitution with ad-hoc string replacements.
+func SubstituteDevContainerIDString(devcontainerID, value string) string {
+	return resolveString(func(match, variable string, _ []string) string {
+		if variable == "devcontainerId" {
+			return substituteDevContainerID(match, devcontainerID)
+		}
+		return match
+	}, value)
+}
+
+// SubstituteTemplateOptions resolves ${templateOption:name} using the supplied
+// option values. Unknown options remain unchanged.
+func SubstituteTemplateOptions(options map[string]string, value string) string {
+	return resolveString(func(match, variable string, args []string) string {
+		if variable != "templateOption" || len(args) == 0 {
+			return match
+		}
+		if replacement, ok := options[strings.TrimSpace(args[0])]; ok {
+			return replacement
 		}
 		return match
 	}, value)
@@ -98,6 +132,13 @@ func ComputeDevContainerID(idLabels map[string]string) string {
 // --- Internal ---
 
 type replaceFn func(match, variable string, args []string) string
+
+func substituteDevContainerID(match, devcontainerID string) string {
+	if devcontainerID == "" {
+		return match
+	}
+	return devcontainerID
+}
 
 func substituteRecursive(replace replaceFn, value interface{}) interface{} {
 	switch v := value.(type) {

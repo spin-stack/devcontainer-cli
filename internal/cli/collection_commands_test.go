@@ -7,6 +7,16 @@ import (
 	"testing"
 )
 
+func TestRenderDocsTemplate(t *testing.T) {
+	got := renderDocsTemplate("#{Name} / #{Name} / #{Unknown}", map[string]string{
+		"Name": "tool",
+	})
+	want := "tool / tool / #{Unknown}"
+	if got != want {
+		t.Errorf("renderDocsTemplate() = %q, want %q", got, want)
+	}
+}
+
 // writeFeature writes a devcontainer-feature.json into <dir>/<name>/.
 func writeFeature(t *testing.T, base, name, json string) {
 	t.Helper()

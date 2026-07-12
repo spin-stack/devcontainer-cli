@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -73,9 +72,14 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 }
 
 func substituteLocalVars(s string, workspaceFolder string) string {
-	s = strings.ReplaceAll(s, "${localWorkspaceFolder}", workspaceFolder)
-	s = strings.ReplaceAll(s, "${localWorkspaceFolderBasename}", filepath.Base(workspaceFolder))
-	return s
+	platform := ""
+	if config.IsWindows() {
+		platform = "win32"
+	}
+	return config.SubstituteHostString(config.HostSubContext{
+		Platform:             platform,
+		LocalWorkspaceFolder: workspaceFolder,
+	}, s)
 }
 
 func runHostCommand(ctx context.Context, command string, workDir string) error {

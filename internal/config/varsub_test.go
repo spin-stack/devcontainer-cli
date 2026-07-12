@@ -120,6 +120,37 @@ func TestSubstituteDevContainerID_SortedKeys(t *testing.T) {
 	}
 }
 
+func TestSubstituteDevContainerIDString(t *testing.T) {
+	tests := []struct {
+		name  string
+		id    string
+		value string
+		want  string
+	}{
+		{"multiple", "abc123", "cache-${devcontainerId}/${devcontainerId}", "cache-abc123/abc123"},
+		{"unknown preserved", "abc123", "${unknown}:${devcontainerId}", "${unknown}:abc123"},
+		{"similar name preserved", "abc123", "${devcontainerIdExtra}", "${devcontainerIdExtra}"},
+		{"empty id preserved", "", "cache-${devcontainerId}", "cache-${devcontainerId}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SubstituteDevContainerIDString(tt.id, tt.value); got != tt.want {
+				t.Errorf("SubstituteDevContainerIDString(%q, %q) = %q, want %q", tt.id, tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSubstituteTemplateOptions(t *testing.T) {
+	options := map[string]string{"image": "ubuntu", "greeting": "hello"}
+	value := "${templateOption:image}:${templateOption: greeting }:${unknown}"
+	want := "ubuntu:hello:${unknown}"
+	if got := SubstituteTemplateOptions(options, value); got != want {
+		t.Errorf("SubstituteTemplateOptions() = %q, want %q", got, want)
+	}
+}
+
 func TestSubstituteContainer(t *testing.T) {
 	containerEnv := map[string]string{
 		"PATH":  "/usr/bin:/usr/local/bin",

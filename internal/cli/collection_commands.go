@@ -685,17 +685,18 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 			urlToConfig = fmt.Sprintf("https://github.com/%s/%s/blob/main/%s/%s/%s", githubOwner, githubRepo, basePathTrimmed, f, metadataFile)
 		}
 
-		readme := template
-		readme = strings.Replace(readme, "#{Id}", id, 1)
-		readme = strings.Replace(readme, "#{Name}", name, 1)
-		readme = strings.Replace(readme, "#{Description}", desc, 1)
-		readme = strings.Replace(readme, "#{OptionsTable}", generateOptionsMarkdown(std, meta), 1)
-		readme = strings.Replace(readme, "#{Notes}", notes, 1)
-		readme = strings.Replace(readme, "#{RepoUrl}", urlToConfig, 1)
-		readme = strings.Replace(readme, "#{Registry}", registry, 1)
-		readme = strings.Replace(readme, "#{Namespace}", namespace, 1)
-		readme = strings.Replace(readme, "#{Version}", version, 1)
-		readme = strings.Replace(readme, "#{Customizations}", generateCustomizationsMarkdown(meta), 1)
+		readme := renderDocsTemplate(template, map[string]string{
+			"Id":             id,
+			"Name":           name,
+			"Description":    desc,
+			"OptionsTable":   generateOptionsMarkdown(std, meta),
+			"Notes":          notes,
+			"RepoUrl":        urlToConfig,
+			"Registry":       registry,
+			"Namespace":      namespace,
+			"Version":        version,
+			"Customizations": generateCustomizationsMarkdown(meta),
+		})
 
 		if header := generateDocsHeader(meta); header != "" {
 			readme = header + readme
@@ -708,6 +709,14 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 	}
 
 	return nil
+}
+
+func renderDocsTemplate(template string, values map[string]string) string {
+	pairs := make([]string, 0, len(values)*2)
+	for name, value := range values {
+		pairs = append(pairs, "#{"+name+"}", value)
+	}
+	return strings.NewReplacer(pairs...).Replace(template)
 }
 
 // generateOptionsMarkdown renders the options table with columns and row order

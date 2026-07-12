@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/pfs"
@@ -291,19 +291,7 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 	return merged
 }
 
-var templateOptionRegex = regexp.MustCompile(`\$\{templateOption:\s*(\w+)\s*\}`)
-
 // substituteTemplateOptions replaces ${templateOption:name} with the provided values.
 func substituteTemplateOptions(content string, options map[string]string) string {
-	return templateOptionRegex.ReplaceAllStringFunc(content, func(match string) string {
-		sub := templateOptionRegex.FindStringSubmatch(match)
-		if len(sub) < 2 {
-			return match
-		}
-		name := sub[1]
-		if val, ok := options[name]; ok {
-			return val
-		}
-		return match
-	})
+	return config.SubstituteTemplateOptions(options, content)
 }

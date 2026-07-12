@@ -104,20 +104,20 @@ func composeVolumeSpecsFromMetadata(entries []interface{}, devcontainerID string
 func mountFromMetadata(entry interface{}, devcontainerID string) (dockermount.Mount, error) {
 	switch raw := entry.(type) {
 	case string:
-		spec := strings.ReplaceAll(raw, "${devcontainerId}", devcontainerID)
+		spec := config.SubstituteDevContainerIDString(devcontainerID, raw)
 		return docker.ParseMountSpec(spec)
 	case map[string]interface{}:
 		target, _ := raw["target"].(string)
 		// ${devcontainerId} must resolve in target too, not only source — the
 		// string form substitutes the whole spec, so the object form has to match
 		// (e.g. target "/cache/${devcontainerId}").
-		target = strings.ReplaceAll(target, "${devcontainerId}", devcontainerID)
+		target = config.SubstituteDevContainerIDString(devcontainerID, target)
 		if target == "" {
 			return dockermount.Mount{}, fmt.Errorf("mount requires a target/destination")
 		}
 
 		source, _ := raw["source"].(string)
-		source = strings.ReplaceAll(source, "${devcontainerId}", devcontainerID)
+		source = config.SubstituteDevContainerIDString(devcontainerID, source)
 		mountType, _ := raw["type"].(string)
 		if mountType == "" {
 			mountType = string(dockermount.TypeBind)
