@@ -25,6 +25,7 @@ type mockAPI struct {
 	containerListFn    func(ctx context.Context, opts mobyclient.ContainerListOptions) ([]container.Summary, error)
 	containerRemoveFn  func(ctx context.Context, id string, opts mobyclient.ContainerRemoveOptions) error
 	containerStartFn   func(ctx context.Context, id string, opts mobyclient.ContainerStartOptions) error
+	containerStopFn    func(ctx context.Context, id string, opts mobyclient.ContainerStopOptions) error
 	eventsFn           func(ctx context.Context, opts mobyclient.EventsListOptions) (<-chan events.Message, <-chan error)
 	imageInspectFn     func(ctx context.Context, id string, opts ...mobyclient.ImageInspectOption) (image.InspectResponse, error)
 	imagePullFn        func(ctx context.Context, ref string, opts mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error)
@@ -70,6 +71,13 @@ func (m *mockAPI) ContainerStart(ctx context.Context, id string, opts mobyclient
 		return mobyclient.ContainerStartResult{}, m.containerStartFn(ctx, id, opts)
 	}
 	return mobyclient.ContainerStartResult{}, errors.New("not implemented")
+}
+
+func (m *mockAPI) ContainerStop(ctx context.Context, id string, opts mobyclient.ContainerStopOptions) (mobyclient.ContainerStopResult, error) {
+	if m.containerStopFn != nil {
+		return mobyclient.ContainerStopResult{}, m.containerStopFn(ctx, id, opts)
+	}
+	return mobyclient.ContainerStopResult{}, nil
 }
 
 func (m *mockAPI) ImagePull(ctx context.Context, ref string, opts mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
@@ -224,6 +232,20 @@ func TestListContainers(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] != "id1" || ids[1] != "id2" {
 		t.Errorf("ids = %v", ids)
+	}
+}
+
+func TestStopContainer(t *testing.T) {
+	var gotID string
+	api := &mockAPI{containerStopFn: func(_ context.Context, id string, _ mobyclient.ContainerStopOptions) error {
+		gotID = id
+		return nil
+	}}
+	if err := newTestEngine(api).StopContainer(t.Context(), "abc123"); err != nil {
+		t.Fatalf("StopContainer: %v", err)
+	}
+	if gotID != "abc123" {
+		t.Errorf("stopped %q, want abc123", gotID)
 	}
 }
 

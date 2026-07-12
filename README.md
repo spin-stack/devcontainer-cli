@@ -101,6 +101,10 @@ devcontainer build --workspace-folder . --secrets-file secrets.json
 
 # Provision here, then open VS Code attached to the container (reconnects, doesn't rebuild)
 devcontainer up . && devcontainer open .
+
+# Pause / tear down a workspace (great on a remote host); `up` restarts a stopped one
+devcontainer stop .    # graceful stop, keep the container + data
+devcontainer down .    # stop and remove it
 ```
 
 Everything else — `up`, `build`, `exec`, `read-configuration`, `set-up`,

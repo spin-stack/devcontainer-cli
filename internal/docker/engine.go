@@ -28,6 +28,7 @@ type API interface {
 	ContainerList(ctx context.Context, options mobyclient.ContainerListOptions) (mobyclient.ContainerListResult, error)
 	ContainerRemove(ctx context.Context, containerID string, options mobyclient.ContainerRemoveOptions) (mobyclient.ContainerRemoveResult, error)
 	ContainerStart(ctx context.Context, containerID string, options mobyclient.ContainerStartOptions) (mobyclient.ContainerStartResult, error)
+	ContainerStop(ctx context.Context, containerID string, options mobyclient.ContainerStopOptions) (mobyclient.ContainerStopResult, error)
 	Events(ctx context.Context, options mobyclient.EventsListOptions) mobyclient.EventsResult
 	ExecCreate(ctx context.Context, containerID string, options mobyclient.ExecCreateOptions) (mobyclient.ExecCreateResult, error)
 	ExecAttach(ctx context.Context, execID string, options mobyclient.ExecAttachOptions) (mobyclient.ExecAttachResult, error)
@@ -231,6 +232,14 @@ func (e *EngineClient) PullImage(ctx context.Context, ref string) error {
 // StartContainer starts a stopped container.
 func (e *EngineClient) StartContainer(ctx context.Context, id string) error {
 	_, err := e.API.ContainerStart(ctx, id, mobyclient.ContainerStartOptions{})
+	return err
+}
+
+// StopContainer gracefully stops a container (SIGTERM, then SIGKILL after the
+// daemon's default grace period) without removing it, so it can be restarted
+// with `up`. Stopping an already-stopped container is a no-op.
+func (e *EngineClient) StopContainer(ctx context.Context, id string) error {
+	_, err := e.API.ContainerStop(ctx, id, mobyclient.ContainerStopOptions{})
 	return err
 }
 

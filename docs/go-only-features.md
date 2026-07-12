@@ -8,6 +8,7 @@ divergences, each covered by tests.
 - [`devcontainer check`](#devcontainer-check) — host preflight
 - [`devcontainer setup`](#devcontainer-setup) — apply safe host fixes
 - [`devcontainer open`](#devcontainer-open) — launch VS Code attached to the dev container
+- [`devcontainer stop` / `down`](#devcontainer-stop--devcontainer-down) — pause or tear down a workspace's container
 - [`up --cache-image`](#up---cache-image) — boot from a prebuilt image
 - [`read-configuration --cache-key`](#read-configuration---cache-key) — deterministic cache key
 - [`build --secrets-file`](#build---secrets-file) — BuildKit build secrets
@@ -97,6 +98,32 @@ command without opening anything (handy for scripting or debugging).
 
 Flags: `--workspace-folder`, `--config`, `--editor` (default `code`; e.g. `code-insiders`,
 `cursor`), `--dry-run`.
+
+## `devcontainer stop` / `devcontainer down`
+
+Lifecycle management the upstream CLI leaves to the editor. `up` provisions; these
+tear back down — useful when you drive the CLI on a **remote host** and want to
+pause or clean up without leaving anything running.
+
+```sh
+devcontainer stop .    # graceful `docker stop`; container + data kept, restart with `up`
+devcontainer up .      # ← restarts the SAME stopped container
+devcontainer down .    # stop AND remove the container (a later `up` builds fresh)
+```
+
+- **`stop`** stops the container without removing it, so it stops consuming CPU/RAM
+  but its filesystem and state survive. `up` restarts the same container.
+- **`down`** stops and removes the container. Named-volume data persists unless you
+  pass `--remove-volumes` (destructive).
+- Both detect **Docker Compose** configs via the container's project label and act
+  on the whole project (`docker compose stop` / `down`), so sibling services (db,
+  cache, …) are handled too — not just the dev container.
+- The target is resolved from `--workspace-folder` (or the `[path]` arg), or given
+  directly with `--id-label` / `--container-id`. Idempotent: a no-op success when
+  no matching container exists.
+
+Flags: `--workspace-folder`, `--id-label`, `--container-id`, `--docker-path`
+(plus `--remove-volumes` on `down`).
 
 ## `up --cache-image`
 

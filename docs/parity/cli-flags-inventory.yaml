@@ -1064,6 +1064,46 @@ commands:
         type: boolean
         default: false
         description: "Print the folder URI and launch command without opening the editor."
+  # Go-only: stop a workspace's dev container without removing it.
+  stop:
+    description: "Stop a workspace's dev container without removing it"
+    handler: stopHandler
+    flags:
+      workspace-folder:
+        type: string
+        description: "Workspace folder path (defaults to [path] or the current directory)."
+      id-label:
+        type: string
+        array: true
+        description: "id label(s) of the target container (name=value); repeatable."
+      container-id:
+        type: string
+        description: "Target container id directly."
+      docker-path:
+        type: string
+        description: "Docker CLI path."
+  # Go-only: stop and remove a workspace's dev container.
+  down:
+    description: "Stop and remove a workspace's dev container"
+    handler: downHandler
+    flags:
+      workspace-folder:
+        type: string
+        description: "Workspace folder path (defaults to [path] or the current directory)."
+      id-label:
+        type: string
+        array: true
+        description: "id label(s) of the target container (name=value); repeatable."
+      container-id:
+        type: string
+        description: "Target container id directly."
+      docker-path:
+        type: string
+        description: "Docker CLI path."
+      remove-volumes:
+        type: boolean
+        default: false
+        description: "Also remove named volumes (Compose). Destructive: deletes persisted data."
 
 # =============================================================================
 # JSON OUTPUT ENVELOPES SUMMARY

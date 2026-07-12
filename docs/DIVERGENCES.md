@@ -17,7 +17,9 @@ touches a compared surface, reflected in the parity matrix.
   (deterministic content hash; additive — default output is byte-identical to TS),
   `build --secrets-file` (BuildKit build secrets; TS `build` has no such flag), `open`
   (launch VS Code attached to the workspace's dev container via a vscode-remote:// URI),
-  and the automatic credential bridge that hands the CLI's resolved auth to `docker build`.
+  `stop`/`down` (pause, or stop+remove, a workspace's container — Compose-aware; the
+  upstream CLI leaves teardown to the editor), and the automatic credential bridge that
+  hands the CLI's resolved auth to `docker build`.
 - **`--override-config` deep-merges** the override onto the base config, whereas TS
   replaces the config wholesale (`readDocument(overrideConfigFile ?? configFile)`). With
   no readable base, the override stands alone — identical to TS. This lets an orchestrator

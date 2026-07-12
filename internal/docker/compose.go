@@ -137,6 +137,47 @@ func (c *ComposeClient) Up(ctx context.Context, composeFiles []string, envFile s
 	return nil
 }
 
+// Stop stops the project's services without removing them (`docker compose
+// stop`), so `up` can restart them. Preserves containers, networks and volumes.
+func (c *ComposeClient) Stop(ctx context.Context, composeFiles []string, projectName string) error {
+	args := c.buildGlobalArgs(composeFiles, "")
+	if projectName != "" {
+		args = append(args, "--project-name", projectName)
+	}
+	args = append(args, "stop")
+
+	res, err := c.Run(ctx, args...)
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("compose stop failed (exit %d): %s", res.ExitCode, string(res.Stderr))
+	}
+	return nil
+}
+
+// Down stops and removes the project's containers and networks (`docker compose
+// down`). When removeVolumes is set, named volumes are removed too (destructive).
+func (c *ComposeClient) Down(ctx context.Context, composeFiles []string, projectName string, removeVolumes bool) error {
+	args := c.buildGlobalArgs(composeFiles, "")
+	if projectName != "" {
+		args = append(args, "--project-name", projectName)
+	}
+	args = append(args, "down")
+	if removeVolumes {
+		args = append(args, "--volumes")
+	}
+
+	res, err := c.Run(ctx, args...)
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("compose down failed (exit %d): %s", res.ExitCode, string(res.Stderr))
+	}
+	return nil
+}
+
 // SupportsAdditionalContexts returns true if compose version >= 2.17.0.
 func (c *ComposeClient) SupportsAdditionalContexts() bool {
 	if len(c.Version) < 2 {
