@@ -23,9 +23,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
-      - uses: arduino/setup-task@v3
+      - uses: go-task/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: task lint
       - run: task spec:compliance
@@ -50,9 +51,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
-      - uses: arduino/setup-task@v3
+      - uses: go-task/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: task reference
       - run: task test:e2e
@@ -165,9 +167,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
-      - uses: arduino/setup-task@v3
+      - uses: go-task/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: task build:cross
       - run: task reference
