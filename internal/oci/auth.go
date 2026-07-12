@@ -64,8 +64,8 @@ type dockerConfigFile struct {
 }
 
 type dockerConfigAuth struct {
-	Auth          string `json:"auth"`
-	IdentityToken string `json:"identitytoken"`
+	Auth          string `json:"auth,omitempty"`
+	IdentityToken string `json:"identitytoken,omitempty"`
 }
 
 func getCredentialFromDockerConfig(env map[string]string, registry string, logger log.Logger) *credential {

@@ -108,6 +108,10 @@ func mountFromMetadata(entry interface{}, devcontainerID string) (dockermount.Mo
 		return docker.ParseMountSpec(spec)
 	case map[string]interface{}:
 		target, _ := raw["target"].(string)
+		// ${devcontainerId} must resolve in target too, not only source — the
+		// string form substitutes the whole spec, so the object form has to match
+		// (e.g. target "/cache/${devcontainerId}").
+		target = strings.ReplaceAll(target, "${devcontainerId}", devcontainerID)
 		if target == "" {
 			return dockermount.Mount{}, fmt.Errorf("mount requires a target/destination")
 		}

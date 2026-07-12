@@ -119,3 +119,23 @@ func TestBuildPositionalPath(t *testing.T) {
 		t.Errorf("#8 build must accept a single positional arg: %v", err)
 	}
 }
+
+// TestMountFromMetadata_DevcontainerIdInTarget covers the fix: ${devcontainerId}
+// must resolve in an object mount's target, not only its source (the string form
+// already substitutes the whole spec).
+func TestMountFromMetadata_DevcontainerIdInTarget(t *testing.T) {
+	m, err := mountFromMetadata(map[string]interface{}{
+		"type":   "volume",
+		"source": "cache-${devcontainerId}",
+		"target": "/cache/${devcontainerId}",
+	}, "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Source != "cache-abc123" {
+		t.Errorf("source = %q, want cache-abc123", m.Source)
+	}
+	if m.Target != "/cache/abc123" {
+		t.Errorf("target = %q, want /cache/abc123 (was left literal)", m.Target)
+	}
+}

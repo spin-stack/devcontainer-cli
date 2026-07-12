@@ -34,7 +34,12 @@ func ResolveBuildAuth(env map[string]string, registries []string, logger log.Log
 		}
 		seen[reg] = true
 		cred := getCredential(env, reg, logger)
-		if cred == nil || cred.base64Encoded == "" {
+		// Skip only when there is no usable credential at all. A token-only
+		// credential (identitytoken / OAuth refresh token, e.g. ACR) has an empty
+		// base64Encoded but a non-empty refreshToken — the old `base64Encoded == ""`
+		// guard dropped it, so the build subprocess authenticated anonymously and
+		// the base-image pull failed even though the CLI's own auth worked.
+		if cred == nil || (cred.base64Encoded == "" && cred.refreshToken == "") {
 			continue
 		}
 		entry := dockerConfigAuth{Auth: cred.base64Encoded}

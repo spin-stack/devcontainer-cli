@@ -324,7 +324,19 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 		if runtime.GOOS != "linux" {
 			consistency = ",consistency=consistent"
 		}
-		wc.WorkspaceMount = fmt.Sprintf("type=bind,source=%s,target=/workspaces/%s%s", sourceFolder, filepath.Base(sourceFolder), consistency)
+		// A comma in the source/target path would otherwise be read by Docker as a
+		// mount-option boundary and break the mount — quote the affected segment,
+		// matching the TS srcQuote/tgtQuote guard.
+		containerMountFolder := "/workspaces/" + filepath.Base(sourceFolder)
+		srcQuote, tgtQuote := "", ""
+		if strings.Contains(sourceFolder, ",") {
+			srcQuote = `"`
+		}
+		if strings.Contains(containerMountFolder, ",") {
+			tgtQuote = `"`
+		}
+		wc.WorkspaceMount = fmt.Sprintf("type=bind,%ssource=%s%s,%starget=%s%s%s",
+			srcQuote, sourceFolder, srcQuote, tgtQuote, containerMountFolder, tgtQuote, consistency)
 	}
 
 	if config.WorkspaceFolder != "" {

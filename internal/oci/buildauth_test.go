@@ -89,3 +89,32 @@ func TestResolveBuildAuthDedupesRegistries(t *testing.T) {
 		t.Fatalf("want 1 deduped auth, got %d", len(auths))
 	}
 }
+
+// TestResolveBuildAuth_IdentityToken covers the fix for token-only credentials
+// (ACR / OAuth refresh token): they carry an identitytoken but no base64 auth, and
+// were dropped by the old guard, leaving the build subprocess unauthenticated.
+func TestResolveBuildAuth_IdentityToken(t *testing.T) {
+	cfgDir := t.TempDir()
+	cfg := `{"auths":{"myacr.azurecr.io":{"identitytoken":"eyJTOKEN"}}}`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	env := map[string]string{"DOCKER_CONFIG": cfgDir}
+	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{"myacr.azurecr.io"}, log.Null)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v — a token-only credential must still produce an auth entry", ok, err)
+	}
+	defer cleanup()
+
+	entry, present := readConfigAuths(t, dir)["myacr.azurecr.io"]
+	if !present {
+		t.Fatal("identity-token registry missing from the build auth config")
+	}
+	if entry.IdentityToken != "eyJTOKEN" {
+		t.Errorf("IdentityToken = %q, want eyJTOKEN", entry.IdentityToken)
+	}
+	if entry.Auth != "" {
+		t.Errorf("Auth should be empty for a token-only credential, got %q", entry.Auth)
+	}
+}
