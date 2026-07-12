@@ -27,6 +27,7 @@ if [ -z "$inputs" ]; then
   printf '### Coverage — %s\n\n_(no lane data to merge)_\n' "$title"
   exit 0
 fi
+echo "merging coverage lanes: $inputs" >&2
 
 rm -rf "$out" && mkdir -p "$out"
 go tool covdata merge -i="$inputs" -o="$out"

@@ -315,7 +315,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: covdata-merged
-          path: artifacts/coverage/merged.out
+          path: artifacts/coverage/data/merged.out
           if-no-files-found: warn
 
   cross-compile:
