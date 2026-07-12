@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -19,19 +18,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// bareVersionRe matches a bare semver-ish target: x / x.y / x.y.z
+// isBareVersion reports whether s is a bare semver-ish target: x / x.y / x.y.z
 // (TS: /^\d+(\.\d+(\.\d+)?)?$/ in upgradeCommand.ts).
-var bareVersionRe = regexp.MustCompile(`^\d+(\.\d+(\.\d+)?)?$`)
+func isBareVersion(s string) bool {
+	if s == "" {
+		return false
+	}
+	parts := strings.Split(s, ".")
+	if len(parts) > 3 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" {
+			return false
+		}
+		for i := 0; i < len(p); i++ {
+			if p[i] < '0' || p[i] > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
 
-// lastVersionDelimiter matches the trailing ":tag" or "@digest" of a feature id
-// (TS getFeatureIdWithoutVersion: /[:@][^/]*$/).
-var lastVersionDelimiter = regexp.MustCompile(`[:@][^/]*$`)
-
-// getFeatureIdWithoutVersion strips the trailing version tag or digest from a
-// user feature id, leaving the full id path (matches TS getFeatureIdWithoutVersion).
+// getFeatureIdWithoutVersion strips the trailing ":tag" or "@digest" from a user
+// feature id, leaving the full id path (TS getFeatureIdWithoutVersion, /[:@][^/]*$/).
+// The delimiter is the first ':' or '@' after the last '/', so a registry port
+// (localhost:5000/...) is preserved and a digest '@' wins over a later ':'.
 func getFeatureIdWithoutVersion(featureID string) string {
-	if loc := lastVersionDelimiter.FindStringIndex(featureID); loc != nil {
-		return featureID[:loc[0]]
+	start := strings.LastIndexByte(featureID, '/') + 1
+	for i := start; i < len(featureID); i++ {
+		if featureID[i] == ':' || featureID[i] == '@' {
+			return featureID[:i]
+		}
 	}
 	return featureID
 }
@@ -397,7 +416,7 @@ func newUpgradeCmd() *cobra.Command {
 			if (feature != "") != (targetVersion != "") {
 				return fmt.Errorf("The '--target-version' and '--feature' flag must be used together.")
 			}
-			if targetVersion != "" && !bareVersionRe.MatchString(targetVersion) {
+			if targetVersion != "" && !isBareVersion(targetVersion) {
 				return fmt.Errorf("Invalid version '%s'.  Must be in the form of 'x', 'x.y', or 'x.y.z'", targetVersion)
 			}
 

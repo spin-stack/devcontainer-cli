@@ -410,3 +410,16 @@ func TestProxyEnvFromEnviron(t *testing.T) {
 		t.Error("non-proxy var captured")
 	}
 }
+
+func TestIsBareVersion(t *testing.T) {
+	cases := map[string]bool{
+		"1": true, "1.2": true, "1.2.3": true,
+		"": false, "1.2.3.4": false, "v1": false,
+		"1.": false, ".1": false, "1.x": false, "latest": false, "1.2.beta": false,
+	}
+	for in, want := range cases {
+		if got := isBareVersion(in); got != want {
+			t.Errorf("isBareVersion(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

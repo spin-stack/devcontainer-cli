@@ -221,10 +221,24 @@ func getEntPasswdExpr(userNameOrID string) string {
 // safeID converts a string to a safe environment variable name.
 // Matches TS getSafeId().
 func safeID(s string) string {
-	re := regexp.MustCompile(`[^\w_]`)
-	result := re.ReplaceAllString(s, "_")
-	reLeading := regexp.MustCompile(`^[\d_]+`)
-	result = reLeading.ReplaceAllString(result, "_")
+	// Non-word chars (ASCII, matching RE2 \w) become "_"...
+	var b strings.Builder
+	for _, r := range s {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	result := b.String()
+	// ...then a leading run of digits/underscores collapses to a single "_".
+	k := 0
+	for k < len(result) && (result[k] == '_' || (result[k] >= '0' && result[k] <= '9')) {
+		k++
+	}
+	if k > 0 {
+		result = "_" + result[k:]
+	}
 	return strings.ToUpper(result)
 }
 

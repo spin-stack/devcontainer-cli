@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	osexec "os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -219,20 +218,25 @@ func (c *ComposeClient) buildGlobalArgs(composeFiles []string, envFile string) [
 	return args
 }
 
-var versionPattern = regexp.MustCompile(`(\d+)(?:\.(\d+))?(?:\.(\d+))?`)
-
+// parseComposeVersion extracts the first N[.N[.N]] version found in s (e.g. from
+// "Docker Compose version v2.15.1"), up to three numeric components.
 func parseComposeVersion(s string) []int {
-	m := versionPattern.FindStringSubmatch(s)
-	if m == nil {
+	i := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
+	if i < 0 {
 		return nil
 	}
 	var version []int
-	for _, part := range m[1:] {
-		if part == "" {
+	for len(version) < 3 {
+		j := i
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			j++
+		}
+		n, _ := strconv.Atoi(s[i:j])
+		version = append(version, n)
+		if j >= len(s) || s[j] != '.' {
 			break
 		}
-		n, _ := strconv.Atoi(part)
-		version = append(version, n)
+		i = j + 1
 	}
 	return version
 }
@@ -240,11 +244,14 @@ func parseComposeVersion(s string) []int {
 // ToProjectName sanitizes a name for use as a compose project name.
 // Matches TS toProjectName() behavior.
 func ToProjectName(basename string, newProjectName bool) string {
-	lower := strings.ToLower(basename)
-	if !newProjectName {
-		// Compose < 1.21: only [a-z0-9]
-		return regexp.MustCompile(`[^a-z0-9]`).ReplaceAllString(lower, "")
-	}
-	// Compose >= 1.21: [a-z0-9_-]
-	return regexp.MustCompile(`[^a-z0-9_-]`).ReplaceAllString(lower, "")
+	// Compose < 1.21 keeps only [a-z0-9]; >= 1.21 also allows [_-].
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case newProjectName && (r == '_' || r == '-'):
+			return r
+		}
+		return -1
+	}, strings.ToLower(basename))
 }

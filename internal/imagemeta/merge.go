@@ -2,7 +2,6 @@ package imagemeta
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -234,8 +233,6 @@ func forwardPortNumber(p interface{}) (int, bool) {
 	return 0, false
 }
 
-var localhostPortRe = regexp.MustCompile(`^localhost:\d+$`)
-
 func dedupeForwardPorts(ports []interface{}) []interface{} {
 	if len(ports) == 0 {
 		return ports
@@ -258,9 +255,7 @@ func dedupeForwardPorts(ports []interface{}) []interface{} {
 	// string — matching TS's final .map(port => /localhost:\d+/.test ? parseInt : port).
 	out := make([]interface{}, 0, len(keys))
 	for _, k := range keys {
-		if localhostPortRe.MatchString(k) {
-			var n int
-			fmt.Sscanf(k, "localhost:%d", &n)
+		if n, ok := localhostPort(k); ok {
 			out = append(out, float64(n))
 		} else {
 			out = append(out, k)
@@ -269,27 +264,50 @@ func dedupeForwardPorts(ports []interface{}) []interface{} {
 	return out
 }
 
-var byteSizeRe = regexp.MustCompile(`^(\d+)([tgmk]b)?$`)
+// localhostPort parses a "localhost:<n>" key (all-digit port) back to its number.
+func localhostPort(s string) (int, bool) {
+	rest, ok := strings.CutPrefix(s, "localhost:")
+	if !ok || !allDigits(rest) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(rest)
+	return n, err == nil
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 // parseBytes mirrors the TS parseBytes: "8gb" -> 8589934592, unrecognized -> 0.
+// The grammar is <digits> with an optional [tgmk]b suffix.
 func parseBytes(s string) int64 {
-	mm := byteSizeRe.FindStringSubmatch(s)
-	if mm == nil {
+	unit := int64(1)
+	if len(s) >= 2 && s[len(s)-1] == 'b' {
+		switch s[len(s)-2] {
+		case 't':
+			unit, s = 1<<40, s[:len(s)-2]
+		case 'g':
+			unit, s = 1<<30, s[:len(s)-2]
+		case 'm':
+			unit, s = 1<<20, s[:len(s)-2]
+		case 'k':
+			unit, s = 1<<10, s[:len(s)-2]
+		}
+	}
+	if !allDigits(s) {
 		return 0
 	}
-	n, _ := strconv.ParseInt(mm[1], 10, 64)
-	unit := int64(1)
-	if mm[2] != "" {
-		switch mm[2][0] {
-		case 't':
-			unit = 1 << 40
-		case 'g':
-			unit = 1 << 30
-		case 'm':
-			unit = 1 << 20
-		case 'k':
-			unit = 1 << 10
-		}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
 	}
 	return n * unit
 }
