@@ -28,6 +28,7 @@ jobs:
           version: 3.x
 
       - run: task lint
+      - run: task spec:compliance
       - run: task vuln
       - run: task test:race
       - run: task coverage

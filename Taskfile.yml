@@ -88,6 +88,17 @@ tasks:
     cmds:
       - go vet ./cmd/... ./internal/...
 
+  spec:compliance:
+    desc: Verify config structs model every devcontainer.json schema property (spec base, excludes Go-only additions)
+    cmds:
+      - go test ./internal/config -run TestSpecCompliance -count=1
+
+  spec:schema-update:
+    desc: Refresh the vendored devcontainer.json schema the spec-compliance gate checks against
+    cmds:
+      - curl -fsSL https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.base.schema.json -o internal/config/testdata/devContainer.base.schema.json
+      - 'echo "Schema refreshed. Run ''task spec:compliance'' — any new spec property fails until modeled in internal/config/types.go."'
+
   reference:
     desc: Install and compile the TypeScript parity oracle
     cmds:

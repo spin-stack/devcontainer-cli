@@ -44,6 +44,10 @@ type DevContainer struct {
 	OverrideFeatureInstallOrder []string               `json:"overrideFeatureInstallOrder,omitempty"`
 	HostRequirements            *HostRequirements      `json:"hostRequirements,omitempty"`
 	Customizations              map[string]interface{} `json:"customizations,omitempty"`
+	// Secrets is the spec's "recommended secrets" metadata (env-var key ->
+	// {description, documentationUrl}). The CLI does not act on it; kept as an
+	// open map so it round-trips losslessly through read-configuration/metadata.
+	Secrets map[string]interface{} `json:"secrets,omitempty"`
 
 	// --- Image variant ---
 	Image string `json:"image,omitempty"`
