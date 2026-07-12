@@ -42,7 +42,7 @@ tasks:
   test:unit:
     desc: Run hermetic unit tests
     cmds:
-      - go test ./cmd/... ./internal/... -skip 'TestClient|TestE2E|TestParityMatrix|TestPublishParity' -count=1 {{.CLI_ARGS}}
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -count=1 {{.CLI_ARGS}}
 
   test:integration:
     desc: Run local HTTP integration tests
@@ -54,7 +54,7 @@ tasks:
     env:
       CGO_ENABLED: "1"
     cmds:
-      - go test ./cmd/... ./internal/... -skip 'TestClient|TestE2E|TestParityMatrix|TestPublishParity' -race -count=1 {{.CLI_ARGS}}
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -race -count=1 {{.CLI_ARGS}}
 
   vuln:
     desc: Scan module and code paths for known vulnerabilities (govulncheck)
@@ -64,7 +64,7 @@ tasks:
   coverage:
     desc: Generate the hermetic unit coverage report and enforce the COVERAGE_MIN floor
     cmds:
-      - go test ./cmd/... ./internal/... -skip 'TestClient|TestE2E|TestParityMatrix|TestPublishParity' -coverprofile=coverage.out -count=1
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -coverprofile=coverage.out -count=1
       - go tool cover -func=coverage.out
       # Ratchet gate: fail if total statement coverage drops below COVERAGE_MIN.
       - cmd: |

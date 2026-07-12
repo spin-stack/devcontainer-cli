@@ -4,16 +4,37 @@ package oci
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	orascontent "oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/errcode"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
 	"github.com/devcontainers/cli/internal/httpx"
 	"github.com/devcontainers/cli/internal/log"
+)
+
+// Operation timeouts. These are vars (not consts) so tests can shrink them.
+//
+//   - responseHeaderTimeout bounds a registry that accepts the TCP/TLS connection
+//     but then stops responding: the base transport (a clone of DefaultTransport)
+//     sets a dial and TLS-handshake timeout but NO ResponseHeaderTimeout, so
+//     without this a hung registry blocks the command forever.
+//   - metadataOpTimeout is the overall ceiling for small metadata operations
+//     (manifest/tag list) when the caller supplies no context of its own.
+//   - blobOpTimeout is a generous ceiling for blob downloads (which can be large);
+//     it also backstops a mid-stream stall, which responseHeaderTimeout — only
+//     covering time-to-first-header — does not catch.
+var (
+	responseHeaderTimeout = 30 * time.Second
+	metadataOpTimeout     = 60 * time.Second
+	blobOpTimeout         = 10 * time.Minute
 )
 
 // Client performs OCI registry operations (pull manifest, download blob, list
@@ -37,12 +58,34 @@ type Client struct {
 // NewClient creates an OCI client. Auth and retries are handled by oras-go (see
 // repository()); the HTTP transport is the shared proxy/CA-aware transport.
 func NewClient(logger log.Logger, env map[string]string) *Client {
+	base := httpx.NewTransport()
+	// Cut off a registry that connects but never sends response headers.
+	base.ResponseHeaderTimeout = responseHeaderTimeout
 	return &Client{
 		log:         logger,
 		env:         env,
 		authCache:   auth.NewCache(),
-		retryClient: &http.Client{Transport: retry.NewTransport(httpx.NewTransport())},
+		retryClient: &http.Client{Transport: retry.NewTransport(base)},
 	}
+}
+
+// IsNotFound reports whether err indicates the target repository or reference
+// does not exist (a 404 from the registry), as opposed to an auth, network, or
+// other registry failure. Publishing uses this so a not-yet-created repository
+// is treated as "no tags published", while a real error aborts the publish
+// instead of silently proceeding on an empty tag list.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errdef.ErrNotFound) {
+		return true
+	}
+	var respErr *errcode.ErrorResponse
+	if errors.As(err, &respErr) {
+		return respErr.StatusCode == http.StatusNotFound
+	}
+	return false
 }
 
 // FetchManifest fetches and validates an OCI manifest using oras-go for
@@ -50,7 +93,9 @@ func NewClient(logger log.Logger, env map[string]string) *Client {
 // devcontainer-specific validation (config media type must be
 // application/vnd.devcontainers) and result shape.
 func (c *Client) FetchManifest(ref *Ref, expectedDigest string) (*ManifestContainer, error) {
-	return c.FetchManifestContext(context.Background(), ref, expectedDigest)
+	ctx, cancel := context.WithTimeout(context.Background(), metadataOpTimeout)
+	defer cancel()
+	return c.FetchManifestContext(ctx, ref, expectedDigest)
 }
 
 // FetchManifestContext is FetchManifest with caller-controlled cancellation.
@@ -108,7 +153,9 @@ func (c *Client) FetchManifestContext(ctx context.Context, ref *Ref, expectedDig
 
 // FetchBlob downloads a blob and verifies its digest (via oras-go).
 func (c *Client) FetchBlob(ref *Ref, digest string) ([]byte, error) {
-	return c.FetchBlobContext(context.Background(), ref, digest)
+	ctx, cancel := context.WithTimeout(context.Background(), blobOpTimeout)
+	defer cancel()
+	return c.FetchBlobContext(ctx, ref, digest)
 }
 
 // FetchBlobContext is FetchBlob with caller-controlled cancellation.
@@ -128,7 +175,9 @@ func (c *Client) FetchBlobContext(ctx context.Context, ref *Ref, digest string) 
 
 // GetPublishedTags lists all tags for a resource (via oras-go).
 func (c *Client) GetPublishedTags(ref *Ref) ([]string, error) {
-	return c.GetPublishedTagsContext(context.Background(), ref)
+	ctx, cancel := context.WithTimeout(context.Background(), metadataOpTimeout)
+	defer cancel()
+	return c.GetPublishedTagsContext(ctx, ref)
 }
 
 // GetPublishedTagsContext is GetPublishedTags with caller-controlled cancellation.

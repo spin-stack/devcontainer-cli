@@ -475,8 +475,15 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 			failures++
 			return nil, false
 		}
-		// Empty on first publish (repository does not exist yet).
-		published, _ := ociClient.GetPublishedTags(ref)
+		// The repository is empty on first publish (404). Any OTHER error — auth,
+		// network, a 5xx — must abort: treating it as "no tags yet" would republish
+		// mobile aliases (latest, 1, 1.2) off an empty list and could clobber them.
+		published, tagsErr := ociClient.GetPublishedTagsContext(ctx, ref)
+		if tagsErr != nil && !oci.IsNotFound(tagsErr) {
+			logger.Write(fmt.Sprintf("(!) ERR: could not list existing tags for %q: %v", resource, tagsErr), log.LevelError)
+			failures++
+			return nil, false
+		}
 		tags, skip, tagErr := oci.SemanticTags(version, published)
 		if tagErr != nil {
 			logger.Write(fmt.Sprintf("(!) ERR: %v, skipping...", tagErr), log.LevelError)

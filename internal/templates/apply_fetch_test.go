@@ -87,6 +87,10 @@ func (f *fakeTemplateRegistry) GetPublishedTags(ref *oci.Ref) ([]string, error) 
 	return nil, fmt.Errorf("GetPublishedTags not used")
 }
 
+func (f *fakeTemplateRegistry) GetPublishedTagsContext(_ context.Context, ref *oci.Ref) ([]string, error) {
+	return nil, fmt.Errorf("GetPublishedTagsContext not used")
+}
+
 func (f *fakeTemplateRegistry) PushArtifact(ctx context.Context, ref *oci.Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*oci.PushResult, error) {
 	return nil, fmt.Errorf("PushArtifact not used")
 }

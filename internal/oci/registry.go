@@ -8,12 +8,14 @@ import "context"
 // tests without standing up a real registry. *Client satisfies it.
 //
 // The fetch/list methods keep their non-Context convenience variants (they are
-// short reads); the push methods take a ctx so a long upload participates in the
-// CLI's signal-cancellation.
+// short reads, and each now applies a default per-operation deadline); a Context
+// variant is exposed where a caller already holds the command context (e.g.
+// publish) so the operation participates in the CLI's signal-cancellation.
 type Registry interface {
 	FetchManifest(ref *Ref, expectedDigest string) (*ManifestContainer, error)
 	FetchBlob(ref *Ref, digest string) ([]byte, error)
 	GetPublishedTags(ref *Ref) ([]string, error)
+	GetPublishedTagsContext(ctx context.Context, ref *Ref) ([]string, error)
 	PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*PushResult, error)
 	PushCollectionMetadata(ctx context.Context, ref *Ref, collectionJSONPath string) (*PushResult, error)
 }

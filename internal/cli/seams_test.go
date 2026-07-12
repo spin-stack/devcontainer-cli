@@ -29,6 +29,7 @@ func (c *captureOutput) Stderr() io.Writer { return &c.err }
 // publishCollectionWith without contacting a real registry.
 type fakeRegistry struct {
 	published      map[string][]string // resource -> already-published tags
+	tagListErr     map[string]error    // resource -> error to return from GetPublishedTags*
 	failIDs        map[string]bool
 	pushed         []string            // resources successfully pushed (for assertions)
 	pushedTags     map[string][]string // resource -> tags requested on push
@@ -45,6 +46,15 @@ func (f *fakeRegistry) FetchBlob(ref *oci.Ref, digest string) ([]byte, error) {
 }
 
 func (f *fakeRegistry) GetPublishedTags(ref *oci.Ref) ([]string, error) {
+	return f.GetPublishedTagsContext(context.Background(), ref)
+}
+
+func (f *fakeRegistry) GetPublishedTagsContext(_ context.Context, ref *oci.Ref) ([]string, error) {
+	if f.tagListErr != nil {
+		if err, ok := f.tagListErr[ref.Resource]; ok {
+			return nil, err
+		}
+	}
 	return f.published[ref.Resource], nil
 }
 

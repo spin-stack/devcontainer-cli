@@ -5,7 +5,62 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"oras.land/oras-go/v2/registry/remote/errcode"
 )
+
+// TestPublishCollection_AbortsOnTagListError covers the finding that publish must
+// NOT treat a failed tag lookup as an empty registry: a non-404 error (auth, 5xx,
+// network) has to abort the item — otherwise mobile aliases would be recomputed
+// off an empty list and could clobber existing ones.
+func TestPublishCollection_AbortsOnTagListError(t *testing.T) {
+	target := t.TempDir()
+	src := filepath.Join(target, "src")
+	writeSeamFeature(t, src, "good", "1.0.0")
+
+	reg := &fakeRegistry{
+		published: map[string][]string{},
+		failIDs:   map[string]bool{},
+		tagListErr: map[string]error{
+			"ghcr.io/me/features/good": &errcode.ErrorResponse{StatusCode: 500},
+		},
+	}
+	out := &captureOutput{}
+
+	err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info")
+	if err == nil || !strings.Contains(err.Error(), "publish operation(s) failed") {
+		t.Fatalf("err = %v, want a publish failure from the tag-list error", err)
+	}
+	// The artifact must NOT have been pushed — we aborted before computing tags.
+	if len(reg.pushed) != 0 {
+		t.Fatalf("artifact pushed despite a tag-list error: %v", reg.pushed)
+	}
+}
+
+// TestPublishCollection_TreatsNotFoundAsFirstPublish covers the complementary
+// case: a 404 from the tag listing means the repository does not exist yet, so
+// the item publishes normally as a first publish.
+func TestPublishCollection_TreatsNotFoundAsFirstPublish(t *testing.T) {
+	target := t.TempDir()
+	src := filepath.Join(target, "src")
+	writeSeamFeature(t, src, "good", "1.0.0")
+
+	reg := &fakeRegistry{
+		published: map[string][]string{},
+		failIDs:   map[string]bool{},
+		tagListErr: map[string]error{
+			"ghcr.io/me/features/good": &errcode.ErrorResponse{StatusCode: 404},
+		},
+	}
+	out := &captureOutput{}
+
+	if err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
+		t.Fatalf("404 tag listing should be a clean first publish, got: %v", err)
+	}
+	if len(reg.pushed) != 1 || !strings.HasSuffix(reg.pushed[0], "/good") {
+		t.Fatalf("pushed = %v, want [.../good]", reg.pushed)
+	}
+}
 
 // TestPublishCollection_CollectionMetadataFailureCounts complements the
 // item-level partial-failure test (seams_test.go): here every ITEM publishes
