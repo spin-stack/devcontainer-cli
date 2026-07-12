@@ -4,6 +4,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/moby/buildkit/frontend/dockerfile/instructions"
+	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
 // Dockerfile represents a parsed Dockerfile.
@@ -41,120 +44,98 @@ type Instruction struct {
 }
 
 var (
-	fromStatementRe = regexp.MustCompile(`(?mi)^\s*FROM\s+(?:--platform=(\S+)\s+)?("?[^\s]+"?)(?:\s+AS\s+(\S+))?`)
-	fromLineRe      = regexp.MustCompile(`(?mi)^[\t ]*FROM\b`)
-	argEnvUser      = regexp.MustCompile(`(?mi)^\s*(?P<instr>ARG|ENV|USER)\s+(?P<name>[^\s=]+)(?:[ =]+(?:"(?P<v1>[^"]+)"|(?P<v2>\S+)))?`)
-	directiveRe     = regexp.MustCompile(`^\s*#\s*(\S+)\s*=\s*(.+)`)
-	findFromLines   = regexp.MustCompile(`(?mi)^(\s*FROM.*)`)
-	parseFromLine   = regexp.MustCompile(`(?i)FROM\s+(?:--platform=\S+\s+)?("?[^\s]+"?)(?:\s+AS\s+(\S+))?`)
-	argExpression   = regexp.MustCompile(`\$\{?([a-zA-Z0-9_]+)(?::([+-])([^}]+))?\}?`)
+	// Used only by EnsureFinalStageName's string injection (not semantic parsing).
+	findFromLines = regexp.MustCompile(`(?mi)^(\s*FROM.*)`)
+	parseFromLine = regexp.MustCompile(`(?i)FROM\s+(?:--platform=\S+\s+)?("?[^\s]+"?)(?:\s+AS\s+(\S+))?`)
+	// Used by replaceVariables for ${VAR} / ${VAR:+x} / ${VAR:-x} expansion.
+	argExpression = regexp.MustCompile(`\$\{?([a-zA-Z0-9_]+)(?::([+-])([^}]+))?\}?`)
+	// SupportsBuildContexts: is the syntax directive a docker/dockerfile frontend,
+	// and its version tag (group 1, empty when no tag)?
+	dockerfileSyntaxRe = regexp.MustCompile(`(?i)^(?:docker\.io/)?docker/dockerfile(?::(\S+))?`)
+	numVersionRe       = regexp.MustCompile(`^\d+(\.\d+){0,2}`)
 )
 
-// ExtractDockerfile parses a Dockerfile string into structured form.
+// ExtractDockerfile parses a Dockerfile using BuildKit's real parser (which
+// handles line continuations, comments, heredocs and escapes correctly, unlike a
+// line-anchored regex) and projects it into the internal structs the resolution
+// logic (FindBaseImage/findUserStatement) already operates on. Quote handling is
+// reproduced (surrounding quotes trimmed) so that resolution behaves as before.
 func ExtractDockerfile(content string) *Dockerfile {
-	// Split content at FROM lines (Go regexp doesn't support lookahead,
-	// so we find FROM positions and split manually).
-	locs := fromLineRe.FindAllStringIndex(content, -1)
-
-	var preambleStr string
-	var stageStrs []string
-
-	if len(locs) == 0 {
-		preambleStr = content
-	} else {
-		preambleStr = content[:locs[0][0]]
-		for i, loc := range locs {
-			end := len(content)
-			if i+1 < len(locs) {
-				end = locs[i+1][0]
-			}
-			stageStrs = append(stageStrs, content[loc[0]:end])
-		}
+	df := &Dockerfile{
+		Preamble:      Preamble{Directives: map[string]string{}},
+		StagesByLabel: map[string]*Stage{},
 	}
 
-	stages := make([]Stage, 0, len(stageStrs))
-	stagesByLabel := make(map[string]*Stage)
-
-	for _, s := range stageStrs {
-		stage := Stage{
-			From:         parseFrom(s),
-			Instructions: extractInstructions(s),
-		}
-		stages = append(stages, stage)
-		if stage.From.Label != "" {
-			stagesByLabel[stage.From.Label] = &stages[len(stages)-1]
-		}
+	res, err := parser.Parse(strings.NewReader(content))
+	if err != nil {
+		return df
 	}
-
-	directives := extractDirectives(preambleStr)
-	var version string
-	if syntax, ok := directives["syntax"]; ok {
-		versionRe := regexp.MustCompile(`(?i)^(?:docker\.io/)?docker/dockerfile(?::(\S+))?`)
-		if m := versionRe.FindStringSubmatch(syntax); m != nil {
+	if syntax, _, _, ok := parser.DetectSyntax([]byte(content)); ok {
+		df.Preamble.Directives["syntax"] = syntax
+		if m := dockerfileSyntaxRe.FindStringSubmatch(syntax); m != nil {
 			if m[1] != "" {
-				version = m[1]
+				df.Preamble.Version = m[1]
 			} else {
-				version = "latest"
+				df.Preamble.Version = "latest"
 			}
 		}
 	}
 
-	return &Dockerfile{
-		Preamble: Preamble{
-			Version:      version,
-			Directives:   directives,
-			Instructions: extractInstructions(preambleStr),
-		},
-		Stages:        stages,
-		StagesByLabel: stagesByLabel,
+	stages, metaArgs, err := instructions.Parse(res.AST, nil)
+	if err != nil {
+		return df
 	}
-}
 
-func parseFrom(stageStr string) From {
-	m := fromStatementRe.FindStringSubmatch(stageStr)
-	if m == nil {
-		return From{Image: "unknown"}
+	// Preamble (global) ARGs, declared before the first FROM.
+	for _, ma := range metaArgs {
+		for _, kv := range ma.Args {
+			df.Preamble.Instructions = append(df.Preamble.Instructions, Instruction{
+				Instruction: "ARG", Name: kv.Key, Value: derefTrim(kv.Value),
+			})
+		}
 	}
-	image := strings.Trim(m[2], `"'`)
-	return From{
-		Platform: m[1],
-		Image:    image,
-		Label:    m[3],
-	}
-}
 
-func extractDirectives(preamble string) map[string]string {
-	directives := make(map[string]string)
-	for _, line := range strings.Split(preamble, "\n") {
-		m := directiveRe.FindStringSubmatch(line)
-		if m != nil {
-			if _, exists := directives[m[1]]; !exists {
-				directives[m[1]] = strings.TrimSpace(m[2])
+	df.Stages = make([]Stage, 0, len(stages))
+	for i := range stages {
+		s := &stages[i]
+		st := Stage{From: From{
+			Platform: s.Platform,
+			Image:    trimQuotes(s.BaseName),
+			Label:    s.Name,
+		}}
+		for _, cmd := range s.Commands {
+			switch c := cmd.(type) {
+			case *instructions.EnvCommand:
+				for _, kv := range c.Env {
+					st.Instructions = append(st.Instructions, Instruction{Instruction: "ENV", Name: kv.Key, Value: trimQuotes(kv.Value)})
+				}
+			case *instructions.ArgCommand:
+				for _, kv := range c.Args {
+					st.Instructions = append(st.Instructions, Instruction{Instruction: "ARG", Name: kv.Key, Value: derefTrim(kv.Value)})
+				}
+			case *instructions.UserCommand:
+				st.Instructions = append(st.Instructions, Instruction{Instruction: "USER", Name: c.User})
 			}
-		} else {
-			break
+		}
+		df.Stages = append(df.Stages, st)
+	}
+	for i := range df.Stages {
+		if df.Stages[i].From.Label != "" {
+			df.StagesByLabel[df.Stages[i].From.Label] = &df.Stages[i]
 		}
 	}
-	return directives
+	return df
 }
 
-func extractInstructions(stageStr string) []Instruction {
-	matches := argEnvUser.FindAllStringSubmatch(stageStr, -1)
-	result := make([]Instruction, 0, len(matches))
-	for _, m := range matches {
-		instr := strings.ToUpper(m[1])
-		name := m[2]
-		value := m[3] // quoted value
-		if value == "" {
-			value = m[4] // unquoted value
-		}
-		result = append(result, Instruction{
-			Instruction: instr,
-			Name:        name,
-			Value:       value,
-		})
+// trimQuotes removes a single layer of surrounding single/double quotes, matching
+// how the previous regex parser normalized image names and ARG/ENV values.
+func trimQuotes(s string) string { return strings.Trim(s, `"'`) }
+
+func derefTrim(p *string) string {
+	if p == nil {
+		return ""
 	}
-	return result
+	return trimQuotes(*p)
 }
 
 // FindBaseImage resolves the base image for a target stage (or last stage if target is empty).
@@ -218,45 +199,52 @@ func findUserStatement(df *Dockerfile, buildArgs, baseImageEnv map[string]string
 
 // EnsureFinalStageName adds an AS label to the last FROM if missing.
 func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string) {
+	// Primary detection via BuildKit's parser: it correctly reports the final
+	// stage's name even across line continuations, where a line-anchored regex
+	// mis-reads the FROM. Only trust a POSITIVE name here; on a parse error (e.g. a
+	// trailing inline comment the strict parser rejects but the TS tolerates) or no
+	// name, fall through to the lenient regex path below.
+	if res, err := parser.Parse(strings.NewReader(content)); err == nil {
+		if stages, _, perr := instructions.Parse(res.AST, nil); perr == nil && len(stages) > 0 {
+			if name := stages[len(stages)-1].Name; name != "" {
+				return name, "" // already named — no modification
+			}
+		}
+	}
+
+	// Fallback (tolerant, matching the TS regex): find the last FROM line, and if
+	// it already carries an "AS <label>" return it; otherwise inject " AS <name>"
+	// after the base image, preserving the rest of the line (trailing comment).
 	matches := findFromLines.FindAllStringIndex(content, -1)
 	if len(matches) == 0 {
 		return defaultName, content
 	}
-
 	lastMatch := matches[len(matches)-1]
 	lastFromLine := content[lastMatch[0]:lastMatch[1]]
-
 	m := parseFromLine.FindStringSubmatch(lastFromLine)
 	if m == nil {
 		return defaultName, content
 	}
-
-	// Already has a label
 	if m[2] != "" {
-		return m[2], ""
+		return m[2], "" // already labeled
 	}
-
-	// Insert AS label after the FROM ... image part
 	matchedPart := m[0]
 	insertPos := lastMatch[0] + strings.Index(lastFromLine, matchedPart) + len(matchedPart)
-
-	modifiedContent = content[:insertPos] + " AS " + defaultName + content[insertPos:]
-	return defaultName, modifiedContent
+	return defaultName, content[:insertPos] + " AS " + defaultName + content[insertPos:]
 }
 
 // SupportsBuildContexts checks if the Dockerfile syntax supports --build-context.
 // Returns true, false, or "unknown" (as bool + string).
 func SupportsBuildContexts(df *Dockerfile) (supported bool, unknown bool) {
-	version := df.Preamble.Version
-	if version == "" {
-		if _, hasSyntax := df.Preamble.Directives["syntax"]; hasSyntax {
-			return false, true // has syntax directive but not docker/dockerfile
-		}
-		return false, false
+	syntax, ok := df.Preamble.Directives["syntax"]
+	if !ok {
+		return false, false // no syntax directive
 	}
-
-	numVersionRe := regexp.MustCompile(`^\d+(\.\d+){0,2}`)
-	numVersion := numVersionRe.FindString(version)
+	m := dockerfileSyntaxRe.FindStringSubmatch(syntax)
+	if m == nil {
+		return false, true // a syntax directive, but not docker/dockerfile → unknown
+	}
+	numVersion := numVersionRe.FindString(m[1]) // m[1] is the tag ("" when no tag)
 	if numVersion == "" {
 		return true, false // "latest", "labs", no specific tag → assume yes
 	}
