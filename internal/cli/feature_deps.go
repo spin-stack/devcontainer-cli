@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -63,7 +64,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath 
 			}, nil
 
 		case features.SourceDirectTarball:
-			meta, err := readTarballFeatureMetadata(id)
+			meta, err := readTarballFeatureMetadata(logger, id)
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
@@ -177,8 +178,8 @@ func readLocalFeatureMetadata(dir string) (features.Feature, error) {
 	return meta, nil
 }
 
-func readTarballFeatureMetadata(url string) (features.Feature, error) {
-	blobData, err := downloadFeatureTarball(url)
+func readTarballFeatureMetadata(logger log.Logger, tarballURL string) (features.Feature, error) {
+	blobData, _, err := downloadFeatureTarball(context.Background(), logger, tarballURL, osEnvMap())
 	if err != nil {
 		return features.Feature{}, err
 	}

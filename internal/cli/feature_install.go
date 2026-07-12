@@ -4,10 +4,13 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -255,9 +258,16 @@ func processInstallFeature(
 		pfs.MkdirAll(featureDir)
 
 		logger.Write(fmt.Sprintf("Fetching feature tarball %s...", id), log.LevelInfo)
-		blobData, dlErr := downloadFeatureTarball(id)
+		blobData, computedDigest, dlErr := downloadFeatureTarball(context.Background(), logger, id, osEnvMap())
 		if dlErr != nil {
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, dlErr)
+		}
+		// Verify integrity against the lockfile pin when present (TS parity: it
+		// rejects a tarball whose digest does not match the expected one).
+		if lockfile != nil {
+			if entry, ok := lockfile.Features[id]; ok && entry.Integrity != "" && entry.Integrity != computedDigest {
+				return nil, fmt.Errorf("ERR: Feature '%s' tarball digest %s did not match lockfile integrity %s", id, computedDigest, entry.Integrity)
+			}
 		}
 		tgzPath := filepath.Join(featureDir, "feature.tgz")
 		if err := pfs.WriteFile(tgzPath, blobData); err != nil {
@@ -281,6 +291,9 @@ func processInstallFeature(
 			SourceInfo:      &features.TarballSource{TarballURI: id, UserID: id},
 			Features:        []features.Feature{feat},
 			InternalVersion: "2",
+			// Record the tarball digest so the lockfile pins it (TS parity: a
+			// direct-tarball feature is locked by its computed sha256).
+			ComputedDigest: computedDigest,
 		}, nil
 
 	default: // OCI (and legacy shorthand resolved to OCI)
@@ -779,18 +792,82 @@ func extractUserOptions(v interface{}) map[string]interface{} {
 	return nil
 }
 
-// downloadFeatureTarball fetches a Feature published as a direct HTTP(S) tarball.
-func downloadFeatureTarball(url string) ([]byte, error) {
-	client := &http.Client{Transport: httpx.NewTransport(), Timeout: 60 * time.Second}
-	resp, err := client.Get(url)
+// downloadFeatureTarball fetches a Feature published as a direct HTTP(S) tarball,
+// matching the TS CLI's request/getRequestHeaders behavior instead of a bare GET:
+//   - sends a "devcontainer" User-Agent;
+//   - attaches Authorization: Bearer $GITHUB_TOKEN for github.com / api.github.com
+//     URLs, so private release assets resolve (the naive GET 404'd on them);
+//   - accepts any 2xx (TS treats 200-299 as success), not only 200;
+//   - warns when downloading over plaintext HTTP;
+//   - goes through the shared proxy- and custom-CA-aware transport.
+//
+// It returns the tarball bytes and their computed "sha256:<hex>" digest so the
+// caller can pin/verify integrity (TS records and checks this digest).
+func downloadFeatureTarball(ctx context.Context, logger log.Logger, tarballURL string, env map[string]string) ([]byte, string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tarballURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	for k, v := range featureRequestHeaders(tarballURL, env, logger) {
+		req.Header.Set(k, v)
+	}
+	if isPlainHTTPURL(tarballURL) && logger != nil {
+		logger.Write("Sending as plain HTTP request", log.LevelWarning)
+	}
+
+	client := &http.Client{Transport: httpx.NewTransport(), Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, "", fmt.Errorf("download %s: HTTP %d", tarballURL, resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 512<<20)) // 512 MiB cap
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20)) // 512 MiB cap
+	if err != nil {
+		return nil, "", err
+	}
+	sum := sha256.Sum256(data)
+	return data, "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// featureRequestHeaders mirrors the TS getRequestHeaders for a direct-tarball
+// source: always a "devcontainer" User-Agent, plus a bearer GITHUB_TOKEN when the
+// tarball is hosted on GitHub. Redirects to a signed CDN URL drop the header —
+// Go's http.Client strips Authorization on a cross-host redirect, which is the
+// correct behavior for GitHub release assets (the redirect target is presigned).
+func featureRequestHeaders(tarballURL string, env map[string]string, logger log.Logger) map[string]string {
+	headers := map[string]string{"User-Agent": "devcontainer"}
+	if isGitHubTarballURI(tarballURL) {
+		if token := env["GITHUB_TOKEN"]; token != "" {
+			if logger != nil {
+				logger.Write("Using environment GITHUB_TOKEN.", log.LevelInfo)
+			}
+			headers["Authorization"] = "Bearer " + token
+		} else if logger != nil {
+			logger.Write("No environment GITHUB_TOKEN available.", log.LevelInfo)
+		}
+	}
+	return headers
+}
+
+// isGitHubTarballURI matches the TS isGitHubUri check (raw prefix, no parsing).
+func isGitHubTarballURI(u string) bool {
+	return strings.HasPrefix(u, "https://github.com") || strings.HasPrefix(u, "https://api.github.com")
+}
+
+// isPlainHTTPURL reports whether the URL would travel unencrypted (TS warns on
+// this): a http:// scheme, or a localhost host regardless of scheme.
+func isPlainHTTPURL(u string) bool {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Hostname() == "localhost"
 }
 
 // addFeatureOption returns the feature options with key=true added, preserving
