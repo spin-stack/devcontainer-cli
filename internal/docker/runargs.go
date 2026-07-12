@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/docker/docker/api/types/mount"
+	"github.com/moby/moby/api/types/mount"
 )
 
 // ParseMountSpec parses a --mount flag value (e.g., "type=bind,source=/a,target=/b").

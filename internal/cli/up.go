@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	dockermount "github.com/docker/docker/api/types/mount"
+	dockermount "github.com/moby/moby/api/types/mount"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"

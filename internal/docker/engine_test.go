@@ -3,117 +3,112 @@ package docker
 import (
 	"context"
 	"errors"
-	"io"
-	"strings"
 	"testing"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	dockerclient "github.com/docker/docker/client"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/api/types/image"
+	mobyclient "github.com/moby/moby/client"
 
 	"github.com/devcontainers/cli/internal/log"
 )
 
 // --- mock implementation of DockerAPI ---
+//
+// The func fields keep the "inner" moby types (container.InspectResponse, …) so
+// test setups stay concise; the interface methods wrap them into the v29
+// options/result envelopes.
 
 type mockAPI struct {
-	containerCreateFn  func(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error)
+	containerCreateFn  func(ctx context.Context, opts mobyclient.ContainerCreateOptions) (mobyclient.ContainerCreateResult, error)
 	containerInspectFn func(ctx context.Context, id string) (container.InspectResponse, error)
-	containerListFn    func(ctx context.Context, opts container.ListOptions) ([]container.Summary, error)
-	containerRemoveFn  func(ctx context.Context, id string, opts container.RemoveOptions) error
-	containerStartFn   func(ctx context.Context, id string, opts container.StartOptions) error
-	eventsFn           func(ctx context.Context, opts events.ListOptions) (<-chan events.Message, <-chan error)
-	imageInspectFn     func(ctx context.Context, id string, opts ...dockerclient.ImageInspectOption) (image.InspectResponse, error)
-	imagePullFn        func(ctx context.Context, ref string, opts image.PullOptions) (io.ReadCloser, error)
-	imageTagFn         func(ctx context.Context, source, target string) error
-	pingFn             func(ctx context.Context) (types.Ping, error)
-	serverVersionFn    func(ctx context.Context) (types.Version, error)
+	containerListFn    func(ctx context.Context, opts mobyclient.ContainerListOptions) ([]container.Summary, error)
+	containerRemoveFn  func(ctx context.Context, id string, opts mobyclient.ContainerRemoveOptions) error
+	containerStartFn   func(ctx context.Context, id string, opts mobyclient.ContainerStartOptions) error
+	eventsFn           func(ctx context.Context, opts mobyclient.EventsListOptions) (<-chan events.Message, <-chan error)
+	imageInspectFn     func(ctx context.Context, id string, opts ...mobyclient.ImageInspectOption) (image.InspectResponse, error)
+	imagePullFn        func(ctx context.Context, ref string, opts mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error)
+	imageTagFn         func(ctx context.Context, opts mobyclient.ImageTagOptions) error
+	serverVersionFn    func(ctx context.Context, opts mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error)
 }
 
 func (m *mockAPI) Close() error { return nil }
 
-func (m *mockAPI) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error) {
+func (m *mockAPI) ContainerCreate(ctx context.Context, opts mobyclient.ContainerCreateOptions) (mobyclient.ContainerCreateResult, error) {
 	if m.containerCreateFn != nil {
-		return m.containerCreateFn(ctx, config, hostConfig, networkingConfig, platform, containerName)
+		return m.containerCreateFn(ctx, opts)
 	}
-	return container.CreateResponse{}, errors.New("not implemented")
+	return mobyclient.ContainerCreateResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) ContainerStart(ctx context.Context, id string, opts container.StartOptions) error {
+func (m *mockAPI) ContainerStart(ctx context.Context, id string, opts mobyclient.ContainerStartOptions) (mobyclient.ContainerStartResult, error) {
 	if m.containerStartFn != nil {
-		return m.containerStartFn(ctx, id, opts)
+		return mobyclient.ContainerStartResult{}, m.containerStartFn(ctx, id, opts)
 	}
-	return errors.New("not implemented")
+	return mobyclient.ContainerStartResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) ImagePull(ctx context.Context, ref string, opts image.PullOptions) (io.ReadCloser, error) {
+func (m *mockAPI) ImagePull(ctx context.Context, ref string, opts mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
 	if m.imagePullFn != nil {
 		return m.imagePullFn(ctx, ref, opts)
 	}
-	return io.NopCloser(strings.NewReader("")), nil
+	return nil, nil
 }
 
-func (m *mockAPI) ContainerInspect(ctx context.Context, id string) (container.InspectResponse, error) {
+func (m *mockAPI) ContainerInspect(ctx context.Context, id string, _ mobyclient.ContainerInspectOptions) (mobyclient.ContainerInspectResult, error) {
 	if m.containerInspectFn != nil {
-		return m.containerInspectFn(ctx, id)
+		resp, err := m.containerInspectFn(ctx, id)
+		return mobyclient.ContainerInspectResult{Container: resp}, err
 	}
-	return container.InspectResponse{}, errors.New("not implemented")
+	return mobyclient.ContainerInspectResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) ContainerList(ctx context.Context, opts container.ListOptions) ([]container.Summary, error) {
+func (m *mockAPI) ContainerList(ctx context.Context, opts mobyclient.ContainerListOptions) (mobyclient.ContainerListResult, error) {
 	if m.containerListFn != nil {
-		return m.containerListFn(ctx, opts)
+		items, err := m.containerListFn(ctx, opts)
+		return mobyclient.ContainerListResult{Items: items}, err
 	}
-	return nil, errors.New("not implemented")
+	return mobyclient.ContainerListResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) ContainerRemove(ctx context.Context, id string, opts container.RemoveOptions) error {
+func (m *mockAPI) ContainerRemove(ctx context.Context, id string, opts mobyclient.ContainerRemoveOptions) (mobyclient.ContainerRemoveResult, error) {
 	if m.containerRemoveFn != nil {
-		return m.containerRemoveFn(ctx, id, opts)
+		return mobyclient.ContainerRemoveResult{}, m.containerRemoveFn(ctx, id, opts)
 	}
-	return errors.New("not implemented")
+	return mobyclient.ContainerRemoveResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) Events(ctx context.Context, opts events.ListOptions) (<-chan events.Message, <-chan error) {
+func (m *mockAPI) Events(ctx context.Context, opts mobyclient.EventsListOptions) mobyclient.EventsResult {
 	if m.eventsFn != nil {
-		return m.eventsFn(ctx, opts)
+		msgs, errc := m.eventsFn(ctx, opts)
+		return mobyclient.EventsResult{Messages: msgs, Err: errc}
 	}
 	ch := make(chan events.Message)
 	errCh := make(chan error, 1)
 	close(ch)
-	return ch, errCh
+	return mobyclient.EventsResult{Messages: ch, Err: errCh}
 }
 
-func (m *mockAPI) ImageInspect(ctx context.Context, id string, opts ...dockerclient.ImageInspectOption) (image.InspectResponse, error) {
+func (m *mockAPI) ImageInspect(ctx context.Context, id string, opts ...mobyclient.ImageInspectOption) (mobyclient.ImageInspectResult, error) {
 	if m.imageInspectFn != nil {
-		return m.imageInspectFn(ctx, id, opts...)
+		resp, err := m.imageInspectFn(ctx, id, opts...)
+		return mobyclient.ImageInspectResult{InspectResponse: resp}, err
 	}
-	return image.InspectResponse{}, errors.New("not implemented")
+	return mobyclient.ImageInspectResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) ImageTag(ctx context.Context, source, target string) error {
+func (m *mockAPI) ImageTag(ctx context.Context, opts mobyclient.ImageTagOptions) (mobyclient.ImageTagResult, error) {
 	if m.imageTagFn != nil {
-		return m.imageTagFn(ctx, source, target)
+		return mobyclient.ImageTagResult{}, m.imageTagFn(ctx, opts)
 	}
-	return errors.New("not implemented")
+	return mobyclient.ImageTagResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) Ping(ctx context.Context) (types.Ping, error) {
-	if m.pingFn != nil {
-		return m.pingFn(ctx)
-	}
-	return types.Ping{}, nil
-}
-
-func (m *mockAPI) ServerVersion(ctx context.Context) (types.Version, error) {
+func (m *mockAPI) ServerVersion(ctx context.Context, opts mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error) {
 	if m.serverVersionFn != nil {
-		return m.serverVersionFn(ctx)
+		return m.serverVersionFn(ctx, opts)
 	}
-	return types.Version{}, errors.New("not implemented")
+	return mobyclient.ServerVersionResult{}, errors.New("not implemented")
 }
 
 // --- tests ---
@@ -125,12 +120,7 @@ func newTestEngine(api *mockAPI) *EngineClient {
 func TestInspectContainer(t *testing.T) {
 	api := &mockAPI{
 		containerInspectFn: func(_ context.Context, id string) (container.InspectResponse, error) {
-			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{
-					ID:   id,
-					Name: "/my-container",
-				},
-			}, nil
+			return container.InspectResponse{ID: id, Name: "/my-container"}, nil
 		},
 	}
 	e := newTestEngine(api)
@@ -151,9 +141,7 @@ func TestInspectContainers(t *testing.T) {
 	api := &mockAPI{
 		containerInspectFn: func(_ context.Context, id string) (container.InspectResponse, error) {
 			calls++
-			return container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{ID: id},
-			}, nil
+			return container.InspectResponse{ID: id}, nil
 		},
 	}
 	e := newTestEngine(api)
@@ -171,7 +159,7 @@ func TestInspectContainers(t *testing.T) {
 
 func TestInspectImage(t *testing.T) {
 	api := &mockAPI{
-		imageInspectFn: func(_ context.Context, id string, _ ...dockerclient.ImageInspectOption) (image.InspectResponse, error) {
+		imageInspectFn: func(_ context.Context, id string, _ ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
 			return image.InspectResponse{
 				ID:           "sha256:abc",
 				Architecture: "amd64",
@@ -195,7 +183,7 @@ func TestInspectImage(t *testing.T) {
 
 func TestListContainers(t *testing.T) {
 	api := &mockAPI{
-		containerListFn: func(_ context.Context, opts container.ListOptions) ([]container.Summary, error) {
+		containerListFn: func(_ context.Context, opts mobyclient.ContainerListOptions) ([]container.Summary, error) {
 			if !opts.All {
 				t.Error("expected All=true")
 			}
@@ -226,7 +214,7 @@ func TestRemoveContainer(t *testing.T) {
 		remove func(calls int) error
 		// events, when non-nil, overrides the default (closed-channel) events
 		// stream to drive retry/destroy behavior.
-		events    func(ctx context.Context, opts events.ListOptions) (<-chan events.Message, <-chan error)
+		events    func(ctx context.Context, opts mobyclient.EventsListOptions) (<-chan events.Message, <-chan error)
 		wantCalls int
 	}{
 		{
@@ -242,7 +230,7 @@ func TestRemoveContainer(t *testing.T) {
 				}
 				return nil
 			},
-			events: func(_ context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
+			events: func(_ context.Context, _ mobyclient.EventsListOptions) (<-chan events.Message, <-chan error) {
 				ch := make(chan events.Message)
 				errCh := make(chan error, 1)
 				// Don't send any events — let it timeout and retry
@@ -255,7 +243,7 @@ func TestRemoveContainer(t *testing.T) {
 			remove: func(_ int) error {
 				return errors.New("removal of container xyz is already in progress")
 			},
-			events: func(_ context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
+			events: func(_ context.Context, _ mobyclient.EventsListOptions) (<-chan events.Message, <-chan error) {
 				ch := make(chan events.Message, 1)
 				errCh := make(chan error, 1)
 				// Immediately send destroy event
@@ -271,7 +259,7 @@ func TestRemoveContainer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
 			api := &mockAPI{
-				containerRemoveFn: func(_ context.Context, _ string, _ container.RemoveOptions) error {
+				containerRemoveFn: func(_ context.Context, _ string, _ mobyclient.ContainerRemoveOptions) error {
 					calls++
 					return tt.remove(calls)
 				},
@@ -290,60 +278,12 @@ func TestRemoveContainer(t *testing.T) {
 	}
 }
 
-func TestIsPodman(t *testing.T) {
-	tests := []struct {
-		name    string
-		version types.Version
-		err     error
-		want    bool
-	}{
-		{
-			name: "Docker",
-			version: types.Version{
-				Components: []types.ComponentVersion{
-					{Name: "Engine", Version: "24.0.0"},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "Podman",
-			version: types.Version{
-				Components: []types.ComponentVersion{
-					{Name: "Podman", Version: "4.0.0"},
-				},
-			},
-			want: true,
-		},
-		{
-			name:    "Error",
-			version: types.Version{},
-			err:     errors.New("connection refused"),
-			want:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			api := &mockAPI{
-				serverVersionFn: func(_ context.Context) (types.Version, error) {
-					return tt.version, tt.err
-				},
-			}
-			e := newTestEngine(api)
-			if got := e.IsPodman(context.Background()); got != tt.want {
-				t.Errorf("IsPodman() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestImageTag(t *testing.T) {
 	tagged := false
 	api := &mockAPI{
-		imageTagFn: func(_ context.Context, source, target string) error {
-			if source != "src:v1" || target != "dst:v2" {
-				t.Errorf("tag(%q, %q)", source, target)
+		imageTagFn: func(_ context.Context, opts mobyclient.ImageTagOptions) error {
+			if opts.Source != "src:v1" || opts.Target != "dst:v2" {
+				t.Errorf("tag(%q, %q)", opts.Source, opts.Target)
 			}
 			tagged = true
 			return nil
@@ -384,7 +324,7 @@ func TestToDockerImageName(t *testing.T) {
 
 func TestEvents(t *testing.T) {
 	api := &mockAPI{
-		eventsFn: func(ctx context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
+		eventsFn: func(_ context.Context, _ mobyclient.EventsListOptions) (<-chan events.Message, <-chan error) {
 			ch := make(chan events.Message, 2)
 			errCh := make(chan error, 1)
 			ch <- events.Message{Action: events.ActionStart}

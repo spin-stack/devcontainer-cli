@@ -410,6 +410,22 @@ with the TS oracle except where indicated; they are sequenced by value/risk.
   stay green. Unit tests of the helper (`deepMergeConfig`: nested, replace of
   scalar/array, nil) and of the loader with a partial override.
 
+## Dependencies
+
+- **Docker Go SDK: `github.com/moby/moby/{client,api}` — ✅ MIGRATED.** The
+  deprecated `github.com/docker/docker` module was replaced by the supported
+  public modules `github.com/moby/moby/client` + `github.com/moby/moby/api` (the
+  v29 "options-in, result-out" surface). Note: the top-level `github.com/moby/moby`
+  module is an internal implementation detail and is deliberately **not** a
+  dependency. Scope was contained to `internal/docker/engine.go` (the `DockerAPI`
+  interface + wrappers: options/result envelopes, `client.Filters` in place of the
+  removed `api/types/filters`, single-struct `EventsResult`) and its test mock; the
+  other three sites were a mechanical `api/types/mount` import-path swap. Requires
+  Docker Engine API ≥ v1.44 (Docker v25+), which the v29 client enforces. Verified:
+  `docker/docker` is gone from go.mod/go.sum, build + lint clean, unit tests pass,
+  and a real-daemon smoke (`up` + `up --remove-existing-container`) exercises the
+  reshaped `RemoveContainer`/`Events`/`ListContainers`/`PullImage` paths.
+
 ## Decisions that must be made explicit
 
 Decisions already taken (firm):
