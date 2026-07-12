@@ -27,36 +27,46 @@ type ShellServer struct {
 	containerID string
 	user        string
 	env         []string // remoteEnv "KEY=VALUE", applied to every exec
-	log         log.Logger
 }
 
 // NewShellServer binds a ShellServer to a container. user (docker exec -u) and
 // remoteEnv entries ("KEY=VALUE", docker exec -e) are applied to every command,
 // matching the TS CLI which runs lifecycle hooks and the userEnvProbe as the
 // remote user.
-func NewShellServer(ctx context.Context, exec ContainerExecutor, containerID, user string, logger log.Logger, remoteEnv ...string) (*ShellServer, error) {
+// The logger param is accepted for call-site stability and future use; the
+// server currently logs nothing itself (callers surface command output).
+func NewShellServer(ctx context.Context, exec ContainerExecutor, containerID, user string, _ log.Logger, remoteEnv ...string) (*ShellServer, error) {
 	return &ShellServer{
 		ctx:         ctx,
 		exec:        exec,
 		containerID: containerID,
 		user:        user,
 		env:         remoteEnv,
-		log:         logger,
 	}, nil
 }
 
 // Exec runs a command inside the container and returns its stdout and exit code.
-// The command's stderr is surfaced on the log (the TS CLI streams hook stderr)
-// rather than returned, so a failing hook still produces diagnostics.
+// stderr is intentionally NOT surfaced: the only direct caller is the internal
+// userEnvProbe, whose interactive-login shell (`bash -lic`) prints a benign
+// "cannot set terminal process group / no job control" warning to stderr on a
+// container without a controlling TTY — the TS CLI does not show it either.
+// Lifecycle hooks surface their own stderr via ShellExecutor (ExecWithStderr).
 func (s *ShellServer) Exec(command string) (stdout string, exitCode int, err error) {
-	out, errText, code, err := s.exec.ExecInContainer(s.ctx, s.containerID, s.user, s.env, command)
+	out, _, code, err := s.exec.ExecInContainer(s.ctx, s.containerID, s.user, s.env, command)
 	if err != nil {
 		return "", -1, err
 	}
-	if strings.TrimSpace(errText) != "" && s.log != nil {
-		s.log.Write(errText, log.LevelInfo)
-	}
 	return out, code, nil
+}
+
+// ExecWithStderr is Exec but also returns the command's stderr, for callers that
+// surface command diagnostics (lifecycle hooks).
+func (s *ShellServer) ExecWithStderr(command string) (stdout, stderr string, exitCode int, err error) {
+	out, errText, code, err := s.exec.ExecInContainer(s.ctx, s.containerID, s.user, s.env, command)
+	if err != nil {
+		return "", "", -1, err
+	}
+	return out, errText, code, nil
 }
 
 // Close is a no-op: each command is its own exec, so there is no persistent
@@ -86,12 +96,17 @@ func (e *ShellExecutor) Exec(command string) error {
 	if e.WorkDir != "" {
 		command = fmt.Sprintf("cd %s && %s", shellSingleQuote(e.WorkDir), command)
 	}
-	stdout, code, err := e.Server.Exec(command)
+	stdout, stderr, code, err := e.Server.ExecWithStderr(command)
 	if err != nil {
 		return err
 	}
 	if stdout != "" {
 		e.Log.Write(stdout, log.LevelInfo)
+	}
+	// Surface hook stderr (the TS CLI streams lifecycle-hook stderr) so a failing
+	// or chatty hook still produces diagnostics.
+	if strings.TrimSpace(stderr) != "" {
+		e.Log.Write(stderr, log.LevelInfo)
 	}
 	if code != 0 {
 		return &CommandError{Command: originalCommand, ExitCode: code}
