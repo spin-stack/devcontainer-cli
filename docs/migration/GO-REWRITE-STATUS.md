@@ -1,15 +1,17 @@
 # Parity status — Go CLI vs devcontainers/cli 0.88
 
 **Current** status of the Go CLI's parity against the TypeScript oracle (submodule
-`reference/`, v0.88.0). This document summarizes where we stand; the pending detail
-lives in the backlog and the history in `git log`.
+`reference/`, v0.88.0). This document summarizes where we stand; deliberate divergences
+and accepted limitations live in [`../DIVERGENCES.md`](../DIVERGENCES.md) and the history
+in `git log`.
 
-**Release status:** candidate with a **clean run achieved** against the v0.88.0 pin
-(oracle `f683c29`): parity contract 68/0/0, network 13/0/0, runtime **189 matched / 0
-failed / 0 inconclusive** + TestPublishParity, plus lint/coverage/integration/e2e/build:cross;
-per-lane JSON artifacts + coverage.out + reference-commit.txt saved. What remains is
-formalizing it in CI with `goreleaser`/`syft` installed (RW-015/016) to declare full
-parity; see [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
+**Release status:** parity demonstrated and the **CI gate is green on the candidate
+commit** — lint / coverage / test:integration / test:e2e / build:cross, parity contract
+68/0/0, network 13/0/0, and runtime **189 matched / 0 failed / 0 inconclusive** (+
+TestPublishParity). The GoReleaser pipeline (`release.yml`: binaries + archives + SBOMs +
+signed multi-arch image) is verified via `--snapshot`; the only remaining step to publish
+is **cutting the first tag**, which runs it for real. See
+[RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
 
 **arm64 runtime: experimental, unsupported for now.** The binaries cross-compile to
 `linux/arm64`, but running arm64 containers (via QEMU/binfmt emulation on amd64 hosts)
@@ -19,11 +21,11 @@ is experimental: the `arm64_required` parity cases are skipped by default
 **Supported scope (firm):** **Linux only** (amd64/arm64) and **Docker only**. Windows and
 macOS are not targets (no runtime/E2E/release). **Podman is not supported**; only
 `docker compose` v2. The existing cross-platform/Podman logic is kept solely for
-parity with the TS oracle and offers no guarantee. The pending work per item lives in
-[REMAINING-WORK.md](REMAINING-WORK.md).
+parity with the TS oracle and offers no guarantee.
 
-The detailed and prioritized backlog is maintained solely in
-[REMAINING-WORK.md](REMAINING-WORK.md).
+The parity backlog is **closed** (all items implemented or ruled out with tests and
+CI evidence); intentional departures from the oracle are recorded in
+[`../DIVERGENCES.md`](../DIVERGENCES.md).
 
 ## Summary
 

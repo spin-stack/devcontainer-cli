@@ -135,7 +135,7 @@ task parity:runtime   # full matrix; creates real containers/images via Docker
 ```
 
 - **[`docs/migration/GO-REWRITE-STATUS.md`](docs/migration/GO-REWRITE-STATUS.md)** — parity status.
-- **[`docs/migration/REMAINING-WORK.md`](docs/migration/REMAINING-WORK.md)** — the actionable backlog.
+- **[`docs/DIVERGENCES.md`](docs/DIVERGENCES.md)** — deliberate divergences, decisions & accepted limitations.
 - **[`docs/migration/parity-matrix.yaml`](docs/migration/parity-matrix.yaml)** — the case matrix.
 
 ```
