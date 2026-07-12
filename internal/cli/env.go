@@ -3,7 +3,16 @@ package cli
 import (
 	"os"
 	"strings"
+
+	"github.com/devcontainers/cli/internal/config"
 )
+
+func resolveContainerVariables(containerEnv map[string]string, value interface{}) (interface{}, error) {
+	return config.NewVariableResolver().AfterContainer(config.SubstitutionContext{
+		HostSubContext: config.HostSubContext{Platform: "linux"},
+		ContainerEnv:   containerEnv,
+	}, value)
+}
 
 // osEnvMap returns the current process environment as a map.
 func osEnvMap() map[string]string {

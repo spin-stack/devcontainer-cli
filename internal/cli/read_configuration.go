@@ -228,7 +228,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		inspect, inspectErr := engine.InspectContainer(ctx, containerID)
 		if inspectErr == nil && inspect.Config != nil {
 			cEnv := envSliceToMap(inspect.Config.Env)
-			substituted := config.SubstituteContainer("linux", cEnv, cfgMap)
+			substituted, subErr := resolveContainerVariables(cEnv, cfgMap)
+			if subErr != nil {
+				return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
+			}
 			if subMap, ok := substituted.(map[string]interface{}); ok {
 				cfgMap = subMap
 			}
@@ -339,7 +342,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 				mergedJSON, _ := json.Marshal(merged)
 				var mergedGeneric interface{}
 				json.Unmarshal(mergedJSON, &mergedGeneric)
-				substituted := config.SubstituteContainer("linux", cEnv, mergedGeneric)
+				substituted, subErr := resolveContainerVariables(cEnv, mergedGeneric)
+				if subErr != nil {
+					return subErr
+				}
 				subJSON, _ := json.Marshal(substituted)
 				json.Unmarshal(subJSON, merged)
 			}

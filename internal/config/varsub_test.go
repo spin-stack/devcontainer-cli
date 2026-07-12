@@ -1,11 +1,71 @@
 package config
 
 import (
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
-func TestSubstituteHost(t *testing.T) {
+func TestVariableResolverBeforeContainerPhases(t *testing.T) {
+	resolver := NewVariableResolver()
+	ctx := SubstitutionContext{
+		HostSubContext: HostSubContext{
+			Platform:             "linux",
+			LocalWorkspaceFolder: "/work/project",
+			Env:                  map[string]string{"HOME": "/home/test"},
+		},
+		IDLabels: map[string]string{"devcontainer.local_folder": "/work/project"},
+	}
+	input := map[string]interface{}{
+		"workspace": "${localWorkspaceFolder}",
+		"id":        "${devcontainerId}",
+		"later":     "${containerEnv:PATH}",
+	}
+	resolved, err := resolver.BeforeContainer(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := resolved.(map[string]interface{})
+	if got["workspace"] != "/work/project" {
+		t.Errorf("workspace = %q", got["workspace"])
+	}
+	if got["id"] != ComputeDevContainerID(ctx.IDLabels) {
+		t.Errorf("id = %q", got["id"])
+	}
+	if got["later"] != "${containerEnv:PATH}" {
+		t.Errorf("container phase placeholder resolved too early: %q", got["later"])
+	}
+}
+
+func TestVariableResolverEnvironmentErrorIncludesConfig(t *testing.T) {
+	resolver := NewVariableResolver()
+	_, err := resolver.Resolve(SubstitutionContext{HostSubContext: HostSubContext{
+		ConfigFilePath: "/work/.devcontainer/devcontainer.json",
+	}}, PhaseHost, "${localEnv}")
+	if err == nil {
+		t.Fatal("expected missing environment variable name to fail")
+	}
+	if !strings.Contains(err.Error(), "devcontainer.json") {
+		t.Errorf("error does not identify config file: %v", err)
+	}
+}
+
+func TestVariableResolverResolveInto(t *testing.T) {
+	type value struct {
+		Env map[string]string `json:"env"`
+	}
+	target := value{Env: map[string]string{"ID": "prefix-${devcontainerId}"}}
+	ctx := SubstitutionContext{DevContainerID: "abc123"}
+	if err := NewVariableResolver().ResolveInto(ctx, PhaseIdentity, &target); err != nil {
+		t.Fatal(err)
+	}
+	if target.Env["ID"] != "prefix-abc123" {
+		t.Errorf("typed target was not resolved: %#v", target)
+	}
+}
+
+func TestVariableResolverHostPhase(t *testing.T) {
 	localEnvCtx := HostSubContext{
 		Platform: "linux",
 		Env:      map[string]string{"HOME": "/home/user", "USER": "test"},
@@ -75,15 +135,18 @@ func TestSubstituteHost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := SubstituteHost(tt.ctx, tt.input)
+			got, err := NewVariableResolver().Resolve(SubstitutionContext{HostSubContext: tt.ctx}, PhaseHost, tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SubstituteHost(%v) = %v, want %v", tt.input, got, tt.want)
+				t.Errorf("host Resolve(%v) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestSubstituteDevContainerID(t *testing.T) {
+func TestVariableResolverIdentityPhase(t *testing.T) {
 	labels := map[string]string{
 		"devcontainer.local_folder": "/home/user/project",
 	}
@@ -102,13 +165,16 @@ func TestSubstituteDevContainerID(t *testing.T) {
 	}
 
 	// Substitute into value
-	result := SubstituteDevContainerID(labels, "${devcontainerId}")
+	result, err := NewVariableResolver().Resolve(SubstitutionContext{IDLabels: labels}, PhaseIdentity, "${devcontainerId}")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result != id {
 		t.Errorf("substitution = %q, want %q", result, id)
 	}
 }
 
-func TestSubstituteDevContainerID_SortedKeys(t *testing.T) {
+func TestComputeDevContainerIDSortedKeys(t *testing.T) {
 	labels1 := map[string]string{"a": "1", "b": "2"}
 	labels2 := map[string]string{"b": "2", "a": "1"}
 
@@ -120,7 +186,7 @@ func TestSubstituteDevContainerID_SortedKeys(t *testing.T) {
 	}
 }
 
-func TestSubstituteDevContainerIDString(t *testing.T) {
+func TestVariableResolverIdentityStrings(t *testing.T) {
 	tests := []struct {
 		name  string
 		id    string
@@ -135,8 +201,12 @@ func TestSubstituteDevContainerIDString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SubstituteDevContainerIDString(tt.id, tt.value); got != tt.want {
-				t.Errorf("SubstituteDevContainerIDString(%q, %q) = %q, want %q", tt.id, tt.value, got, tt.want)
+			got, err := NewVariableResolver().Resolve(SubstitutionContext{DevContainerID: tt.id}, PhaseIdentity, tt.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("identity Resolve(%q, %q) = %q, want %q", tt.id, tt.value, got, tt.want)
 			}
 		})
 	}
@@ -146,12 +216,16 @@ func TestSubstituteTemplateOptions(t *testing.T) {
 	options := map[string]string{"image": "ubuntu", "greeting": "hello"}
 	value := "${templateOption:image}:${templateOption: greeting }:${unknown}"
 	want := "ubuntu:hello:${unknown}"
-	if got := SubstituteTemplateOptions(options, value); got != want {
-		t.Errorf("SubstituteTemplateOptions() = %q, want %q", got, want)
+	got, err := NewVariableResolver().Resolve(SubstitutionContext{TemplateOptions: options}, PhaseTemplate, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("template Resolve() = %q, want %q", got, want)
 	}
 }
 
-func TestSubstituteContainer(t *testing.T) {
+func TestVariableResolverContainerPhase(t *testing.T) {
 	containerEnv := map[string]string{
 		"PATH":  "/usr/bin:/usr/local/bin",
 		"SHELL": "/bin/bash",
@@ -170,9 +244,47 @@ func TestSubstituteContainer(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := SubstituteContainer("linux", containerEnv, tt.input)
-		if got != tt.want {
-			t.Errorf("SubstituteContainer(%q) = %q, want %q", tt.input, got, tt.want)
+		got, err := NewVariableResolver().AfterContainer(SubstitutionContext{
+			HostSubContext: HostSubContext{Platform: "linux"},
+			ContainerEnv:   containerEnv,
+		}, tt.input)
+		if err != nil {
+			t.Fatal(err)
 		}
+		if got != tt.want {
+			t.Errorf("container Resolve(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestSubstituteTags(t *testing.T) {
+	upper := func(tag string) (string, bool, error) { return strings.ToUpper(tag), true, nil }
+
+	// No tags: input returned unchanged (fast path).
+	if got, _ := substituteTags("plain text", upper); got != "plain text" {
+		t.Errorf("no-tag = %q", got)
+	}
+	// Multiple tags replaced.
+	if got, _ := substituteTags("a ${one} b ${two}", upper); got != "a ONE b TWO" {
+		t.Errorf("multi = %q", got)
+	}
+	// Unhandled tag kept verbatim so a later phase can resolve it.
+	keepFoo := func(tag string) (string, bool, error) {
+		if tag == "foo" {
+			return "", false, nil
+		}
+		return "X", true, nil
+	}
+	if got, _ := substituteTags("${foo}:${bar}", keepFoo); got != "${foo}:X" {
+		t.Errorf("verbatim = %q", got)
+	}
+	// Unterminated "${" is kept as-is.
+	if got, _ := substituteTags("before ${tag", upper); got != "before ${tag" {
+		t.Errorf("unterminated = %q", got)
+	}
+	// replace errors abort and propagate.
+	boom := errors.New("boom")
+	if _, err := substituteTags("${x}", func(string) (string, bool, error) { return "", false, boom }); !errors.Is(err, boom) {
+		t.Errorf("error prop = %v", err)
 	}
 }

@@ -262,7 +262,10 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 
 	// 8. Substitute ${containerEnv:X} in resolved remoteEnv
 	for k, v := range resolvedRemoteEnv {
-		substituted := config.SubstituteContainer("linux", containerEnv, v)
+		substituted, err := resolveContainerVariables(containerEnv, v)
+		if err != nil {
+			return fmt.Errorf("resolve container variables: %w", err)
+		}
 		if s, ok := substituted.(string); ok {
 			resolvedRemoteEnv[k] = s
 		}

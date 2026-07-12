@@ -321,18 +321,8 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 	cfg := loadResult.Config
 
-	// Merge --additional-features into config (config features have priority)
-	var mergeErr error
-	opts.lockfileExcludeIDs, mergeErr = mergeAdditionalFeatures(cfg, opts.additionalFeatures)
-	if mergeErr != nil {
-		return writeErrorResult(out, mergeErr.Error())
-	}
-
-	if derr := enforceDisallowedFeatures(ctx, cfg, logger); derr != nil {
-		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
-	}
-
-	// Derive id labels from workspace if not provided via --id-label.
+	// Derive id labels before consuming configuration fields so the complete
+	// pre-container pipeline can run first.
 	if len(idLabels) == 0 {
 		idLabels = []string{
 			fmt.Sprintf("devcontainer.local_folder=%s", workspaceFolder),
@@ -340,6 +330,29 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		if loadResult.Config.ConfigFilePath != "" {
 			idLabels = append(idLabels, fmt.Sprintf("devcontainer.config_file=%s", loadResult.Config.ConfigFilePath))
 		}
+	}
+
+	// Merge --additional-features into config (config features have priority)
+	var mergeErr error
+	opts.lockfileExcludeIDs, mergeErr = mergeAdditionalFeatures(cfg, opts.additionalFeatures)
+	if mergeErr != nil {
+		return writeErrorResult(out, mergeErr.Error())
+	}
+
+	idCtx := config.SubstitutionContext{
+		HostSubContext: loadResult.HostSub,
+		DevContainerID: config.ComputeDevContainerID(idLabelsMap(idLabels)),
+	}
+	resolver := config.NewVariableResolver()
+	if err := resolver.BeforeContainerInto(idCtx, cfg); err != nil {
+		return writeErrorResult(out, fmt.Sprintf("apply pre-container substitutions: %v", err))
+	}
+	if err := resolver.BeforeContainerInto(idCtx, loadResult.WorkspaceConfig); err != nil {
+		return writeErrorResult(out, fmt.Sprintf("apply workspace pre-container substitutions: %v", err))
+	}
+
+	if derr := enforceDisallowedFeatures(ctx, cfg, logger); derr != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
 	}
 
 	// Apply --remove-existing-container up-front, BEFORE initializeCommand, so a
@@ -356,7 +369,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// A failure aborts `up` with an error outcome, matching the TS CLI (which
 	// throws a ContainerError). Swallowing it produced silently-broken setups.
 	if !cfg.InitializeCommand.IsEmpty() {
-		if err := lifecycle.RunInitializeCommand(ctx, logger, &cfg.InitializeCommand, workspaceFolder); err != nil {
+		if err := lifecycle.RunInitializeCommand(ctx, logger, &cfg.InitializeCommand, loadResult.HostSub); err != nil {
 			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 				Description: "The initializeCommand in the devcontainer.json failed.",
 			}))
@@ -492,7 +505,10 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			cfgJSON, _ := json.Marshal(cfg)
 			var cfgGeneric interface{}
 			json.Unmarshal(cfgJSON, &cfgGeneric)
-			substituted := config.SubstituteContainer("linux", containerEnv, cfgGeneric)
+			substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
+			if subErr != nil {
+				return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
+			}
 			if subMap, ok := substituted.(map[string]interface{}); ok {
 				for k, v := range subMap {
 					if v == nil {
@@ -550,7 +566,10 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			mergedJSON, _ := json.Marshal(merged)
 			var mergedGeneric interface{}
 			json.Unmarshal(mergedJSON, &mergedGeneric)
-			mergedSub := config.SubstituteContainer("linux", containerEnv, mergedGeneric)
+			mergedSub, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
+			if subErr != nil {
+				return writeErrorResult(out, fmt.Sprintf("resolve merged container variables: %v", subErr))
+			}
 			// Carry over config-only properties spread into mergedConfiguration by
 			// the TS CLI that the typed MergedConfig does not model.
 			if mm, ok := mergedSub.(map[string]interface{}); ok {
@@ -567,6 +586,16 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 
 	return writeSuccessJSON(out, result)
+}
+
+func idLabelsMap(labels []string) map[string]string {
+	result := make(map[string]string, len(labels))
+	for _, label := range labels {
+		if i := strings.IndexByte(label, '='); i >= 0 {
+			result[label[:i]] = label[i+1:]
+		}
+	}
+	return result
 }
 
 // finishUp produces the JSON result for an existing container found via --id-label

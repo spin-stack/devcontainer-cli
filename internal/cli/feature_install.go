@@ -469,22 +469,33 @@ func realignFeatureDirs(tmpDir string, sets []*features.Set) error {
 // so a Feature mount like "${localEnv:HOME}/.cfg" reaches Docker resolved —
 // matching how the config's own containerEnv/mounts are substituted (upstream
 // #308, which only substituted devcontainer.json's own values).
-func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) {
+func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) error {
+	resolver := config.NewVariableResolver()
+	ctx := config.SubstitutionContext{HostSubContext: hs}
 	for _, fs := range sets {
 		for i := range fs.Features {
 			f := &fs.Features[i]
 			for k, v := range f.ContainerEnv {
-				if s, ok := config.SubstituteHost(hs, v).(string); ok {
+				resolved, err := resolver.Resolve(ctx, config.PhaseHost, v)
+				if err != nil {
+					return fmt.Errorf("resolve Feature %s containerEnv %s: %w", f.ID, k, err)
+				}
+				if s, ok := resolved.(string); ok {
 					f.ContainerEnv[k] = s
 				}
 			}
 			if len(f.Mounts) > 0 {
-				if m, ok := config.SubstituteHost(hs, f.Mounts).([]interface{}); ok {
+				resolved, err := resolver.Resolve(ctx, config.PhaseHost, f.Mounts)
+				if err != nil {
+					return fmt.Errorf("resolve Feature %s mounts: %w", f.ID, err)
+				}
+				if m, ok := resolved.([]interface{}); ok {
 					f.Mounts = m
 				}
 			}
 		}
 	}
+	return nil
 }
 
 func extendImageWithFeatures(
@@ -526,7 +537,9 @@ func extendImageWithFeatures(
 	// Resolve ${localEnv:…} / ${localWorkspaceFolder} / … in each Feature's
 	// containerEnv and mounts, like the config's own values (upstream #308).
 	if fbOpts != nil && fbOpts.HostSub != nil {
-		substituteFeatureHostVars(featureSets, *fbOpts.HostSub)
+		if err := substituteFeatureHostVars(featureSets, *fbOpts.HostSub); err != nil {
+			return nil, err
+		}
 	}
 
 	// Write/validate the features lockfile when requested (opt-in via the

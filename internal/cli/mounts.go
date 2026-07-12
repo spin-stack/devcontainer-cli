@@ -102,22 +102,44 @@ func composeVolumeSpecsFromMetadata(entries []interface{}, devcontainerID string
 }
 
 func mountFromMetadata(entry interface{}, devcontainerID string) (dockermount.Mount, error) {
+	resolve := func(value string) (string, error) {
+		resolved, err := config.NewVariableResolver().Resolve(config.SubstitutionContext{
+			DevContainerID: devcontainerID,
+		}, config.PhaseIdentity, value)
+		if err != nil {
+			return "", err
+		}
+		result, ok := resolved.(string)
+		if !ok {
+			return "", fmt.Errorf("identity substitution returned %T for string", resolved)
+		}
+		return result, nil
+	}
 	switch raw := entry.(type) {
 	case string:
-		spec := config.SubstituteDevContainerIDString(devcontainerID, raw)
+		spec, err := resolve(raw)
+		if err != nil {
+			return dockermount.Mount{}, err
+		}
 		return docker.ParseMountSpec(spec)
 	case map[string]interface{}:
 		target, _ := raw["target"].(string)
 		// ${devcontainerId} must resolve in target too, not only source — the
 		// string form substitutes the whole spec, so the object form has to match
 		// (e.g. target "/cache/${devcontainerId}").
-		target = config.SubstituteDevContainerIDString(devcontainerID, target)
+		target, err := resolve(target)
+		if err != nil {
+			return dockermount.Mount{}, err
+		}
 		if target == "" {
 			return dockermount.Mount{}, fmt.Errorf("mount requires a target/destination")
 		}
 
 		source, _ := raw["source"].(string)
-		source = config.SubstituteDevContainerIDString(devcontainerID, source)
+		source, err = resolve(source)
+		if err != nil {
+			return dockermount.Mount{}, err
+		}
 		mountType, _ := raw["type"].(string)
 		if mountType == "" {
 			mountType = string(dockermount.TypeBind)

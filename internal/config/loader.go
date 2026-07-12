@@ -169,7 +169,10 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 		ConfigFilePath:           config.ConfigFilePath,
 	}
 
-	substituted := SubstituteHost(ctx, raw)
+	substituted, err := NewVariableResolver().Resolve(SubstitutionContext{HostSubContext: ctx}, PhaseHost, raw)
+	if err != nil {
+		return nil, fmt.Errorf("apply host substitutions: %w", err)
+	}
 	if m, ok := substituted.(map[string]interface{}); ok {
 		raw = m
 	}

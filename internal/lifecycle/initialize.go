@@ -17,14 +17,30 @@ import (
 //   - string: run via /bin/sh -c
 //   - []string: exec directly (first element is command, rest are args)
 //   - map[string]interface{}: run each value as a string command (parallel)
-func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.LifecycleCommand, workspaceFolder string) error {
+func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.LifecycleCommand, hostSub config.HostSubContext) error {
 	if cmd == nil || cmd.IsEmpty() {
 		return nil
+	}
+	workspaceFolder := hostSub.LocalWorkspaceFolder
+	resolver := config.NewVariableResolver()
+	resolve := func(value string) (string, error) {
+		resolved, err := resolver.Resolve(config.SubstitutionContext{HostSubContext: hostSub}, config.PhaseHost, value)
+		if err != nil {
+			return "", err
+		}
+		result, ok := resolved.(string)
+		if !ok {
+			return "", fmt.Errorf("host substitution returned %T for command string", resolved)
+		}
+		return result, nil
 	}
 
 	// String form
 	if s, ok := cmd.AsString(); ok {
-		resolved := substituteLocalVars(s, workspaceFolder)
+		resolved, err := resolve(s)
+		if err != nil {
+			return err
+		}
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", resolved), log.LevelInfo)
 		return runHostCommand(ctx, resolved, workspaceFolder)
 	}
@@ -32,7 +48,11 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 	// Array form
 	if arr, ok := cmd.AsStringSlice(); ok {
 		for i, a := range arr {
-			arr[i] = substituteLocalVars(a, workspaceFolder)
+			resolved, err := resolve(a)
+			if err != nil {
+				return err
+			}
+			arr[i] = resolved
 		}
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", strings.Join(arr, " ")), log.LevelInfo)
 		return runHostExec(ctx, arr, workspaceFolder)
@@ -52,7 +72,13 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 			wg.Add(1)
 			go func(name, cmdStr string) {
 				defer wg.Done()
-				resolved := substituteLocalVars(cmdStr, workspaceFolder)
+				resolved, err := resolve(cmdStr)
+				if err != nil {
+					mu.Lock()
+					errs = append(errs, fmt.Errorf("%s: %w", name, err))
+					mu.Unlock()
+					return
+				}
 				logger.Write(fmt.Sprintf("  [%s] %s", name, resolved), log.LevelInfo)
 				if err := runHostCommand(ctx, resolved, workspaceFolder); err != nil {
 					mu.Lock()
@@ -69,17 +95,6 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 	}
 
 	return nil
-}
-
-func substituteLocalVars(s string, workspaceFolder string) string {
-	platform := ""
-	if config.IsWindows() {
-		platform = "win32"
-	}
-	return config.SubstituteHostString(config.HostSubContext{
-		Platform:             platform,
-		LocalWorkspaceFolder: workspaceFolder,
-	}, s)
 }
 
 func runHostCommand(ctx context.Context, command string, workDir string) error {

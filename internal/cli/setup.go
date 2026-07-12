@@ -183,7 +183,10 @@ func newSetUpCmd() *cobra.Command {
 					cfgJSON, _ := json.Marshal(cfg)
 					var cfgGeneric interface{}
 					json.Unmarshal(cfgJSON, &cfgGeneric)
-					substituted := config.SubstituteContainer("linux", containerEnv, cfgGeneric)
+					substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
+					if subErr != nil {
+						return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
+					}
 					// Clean null values and internal fields
 					if subMap, ok := substituted.(map[string]interface{}); ok {
 						for k, v := range subMap {
@@ -225,7 +228,10 @@ func newSetUpCmd() *cobra.Command {
 				mergedJSON, _ := json.Marshal(merged)
 				var mergedGeneric interface{}
 				json.Unmarshal(mergedJSON, &mergedGeneric)
-				substituted := config.SubstituteContainer("linux", containerEnv, mergedGeneric)
+				substituted, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
+				if subErr != nil {
+					return writeErrorResult(out, fmt.Sprintf("resolve merged container variables: %v", subErr))
+				}
 				result["mergedConfiguration"] = substituted
 			}
 

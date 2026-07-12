@@ -22,7 +22,9 @@ func TestSubstituteFeatureHostVars(t *testing.T) {
 		}},
 	}}
 
-	substituteFeatureHostVars(sets, hs)
+	if err := substituteFeatureHostVars(sets, hs); err != nil {
+		t.Fatal(err)
+	}
 
 	f := sets[0].Features[0]
 	if got := f.ContainerEnv["CACHE"]; got != "/home/me/.cache" {

@@ -293,5 +293,15 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 
 // substituteTemplateOptions replaces ${templateOption:name} with the provided values.
 func substituteTemplateOptions(content string, options map[string]string) string {
-	return config.SubstituteTemplateOptions(options, content)
+	resolved, err := config.NewVariableResolver().Resolve(config.SubstitutionContext{
+		TemplateOptions: options,
+	}, config.PhaseTemplate, content)
+	if err != nil {
+		return content
+	}
+	result, ok := resolved.(string)
+	if !ok {
+		return content
+	}
+	return result
 }
