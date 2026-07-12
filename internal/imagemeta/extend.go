@@ -236,8 +236,10 @@ func generateFeatureBuildEnvVars(feat features.Feature, containerUser, remoteUse
 		// common-utils may have just created the user, so a later feature must see
 		// its home) — matching the TS CLI's _REMOTE_USER_HOME / _CONTAINER_USER_HOME
 		// builtins. Command substitution, so these must not be single-quoted.
-		fmt.Sprintf(`_CONTAINER_USER_HOME="$(%s | cut -d: -f6)"`, getEntPasswdExpr(containerUser)),
-		fmt.Sprintf(`_REMOTE_USER_HOME="$(%s | cut -d: -f6)"`, getEntPasswdExpr(remoteUser)),
+		// Note the space after `$(`: without it the leading `(` makes the shell
+		// parse `$((` as arithmetic expansion and fail.
+		fmt.Sprintf(`_CONTAINER_USER_HOME="$( %s | cut -d: -f6)"`, getEntPasswdExpr(containerUser)),
+		fmt.Sprintf(`_REMOTE_USER_HOME="$( %s | cut -d: -f6)"`, getEntPasswdExpr(remoteUser)),
 	)
 
 	// Main value — TS normalizes option objects to true and only emits the
