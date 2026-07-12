@@ -870,7 +870,7 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	if imageInspect.Config != nil {
 		metaEntries = append(metaEntries, imagemeta.ReadMetadataFromLabels(imageInspect.Config.Labels, logger)...)
 	}
-	metaEntries = append(metaEntries, configToMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
+	metaEntries = append(metaEntries, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
 	merged := imagemeta.MergeConfiguration(metaEntries)
 
 	// The container carries the full devcontainer.metadata (image + config) so the
@@ -1229,7 +1229,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 					})
 				}
 			}
-			metadata = append(metadata, configToMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
+			metadata = append(metadata, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
 
 			containerUser := "root"
 			remoteUser := "root"
@@ -1443,7 +1443,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 		if imageInspect, inspErr := engine.InspectImage(ctx, inspectImage); inspErr == nil && imageInspect.Config != nil {
 			metaEntries = imagemeta.ReadMetadataFromLabels(imageInspect.Config.Labels, logger)
 		}
-		metaEntries = append(metaEntries, configToMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
+		metaEntries = append(metaEntries, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
 
 		// Feature runtime settings — only when features were installed (unchanged).
 		if withFeatures {

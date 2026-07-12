@@ -138,7 +138,7 @@ func TestReadWriteLockfile(t *testing.T) {
 		},
 	}
 
-	err := WriteLockfile(configPath, lf, false, true)
+	err := WriteLockfile(configPath, lf, WriteOptions{Force: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestWriteLockfile_Frozen_Changed(t *testing.T) {
 		},
 	}
 
-	err := WriteLockfile(configPath, lf, true, true)
+	err := WriteLockfile(configPath, lf, WriteOptions{Frozen: true, Force: true})
 	if err == nil {
 		t.Error("frozen lockfile with changes should error")
 	}

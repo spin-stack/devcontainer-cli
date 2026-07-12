@@ -448,7 +448,7 @@ func newUpgradeCmd() *cobra.Command {
 				return nil
 			}
 
-			err = features.WriteLockfile(lockfilePath, lf, false, true)
+			err = features.WriteLockfile(lockfilePath, lf, features.WriteOptions{Force: true})
 			if err != nil {
 				return err
 			}

@@ -377,7 +377,14 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 // configToMetadataEntry converts a DevContainer to a metadata Entry
 // for merging. When omitRemoteEnv is true, remoteEnv is excluded from the
 // entry (used for image metadata labels with --omit-config-remote-env-from-metadata).
-func configToMetadataEntry(cfg *config.DevContainer, omitRemoteEnv ...bool) imagemeta.Entry {
+// configToMetadataEntry builds the devcontainer.metadata entry for cfg,
+// including its remoteEnv. Use configMetadataEntry when remoteEnv must be
+// omitted (a runtime decision on some up/build paths).
+func configToMetadataEntry(cfg *config.DevContainer) imagemeta.Entry {
+	return configMetadataEntry(cfg, false)
+}
+
+func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta.Entry {
 	entry := imagemeta.Entry{
 		RemoteUser:          cfg.RemoteUser,
 		ContainerUser:       cfg.ContainerUser,
@@ -418,8 +425,7 @@ func configToMetadataEntry(cfg *config.DevContainer, omitRemoteEnv ...bool) imag
 	if cfg.HostRequirements != nil {
 		entry.HostRequirements = cfg.HostRequirements
 	}
-	shouldOmit := len(omitRemoteEnv) > 0 && omitRemoteEnv[0]
-	if cfg.RemoteEnv != nil && !shouldOmit {
+	if cfg.RemoteEnv != nil && !omitRemoteEnv {
 		entry.RemoteEnv = cfg.RemoteEnv
 	}
 	// Lifecycle commands

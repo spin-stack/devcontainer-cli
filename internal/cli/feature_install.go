@@ -506,7 +506,7 @@ func extendImageWithFeatures(
 	// records the resolved digests for reproducibility; frozen aborts on drift.
 	if fbOpts != nil && (fbOpts.Lockfile || fbOpts.FrozenLockfile) && fbOpts.ConfigPath != "" {
 		lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
-		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, fbOpts.FrozenLockfile, fbOpts.Lockfile); err != nil {
+		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, features.WriteOptions{Frozen: fbOpts.FrozenLockfile, Force: fbOpts.Lockfile}); err != nil {
 			return nil, fmt.Errorf("lockfile: %w", err)
 		}
 	}

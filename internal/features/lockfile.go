@@ -116,9 +116,17 @@ func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 	return &lf, false, nil
 }
 
-// WriteLockfile writes a lockfile to disk.
-// If frozen is true and the lockfile has changed, returns an error.
-func WriteLockfile(configPath string, lockfile *Lockfile, frozen bool, force bool) error {
+// WriteOptions controls how WriteLockfile behaves.
+type WriteOptions struct {
+	// Frozen fails (rather than writing) if the lockfile is missing or would change.
+	Frozen bool
+	// Force writes even when no prior lockfile exists.
+	Force bool
+}
+
+// WriteLockfile writes a lockfile to disk. With opts.Frozen set, it fails
+// instead of writing when the lockfile is missing or would change.
+func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) error {
 	path := LockfilePath(configPath)
 
 	newData, err := json.MarshalIndent(lockfile, "", "  ")
@@ -128,16 +136,16 @@ func WriteLockfile(configPath string, lockfile *Lockfile, frozen bool, force boo
 
 	oldData, readErr := os.ReadFile(path)
 
-	if !force && readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+	if !opts.Force && readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return readErr
 	}
 
 	// If no old lockfile and not explicitly enabled, skip
-	if !force && errors.Is(readErr, os.ErrNotExist) {
+	if !opts.Force && errors.Is(readErr, os.ErrNotExist) {
 		return nil
 	}
 
-	if frozen {
+	if opts.Frozen {
 		if errors.Is(readErr, os.ErrNotExist) {
 			return fmt.Errorf("lockfile does not exist")
 		}
