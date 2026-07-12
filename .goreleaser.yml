@@ -104,13 +104,13 @@ release:
 
     ```bash
     # Linux amd64
-    curl -Lo devcontainer.tar.gz https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_amd64.tar.gz
+    curl -Lo devcontainer.tar.gz https://github.com/spin-stack/devcontainer-cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_amd64.tar.gz
     tar xzf devcontainer.tar.gz
     chmod +x devcontainer
     sudo mv devcontainer /usr/local/bin/
 
     # Linux arm64
-    curl -Lo devcontainer.tar.gz https://github.com/devcontainers/cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_arm64.tar.gz
+    curl -Lo devcontainer.tar.gz https://github.com/spin-stack/devcontainer-cli/releases/download/v{{.Version}}/devcontainer_{{.Version}}_linux_arm64.tar.gz
     tar xzf devcontainer.tar.gz
     chmod +x devcontainer
     sudo mv devcontainer /usr/local/bin/

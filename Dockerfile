@@ -1,5 +1,13 @@
 # Minimal OCI image for the devcontainer CLI (Go rewrite).
 #
+# CONTRACT: this is a distribution / self-contained-operations image, not a
+# batteries-included runner. It ships only the static /devcontainer binary, so it
+# is for (1) extracting the binary onto a host and (2) the commands that run fully
+# in-process (read-configuration, features/templates authoring, OCI push/pull,
+# --version). Commands that shell out — up/build/exec and Compose flows — need the
+# docker/buildx/docker-compose binaries and a reachable daemon, which this
+# distroless base deliberately does NOT include; run those on a host with Docker.
+#
 # The binary is built statically (CGO_ENABLED=0), so it runs on the
 # distroless "static" base — which is essentially just a nonroot user plus
 # the CA certificate bundle. Those CA certs are required: the CLI performs

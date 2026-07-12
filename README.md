@@ -1,12 +1,18 @@
 # devcontainer (Go)
 
 **A single static binary that runs your [dev containers](https://containers.dev) —
-a drop-in replacement for the official `@devcontainers/cli`, with none of the
-Node.js baggage and a few superpowers the original doesn't have.**
+a drop-in replacement for the official `@devcontainers/cli` on **Linux + Docker +
+Docker Compose v2**, with none of the Node.js baggage and a few superpowers the
+original doesn't have.**
 
 Point your tooling at this `devcontainer` binary instead of `node devcontainer.js`
-and it behaves the same — `up`, `build`, `exec`, `features`, `templates`, all of it —
-except it starts faster, ships as one file, and fixes the papercuts you hit every day.
+and, within its validated scope — the seven command families in the parity matrix
+(`up`, `build`, `exec`, `read-configuration`, `run-user-commands`, `features`,
+`templates`) on Linux/Docker/Compose v2 — it behaves the same, except it starts
+faster, ships as one file, and fixes the papercuts you hit every day. The deliberate
+differences (Podman and macOS/Windows are out of scope; distinct `--override-config`
+merge and terminal logging; no legacy-Feature fallback) are recorded in
+[Divergences](docs/DIVERGENCES.md).
 
 ---
 
@@ -145,8 +151,10 @@ task parity:runtime   # full matrix; creates real containers/images via Docker
 - **[`docs/DIVERGENCES.md`](docs/DIVERGENCES.md)** — deliberate divergences, decisions & accepted limitations.
 - **[`docs/parity/parity-matrix.yaml`](docs/parity/parity-matrix.yaml)** — the case matrix.
 
-Releases are cut by tagging (`YYYYMMDD.NN`); `release.yml` then builds the static
-binaries, SBOMs and the signed multi-arch image.
+Releases are cut by pushing a `v`-prefixed CalVer tag (`vYYYYMMDD.NN`, e.g.
+`v20260712.01` — matching `release.yml`'s `v*` trigger); GoReleaser then builds the
+static binaries, SBOMs and the signed multi-arch image, published under
+`spin-stack/devcontainer-cli`.
 
 ```
 cmd/, internal/      the Go CLI implementation

@@ -52,7 +52,17 @@ touches a compared surface, reflected in the parity matrix.
   top-level `github.com/moby/moby` (v2) module is an internal implementation detail and is
   deliberately **not** a dependency. Requires Docker Engine API ≥ v1.44 (Docker v25+).
 - **OCI image: `ghcr.io/spin-stack/devcontainer-cli`** (source repo
-  `github.com/spin-stack/devcontainer-cli`), distroless/static, non-root.
+  `github.com/spin-stack/devcontainer-cli`), distroless/static, non-root. **Contract:
+  it is a distribution/self-contained-operations artifact, not a batteries-included
+  runner.** It carries only the static `/devcontainer` binary (plus CA certs), so it
+  serves two uses: (1) extracting the binary onto a host, and (2) running the
+  commands that work fully in-process — `read-configuration`, `features`/`templates`
+  authoring, OCI push/pull, `--version`. The commands that shell out
+  (`up`/`build`/`exec`/Compose) need the `docker`/`buildx`/`docker compose` binaries
+  and a reachable daemon, which the distroless image deliberately does **not**
+  bundle; run those on a host that has Docker, or `docker cp` the binary out. The
+  release smoke test (`--version`) validates the distribution use, not the
+  docker-dependent commands (which cannot run from this image by design).
 - **Self-containment stance.** Container/engine operations, Docker-context resolution and
   git-root detection run in-process (Go libraries / stdlib), and lifecycle hooks run via
   the Docker exec API rather than `docker exec`. The following are kept as shell-outs on
@@ -69,6 +79,12 @@ touches a compared surface, reflected in the parity matrix.
 Known gaps that are deliberately not closed; each is a conscious trade-off, not an
 oversight.
 
+- **`--mount-git-worktree-common-dir` is accepted for parity but not yet implemented.**
+  `up`/`build`/`exec`/`read-configuration`/`run-user-commands` accept the flag (so
+  automation that passes it does not break), but the CLI does not yet mount a Git
+  worktree's common dir. It only matters for workspaces that are Git worktrees created
+  with `git worktree add --relative-paths` — an edge case; the ordinary
+  `--mount-workspace-git-root` path is unaffected.
 - **Byte-for-byte tarball parity is unattainable** because of `mtime` differences; tarball
   contents are compared by parsed structure, not raw bytes.
 - **Cloud registry auth matrix is out of default CI scope.** The hermetic auth paths
