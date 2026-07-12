@@ -1,6 +1,9 @@
 package errors
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ContainerError is the primary error type for the devcontainer CLI.
 // It carries structured metadata that is serialized into the JSON output envelope.
@@ -77,19 +80,11 @@ func ToErrorOutput(err error) ErrorOutput {
 	return out
 }
 
-// AsContainerError extracts a *ContainerError from an error chain.
+// AsContainerError extracts a *ContainerError from an error chain. It is a thin
+// wrapper over errors.As, so it also traverses errors that implement
+// As(any) bool or the multi-error Unwrap() []error (e.g. errors.Join).
 func AsContainerError(err error) (*ContainerError, bool) {
 	var ce *ContainerError
-	for e := err; e != nil; {
-		if c, ok := e.(*ContainerError); ok {
-			ce = c
-			break
-		}
-		if u, ok := e.(interface{ Unwrap() error }); ok {
-			e = u.Unwrap()
-		} else {
-			break
-		}
-	}
-	return ce, ce != nil
+	ok := errors.As(err, &ce)
+	return ce, ok
 }

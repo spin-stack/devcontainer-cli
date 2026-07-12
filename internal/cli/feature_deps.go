@@ -51,7 +51,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath 
 			resolvedPath = filepath.Clean(resolvedPath)
 			meta, err := readLocalFeatureMetadata(resolvedPath)
 			if err != nil {
-				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
 			meta.Value = node.Options
 			if meta.ID == "" {
@@ -65,7 +65,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath 
 		case features.SourceDirectTarball:
 			meta, err := readTarballFeatureMetadata(id)
 			if err != nil {
-				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
 			meta.Value = node.Options
 			return &features.Set{
@@ -77,7 +77,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath 
 			resolvedID, _ := features.ResolveID(id, false)
 			ref, err := oci.ParseRef(resolvedID)
 			if err != nil {
-				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
 			if lockfile != nil {
 				if entry, ok := lockfile.Features[id]; ok && entry.Integrity != "" {

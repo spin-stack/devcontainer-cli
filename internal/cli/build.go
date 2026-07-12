@@ -572,7 +572,7 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		if result.ExitCode != 0 {
 			for _, name := range opts.imageNames {
 				if tagErr := dockerClient.Tag(ctx, cfg.Image, name); tagErr != nil {
-					return nil, fmt.Errorf("failed to build and tag image %q: %w", name, tagErr)
+					return nil, fmt.Errorf("build and tag image %q: %w", name, tagErr)
 				}
 			}
 		}
@@ -716,7 +716,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 			if _, err := engine.InspectImage(ctx, baseImageName); err != nil {
 				logger.Write(fmt.Sprintf("Pulling image %s...", baseImageName), log.LevelInfo)
 				if pullErr := engine.PullImage(ctx, baseImageName); pullErr != nil {
-					return nil, fmt.Errorf("failed to pull image %q: %w", baseImageName, pullErr)
+					return nil, fmt.Errorf("pull image %q: %w", baseImageName, pullErr)
 				}
 			}
 		}

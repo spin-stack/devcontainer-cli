@@ -37,7 +37,7 @@ func runTemplatesMetadata(out Output, templateID, logLevel string) error {
 	ref, err := oci.ParseRef(templateID)
 	if err != nil {
 		fmt.Fprintln(out.Stdout(), "{}")
-		return fmt.Errorf("failed to parse template identifier %q: %w", templateID, err)
+		return fmt.Errorf("parse template identifier %q: %w", templateID, err)
 	}
 
 	client := oci.NewClient(logger, osEnvMap())
@@ -45,7 +45,7 @@ func runTemplatesMetadata(out Output, templateID, logLevel string) error {
 	manifest, err := client.FetchManifest(ref, "")
 	if err != nil {
 		fmt.Fprintln(out.Stdout(), "{}")
-		return fmt.Errorf("failed to fetch manifest for template %q: %w", templateID, err)
+		return fmt.Errorf("fetch manifest for template %q: %w", templateID, err)
 	}
 
 	logger.Write(fmt.Sprintf("Template %q resolved to %q", templateID, manifest.CanonicalID), log.LevelTrace)

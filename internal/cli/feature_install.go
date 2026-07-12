@@ -244,7 +244,7 @@ func processInstallFeature(
 		logger.Write(fmt.Sprintf("Fetching feature tarball %s...", id), log.LevelInfo)
 		blobData, dlErr := downloadFeatureTarball(id)
 		if dlErr != nil {
-			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, dlErr)
+			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, dlErr)
 		}
 		tgzPath := filepath.Join(featureDir, "feature.tgz")
 		if err := pfs.WriteFile(tgzPath, blobData); err != nil {
@@ -301,7 +301,7 @@ func processInstallFeature(
 		resolvedID, _ := features.ResolveID(id, skipAutoMapping)
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
-			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
+			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 		}
 
 		// Pin to the digest recorded in the lockfile (reproducible resolution),

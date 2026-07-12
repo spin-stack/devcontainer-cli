@@ -788,7 +788,7 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 	if err != nil {
 		logger.Write(fmt.Sprintf("Pulling image %s...", cfg.Image), log.LevelInfo)
 		if pullErr := engine.PullImage(ctx, cfg.Image); pullErr != nil {
-			return "", fmt.Errorf("failed to pull image %q: %w", cfg.Image, pullErr)
+			return "", fmt.Errorf("pull image %q: %w", cfg.Image, pullErr)
 		}
 	}
 
@@ -830,7 +830,7 @@ func (r *upRunner) fromCacheImage(ctx context.Context, cfg *config.DevContainer,
 	if _, err := engine.InspectImage(ctx, image); err != nil {
 		logger.Write(fmt.Sprintf("Pulling cache image %s...", image), log.LevelInfo)
 		if pullErr := engine.PullImage(ctx, image); pullErr != nil {
-			return "", fmt.Errorf("failed to pull cache image %q: %w", image, pullErr)
+			return "", fmt.Errorf("pull cache image %q: %w", image, pullErr)
 		}
 	}
 	logger.Write(fmt.Sprintf("Using prebuilt cache image %s; skipping build and feature install", image), log.LevelInfo)
