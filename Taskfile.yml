@@ -89,9 +89,12 @@ tasks:
       - go vet ./cmd/... ./internal/...
 
   spec:compliance:
-    desc: Verify config structs model every devcontainer.json schema property (spec base, excludes Go-only additions)
+    desc: Verify spec compliance — schema attribute coverage + normative behavior (merge/lifecycle/discovery), excludes Go-only additions
     cmds:
-      - go test ./internal/config -run TestSpecCompliance -count=1
+      # All spec contracts are TestSpec* across packages: config attribute
+      # coverage + variable/discovery/devcontainerId behavior, imagemeta merge
+      # rules, lifecycle execution order.
+      - go test ./internal/... -run '^TestSpec' -count=1
 
   spec:schema-update:
     desc: Refresh the vendored devcontainer.json schema the spec-compliance gate checks against
