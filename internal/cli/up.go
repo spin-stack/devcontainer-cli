@@ -674,43 +674,25 @@ func (r *upRunner) runReattachLifecycle(ctx context.Context, containerID string)
 
 func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
-	// Build the image first
-	dockerfilePath := cfg.Dockerfile()
-	configDir := filepath.Dir(cfg.ConfigFilePath)
-	dockerfilePath = filepath.Join(configDir, dockerfilePath)
 
-	content, err := os.ReadFile(dockerfilePath)
+	prep, err := prepareDockerfileBuild(cfg)
 	if err != nil {
-		return "", fmt.Errorf("read Dockerfile: %w", err)
+		return "", err
 	}
-
-	// Use config target if set, otherwise auto-name the final stage
-	stageName := ""
-	if cfg.Build != nil && cfg.Build.Target != "" {
-		stageName = cfg.Build.Target
-	} else {
-		var modifiedContent string
-		stageName, modifiedContent = docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
-		if modifiedContent != "" {
-			tmpDockerfile := dockerfilePath + ".devcontainer.build"
-			if err := os.WriteFile(tmpDockerfile, []byte(modifiedContent), 0644); err != nil {
-				return "", fmt.Errorf("write build dockerfile: %w", err)
-			}
-			defer os.Remove(tmpDockerfile)
-			dockerfilePath = tmpDockerfile
-		}
-	}
+	defer prep.Cleanup()
+	dockerfilePath := prep.Path
+	stageName := prep.StageName
+	configDir := filepath.Dir(cfg.ConfigFilePath)
 
 	imageName := folderImageName(workspaceFolder)
 
-	// Parse base image to read its metadata (preserves remoteUser, etc.)
-	// Use config target if set, otherwise find the last stage's FROM
-	df := docker.ExtractDockerfile(string(content))
+	// Base-image resolution uses only an explicit config target (not the
+	// auto-added final-stage name), then reads its metadata (remoteUser, etc.).
 	findTarget := ""
 	if cfg.Build != nil && cfg.Build.Target != "" {
 		findTarget = cfg.Build.Target
 	}
-	baseImage := docker.FindBaseImage(df, buildArgsFromConfig(cfg), findTarget)
+	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget)
 
 	metadata := []imagemeta.Entry{}
 	if baseInspect, inspErr := engine.InspectImage(ctx, baseImage); inspErr == nil && baseInspect.Config != nil {

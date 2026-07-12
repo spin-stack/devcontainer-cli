@@ -237,15 +237,28 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	})
 }
 
-func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
-	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
-	// Read Dockerfile
+// dockerfileBuildPrep holds the resolved Dockerfile inputs shared by the `up`
+// and `build` Dockerfile flows.
+type dockerfileBuildPrep struct {
+	Path      string             // resolved Dockerfile path (a temp .devcontainer.build file when a stage name had to be injected)
+	StageName string             // build target: the config target, or the auto-added final stage name
+	Parsed    *docker.Dockerfile // the parsed original Dockerfile
+	cleanup   func()
+}
+
+// Cleanup removes any temporary Dockerfile written by prepareDockerfileBuild.
+func (p *dockerfileBuildPrep) Cleanup() { p.cleanup() }
+
+// prepareDockerfileBuild resolves cfg's Dockerfile relative to the config dir,
+// reads it, ensures the final stage has a name (writing a temp Dockerfile when a
+// name must be injected), and parses it. The caller must defer prep.Cleanup().
+// It deliberately stops before base-image resolution and metadata, which differ
+// between the up and build flows.
+func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, error) {
 	dockerfilePath := cfg.Dockerfile()
 	if dockerfilePath == "" {
 		return nil, fmt.Errorf("no Dockerfile specified")
 	}
-
-	// Resolve relative to config dir
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	dockerfilePath = filepath.Join(configDir, dockerfilePath)
 
@@ -254,28 +267,43 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 		return nil, fmt.Errorf("read Dockerfile: %w", err)
 	}
 
-	// Parse Dockerfile
-	df := docker.ExtractDockerfile(string(content))
+	prep := &dockerfileBuildPrep{
+		Parsed:  docker.ExtractDockerfile(string(content)),
+		cleanup: func() {},
+	}
 
-	// Determine build target: use config target if set, otherwise ensure final stage has a name
-	stageName := ""
 	if cfg.Build != nil && cfg.Build.Target != "" {
-		stageName = cfg.Build.Target
+		prep.StageName = cfg.Build.Target
 	} else {
-		var modifiedContent string
-		stageName, modifiedContent = docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
-		if modifiedContent != "" {
-			// Write modified Dockerfile to temp location
+		stageName, modified := docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
+		prep.StageName = stageName
+		if modified != "" {
 			tmpDockerfile := dockerfilePath + ".devcontainer.build"
-			if err := os.WriteFile(tmpDockerfile, []byte(modifiedContent), 0644); err != nil {
-				return nil, fmt.Errorf("write modified Dockerfile: %w", err)
+			if err := os.WriteFile(tmpDockerfile, []byte(modified), 0644); err != nil {
+				return nil, fmt.Errorf("write build dockerfile: %w", err)
 			}
-			defer os.Remove(tmpDockerfile)
+			prep.cleanup = func() { os.Remove(tmpDockerfile) }
 			dockerfilePath = tmpDockerfile
 		}
 	}
 
-	baseImage := docker.FindBaseImage(df, buildArgsFromConfig(cfg), stageName)
+	prep.Path = dockerfilePath
+	return prep, nil
+}
+
+func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
+
+	prep, err := prepareDockerfileBuild(cfg)
+	if err != nil {
+		return nil, err
+	}
+	defer prep.Cleanup()
+	dockerfilePath := prep.Path
+	stageName := prep.StageName
+	configDir := filepath.Dir(cfg.ConfigFilePath)
+
+	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), stageName)
 	logger.Write(fmt.Sprintf("Base image: %s", baseImage), log.LevelInfo)
 
 	// Generate base-image metadata. Ensure the base image is available locally so
