@@ -4,6 +4,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -20,6 +21,11 @@ type Client struct {
 	// Runner is the seam over process execution. When nil, a default OS-backed
 	// runner is used. Tests inject a fake to avoid shelling out.
 	Runner exec.Runner
+	// ProgressWriter, when set, receives `docker build` output live so the user
+	// sees progress as it happens instead of one dump on completion. Leave nil to
+	// keep output buffered (e.g. under --log-format json, where a raw byte stream
+	// would corrupt the structured event stream).
+	ProgressWriter io.Writer
 }
 
 // NewClient creates a Docker CLI client.
@@ -42,59 +48,49 @@ type ExecResult struct {
 }
 
 // runner returns the configured Runner, or a default OS-backed one carrying the
-// client's Env.
-func (c *Client) runner() exec.Runner {
+// client's Env plus extraEnv for this invocation.
+func (c *Client) runner(extraEnv []string) exec.Runner {
 	if c.Runner != nil {
 		return c.Runner
 	}
-	return exec.OSRunner{Env: c.Env}
+	return exec.OSRunner{Env: append(append([]string{}, c.Env...), extraEnv...)}
 }
 
-// Run executes a docker command and captures output. ctx cancels the subprocess
-// (e.g. on SIGINT), so a long-running `docker build` unwinds on Ctrl-C.
-func (c *Client) Run(ctx context.Context, args ...string) (*ExecResult, error) {
+// run executes a docker command and captures output. When stream is true and a
+// ProgressWriter is set, the child's output is also forwarded live through the
+// runner (a fake runner streams too, so the behavior is exercised in tests).
+// extraEnv is appended to the client's Env. ctx cancels the subprocess (e.g. on
+// SIGINT), so a long-running `docker build` unwinds on Ctrl-C.
+func (c *Client) run(ctx context.Context, stream bool, extraEnv []string, args ...string) (*ExecResult, error) {
 	c.Log.Write(fmt.Sprintf("Run: %s %s", c.DockerPath, strings.Join(args, " ")), log.LevelTrace)
 
-	stdout, stderr, exitCode, err := c.runner().Run(ctx, c.DockerPath, args...)
+	var live io.Writer
+	if stream {
+		live = c.ProgressWriter // nil unless the caller opted into live output
+	}
+	stdout, stderr, exitCode, err := c.runner(extraEnv).Run(ctx, live, c.DockerPath, args...)
 	if err != nil {
 		return nil, fmt.Errorf("exec docker: %w", err)
 	}
-
-	return &ExecResult{
-		Stdout:   stdout,
-		Stderr:   stderr,
-		ExitCode: exitCode,
-	}, nil
+	return &ExecResult{Stdout: stdout, Stderr: stderr, ExitCode: exitCode}, nil
 }
 
-// Build runs `docker build` or `docker buildx build`. When opts.Env is set, those
-// entries are appended to the subprocess environment (used to point DOCKER_CONFIG
-// at a temporary credentials directory for private base-image pulls / --push /
-// --cache-to, without mutating the ambient environment).
+// Run executes a docker command and captures output (no live streaming).
+func (c *Client) Run(ctx context.Context, args ...string) (*ExecResult, error) {
+	return c.run(ctx, false, nil, args...)
+}
+
+// Build runs `docker build` or `docker buildx build`, streaming progress to
+// ProgressWriter when set. When opts.Env is set, those entries are appended to
+// the subprocess environment (used to point DOCKER_CONFIG at a temporary
+// credentials directory for private base-image pulls / --push / --cache-to,
+// without mutating the ambient environment).
 func (c *Client) Build(ctx context.Context, opts BuildOptions) (*ExecResult, error) {
 	args := c.buildArgs(opts)
 	// Secret values reach BuildKit through the subprocess environment (referenced
 	// by `--secret id=KEY,env=KEY`), never on the command line.
 	extraEnv := append(append([]string{}, opts.Env...), opts.Secrets...)
-	if len(extraEnv) > 0 {
-		return c.runWithEnv(ctx, extraEnv, args...)
-	}
-	return c.Run(ctx, args...)
-}
-
-// runWithEnv is Run with extra environment entries appended for this invocation.
-func (c *Client) runWithEnv(ctx context.Context, extraEnv []string, args ...string) (*ExecResult, error) {
-	c.Log.Write(fmt.Sprintf("Run: %s %s", c.DockerPath, strings.Join(args, " ")), log.LevelTrace)
-
-	var r exec.Runner = exec.OSRunner{Env: append(append([]string{}, c.Env...), extraEnv...)}
-	if c.Runner != nil {
-		r = c.Runner // tests inject a fake; env is irrelevant there
-	}
-	stdout, stderr, exitCode, err := r.Run(ctx, c.DockerPath, args...)
-	if err != nil {
-		return nil, fmt.Errorf("exec docker: %w", err)
-	}
-	return &ExecResult{Stdout: stdout, Stderr: stderr, ExitCode: exitCode}, nil
+	return c.run(ctx, true, extraEnv, args...)
 }
 
 // BuildOptions configures a docker build.

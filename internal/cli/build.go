@@ -182,6 +182,9 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 
 	// Setup Docker clients
 	dockerClient := docker.NewClient(opts.dockerPath, nil, logger)
+	// Stream `docker build` progress live to the terminal (text mode only; under
+	// --log-format json a raw byte stream would corrupt the structured events).
+	dockerClient.ProgressWriter = progressWriter(opts.logFormat, os.Stderr)
 
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
@@ -429,7 +432,11 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 		return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 	}
 
-	logger.Write(string(result.Stderr), log.LevelInfo)
+	// When streaming, the build output already reached the terminal live; only
+	// emit the buffered copy when it did not (e.g. --log-format json).
+	if dockerClient.ProgressWriter == nil {
+		logger.Write(string(result.Stderr), log.LevelInfo)
+	}
 
 	// If config has features, extend the built image with features
 	if len(cfg.Features) > 0 {
@@ -598,7 +605,9 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		if result.ExitCode != 0 {
 			return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 		}
-		logger.Write(string(result.Stderr), log.LevelInfo)
+		if dockerClient.ProgressWriter == nil {
+			logger.Write(string(result.Stderr), log.LevelInfo)
+		}
 		return featureImageNames, nil
 	}
 
@@ -743,6 +752,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 	if err != nil {
 		return nil, fmt.Errorf("compose client: %w", err)
 	}
+	composeClient.ProgressWriter = progressWriter(opts.logFormat, os.Stderr)
 
 	composeConfig, err := composeClient.Config(ctx, composeFiles, "")
 	if err != nil {

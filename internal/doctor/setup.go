@@ -54,12 +54,12 @@ func ensureCacheBuilder(ctx context.Context, env *Env, dryRun bool) Action {
 	a := Action{Name: "build-cache-export"}
 
 	// Already present? `buildx inspect <name>` exits 0 when it exists.
-	if _, _, code, err := env.runner().Run(ctx, env.dockerPath(), "buildx", "inspect", builderName); err == nil && code == 0 {
+	if _, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "buildx", "inspect", builderName); err == nil && code == 0 {
 		a.Message = fmt.Sprintf("buildx builder %q already exists; selecting it as the default", builderName)
 		if dryRun {
 			return a
 		}
-		if _, stderr, code, err := env.runner().Run(ctx, env.dockerPath(), "buildx", "use", builderName); err != nil || code != 0 {
+		if _, stderr, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "buildx", "use", builderName); err != nil || code != 0 {
 			a.Err = builderErr(err, stderr)
 			return a
 		}
@@ -71,7 +71,7 @@ func ensureCacheBuilder(ctx context.Context, env *Env, dryRun bool) Action {
 	if dryRun {
 		return a
 	}
-	_, stderr, code, err := env.runner().Run(ctx, env.dockerPath(),
+	_, stderr, code, err := env.runner().Run(ctx, nil, env.dockerPath(),
 		"buildx", "create", "--name", builderName, "--driver", "docker-container", "--use", "--bootstrap")
 	if err != nil || code != 0 {
 		a.Err = builderErr(err, stderr)

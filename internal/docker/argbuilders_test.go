@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"io"
 	"reflect"
 	"testing"
 
@@ -28,11 +29,15 @@ type cannedResponse struct {
 	code   int
 }
 
-func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([]byte, []byte, int, error) {
+func (r *recordingRunner) Run(_ context.Context, stream io.Writer, name string, args ...string) ([]byte, []byte, int, error) {
 	r.calls = append(r.calls, recordedCall{name: name, args: append([]string(nil), args...)})
 	if len(r.responses) > 0 {
 		resp := r.responses[0]
 		r.responses = r.responses[1:]
+		if stream != nil {
+			_, _ = stream.Write(resp.stdout)
+			_, _ = stream.Write(resp.stderr)
+		}
 		return resp.stdout, resp.stderr, resp.code, nil
 	}
 	return nil, nil, 0, nil

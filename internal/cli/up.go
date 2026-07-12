@@ -377,6 +377,9 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 
 	dockerClient := docker.NewClient(opts.dockerPath, nil, logger)
+	// Stream `docker build` progress live to the log destination (text mode only;
+	// under --log-format json it would corrupt the structured event stream).
+	dockerClient.ProgressWriter = progressWriter(opts.logFormat, logDst)
 	run.docker = dockerClient
 
 	// Detect BuildKit
@@ -793,7 +796,11 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 		return "", fmt.Errorf(msgDockerBuildFailed, buildResult.ExitCode, string(buildResult.Stderr))
 	}
 
-	logger.Write(string(buildResult.Stderr), log.LevelInfo)
+	// When streaming, the build output already reached the terminal live; only
+	// emit the buffered copy when it did not (e.g. --log-format json).
+	if dockerClient.ProgressWriter == nil {
+		logger.Write(string(buildResult.Stderr), log.LevelInfo)
+	}
 
 	// Extend with features if any
 	if len(cfg.Features) > 0 {
@@ -1197,6 +1204,8 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 	if err != nil {
 		return "", fmt.Errorf("compose client: %w", err)
 	}
+	// Stream compose build/up progress to the same destination as docker builds.
+	composeClient.ProgressWriter = dockerClient.ProgressWriter
 
 	projectName := resolveComposeProjectName(ctx, cfg, env, composeFiles, composeClient)
 	logger.Write(fmt.Sprintf("Compose project: %s, service: %s", projectName, cfg.Service), log.LevelInfo)

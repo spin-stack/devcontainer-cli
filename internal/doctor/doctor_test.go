@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -14,7 +15,7 @@ type scriptRunner struct {
 	calls [][]string
 }
 
-func (s *scriptRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, int, error) {
+func (s *scriptRunner) Run(_ context.Context, _ io.Writer, _ string, args ...string) ([]byte, []byte, int, error) {
 	s.calls = append(s.calls, args)
 	return s.fn(args)
 }

@@ -52,7 +52,7 @@ func helperRunner(env ...string) OSRunner {
 
 func TestOSRunnerProcessContract(t *testing.T) {
 	stdout, stderr, code, err := helperRunner("EXEC_HELPER_STDERR=warning").Run(
-		t.Context(), os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "one", "two",
+		t.Context(), nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "one", "two",
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -70,7 +70,7 @@ func TestOSRunnerProcessContract(t *testing.T) {
 
 func TestOSRunnerNonZeroIsExitCodeNotTransportError(t *testing.T) {
 	_, _, code, err := helperRunner().Run(
-		t.Context(), os.Args[0], "-test.run=^TestHelperProcess$", "--", "exit",
+		t.Context(), nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "exit",
 	)
 	if err != nil {
 		t.Fatalf("non-zero child returned transport error: %v", err)
@@ -84,7 +84,7 @@ func TestOSRunnerHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	_, _, code, err := helperRunner().Run(
-		ctx, os.Args[0], "-test.run=^TestHelperProcess$", "--", "wait",
+		ctx, nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "wait",
 	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want context deadline exceeded", err)
@@ -95,11 +95,31 @@ func TestOSRunnerHonorsCancellation(t *testing.T) {
 }
 
 func TestOSRunnerMissingBinaryIsTransportError(t *testing.T) {
-	_, _, code, err := (OSRunner{}).Run(t.Context(), "/definitely/not/a/devcontainer-test-binary")
+	_, _, code, err := (OSRunner{}).Run(t.Context(), nil, "/definitely/not/a/devcontainer-test-binary")
 	if err == nil {
 		t.Fatal("missing binary returned nil error")
 	}
 	if code != -1 {
 		t.Fatalf("code = %d, want -1", code)
+	}
+}
+
+// TestOSRunnerStreamsToWriter proves the stream writer receives the child's
+// output live while the return value still captures it.
+func TestOSRunnerStreamsToWriter(t *testing.T) {
+	var live strings.Builder
+	stdout, _, code, err := helperRunner("EXEC_HELPER_STDERR=warn").Run(
+		t.Context(), &live, os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "hi",
+	)
+	if err != nil || code != 0 {
+		t.Fatalf("Run: err=%v code=%d", err, code)
+	}
+	// The stream writer receives the child's combined stdout+stderr.
+	if got := live.String(); !strings.Contains(got, "hi") || !strings.Contains(got, "warn") {
+		t.Errorf("stream = %q, want it to contain the child's stdout and stderr", got)
+	}
+	// The captured return value still holds stdout independently.
+	if got := string(stdout); got != "hi" {
+		t.Errorf("captured stdout = %q, want hi", got)
 	}
 }

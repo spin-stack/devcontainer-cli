@@ -22,7 +22,7 @@ const minFreeDiskBytes uint64 = 5 << 30
 // hard failure: nothing else in the CLI works without it.
 func checkDockerDaemon(ctx context.Context, env *Env) Result {
 	r := Result{Name: "docker-daemon"}
-	stdout, _, code, err := env.runner().Run(ctx, env.dockerPath(), "info", "--format", "{{.ServerVersion}}")
+	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "info", "--format", "{{.ServerVersion}}")
 	if err != nil {
 		r.Status = StatusFail
 		r.Summary = fmt.Sprintf("Docker CLI not found (%s)", env.dockerPath())
@@ -44,7 +44,7 @@ func checkDockerDaemon(ctx context.Context, env *Env) Result {
 // fall back to the legacy builder and lose BuildKit features, so this is a warn.
 func checkBuildx(ctx context.Context, env *Env) Result {
 	r := Result{Name: "buildx"}
-	stdout, _, code, err := env.runner().Run(ctx, env.dockerPath(), "buildx", "version")
+	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "buildx", "version")
 	if err != nil || code != 0 {
 		r.Status = StatusWarn
 		r.Summary = "docker buildx plugin is not available"
@@ -79,7 +79,7 @@ func checkCacheExport(ctx context.Context, env *Env) Result {
 	}
 
 	dest := filepath.Join(dir, "cache")
-	_, stderr, code, err := env.runner().Run(ctx, env.dockerPath(),
+	_, stderr, code, err := env.runner().Run(ctx, nil, env.dockerPath(),
 		"buildx", "build", "--cache-to", "type=local,dest="+dest, dir)
 	if err == nil && code == 0 {
 		r.Status = StatusOK
@@ -102,7 +102,7 @@ func checkCacheExport(ctx context.Context, env *Env) Result {
 // containers need it, so its absence is a warn.
 func checkComposeV2(ctx context.Context, env *Env) Result {
 	r := Result{Name: "compose-v2"}
-	stdout, _, code, err := env.runner().Run(ctx, env.dockerPath(), "compose", "version", "--short")
+	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "compose", "version", "--short")
 	if err != nil || code != 0 {
 		r.Status = StatusWarn
 		r.Summary = "docker compose (v2) plugin is not available"
@@ -176,7 +176,7 @@ func checkSELinux(_ context.Context, env *Env) Result {
 // dockerDataRoot returns the daemon's Docker Root Dir when it can be read,
 // falling back to the user's home directory (a reasonable proxy filesystem).
 func dockerDataRoot(ctx context.Context, env *Env) string {
-	stdout, _, code, err := env.runner().Run(ctx, env.dockerPath(), "info", "--format", "{{.DockerRootDir}}")
+	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "info", "--format", "{{.DockerRootDir}}")
 	if err == nil && code == 0 {
 		if root := strings.TrimSpace(string(stdout)); root != "" {
 			// The daemon's root may be unreadable from this host (remote/rootless);

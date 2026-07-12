@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	osexec "os/exec"
 	"strconv"
 	"strings"
@@ -22,6 +23,11 @@ type ComposeClient struct {
 	// Runner is the seam over process execution. When nil, a default OS-backed
 	// runner is used.
 	Runner exec.Runner
+	// ProgressWriter, when set, receives `docker compose build`/`up` output live
+	// so the user sees progress as it happens. Leave nil to keep output buffered
+	// (e.g. under --log-format json). `compose config` never streams — its stdout
+	// is JSON that the CLI parses.
+	ProgressWriter io.Writer
 }
 
 // NewComposeClient detects Compose v2 (`docker compose`) and returns a client.
@@ -45,8 +51,15 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 	return nil, fmt.Errorf("'docker compose' (v2) not found")
 }
 
-// Run executes a compose command. ctx cancels the subprocess (e.g. on SIGINT).
+// Run executes a compose command and captures output (no live streaming).
 func (c *ComposeClient) Run(ctx context.Context, args ...string) (*ExecResult, error) {
+	return c.run(ctx, false, args...)
+}
+
+// run executes a compose command. When stream is true and ProgressWriter is set,
+// the child's output is also forwarded live through the runner. ctx cancels the
+// subprocess.
+func (c *ComposeClient) run(ctx context.Context, stream bool, args ...string) (*ExecResult, error) {
 	fullArgs := append(c.Command[1:], args...)
 
 	// Emit a "Run:" start/stop pair around the subprocess, like the TS CLI wraps
@@ -56,11 +69,15 @@ func (c *ComposeClient) Run(ctx context.Context, args ...string) (*ExecResult, e
 	runLine := fmt.Sprintf("Run: %s %s", c.Command[0], strings.Join(fullArgs, " "))
 	startTS := c.Log.Start(runLine, log.LevelDebug)
 
-	runner := c.Runner
-	if runner == nil {
-		runner = exec.OSRunner{Env: c.Env}
+	var runner exec.Runner = exec.OSRunner{Env: c.Env}
+	if c.Runner != nil {
+		runner = c.Runner
 	}
-	stdout, stderr, exitCode, err := runner.Run(ctx, c.Command[0], fullArgs...)
+	var live io.Writer
+	if stream {
+		live = c.ProgressWriter
+	}
+	stdout, stderr, exitCode, err := runner.Run(ctx, live, c.Command[0], fullArgs...)
 	c.Log.Stop(runLine, startTS, log.LevelDebug)
 	if err != nil {
 		return nil, fmt.Errorf("exec compose: %w", err)
@@ -103,7 +120,7 @@ func (c *ComposeClient) Build(ctx context.Context, composeFiles []string, envFil
 	}
 	args = append(args, services...)
 
-	res, err := c.Run(ctx, args...)
+	res, err := c.run(ctx, true, args...)
 	if err != nil {
 		return err
 	}
@@ -126,7 +143,7 @@ func (c *ComposeClient) Up(ctx context.Context, composeFiles []string, envFile s
 	}
 	args = append(args, services...)
 
-	res, err := c.Run(ctx, args...)
+	res, err := c.run(ctx, true, args...)
 	if err != nil {
 		return err
 	}
