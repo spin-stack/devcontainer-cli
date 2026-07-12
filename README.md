@@ -1,127 +1,146 @@
-# devcontainer-cli (Go)
+# devcontainer (Go)
 
-A Go implementation of the [Dev Container CLI](https://containers.dev) — a drop-in
-replacement for the reference TypeScript CLI, built to be distributed as a single
-**static binary** and to be the primary codebase we evolve and streamline from here.
+**A single static binary that runs your [dev containers](https://containers.dev) —
+a drop-in replacement for the official `@devcontainers/cli`, with none of the
+Node.js baggage and a few superpowers the original doesn't have.**
+
+Point your tooling at this `devcontainer` binary instead of `node devcontainer.js`
+and it behaves the same — `up`, `build`, `exec`, `features`, `templates`, all of it —
+except it starts faster, ships as one file, and fixes the papercuts you hit every day.
 
 ---
 
-## Why
+## Why switch?
 
-The reference [`devcontainers/cli`](https://github.com/devcontainers/cli) is a
-Node.js/TypeScript application. Re-implementing it in Go buys us:
+If you use the official CLI, you already know the friction:
 
-- **A single static binary** — no Node.js runtime, no `node_modules`, no install
-  step. `CGO_ENABLED=0` gives a fully static executable that runs anywhere
-  (containers `FROM scratch`, minimal CI images, air-gapped hosts).
-- **Fast startup** and low overhead (no interpreter warm-up).
-- **Simple distribution** — cross-compiled binaries per OS/arch, or `go install`.
-- **A codebase we can evolve** — streamline the internals, add features, and change
-  behavior deliberately, instead of tracking an upstream we don't control.
+| Daily pain with `@devcontainers/cli` | With this binary |
+| --- | --- |
+| `npm i -g @devcontainers/cli` pulls a Node runtime + hundreds of MB of `node_modules`, and drifts out of sync across machines/CI | **One static binary.** `CGO_ENABLED=0`, no runtime, no `node_modules`. Drop it in `FROM scratch`, a distroless CI image, or an air-gapped host. |
+| Node interpreter warm-up on every invocation | **Fast cold start**, low overhead. |
+| Pulling a **private base image** or `--push`/`--cache-to` to a private registry means running `docker login` by hand — sometimes in several places | **Credential bridge:** the CLI's own auth chain (`DEVCONTAINERS_OCI_AUTH`, cred helpers, `GITHUB_TOKEN`) is handed to `docker build` automatically. |
+| A missing buildx, no cache-export, or a wrong Compose version surfaces as a cryptic error **deep into a build** | **`devcontainer check`** preflights your host and tells you exactly what's wrong (and `setup` fixes what it safely can). |
+| Reusing a prebuilt image means re-implementing config hashing and clone-and-mutate hacks in your orchestrator | **`--cache-key`** emits a deterministic content hash; **`up --cache-image`** boots from a prebuilt image and skips feature install. |
+| A TLS-intercepting proxy breaks image pulls because the CA isn't honored everywhere | Proxy + `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE` honored on **every** request path. |
 
-## Supported platform
+Same behavior where it counts, better ergonomics where it hurts.
 
-> **Linux only, Docker only.** This CLI is supported and validated **exclusively on
-> Linux** (amd64 and arm64). Windows and macOS are **not** targets — there is no runtime,
-> E2E, or release for them. The only supported container runtime is **Docker**; **Podman
-> is not supported**, and only Compose **v2** (`docker compose`) is used. Any cross-platform
-> or Podman-detection logic that exists is kept only for parity with the TS oracle and
-> carries no support guarantee.
+## Install
 
-## What it is for
-
-The goal is behavioral compatibility with the TS CLI for the commands people rely on:
-`up`, `build`, `exec`, `read-configuration`, `set-up`, `run-user-commands`,
-`features` (info/package/publish/test/…), `templates` (apply/publish/…), `outdated`,
-`upgrade`. If you point tooling (including the VS Code Dev Containers extension) at
-this binary instead of `node devcontainer.js`, it should behave the same.
-
-## How parity is maintained
-
-Parity is **not** assumed — it is validated against the real TypeScript CLI, kept in
-this repo as a git submodule.
-
-- **`reference/`** is a submodule pinned to a specific upstream release (currently
-  **v0.88.0**). It is the behavioral oracle: we compile it and run the exact same
-  commands through both CLIs.
-- **`docs/migration/parity-matrix.yaml`** is a matrix of ~200 cases (flag validation,
-  `up`/`build`/`exec`/compose/features/templates/publish scenarios). Each case runs
-  the **same command** against the Go binary and the TS oracle and asserts the outputs
-  match (exit code, normalized stdout/stderr, and container/registry state via
-  `verify_cmd`).
-- **`internal/cli/parity_matrix_test.go`** (`TestParityMatrix`) drives the matrix. It
-  has two lanes:
-  - **contract** — hermetic (flag/output contract, no Docker), fast.
-  - **runtime** — creates real containers/images (needs Docker); parallel, isolated
-    per case (unique `--id-label` / `COMPOSE_PROJECT_NAME` / `BUILDX_BUILDER`).
-- **`docs/migration/GO-REWRITE-STATUS.md`** is the current parity status: what is
-  covered and what remains (not a changelog — that lives in `git log`).
-- **`docs/migration/REMAINING-WORK.md`** is the single actionable backlog.
-- **`docs/migration/RELEASE-CHECKLIST.md`** defines the gates required before the
-  project may claim complete parity or publish a release.
-
-Unit, integration and parity tests are separate workflows. `task test:unit` only
-targets `cmd/` and `internal/`, so it neither discovers packages under
-`reference/node_modules` nor runs the TypeScript oracle, Docker, listeners or the
-network. Parity tasks compile the reference explicitly.
-
-### Maintaining parity as we evolve
-
-1. When streamlining/refactoring the Go code, run the parity matrix to confirm no
-   *unintended* behavior change slipped in.
-2. When we *intentionally* change behavior, update the matrix case (or remove it) —
-   the matrix documents deliberate divergences.
-3. To track a newer upstream, bump the `reference/` submodule to the new tag and
-   re-run the matrix; new failures show where upstream moved (features/behavior added
-   after the last validated version).
-
-> Note: parity was originally validated end-to-end against **v0.74.0**. The reference
-> is now pinned to **v0.88.0**; running the matrix against it may surface gaps
-> introduced upstream between 0.74 and 0.88 — that is expected and is the signal for
-> what to bring over next.
-
-## Layout
-
-```
-cmd/, internal/      the Go CLI implementation
-scripts/             runtime assets used by the CLI (updateUID.Dockerfile)
-src/test/configs/    fixtures used by the parity matrix
-docs/migration/      parity audit, status log, parity-matrix.yaml
-reference/           git submodule → devcontainers/cli @ v0.88.0 (parity oracle)
-.github/workflows/   CI: lint/test/build/cross-compile + parity lanes
-```
-
-## Build & test
+Build it yourself — it's one command, and the result is a single self-contained file:
 
 ```sh
-task build          # statically-linked ./devcontainer (CGO_ENABLED=0)
-task test:unit      # hermetic Go unit tests
+git clone https://github.com/spin-stack/devcontainer-cli
+cd devcontainer-cli
+task build            # or: go build -o devcontainer ./cmd/devcontainer
+sudo mv devcontainer /usr/local/bin/
+```
+
+Tagged releases publish prebuilt **static** binaries (Linux amd64/arm64) and a
+container image to the
+[Releases page](https://github.com/spin-stack/devcontainer-cli/releases) — grab those
+instead once a version is cut.
+
+Confirm it's a single self-contained file:
+
+```sh
+file ./devcontainer   # → "statically linked"
+ldd  ./devcontainer   # → "not a dynamic executable"
+```
+
+> **Scope: Linux + Docker.** Supported and validated on **Linux** (amd64, arm64) with
+> **Docker** and Compose **v2**. Windows, macOS and Podman are not targets.
+
+## Hello, dev container (60 seconds)
+
+Create a project with a minimal dev container config:
+
+```sh
+mkdir hello-devcontainer && cd hello-devcontainer
+mkdir -p .devcontainer
+cat > .devcontainer/devcontainer.json <<'JSON'
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {}
+  },
+  "postCreateCommand": "node --version"
+}
+JSON
+```
+
+Bring it up, then run a command inside it:
+
+```sh
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . bash -lc 'node --version && whoami'
+```
+
+That's it — a real container, your feature installed, your workspace bind-mounted.
+Any automation that shells out to the `devcontainer` CLI (CI pipelines, prebuild
+services, scripts) can call this binary instead of `node devcontainer.js`.
+
+## Superpowers (Go-only)
+
+These commands and flags don't exist in the upstream CLI. Full reference:
+**[docs/go-only-features.md](docs/go-only-features.md)**.
+
+```sh
+# Preflight the host — daemon, buildx, cache export, Compose v2, disk — before you build
+devcontainer check
+devcontainer setup            # apply the safe fixes (e.g. a cache-capable buildx builder)
+
+# Deterministic cache key for prebuild reuse (hash of config + Dockerfile + features + proxy)
+devcontainer read-configuration --workspace-folder . --cache-key
+
+# Boot from a prebuilt image, skipping build + feature install
+devcontainer up --workspace-folder . --cache-image ghcr.io/acme/app-devcontainer:sha-abc123
+
+# Pass BuildKit build secrets (RUN --mount=type=secret,id=…) without baking them into a layer
+devcontainer build --workspace-folder . --secrets-file secrets.json
+```
+
+Everything else — `up`, `build`, `exec`, `read-configuration`, `set-up`,
+`run-user-commands`, `features` (info/package/publish/test/…), `templates`
+(apply/publish/…), `outdated`, `upgrade` — mirrors the official CLI.
+
+## Is it really compatible?
+
+Compatibility is **validated**, not assumed. A pinned copy of the official
+TypeScript CLI (`reference/`, currently **v0.88.0**) is the behavioral oracle: a
+matrix of ~200 cases runs the *same* command through both CLIs and asserts the
+outputs match (exit code, normalized stdout/stderr, and container/registry state).
+Deliberate divergences (like the Go-only features above) are recorded, not hidden.
+
+If you're evaluating a switch, the parity methodology and current status live in
+[`docs/migration/`](docs/migration/).
+
+## Contributing / building
+
+```sh
+task build            # statically-linked ./devcontainer (CGO_ENABLED=0)
+task test:unit        # hermetic Go unit tests
 task test:integration # local HTTP integration tests
-task coverage       # reproducible hermetic coverage report
-task lint           # go vet
-task build:cross    # static binaries for linux/darwin/windows × amd64/arm64
+task lint             # linters
+task build:cross      # static binaries for linux/{amd64,arm64}
 ```
 
-Verify the binary is static:
-
-```sh
-file ./devcontainer        # → "statically linked"
-ldd  ./devcontainer        # → "not a dynamic executable"
-```
-
-## Running the parity matrix (optional, needs the submodule + Node)
+Running the parity matrix (needs the submodule + Node + Docker):
 
 ```sh
 git submodule update --init reference
-task reference          # install + compile the TypeScript oracle
-task parity:contract    # hermetic contract lane
-task parity:semantic    # semantic cases without Docker/network
-task parity:network     # cases that require external network access
-task parity:runtime     # complete matrix; requires Docker, ~5–6 min
+task reference        # compile the TypeScript oracle
+task parity:contract  # hermetic contract lane (no Docker)
+task parity:runtime   # full matrix; creates real containers/images via Docker
 ```
 
-## History
+- **[`docs/migration/GO-REWRITE-STATUS.md`](docs/migration/GO-REWRITE-STATUS.md)** — parity status.
+- **[`docs/migration/REMAINING-WORK.md`](docs/migration/REMAINING-WORK.md)** — the actionable backlog.
+- **[`docs/migration/parity-matrix.yaml`](docs/migration/parity-matrix.yaml)** — the case matrix.
 
-The full commit history of the rewrite (18 blockers, majors, and the parity work)
-lives in the [`aledbf/cli`](https://github.com/aledbf/cli) `go-rewrite` branch. This
-repo starts from that validated state with the Go code as the primary tree.
+```
+cmd/, internal/      the Go CLI implementation
+docs/                user + migration docs
+src/test/configs/    fixtures used by the parity matrix
+reference/           git submodule → the official CLI @ v0.88.0 (parity oracle)
+```
