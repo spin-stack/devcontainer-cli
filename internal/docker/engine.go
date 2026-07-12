@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -67,17 +66,6 @@ func NewEngineClient(logger log.Log, extraOpts ...mobyclient.Opt) (*EngineClient
 		return nil, fmt.Errorf("docker engine client: %w", err)
 	}
 	return &EngineClient{API: cli, Log: logger}, nil
-}
-
-// resolveDockerContextHost runs `docker context inspect` to get the endpoint
-// of the currently active Docker context.
-func resolveDockerContextHost() string {
-	cmd := exec.Command("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // Close releases the underlying connection.

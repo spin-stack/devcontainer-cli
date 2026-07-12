@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -332,21 +331,29 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainerConfig, mo
 	return wc
 }
 
-// detectGitRoot finds the git repository root for the given path.
+// detectGitRoot finds the git working-tree root for the given path by walking up
+// the directory tree looking for a `.git` entry — no `git` binary.
 //
-// It uses `--show-cdup` (a path relative to dir, up to the working-tree root)
-// rather than `--show-toplevel`, matching the TS CLI. `--show-toplevel`
-// canonicalizes symlinks (on macOS `/tmp` → `/private/tmp`), which desynced
-// sourceFolder from workspace.RootFolderPath and produced a corrupt
-// workspaceFolder (e.g. `/workspaces/x/../../..`) and a different mount.
+// The walk is purely lexical (via filepath.Dir), matching git's `--show-cdup`
+// rather than `--show-toplevel`: it does NOT canonicalize symlinks (on macOS
+// `/tmp` → `/private/tmp`), which would desync sourceFolder from
+// workspace.RootFolderPath and produce a corrupt workspaceFolder (e.g.
+// `/workspaces/x/../../..`) and a different mount. Returns "" when dir is not
+// inside a repository.
 func detectGitRoot(dir string) string {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-cdup")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
+	dir = filepath.Clean(dir)
+	for {
+		// `.git` is a directory in a normal clone and a regular file (a gitlink)
+		// in a worktree or submodule checkout — accept either.
+		if info, err := os.Stat(filepath.Join(dir, ".git")); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "" // reached the filesystem root without finding a repo
+		}
+		dir = parent
 	}
-	cdup := strings.TrimSpace(string(out))
-	return filepath.Clean(filepath.Join(dir, cdup))
 }
 
 func currentPlatform() string {
