@@ -12,20 +12,20 @@ import (
 	"github.com/devcontainers/cli/internal/pfs"
 )
 
-// ConfigNotFoundError is returned when no devcontainer.json can be discovered.
+// NotFoundError is returned when no devcontainer.json can be discovered.
 // It is distinguished from parse/other errors so callers (e.g. read-configuration)
 // can mirror the TS CLI, which exits 1 silently when config is absent.
-type ConfigNotFoundError struct {
+type NotFoundError struct {
 	Path string
 }
 
-func (e *ConfigNotFoundError) Error() string {
+func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("Dev container config (%s) not found.", e.Path)
 }
 
 // LoadResult contains a loaded and substituted devcontainer configuration.
 type LoadResult struct {
-	Config          *DevContainerConfig
+	Config          *DevContainer
 	Raw             map[string]interface{} // pre-substitution
 	WorkspaceConfig *WorkspaceConfig
 }
@@ -91,7 +91,7 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 	}
 	if configPath == "" && overrideConfigPath == "" {
 		defaultPath := filepath.Join(workspaceFolder, ".devcontainer", "devcontainer.json")
-		return nil, &ConfigNotFoundError{Path: defaultPath}
+		return nil, &NotFoundError{Path: defaultPath}
 	}
 
 	// Read the base config and (when given) deep-merge the override on top.
@@ -136,7 +136,7 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 	}
 
 	// Derive the typed struct from the (possibly merged) raw config.
-	var config DevContainerConfig
+	var config DevContainer
 	if err := remarshal(raw, &config); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
@@ -226,9 +226,9 @@ func deepMergeConfig(base, override map[string]interface{}) map[string]interface
 	return out
 }
 
-// GetDockerComposeFilePaths resolves the docker-compose file paths.
+// DockerComposeFilePaths resolves the docker-compose file paths.
 // Follows the TS fallback chain: config → COMPOSE_FILE env → .env file → defaults.
-func GetDockerComposeFilePaths(config *DevContainerConfig, env map[string]string, cwd string) ([]string, error) {
+func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd string) ([]string, error) {
 	configDir := filepath.Dir(config.ConfigFilePath)
 
 	// 1. From config property
@@ -286,7 +286,7 @@ func GetDockerComposeFilePaths(config *DevContainerConfig, env map[string]string
 
 // --- Helpers ---
 
-func computeWorkspaceConfig(workspace *Workspace, config *DevContainerConfig, mountWorkspaceGitRoot bool) *WorkspaceConfig {
+func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWorkspaceGitRoot bool) *WorkspaceConfig {
 	sourceFolder := workspace.RootFolderPath
 
 	// Detect git root for workspace mounting (matches TS getHostMountFolder)
@@ -373,7 +373,7 @@ func envFromOS() map[string]string {
 	return env
 }
 
-func remarshal(raw map[string]interface{}, target *DevContainerConfig) error {
+func remarshal(raw map[string]interface{}, target *DevContainer) error {
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return err

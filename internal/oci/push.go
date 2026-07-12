@@ -16,7 +16,7 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// GetSemanticTags computes the tags to publish for `version` given the tags
+// SemanticTags computes the tags to publish for `version` given the tags
 // already present in the registry, matching the TS CLI getSemanticTags:
 //   - skip=true (nil tags) when the exact version already exists — do not
 //     republish;
@@ -24,7 +24,7 @@ import (
 //   - the floating tags (major, major.minor, latest) are only included when the
 //     new version is the highest within their range, so a re-publish of an older
 //     version never moves latest/major/major.minor backwards.
-func GetSemanticTags(version string, publishedTags []string) (tags []string, skip bool, err error) {
+func SemanticTags(version string, publishedTags []string) (tags []string, skip bool, err error) {
 	for _, t := range publishedTags {
 		if t == version {
 			return nil, true, nil
@@ -76,13 +76,12 @@ type PushResult struct {
 // It creates a manifest with the devcontainer mediatype and pushes the layer +
 // empty config blobs, then the manifest under each computed version tag. oras-go
 // handles auth (pull,push scope negotiation), blob-existence checks and retries.
-func (c *Client) PushArtifact(ref *Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*PushResult, error) {
+func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*PushResult, error) {
 	c.log.Write(fmt.Sprintf("Pushing %s to %s (tags: %s)...", ref.ID, ref.Resource, strings.Join(tags, ", ")), log.LevelInfo)
 	if collectionType == "" {
 		collectionType = "feature"
 	}
 
-	ctx := context.Background()
 	repo, err := c.repository(ref)
 	if err != nil {
 		return nil, err
@@ -173,10 +172,9 @@ func (c *Client) PushArtifact(ref *Ref, tgzPath string, tags []string, collectio
 // namespace as an OCI artifact tagged `latest`, so containers.dev and the CLI
 // can discover the collection's items — matching the TS CLI doPublishMetadata.
 // The ref should point at the collection (registry/namespace), not an item.
-func (c *Client) PushCollectionMetadata(ref *Ref, collectionJSONPath string) (*PushResult, error) {
+func (c *Client) PushCollectionMetadata(ctx context.Context, ref *Ref, collectionJSONPath string) (*PushResult, error) {
 	c.log.Write(fmt.Sprintf("Publishing collection metadata to %s...", ref.Resource), log.LevelInfo)
 
-	ctx := context.Background()
 	repo, err := c.repository(ref)
 	if err != nil {
 		return nil, err

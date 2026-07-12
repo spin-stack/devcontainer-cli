@@ -73,13 +73,13 @@ type upOpts struct {
 	composeProjectName string
 }
 
-// upRunner carries the dependencies shared across the whole `up` flow so they
-// don't have to be threaded through every helper by hand. docker is nil on the
-// reattach path (set once BuildKit detection has run).
+// upRunner carries the dependencies shared across the whole `up` flow. docker is
+// nil on the reattach path (set once BuildKit detection has run). The context is
+// passed explicitly as the first argument of each method, not stored here, so
+// cancellation is visible in every signature that does I/O.
 type upRunner struct {
-	ctx    context.Context
 	out    Output
-	log    log.Log
+	log    log.Logger
 	docker *docker.Client
 	engine *docker.EngineClient
 	opts   *upOpts
@@ -219,7 +219,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 	logger := log.New(log.Options{
 		Version:    cliVersion(),
-		Level:      log.MapLogLevel(opts.logLevel),
+		Level:      log.ParseLevel(opts.logLevel),
 		Format:     opts.logFormat,
 		Writer:     logDst,
 		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
@@ -233,7 +233,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 	defer engine.Close()
 
-	run := &upRunner{ctx: ctx, out: out, log: logger, engine: engine, opts: opts}
+	run := &upRunner{out: out, log: logger, engine: engine, opts: opts}
 
 	// When --id-label is provided, use those labels directly for container lookup.
 	// Otherwise, derive labels from workspace folder + config file path.
@@ -266,10 +266,10 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			// postStart when restarted; onCreate/updateContent/postCreate are gated
 			// by markers. Hooks come from the container's baked metadata.
 			if !opts.skipPostCreate {
-				run.runReattachLifecycle(containerID)
+				run.runReattachLifecycle(ctx, containerID)
 			}
 
-			return run.finishUp(containerID, nil, nil)
+			return run.finishUp(ctx, containerID, nil, nil)
 		}
 
 		if opts.expectExistingContainer {
@@ -306,7 +306,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// A failure aborts `up` with an error outcome, matching the TS CLI (which
 	// throws a ContainerError). Swallowing it produced silently-broken setups.
 	if !cfg.InitializeCommand.IsEmpty() {
-		if err := lifecycle.RunInitializeCommand(logger, &cfg.InitializeCommand, workspaceFolder); err != nil {
+		if err := lifecycle.RunInitializeCommand(ctx, logger, &cfg.InitializeCommand, workspaceFolder); err != nil {
 			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
 				Description: "The initializeCommand in the devcontainer.json failed.",
 			}))
@@ -319,7 +319,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// Detect BuildKit
 	var useBuildx bool
 	if opts.buildkit != "never" {
-		bk := dockerClient.DetectBuildKit()
+		bk := dockerClient.DetectBuildKit(ctx)
 		useBuildx = bk.Available
 	}
 
@@ -371,13 +371,13 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			if cfg.IsComposeConfig() {
 				return writeValidationError(out, "--cache-image is not supported with a Docker Compose configuration.")
 			}
-			containerID, err = run.fromCacheImage(cfg, loadResult, workspaceFolder, idLabels)
+			containerID, err = run.fromCacheImage(ctx, cfg, loadResult, workspaceFolder, idLabels)
 		} else if cfg.IsDockerfileConfig() {
-			containerID, err = run.fromDockerfile(cfg, loadResult, workspaceFolder, idLabels, useBuildx)
+			containerID, err = run.fromDockerfile(ctx, cfg, loadResult, workspaceFolder, idLabels, useBuildx)
 		} else if cfg.IsComposeConfig() {
-			containerID, err = run.fromCompose(cfg, loadResult, workspaceFolder, idLabels, useBuildx)
+			containerID, err = run.fromCompose(ctx, cfg, loadResult, workspaceFolder, idLabels, useBuildx)
 		} else {
-			containerID, err = run.fromImage(cfg, loadResult, workspaceFolder, idLabels, useBuildx)
+			containerID, err = run.fromImage(ctx, cfg, loadResult, workspaceFolder, idLabels, useBuildx)
 		}
 		if err != nil {
 			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
@@ -431,7 +431,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// Run lifecycle hooks (unless skipped). A hook failure aborts `up` with an
 	// error outcome (matching the TS CLI), instead of reporting success.
 	if !opts.skipPostCreate {
-		if lcErr := run.runLifecycleForUp(containerID, cfg, remoteWorkspaceFolder, remoteUser); lcErr != nil {
+		if lcErr := run.runLifecycleForUp(ctx, containerID, cfg, remoteWorkspaceFolder, remoteUser); lcErr != nil {
 			return writeErrorJSON(out, coreerrors.ToErrorOutput(lcErr))
 		}
 	}
@@ -540,8 +540,8 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 // finishUp produces the JSON result for an existing container found via --id-label
 // (no config/loadResult available). cfg and loadResult may be nil.
-func (r *upRunner) finishUp(containerID string, cfg *config.DevContainerConfig, loadResult *config.LoadResult) error {
-	ctx, out, logger, engine := r.ctx, r.out, r.log, r.engine
+func (r *upRunner) finishUp(ctx context.Context, containerID string, cfg *config.DevContainer, loadResult *config.LoadResult) error {
+	out, logger, engine := r.out, r.log, r.engine
 	inspectResp, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
@@ -590,8 +590,8 @@ func (r *upRunner) finishUp(containerID string, cfg *config.DevContainerConfig, 
 // postCreate (already ran) and postStart (per startedAt), while postAttach runs
 // every attach — matching the TS reattach path. Best-effort: probe
 // or shell failures degrade to a warning.
-func (r *upRunner) runReattachLifecycle(containerID string) {
-	ctx, logger, engine, opts := r.ctx, r.log, r.engine, r.opts
+func (r *upRunner) runReattachLifecycle(ctx context.Context, containerID string) {
+	logger, engine, opts := r.log, r.engine, r.opts
 	inspectResp, err := engine.InspectContainer(ctx, containerID)
 	if err != nil || inspectResp.Config == nil {
 		return
@@ -672,10 +672,10 @@ func (r *upRunner) runReattachLifecycle(containerID string) {
 	}
 }
 
-func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	// Build the image first
-	dockerfilePath := cfg.GetDockerfile()
+	dockerfilePath := cfg.Dockerfile()
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	dockerfilePath = filepath.Join(configDir, dockerfilePath)
 
@@ -690,10 +690,12 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 		stageName = cfg.Build.Target
 	} else {
 		var modifiedContent string
-		stageName, modifiedContent = docker.EnsureDockerfileHasFinalStageName(string(content), "dev_container_auto_added_stage_label")
+		stageName, modifiedContent = docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
 		if modifiedContent != "" {
 			tmpDockerfile := dockerfilePath + ".devcontainer.build"
-			os.WriteFile(tmpDockerfile, []byte(modifiedContent), 0644)
+			if err := os.WriteFile(tmpDockerfile, []byte(modifiedContent), 0644); err != nil {
+				return "", fmt.Errorf("write build dockerfile: %w", err)
+			}
 			defer os.Remove(tmpDockerfile)
 			dockerfilePath = tmpDockerfile
 		}
@@ -718,8 +720,8 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 	metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
 
 	contextPath := configDir
-	if cfg.GetBuildContext() != "" {
-		contextPath = filepath.Join(configDir, cfg.GetBuildContext())
+	if cfg.BuildContext() != "" {
+		contextPath = filepath.Join(configDir, cfg.BuildContext())
 	}
 
 	upCacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
@@ -728,7 +730,7 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, []string{imageName}, upCacheFrom, opts.cacheTo)
 	defer authCleanup()
 
-	buildResult, err := dockerClient.Build(docker.BuildOptions{
+	buildResult, err := dockerClient.Build(ctx, docker.BuildOptions{
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
 		Tags:        []string{imageName},
@@ -770,13 +772,13 @@ func (r *upRunner) fromDockerfile(cfg *config.DevContainerConfig, loadResult *co
 		}
 	}
 
-	imageName = r.maybeUpdateRemoteUserUID(imageName, cfg.RemoteUser, cfg)
+	imageName = r.maybeUpdateRemoteUserUID(ctx, imageName, cfg.RemoteUser, cfg)
 
-	return r.runContainer(imageName, cfg, loadResult, workspaceFolder, idLabels)
+	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
 }
 
-func (r *upRunner) fromImage(cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Image == "" {
 		return "", fmt.Errorf("no image specified in devcontainer.json")
 	}
@@ -810,9 +812,9 @@ func (r *upRunner) fromImage(cfg *config.DevContainerConfig, loadResult *config.
 		}
 	}
 
-	imageName = r.maybeUpdateRemoteUserUID(imageName, cfg.RemoteUser, cfg)
+	imageName = r.maybeUpdateRemoteUserUID(ctx, imageName, cfg.RemoteUser, cfg)
 
-	return r.runContainer(imageName, cfg, loadResult, workspaceFolder, idLabels)
+	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
 }
 
 // fromCacheImage starts the container from a prebuilt image (--cache-image),
@@ -821,8 +823,8 @@ func (r *upRunner) fromImage(cfg *config.DevContainerConfig, loadResult *config.
 // (produced by an earlier build of the same configuration), so the merged
 // configuration is recovered from that label the same way as a plain image-based
 // config. remoteUser/mounts/lifecycle still come from devcontainer.json.
-func (r *upRunner) fromCacheImage(cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
-	ctx, logger, engine := r.ctx, r.log, r.engine
+func (r *upRunner) fromCacheImage(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
+	logger, engine := r.log, r.engine
 	image := r.opts.cacheImage
 
 	if _, err := engine.InspectImage(ctx, image); err != nil {
@@ -833,8 +835,8 @@ func (r *upRunner) fromCacheImage(cfg *config.DevContainerConfig, loadResult *co
 	}
 	logger.Write(fmt.Sprintf("Using prebuilt cache image %s; skipping build and feature install", image), log.LevelInfo)
 
-	image = r.maybeUpdateRemoteUserUID(image, cfg.RemoteUser, cfg)
-	return r.runContainer(image, cfg, loadResult, workspaceFolder, idLabels)
+	image = r.maybeUpdateRemoteUserUID(ctx, image, cfg.RemoteUser, cfg)
+	return r.runContainer(ctx, image, cfg, loadResult, workspaceFolder, idLabels)
 }
 
 // maybeUpdateRemoteUserUID rebuilds imageName with the remote user's UID/GID
@@ -844,7 +846,7 @@ func (r *upRunner) fromCacheImage(cfg *config.DevContainerConfig, loadResult *co
 // and Dockerfile paths of up (previously only the image path called it, so
 // Dockerfile-based configs with a remoteUser had broken bind-mount permissions
 // on Linux).
-func (r *upRunner) maybeUpdateRemoteUserUID(imageName, remoteUser string, cfg *config.DevContainerConfig) string {
+func (r *upRunner) maybeUpdateRemoteUserUID(ctx context.Context, imageName, remoteUser string, cfg *config.DevContainer) string {
 	logger, dockerClient, opts := r.log, r.docker, r.opts
 	shouldUpdateUID := opts.updateRemoteUserUIDDefault == "on"
 	if cfg.UpdateRemoteUserUID != nil {
@@ -858,8 +860,8 @@ func (r *upRunner) maybeUpdateRemoteUserUID(imageName, remoteUser string, cfg *c
 	if hostUID <= 0 {
 		return imageName
 	}
-	bkInfo := dockerClient.DetectBuildKit()
-	updatedImage, err := docker.UpdateRemoteUserUID(dockerClient, logger, imageName, remoteUser, hostUID, hostGID, bkInfo.Available)
+	bkInfo := dockerClient.DetectBuildKit(ctx)
+	updatedImage, err := docker.UpdateRemoteUserUID(ctx, dockerClient, logger, imageName, remoteUser, hostUID, hostGID, bkInfo.Available)
 	if err != nil {
 		logger.Write(fmt.Sprintf("UID update failed: %v", err), log.LevelWarning)
 		return imageName
@@ -867,8 +869,8 @@ func (r *upRunner) maybeUpdateRemoteUserUID(imageName, remoteUser string, cfg *c
 	return updatedImage
 }
 
-func (r *upRunner) runContainer(imageName string, cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	// Inspect image once — used for metadata and containerUser resolution.
 	imageInspect, _ := engine.InspectImage(ctx, imageName)
 
@@ -955,7 +957,7 @@ func (r *upRunner) runContainer(imageName string, cfg *config.DevContainerConfig
 	// gpu:false must NOT enable GPUs (a raw-length check treated "false" as truthy).
 	runArgs := cfg.RunArgs
 	if cfg.HostRequirements != nil && gpuRequested(cfg.HostRequirements.GPU) {
-		gpuAvail := checkGPUAvailability(opts.gpuAvailability, dockerClient)
+		gpuAvail := checkGPUAvailability(ctx, opts.gpuAvailability, dockerClient)
 		if gpuAvail {
 			runArgs = append([]string{"--gpus", "all"}, runArgs...)
 		}
@@ -995,7 +997,7 @@ func (r *upRunner) runContainer(imageName string, cfg *config.DevContainerConfig
 
 	logger.Write(fmt.Sprintf("Starting container from %s...", imageName), log.LevelInfo)
 
-	result, err := dockerClient.Run(createArgs...)
+	result, err := dockerClient.Run(ctx, createArgs...)
 	if err != nil {
 		return "", fmt.Errorf("docker create: %w", err)
 	}
@@ -1017,7 +1019,7 @@ func (r *upRunner) runContainer(imageName string, cfg *config.DevContainerConfig
 // CLI resolution chain: 1. COMPOSE_PROJECT_NAME env, 2. .env
 // COMPOSE_PROJECT_NAME, 3. name: from the compose config, 4. directory-based
 // fallback.
-func resolveComposeProjectName(cfg *config.DevContainerConfig, env map[string]string, composeFiles []string, composeClient *docker.ComposeClient) string {
+func resolveComposeProjectName(ctx context.Context, cfg *config.DevContainer, env map[string]string, composeFiles []string, composeClient *docker.ComposeClient) string {
 	newNames := composeClient.UsesNewProjectNames()
 
 	// 1. COMPOSE_PROJECT_NAME env
@@ -1025,7 +1027,7 @@ func resolveComposeProjectName(cfg *config.DevContainerConfig, env map[string]st
 		return docker.ToProjectName(envName, newNames)
 	}
 
-	// 2. .env file (already handled by config.GetDockerComposeFilePaths, but check here too)
+	// 2. .env file (already handled by config.DockerComposeFilePaths, but check here too)
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	if data, err := os.ReadFile(filepath.Join(configDir, ".env")); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -1040,7 +1042,7 @@ func resolveComposeProjectName(cfg *config.DevContainerConfig, env map[string]st
 	}
 
 	// 3. name: from compose config (via docker compose config)
-	if composeConfig, configErr := composeClient.Config(composeFiles, ""); configErr == nil {
+	if composeConfig, configErr := composeClient.Config(ctx, composeFiles, ""); configErr == nil {
 		if name, ok := composeConfig["name"].(string); ok && name != "" {
 			if name != "devcontainer" {
 				return docker.ToProjectName(name, newNames)
@@ -1064,15 +1066,34 @@ func resolveComposeProjectName(cfg *config.DevContainerConfig, env map[string]st
 	return docker.ToProjectName(filepath.Base(workingDir), newNames)
 }
 
-func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+// overrideDirFor returns the directory that compose override files are written
+// to. When userDataFolder is set the overrides live in a stable subdir so a
+// container can be restarted without re-injecting them; otherwise a temp dir is
+// used and the returned cleanup removes it. cleanup is always non-nil.
+func overrideDirFor(userDataFolder, tmpPattern string) (dir string, cleanup func(), err error) {
+	if userDataFolder != "" {
+		dir = filepath.Join(userDataFolder, "docker-compose")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", func() {}, fmt.Errorf("create override dir: %w", err)
+		}
+		return dir, func() {}, nil
+	}
+	dir, err = os.MkdirTemp("", tmpPattern)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temp override dir: %w", err)
+	}
+	return dir, func() { os.RemoveAll(dir) }, nil
+}
+
+func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
 		return "", fmt.Errorf("dockerComposeFile config requires 'service' property")
 	}
 
 	// Resolve compose files
 	env := osEnvMap()
-	composeFiles, err := config.GetDockerComposeFilePaths(cfg, env, filepath.Dir(cfg.ConfigFilePath))
+	composeFiles, err := config.DockerComposeFilePaths(cfg, env, filepath.Dir(cfg.ConfigFilePath))
 	if err != nil {
 		return "", fmt.Errorf("resolve compose files: %w", err)
 	}
@@ -1083,7 +1104,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 		return "", fmt.Errorf("compose client: %w", err)
 	}
 
-	projectName := resolveComposeProjectName(cfg, env, composeFiles, composeClient)
+	projectName := resolveComposeProjectName(ctx, cfg, env, composeFiles, composeClient)
 	logger.Write(fmt.Sprintf("Compose project: %s, service: %s", projectName, cfg.Service), log.LevelInfo)
 
 	// Check for existing compose container (skip build if it exists)
@@ -1100,7 +1121,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 	featureImageName := ""
 	if len(cfg.Features) > 0 {
 		// Read compose config to determine service setup
-		composeConfig, configErr := composeClient.Config(composeFiles, "")
+		composeConfig, configErr := composeClient.Config(ctx, composeFiles, "")
 		serviceHasBuild := false
 		serviceImage := ""
 		serviceDockerfile := ""
@@ -1134,7 +1155,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 			return "", fetchErr
 		}
 
-		featureSets := []*features.FeatureSet{}
+		featureSets := []*features.Set{}
 		tmpDir := ""
 		if fetchResult != nil {
 			featureSets = fetchResult.FeatureSets
@@ -1227,7 +1248,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 			baseStageName := serviceBuildTarget
 			if baseStageName == "" {
 				baseStageName = "dev_containers_auto_added_stage_label"
-				_, modifiedDF := docker.EnsureDockerfileHasFinalStageName(string(dockerfileContent), baseStageName)
+				_, modifiedDF := docker.EnsureFinalStageName(string(dockerfileContent), baseStageName)
 				if modifiedDF != "" {
 					dockerfileContent = []byte(modifiedDF)
 				}
@@ -1263,16 +1284,11 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 
 			// Persist the build override when possible so a stopped compose container
 			// can be restarted without re-injecting features or losing the override.
-			overrideDir := ""
-			if opts.userDataFolder != "" {
-				overrideDir = filepath.Join(opts.userDataFolder, "docker-compose")
-				if mkErr := os.MkdirAll(overrideDir, 0755); mkErr != nil {
-					return "", fmt.Errorf("create override dir: %w", mkErr)
-				}
-			} else {
-				overrideDir, _ = os.MkdirTemp("", "devcontainer-compose-build-")
-				defer os.RemoveAll(overrideDir)
+			overrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-build-")
+			if err != nil {
+				return "", err
 			}
+			defer cleanup()
 
 			buildOverride := docker.NewComposeOverride()
 			svc := buildOverride.Service(cfg.Service)
@@ -1294,7 +1310,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 		} else {
 			// Image-only service: build features as separate image
 			if !noComposeBuild {
-				buildErr := composeClient.Build(composeFiles, "", nil, []string{cfg.Service}, opts.buildNoCache)
+				buildErr := composeClient.Build(ctx, composeFiles, "", nil, []string{cfg.Service}, opts.buildNoCache)
 				if buildErr != nil {
 					return "", fmt.Errorf("compose build: %w", buildErr)
 				}
@@ -1326,14 +1342,11 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 
 	// Generate containerEnv override if containerEnv is set
 	if len(cfg.ContainerEnv) > 0 {
-		envOverrideDir := ""
-		if opts.userDataFolder != "" {
-			envOverrideDir = filepath.Join(opts.userDataFolder, "docker-compose")
-			os.MkdirAll(envOverrideDir, 0755)
-		} else {
-			envOverrideDir, _ = os.MkdirTemp("", "devcontainer-compose-env-")
-			defer os.RemoveAll(envOverrideDir)
+		envOverrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-env-")
+		if err != nil {
+			return "", err
 		}
+		defer cleanup()
 
 		envOverride := docker.NewComposeOverride()
 		envSvc := envOverride.Service(cfg.Service)
@@ -1348,14 +1361,11 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 	}
 
 	if len(cfg.Mounts) > 0 {
-		mountOverrideDir := ""
-		if opts.userDataFolder != "" {
-			mountOverrideDir = filepath.Join(opts.userDataFolder, "docker-compose")
-			os.MkdirAll(mountOverrideDir, 0755)
-		} else {
-			mountOverrideDir, _ = os.MkdirTemp("", "devcontainer-compose-mounts-")
-			defer os.RemoveAll(mountOverrideDir)
+		mountOverrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-mounts-")
+		if err != nil {
+			return "", err
 		}
+		defer cleanup()
 
 		idLabelMap := map[string]string{}
 		for _, label := range idLabels {
@@ -1391,14 +1401,11 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 	// additionalLabels on the compose service. When features were installed
 	// we also add the runtime settings (image, entrypoint, env, mounts).
 	{
-		var overrideDir string
-		if opts.userDataFolder != "" {
-			overrideDir = filepath.Join(opts.userDataFolder, "docker-compose")
-			os.MkdirAll(overrideDir, 0755)
-		} else {
-			overrideDir, _ = os.MkdirTemp("", "devcontainer-compose-features-")
-			defer os.RemoveAll(overrideDir)
+		overrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-features-")
+		if err != nil {
+			return "", err
 		}
+		defer cleanup()
 
 		override := docker.NewComposeOverride()
 		svc := override.Service(cfg.Service)
@@ -1416,7 +1423,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 		// fixture and poison the metadata (e.g. a wrong remoteUser).
 		inspectImage := featureImageName
 		if inspectImage == "" {
-			if composeConfig, cfgErr := composeClient.Config(composeFiles, ""); cfgErr == nil {
+			if composeConfig, cfgErr := composeClient.Config(ctx, composeFiles, ""); cfgErr == nil {
 				inspectImage = composeServiceImage(composeConfig, cfg.Service)
 			}
 			if inspectImage == "" {
@@ -1510,7 +1517,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 		if opts.buildNoCache {
 			logger.Write("Building with --no-cache...", log.LevelInfo)
 		}
-		buildErr := composeClient.Build(composeFiles, "", nil, []string{cfg.Service}, opts.buildNoCache)
+		buildErr := composeClient.Build(ctx, composeFiles, "", nil, []string{cfg.Service}, opts.buildNoCache)
 		if buildErr != nil {
 			return "", fmt.Errorf("compose build: %w", buildErr)
 		}
@@ -1539,7 +1546,7 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 	}
 
 	noRecreate := len(existingComposeIDs) > 0 || opts.expectExistingContainer
-	upErr := composeClient.Up(composeFiles, "", nil, projectName, services, noRecreate)
+	upErr := composeClient.Up(ctx, composeFiles, "", nil, projectName, services, noRecreate)
 	if upErr != nil {
 		return "", fmt.Errorf("compose up: %w", upErr)
 	}
@@ -1565,8 +1572,8 @@ func (r *upRunner) fromCompose(cfg *config.DevContainerConfig, loadResult *confi
 // runLifecycleForUp runs lifecycle hooks on a newly created container. It returns
 // a non-nil error (a *coreerrors.ContainerError with a TS-compatible description)
 // only when a lifecycle hook fails; probe/dotfiles issues stay non-fatal warnings.
-func (r *upRunner) runLifecycleForUp(containerID string, cfg *config.DevContainerConfig, workDir string, remoteUser string) error {
-	ctx, logger, engine, opts := r.ctx, r.log, r.engine, r.opts
+func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cfg *config.DevContainer, workDir string, remoteUser string) error {
+	logger, engine, opts := r.log, r.engine, r.opts
 	// Build merged remote env: probed shell env → CLI --remote-env → config remoteEnv
 	probeStrategy := lifecycle.UserEnvProbeStrategy(opts.defaultUserEnvProbe)
 	if cfg.UserEnvProbe != "" {

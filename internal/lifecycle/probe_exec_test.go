@@ -30,11 +30,11 @@ func (f *fakeShell) called(substr string) bool {
 
 // captureLog records Write() lines so tests can assert on emitted diagnostics.
 type captureLog struct {
-	log.Log
+	log.Logger
 	lines []string
 }
 
-func (c *captureLog) Write(text string, _ ...log.LogLevel) {
+func (c *captureLog) Write(text string, _ ...log.Level) {
 	c.lines = append(c.lines, text)
 }
 
@@ -47,7 +47,7 @@ func (c *captureLog) has(substr string) bool {
 	return false
 }
 
-func newCaptureLog() *captureLog { return &captureLog{Log: log.Null} }
+func newCaptureLog() *captureLog { return &captureLog{Logger: log.Null} }
 
 func TestProbeRemoteEnv_None(t *testing.T) {
 	fs := &fakeShell{handler: func(string) (string, int, error) {

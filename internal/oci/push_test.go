@@ -87,7 +87,7 @@ func TestGetSemanticTags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tags, skip, err := GetSemanticTags(tt.version, tt.published)
+			tags, skip, err := SemanticTags(tt.version, tt.published)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}

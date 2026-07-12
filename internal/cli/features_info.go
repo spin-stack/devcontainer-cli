@@ -53,7 +53,7 @@ func runFeaturesInfo(out Output, mode, featureID, logLevel, outputFormat string)
 	}
 
 	logger := log.New(log.Options{
-		Level:  log.MapLogLevel(logLevel),
+		Level:  log.ParseLevel(logLevel),
 		Format: "text",
 		Writer: os.Stderr,
 	})

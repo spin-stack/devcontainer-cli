@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"io"
 	"strings"
 	"testing"
@@ -38,7 +37,6 @@ func TestBuildComposePathWiring(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &buildRunner{
-				ctx: context.Background(),
 				log: log.New(log.Options{Writer: io.Discard}),
 				opts: &buildOpts{
 					// Force the `docker compose` (v2) probe to fail hermetically,
@@ -47,13 +45,13 @@ func TestBuildComposePathWiring(t *testing.T) {
 					dockerComposePath: tt.dockerComposePath,
 				},
 			}
-			cfg := &config.DevContainerConfig{
+			cfg := &config.DevContainer{
 				ConfigFilePath:    "/tmp/devcontainer.json",
 				Service:           "app",
 				DockerComposeFile: config.StringOrStrings{"docker-compose.yml"},
 			}
 
-			_, err := r.buildCompose(cfg, false)
+			_, err := r.buildCompose(t.Context(), cfg, false)
 			if err == nil {
 				t.Fatal("expected compose-client detection error, got nil")
 			}

@@ -1,7 +1,6 @@
 package doctor
 
 import (
-	"context"
 	"testing"
 )
 
@@ -29,7 +28,7 @@ func TestSetupCreatesBuilderWhenAbsent(t *testing.T) {
 	}}
 	env := &Env{Runner: sr}
 
-	actions := Setup(context.Background(), env, cacheWarnReport(), false)
+	actions := Setup(t.Context(), env, cacheWarnReport(), false)
 	if !SetupSucceeded(actions) {
 		t.Fatalf("setup failed: %+v", actions)
 	}
@@ -62,7 +61,7 @@ func TestSetupSelectsExistingBuilder(t *testing.T) {
 	}}
 	env := &Env{Runner: sr}
 
-	actions := Setup(context.Background(), env, cacheWarnReport(), false)
+	actions := Setup(t.Context(), env, cacheWarnReport(), false)
 	var used, created bool
 	for _, c := range sr.calls {
 		if has(c, "use") {
@@ -89,7 +88,7 @@ func TestSetupDryRunChangesNothing(t *testing.T) {
 	}}
 	env := &Env{Runner: sr}
 
-	actions := Setup(context.Background(), env, cacheWarnReport(), true)
+	actions := Setup(t.Context(), env, cacheWarnReport(), true)
 	for _, c := range sr.calls {
 		if has(c, "create") || has(c, "use") {
 			t.Fatalf("dry-run must not mutate; saw call %v", c)
@@ -112,7 +111,7 @@ func TestSetupReportsBuilderFailure(t *testing.T) {
 	}}
 	env := &Env{Runner: sr}
 
-	actions := Setup(context.Background(), env, cacheWarnReport(), false)
+	actions := Setup(t.Context(), env, cacheWarnReport(), false)
 	if SetupSucceeded(actions) {
 		t.Fatalf("expected setup to report failure; actions=%+v", actions)
 	}
@@ -126,7 +125,7 @@ func TestSetupNothingToDoWhenHealthy(t *testing.T) {
 	env := &Env{Runner: sr}
 	healthy := Report{Overall: StatusOK, Results: []Result{{Name: "docker-daemon", Status: StatusOK}}}
 
-	actions := Setup(context.Background(), env, healthy, false)
+	actions := Setup(t.Context(), env, healthy, false)
 	if len(actions) != 0 {
 		t.Fatalf("healthy host should need no actions, got %+v", actions)
 	}

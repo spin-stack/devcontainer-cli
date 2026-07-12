@@ -21,7 +21,7 @@ type ApplyParams struct {
 	OCIClient oci.Registry
 	// FS is the filesystem seam. When nil, the default OS-backed FS is used.
 	FS              pfs.FS
-	Logger          log.Log
+	Logger          log.Logger
 	Env             map[string]string
 	WorkspaceFolder string
 	TmpDir          string
@@ -159,7 +159,7 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 }
 
 // mergeFeatures adds features to the devcontainer.json in the workspace.
-func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFeatureOption, logger log.Log) error {
+func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFeatureOption, logger log.Logger) error {
 	// Find devcontainer.json
 	candidates := []string{
 		filepath.Join(workspaceFolder, ".devcontainer", "devcontainer.json"),
@@ -250,7 +250,7 @@ func escapeJSONPointer(s string) string {
 // the template's devcontainer-template.json filled in from its `default` when
 // the user did not provide a value (matching the TS CLI). string and boolean
 // option defaults are supported.
-func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]string, logger log.Log) map[string]string {
+func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]string, logger log.Logger) map[string]string {
 	merged := make(map[string]string, len(userOptions))
 	for k, v := range userOptions {
 		merged[k] = v

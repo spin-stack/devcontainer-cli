@@ -41,7 +41,7 @@ func newCheckCmd() *cobra.Command {
 }
 
 func runCheck(ctx context.Context, out Output, opts *checkOpts) error {
-	env := &doctor.Env{DockerPath: opts.dockerPath, CLIVersion: product.GetConfig().Version}
+	env := &doctor.Env{DockerPath: opts.dockerPath, CLIVersion: product.Get().Version}
 	report := doctor.Run(ctx, env)
 
 	// Persist best-effort: a diagnostics run must not fail because state could
@@ -97,7 +97,7 @@ func newSetupCmd() *cobra.Command {
 }
 
 func runSetup(ctx context.Context, out Output, opts *setupOpts) error {
-	env := &doctor.Env{DockerPath: opts.dockerPath, CLIVersion: product.GetConfig().Version}
+	env := &doctor.Env{DockerPath: opts.dockerPath, CLIVersion: product.Get().Version}
 	report := doctor.Run(ctx, env)
 	actions := doctor.Setup(ctx, env, report, opts.dryRun)
 

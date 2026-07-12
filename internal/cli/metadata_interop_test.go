@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -184,7 +183,7 @@ func TestMetadataInteropGoRoundTrip(t *testing.T) {
 	if !isDockerAvailable() {
 		t.Skip("docker required")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	entries := interopEntries()
 
 	// Expected merge computed purely in-memory from the same entries.

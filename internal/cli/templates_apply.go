@@ -32,7 +32,7 @@ func realTemplatesApplyCmd() *cobra.Command {
 			}
 
 			logger := log.New(log.Options{
-				Level:  log.MapLogLevel(logLevel),
+				Level:  log.ParseLevel(logLevel),
 				Format: "text",
 				Writer: os.Stderr,
 			})

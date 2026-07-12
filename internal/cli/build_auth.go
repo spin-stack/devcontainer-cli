@@ -14,7 +14,7 @@ import (
 // func. It returns (nil, no-op) when there is nothing to bridge, leaving the
 // build's ambient auth untouched. Errors are swallowed (best-effort): a build
 // that would have worked anonymously must not fail because auth bridging did.
-func bridgeBuildAuth(logger log.Log, baseImage string, tags, cacheFrom []string, cacheTo string) (env []string, cleanup func()) {
+func bridgeBuildAuth(logger log.Logger, baseImage string, tags, cacheFrom []string, cacheTo string) (env []string, cleanup func()) {
 	noop := func() {}
 	regs := collectBuildRegistries(baseImage, tags, cacheFrom, cacheTo)
 	if len(regs) == 0 {

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 )
 
-// DevContainerConfig represents a devcontainer.json.
+// DevContainer represents a devcontainer.json.
 // It is a flat struct covering all three variants (image, Dockerfile, docker-compose).
 // Use IsDockerfileConfig / IsComposeConfig to discriminate.
-type DevContainerConfig struct {
+type DevContainer struct {
 	// Runtime — not serialized from JSON
 	ConfigFilePath string `json:"configFilePath,omitempty"`
 
@@ -49,9 +49,9 @@ type DevContainerConfig struct {
 	Image string `json:"image,omitempty"`
 
 	// --- Dockerfile variant ---
-	DockerFile string       `json:"dockerFile,omitempty"` // legacy top-level
-	Build      *BuildConfig `json:"build,omitempty"`
-	Context    string       `json:"context,omitempty"` // legacy top-level
+	DockerFile string `json:"dockerFile,omitempty"` // legacy top-level
+	Build      *Build `json:"build,omitempty"`
+	Context    string `json:"context,omitempty"` // legacy top-level
 
 	// --- Docker Compose variant ---
 	DockerComposeFile StringOrStrings `json:"dockerComposeFile,omitempty"`
@@ -64,8 +64,8 @@ type DevContainerConfig struct {
 	DevPort    *int        `json:"devPort,omitempty"`
 }
 
-// BuildConfig represents the "build" property in devcontainer.json.
-type BuildConfig struct {
+// Build represents the "build" property in devcontainer.json.
+type Build struct {
 	Dockerfile string            `json:"dockerfile,omitempty"`
 	Context    string            `json:"context,omitempty"`
 	Target     string            `json:"target,omitempty"`
@@ -100,22 +100,22 @@ type Mount struct {
 // --- Type discrimination ---
 
 // IsDockerfileConfig returns true if the config specifies a Dockerfile build.
-func (c *DevContainerConfig) IsDockerfileConfig() bool {
+func (c *DevContainer) IsDockerfileConfig() bool {
 	return c.DockerFile != "" || (c.Build != nil && c.Build.Dockerfile != "")
 }
 
 // IsComposeConfig returns true if the config specifies docker-compose.
-func (c *DevContainerConfig) IsComposeConfig() bool {
+func (c *DevContainer) IsComposeConfig() bool {
 	return len(c.DockerComposeFile) > 0
 }
 
 // IsImageConfig returns true if the config specifies a pre-built image (no Dockerfile or Compose).
-func (c *DevContainerConfig) IsImageConfig() bool {
+func (c *DevContainer) IsImageConfig() bool {
 	return !c.IsDockerfileConfig() && !c.IsComposeConfig()
 }
 
-// GetDockerfile returns the Dockerfile path from either legacy or build.dockerfile.
-func (c *DevContainerConfig) GetDockerfile() string {
+// Dockerfile returns the Dockerfile path from either legacy or build.dockerfile.
+func (c *DevContainer) Dockerfile() string {
 	if c.DockerFile != "" {
 		return c.DockerFile
 	}
@@ -125,8 +125,8 @@ func (c *DevContainerConfig) GetDockerfile() string {
 	return ""
 }
 
-// GetBuildContext returns the build context path.
-func (c *DevContainerConfig) GetBuildContext() string {
+// BuildContext returns the build context path.
+func (c *DevContainer) BuildContext() string {
 	if c.Context != "" {
 		return c.Context
 	}
@@ -278,7 +278,7 @@ func (s StringOrStrings) MarshalJSON() ([]byte, error) {
 
 // UpdateFromOldProperties migrates deprecated extensions/settings/devPort
 // to customizations.vscode.*, matching the TS function in configuration.ts.
-func UpdateFromOldProperties(c *DevContainerConfig) {
+func UpdateFromOldProperties(c *DevContainer) {
 	if len(c.Extensions) == 0 && c.Settings == nil && c.DevPort == nil {
 		return
 	}

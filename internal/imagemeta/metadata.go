@@ -42,7 +42,7 @@ type Entry struct {
 }
 
 // ReadMetadataFromLabels extracts metadata entries from Docker image/container labels.
-func ReadMetadataFromLabels(labels map[string]string, logger log.Log) []Entry {
+func ReadMetadataFromLabels(labels map[string]string, logger log.Logger) []Entry {
 	raw, ok := labels[MetadataLabel]
 	if !ok || raw == "" {
 		return nil

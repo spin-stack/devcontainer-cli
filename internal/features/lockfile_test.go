@@ -8,8 +8,8 @@ import (
 )
 
 func TestGenerateLockfile(t *testing.T) {
-	config := &FeaturesConfig{
-		FeatureSets: []*FeatureSet{
+	config := &Config{
+		FeatureSets: []*Set{
 			{
 				SourceInfo: &OCISource{
 					Registry:  "ghcr.io",
@@ -66,8 +66,8 @@ func TestGenerateLockfile(t *testing.T) {
 // Features supplied only via --additional-features must not be
 // written to the lockfile.
 func TestGenerateLockfile_ExcludesAdditionalFeatures(t *testing.T) {
-	config := &FeaturesConfig{
-		FeatureSets: []*FeatureSet{
+	config := &Config{
+		FeatureSets: []*Set{
 			{
 				SourceInfo:     &OCISource{UserID: "ghcr.io/devcontainers/features/go:1", Registry: "ghcr.io", Namespace: "devcontainers/features", ID: "go"},
 				Features:       []Feature{{ID: "go", Version: "1.21.0"}},
@@ -96,8 +96,8 @@ func TestGenerateLockfile_ExcludesAdditionalFeatures(t *testing.T) {
 }
 
 func TestGenerateLockfile_Sorted(t *testing.T) {
-	config := &FeaturesConfig{
-		FeatureSets: []*FeatureSet{
+	config := &Config{
+		FeatureSets: []*Set{
 			{
 				SourceInfo:     &OCISource{UserID: "z-feature", Registry: "r", Namespace: "ns", ID: "z"},
 				Features:       []Feature{{Version: "1.0"}},
@@ -161,7 +161,7 @@ func TestReadWriteLockfile(t *testing.T) {
 func TestReadLockfile_Empty(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "devcontainer.json")
-	lockPath := GetLockfilePath(configPath)
+	lockPath := LockfilePath(configPath)
 	os.WriteFile(lockPath, []byte("  \n"), 0644)
 
 	_, init, err := ReadLockfile(configPath)
@@ -195,9 +195,9 @@ func TestGetLockfilePath(t *testing.T) {
 		{"/project/.devcontainer.json", "/project/.devcontainer-lock.json"},
 	}
 	for _, tt := range tests {
-		got := GetLockfilePath(tt.config)
+		got := LockfilePath(tt.config)
 		if got != tt.want {
-			t.Errorf("GetLockfilePath(%q) = %q, want %q", tt.config, got, tt.want)
+			t.Errorf("LockfilePath(%q) = %q, want %q", tt.config, got, tt.want)
 		}
 	}
 }
@@ -205,7 +205,7 @@ func TestGetLockfilePath(t *testing.T) {
 func TestWriteLockfile_Frozen_Changed(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "devcontainer.json")
-	lockPath := GetLockfilePath(configPath)
+	lockPath := LockfilePath(configPath)
 
 	// Write initial lockfile
 	os.WriteFile(lockPath, []byte(`{"features":{}}`), 0644)

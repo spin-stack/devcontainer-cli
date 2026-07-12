@@ -217,8 +217,8 @@ func FindUserStatement(df *Dockerfile, buildArgs, baseImageEnv map[string]string
 	return ""
 }
 
-// EnsureDockerfileHasFinalStageName adds an AS label to the last FROM if missing.
-func EnsureDockerfileHasFinalStageName(content, defaultName string) (stageName string, modifiedContent string) {
+// EnsureFinalStageName adds an AS label to the last FROM if missing.
+func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string) {
 	matches := findFromLines.FindAllStringIndex(content, -1)
 	if len(matches) == 0 {
 		return defaultName, content

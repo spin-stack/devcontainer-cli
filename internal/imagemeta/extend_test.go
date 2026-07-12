@@ -11,7 +11,7 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 	tests := []struct {
 		name          string
 		baseImage     string
-		featureSets   []*features.FeatureSet
+		featureSets   []*features.Set
 		metadata      []Entry
 		containerUser string
 		remoteUser    string
@@ -44,7 +44,7 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 		{
 			name:      "WithFeatures",
 			baseImage: "ubuntu:22.04",
-			featureSets: []*features.FeatureSet{
+			featureSets: []*features.Set{
 				{
 					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
 					Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
@@ -108,7 +108,7 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 			// `KEY=v chmod ... && install.sh` scopes KEY to chmod only, so the options
 			// never reach install.sh.
 			baseImage: "ubuntu:22.04",
-			featureSets: []*features.FeatureSet{
+			featureSets: []*features.Set{
 				{
 					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
 					Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
@@ -134,7 +134,7 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 		{
 			name:      "RootUser",
 			baseImage: "ubuntu",
-			featureSets: []*features.FeatureSet{
+			featureSets: []*features.Set{
 				{
 					SourceInfo: &features.OCISource{UserID: "feat"},
 					Features:   []features.Feature{{ID: "feat"}},
@@ -185,9 +185,9 @@ func TestGetSafeID(t *testing.T) {
 		{"my_feature", "MY_FEATURE"},
 	}
 	for _, tt := range tests {
-		got := GetSafeID(tt.input)
+		got := safeID(tt.input)
 		if got != tt.want {
-			t.Errorf("GetSafeID(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("safeID(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

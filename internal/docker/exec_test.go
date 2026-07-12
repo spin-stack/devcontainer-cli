@@ -63,7 +63,7 @@ func TestExecInContainer(t *testing.T) {
 	}
 	e := &EngineClient{API: api, Log: log.Null}
 
-	stdout, stderr, code, err := e.ExecInContainer(context.Background(), "cid", "vscode", []string{"FOO=bar"}, "echo hello")
+	stdout, stderr, code, err := e.ExecInContainer(t.Context(), "cid", "vscode", []string{"FOO=bar"}, "echo hello")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ type shellExec interface {
 
 // ProbeRemoteEnv runs a shell command in the container to capture environment variables.
 // If sessionDataFolder is provided, results are cached in a JSON file inside the container.
-func ProbeRemoteEnv(logger log.Log, shellServer shellExec, strategy UserEnvProbeStrategy, remoteUser string, sessionDataFolder ...string) (map[string]string, error) {
+func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvProbeStrategy, remoteUser string, sessionDataFolder ...string) (map[string]string, error) {
 	if strategy == ProbeNone || strategy == "" {
 		return map[string]string{}, nil
 	}

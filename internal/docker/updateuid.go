@@ -1,20 +1,27 @@
 package docker
 
 import (
+	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 
 	"github.com/devcontainers/cli/internal/log"
-	"github.com/devcontainers/cli/internal/pfs"
 )
 
-// UpdateRemoteUserUID builds and runs a temporary image that remaps
-// the container user's UID/GID to match the host user's UID/GID.
-// This prevents permission issues with bind mounts.
-// Matches the TS updateRemoteUserUID behavior using scripts/updateUID.Dockerfile.
-func UpdateRemoteUserUID(client *Client, logger log.Log, imageName, remoteUser string, hostUID, hostGID int, useBuildx bool) (string, error) {
+// updateUIDDockerfile is the Dockerfile that remaps the container user's UID/GID,
+// embedded so the CLI stays a single self-contained binary (no runtime file
+// dependency next to the executable).
+//
+//go:embed updateUID.Dockerfile
+var updateUIDDockerfile string
+
+// UpdateRemoteUserUID builds and runs a temporary image that remaps the container
+// user's UID/GID to match the host user's, preventing bind-mount permission
+// issues. Matches the TS updateRemoteUserUID behavior.
+func UpdateRemoteUserUID(ctx context.Context, client *Client, logger log.Logger, imageName, remoteUser string, hostUID, hostGID int, useBuildx bool) (string, error) {
 	if remoteUser == "" || remoteUser == "root" {
 		return imageName, nil
 	}
@@ -24,19 +31,22 @@ func UpdateRemoteUserUID(client *Client, logger log.Log, imageName, remoteUser s
 
 	logger.Write(fmt.Sprintf("Updating remote user UID/GID to %d:%d for user %q", hostUID, hostGID, remoteUser), log.LevelInfo)
 
-	// Find the updateUID.Dockerfile
-	// It's shipped alongside the binary in scripts/ or embedded
-	dockerfilePath := findUpdateUIDDockerfile()
-	if dockerfilePath == "" {
-		logger.Write("updateUID.Dockerfile not found, skipping UID remap", log.LevelWarning)
-		return imageName, nil
+	// Materialize the embedded Dockerfile into a temp build context.
+	tmpDir, err := os.MkdirTemp("", "devcontainer-updateuid-")
+	if err != nil {
+		return imageName, fmt.Errorf("updateUID temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	dockerfilePath := filepath.Join(tmpDir, "Dockerfile")
+	if err := os.WriteFile(dockerfilePath, []byte(updateUIDDockerfile), 0o644); err != nil {
+		return imageName, fmt.Errorf("write updateUID Dockerfile: %w", err)
 	}
 
 	updatedImageName := imageName + "-uid"
 
-	result, err := client.Build(BuildOptions{
+	result, err := client.Build(ctx, BuildOptions{
 		Dockerfile:  dockerfilePath,
-		ContextPath: filepath.Dir(dockerfilePath),
+		ContextPath: tmpDir,
 		Tags:        []string{updatedImageName},
 		BuildArgs: map[string]string{
 			"BASE_IMAGE":  imageName,
@@ -57,30 +67,4 @@ func UpdateRemoteUserUID(client *Client, logger log.Log, imageName, remoteUser s
 
 	logger.Write(fmt.Sprintf("UID/GID updated: %s → %s", imageName, updatedImageName), log.LevelInfo)
 	return updatedImageName, nil
-}
-
-// findUpdateUIDDockerfile looks for the updateUID.Dockerfile in common locations.
-func findUpdateUIDDockerfile() string {
-	candidates := []string{
-		// Relative to binary
-		"scripts/updateUID.Dockerfile",
-		// Relative to working directory
-		filepath.Join(".", "scripts", "updateUID.Dockerfile"),
-	}
-
-	// Also try relative to the executable
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, "scripts", "updateUID.Dockerfile"),
-			filepath.Join(exeDir, "..", "scripts", "updateUID.Dockerfile"),
-		)
-	}
-
-	for _, c := range candidates {
-		if pfs.IsFile(c) {
-			return c
-		}
-	}
-	return ""
 }

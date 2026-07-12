@@ -72,7 +72,7 @@ func TestBuildArgsSecrets(t *testing.T) {
 func TestBuildSecretsRouteThroughEnv(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("ok"), code: 0}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
-	if _, err := c.Build(BuildOptions{UseBuildx: true, ContextPath: ".", Secrets: []string{"TOKEN=abc"}}); err != nil {
+	if _, err := c.Build(t.Context(), BuildOptions{UseBuildx: true, ContextPath: ".", Secrets: []string{"TOKEN=abc"}}); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	for _, a := range fr.gotArgs {

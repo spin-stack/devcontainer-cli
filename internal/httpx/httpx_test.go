@@ -148,7 +148,7 @@ func TestClient(t *testing.T) {
 			defer srv.Close()
 
 			c := New(tt.version)
-			resp, err := c.Do(context.Background(), tt.opts(srv.URL))
+			resp, err := c.Do(t.Context(), tt.opts(srv.URL))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -182,7 +182,7 @@ func TestDoRedirectChain(t *testing.T) {
 	defer srv.Close()
 
 	c := New("test")
-	resp, err := c.Do(context.Background(), RequestOptions{URL: srv.URL + "/a"})
+	resp, err := c.Do(t.Context(), RequestOptions{URL: srv.URL + "/a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestDoCheckRedirectPolicy(t *testing.T) {
 	c.SetCheckRedirect(func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	})
-	resp, err := c.Do(context.Background(), RequestOptions{URL: srv.URL + "/from"})
+	resp, err := c.Do(t.Context(), RequestOptions{URL: srv.URL + "/from"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestDoContextCancelled(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		<-started
 		cancel()
@@ -265,7 +265,7 @@ func TestDoContextDeadline(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 
 	c := New("test")

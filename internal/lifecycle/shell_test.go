@@ -31,7 +31,7 @@ func TestShellServerExec(t *testing.T) {
 		}
 		return "hello\n", "", 0, nil
 	}}
-	s, err := NewShellServer(context.Background(), fe, "cid", "vscode", log.Null, "FOO=bar")
+	s, err := NewShellServer(t.Context(), fe, "cid", "vscode", log.Null, "FOO=bar")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestShellServerExecError(t *testing.T) {
 	fe := &fakeExecutor{fn: func(string) (string, string, int, error) {
 		return "", "", -1, errors.New("attach failed")
 	}}
-	s, _ := NewShellServer(context.Background(), fe, "cid", "", log.Null)
+	s, _ := NewShellServer(t.Context(), fe, "cid", "", log.Null)
 	if _, _, err := s.Exec("echo hi"); err == nil {
 		t.Fatal("expected the underlying exec error to propagate")
 	}
@@ -74,7 +74,7 @@ func TestShellServerExecError(t *testing.T) {
 
 func TestShellExecutorWorkdirAndFailure(t *testing.T) {
 	fe := &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 0, nil }}
-	s, _ := NewShellServer(context.Background(), fe, "cid", "", log.Null)
+	s, _ := NewShellServer(t.Context(), fe, "cid", "", log.Null)
 	ex := &ShellExecutor{Server: s, Log: log.Null, WorkDir: "/workspaces/project"}
 
 	if err := ex.Exec("make build"); err != nil {

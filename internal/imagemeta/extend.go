@@ -26,7 +26,7 @@ type ExtendImageBuildInfo struct {
 // features on top of a base image. Matches the TS getFeaturesBuildOptions().
 func GenerateExtendImageBuild(
 	baseImage string,
-	featureSets []*features.FeatureSet,
+	featureSets []*features.Set,
 	metadata []Entry,
 	containerUser, remoteUser string,
 	useBuildKitContexts bool,
@@ -142,7 +142,7 @@ func GenerateExtendImageBuild(
 // it directly references the named base stage.
 func GenerateExtendImageBuildForCompose(
 	baseStageName string,
-	featureSets []*features.FeatureSet,
+	featureSets []*features.Set,
 	metadata []Entry,
 	containerUser, remoteUser string,
 	configContainerEnv map[string]string,
@@ -204,9 +204,9 @@ func GenerateExtendImageBuildForCompose(
 	return df.String()
 }
 
-// GetSafeID converts a string to a safe environment variable name.
+// safeID converts a string to a safe environment variable name.
 // Matches TS getSafeId().
-func GetSafeID(s string) string {
+func safeID(s string) string {
 	re := regexp.MustCompile(`[^\w_]`)
 	result := re.ReplaceAllString(s, "_")
 	reLeading := regexp.MustCompile(`^[\d_]+`)
@@ -218,7 +218,7 @@ func GetSafeID(s string) string {
 // feature install script is running. These should not persist in the final image.
 func generateFeatureBuildEnvVars(feat features.Feature, containerUser, remoteUser string) []string {
 	var envs []string
-	safeID := GetSafeID(feat.ID)
+	safeID := safeID(feat.ID)
 
 	envs = append(envs,
 		fmt.Sprintf("_CONTAINER_USER=%s", shellSingleQuote(containerUser)),

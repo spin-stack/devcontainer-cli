@@ -5,11 +5,11 @@ var (
 	name    = "devcontainer"
 )
 
-type Config struct {
+type Info struct {
 	Name    string
 	Version string
 }
 
-func GetConfig() Config {
-	return Config{Name: name, Version: version}
+func Get() Info {
+	return Info{Name: name, Version: version}
 }

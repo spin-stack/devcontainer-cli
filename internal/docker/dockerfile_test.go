@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// --- EnsureDockerfileHasFinalStageName ---
+// --- EnsureFinalStageName ---
 
 func TestEnsureFinalStageName(t *testing.T) {
 	tests := []struct {
@@ -90,7 +90,7 @@ RUN another command
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			name, modified := EnsureDockerfileHasFinalStageName(tt.dockerfile, tt.placeholder)
+			name, modified := EnsureFinalStageName(tt.dockerfile, tt.placeholder)
 			if name != tt.wantName {
 				t.Errorf("name = %q, want %q", name, tt.wantName)
 			}

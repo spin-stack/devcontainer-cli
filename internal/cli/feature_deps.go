@@ -16,7 +16,7 @@ import (
 // renders it as a mermaid flowchart (TS generateMermaidDiagram). It is used by
 // `features info` (single OCI root). Node hashes are internally consistent but
 // need not match the TS hashes byte-for-byte — the parity harness scrubs them.
-func renderDependencyMermaid(client oci.Registry, logger log.Log, roots []string) string {
+func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []string) string {
 	userFeatures := make([]features.DevContainerFeature, 0, len(roots))
 	for _, r := range roots {
 		userFeatures = append(userFeatures, features.DevContainerFeature{
@@ -37,10 +37,10 @@ func renderDependencyMermaid(client oci.Registry, logger log.Log, roots []string
 // dependsOn, installsAfter). It does not stage install content, so it is cheap
 // enough for the resolve-dependencies and mermaid consumers. OCI metadata is read
 // annotation-first with a blob fallback, matching the TS getOCIFeatureMetadata.
-func newMetadataProcessFeature(client oci.Registry, logger log.Log, basePath string, lockfile *features.Lockfile) features.ProcessFeature {
-	return func(node *features.FNode) (*features.FeatureSet, error) {
+func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath string, lockfile *features.Lockfile) features.ProcessFeature {
+	return func(node *features.FNode) (*features.Set, error) {
 		id := node.UserFeatureID
-		srcType := features.ClassifyFeatureID(id)
+		srcType := features.ClassifyID(id)
 
 		switch srcType {
 		case features.SourceLocalPath:
@@ -57,7 +57,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Log, basePath str
 			if meta.ID == "" {
 				meta.ID = id
 			}
-			return &features.FeatureSet{
+			return &features.Set{
 				SourceInfo: &features.LocalSource{LocalPath: id, ResolvedPath: resolvedPath, UserID: id},
 				Features:   []features.Feature{meta},
 			}, nil
@@ -68,13 +68,13 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Log, basePath str
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
 			}
 			meta.Value = node.Options
-			return &features.FeatureSet{
+			return &features.Set{
 				SourceInfo: &features.TarballSource{TarballURI: id, UserID: id},
 				Features:   []features.Feature{meta},
 			}, nil
 
 		default: // OCI (and legacy shorthand resolved to OCI)
-			resolvedID, _ := features.ResolveFeatureID(id, false)
+			resolvedID, _ := features.ResolveID(id, false)
 			ref, err := oci.ParseRef(resolvedID)
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
@@ -100,7 +100,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Log, basePath str
 			}
 			meta.Value = node.Options
 
-			return &features.FeatureSet{
+			return &features.Set{
 				SourceInfo: &features.OCISource{
 					Type:     "oci",
 					Registry: ref.Registry, Namespace: ref.Namespace,

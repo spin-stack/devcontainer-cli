@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,7 +18,7 @@ import (
 //   - string: run via /bin/sh -c
 //   - []string: exec directly (first element is command, rest are args)
 //   - map[string]interface{}: run each value as a string command (parallel)
-func RunInitializeCommand(logger log.Log, cmd *config.LifecycleCommand, workspaceFolder string) error {
+func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.LifecycleCommand, workspaceFolder string) error {
 	if cmd == nil || cmd.IsEmpty() {
 		return nil
 	}
@@ -26,7 +27,7 @@ func RunInitializeCommand(logger log.Log, cmd *config.LifecycleCommand, workspac
 	if s, ok := cmd.AsString(); ok {
 		resolved := substituteLocalVars(s, workspaceFolder)
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", resolved), log.LevelInfo)
-		return runHostCommand(resolved, workspaceFolder)
+		return runHostCommand(ctx, resolved, workspaceFolder)
 	}
 
 	// Array form
@@ -35,7 +36,7 @@ func RunInitializeCommand(logger log.Log, cmd *config.LifecycleCommand, workspac
 			arr[i] = substituteLocalVars(a, workspaceFolder)
 		}
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", strings.Join(arr, " ")), log.LevelInfo)
-		return runHostExec(arr, workspaceFolder)
+		return runHostExec(ctx, arr, workspaceFolder)
 	}
 
 	// Object form (parallel commands)
@@ -54,7 +55,7 @@ func RunInitializeCommand(logger log.Log, cmd *config.LifecycleCommand, workspac
 				defer wg.Done()
 				resolved := substituteLocalVars(cmdStr, workspaceFolder)
 				logger.Write(fmt.Sprintf("  [%s] %s", name, resolved), log.LevelInfo)
-				if err := runHostCommand(resolved, workspaceFolder); err != nil {
+				if err := runHostCommand(ctx, resolved, workspaceFolder); err != nil {
 					mu.Lock()
 					errs = append(errs, fmt.Errorf("%s: %w", name, err))
 					mu.Unlock()
@@ -77,16 +78,16 @@ func substituteLocalVars(s string, workspaceFolder string) string {
 	return s
 }
 
-func runHostCommand(command string, workDir string) error {
-	cmd := exec.Command("/bin/sh", "-c", command)
+func runHostCommand(ctx context.Context, command string, workDir string) error {
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	cmd.Dir = workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
-func runHostExec(args []string, workDir string) error {
-	cmd := exec.Command(args[0], args[1:]...)
+func runHostExec(ctx context.Context, args []string, workDir string) error {
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

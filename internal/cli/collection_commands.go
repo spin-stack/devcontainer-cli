@@ -3,6 +3,7 @@ package cli
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -68,7 +69,7 @@ func realFeaturesPublishCmd() *cobra.Command {
 			if len(args) > 0 {
 				target = args[0]
 			}
-			return publishCollection(resolvePath(target), registry, namespace, "feature", logLevel)
+			return publishCollection(cmd.Context(), resolvePath(target), registry, namespace, "feature", logLevel)
 		},
 	}
 
@@ -97,7 +98,7 @@ func realTemplatesPublishCmd() *cobra.Command {
 			if len(args) > 0 {
 				target = args[0]
 			}
-			return publishCollection(resolvePath(target), registry, namespace, "template", logLevel)
+			return publishCollection(cmd.Context(), resolvePath(target), registry, namespace, "template", logLevel)
 		},
 	}
 
@@ -201,7 +202,7 @@ func realFeaturesTestCmd() *cobra.Command {
 			}
 
 			logger := log.New(log.Options{
-				Level:  log.MapLogLevel(logLevel),
+				Level:  log.ParseLevel(logLevel),
 				Format: "text",
 				Writer: os.Stderr,
 			})
@@ -256,7 +257,7 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 		return err
 	}
 	logger := log.New(log.Options{
-		Level:  log.MapLogLevel(logLevelStr),
+		Level:  log.ParseLevel(logLevelStr),
 		Format: "text",
 		Writer: os.Stderr,
 	})
@@ -344,7 +345,7 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 // contains devcontainer-<type>.json + install.sh), mirroring TS's
 // packageSingleFeatureOrTemplate: it emits devcontainer-<type>-<id>.tgz plus a
 // one-element devcontainer-collection.json.
-func packageSingleItem(targetFolder, outputDir, collectionType, metaPath string, logger log.Log) error {
+func packageSingleItem(targetFolder, outputDir, collectionType, metaPath string, logger log.Logger) error {
 	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
 
 	data, _ := os.ReadFile(metaPath)
@@ -393,7 +394,7 @@ func writeCollectionMetadata(outputDir, collectionType string, collection []*ord
 // delegates to publishCollectionWith. Tests call publishCollectionWith directly
 // with a fake oci.Registry and a capturing Output to drive the partial-publish
 // error path hermetically.
-func publishCollection(targetFolder, registry, namespace, collectionType, logLevelStr string) error {
+func publishCollection(ctx context.Context, targetFolder, registry, namespace, collectionType, logLevelStr string) error {
 	// TS parity: yargs demandOption → "Missing required argument: namespace"
 	// (canonicalized by the harness), not cobra's "required flag(s) ... not set".
 	if namespace == "" {
@@ -405,17 +406,17 @@ func publishCollection(targetFolder, registry, namespace, collectionType, logLev
 		return err
 	}
 	logger := log.New(log.Options{
-		Level:  log.MapLogLevel(logLevelStr),
+		Level:  log.ParseLevel(logLevelStr),
 		Format: "text",
 		Writer: os.Stderr,
 	})
 	reg := oci.NewClient(logger, osEnvMap())
-	return publishCollectionWith(OSOutput(), reg, targetFolder, registry, namespace, collectionType, logLevelStr)
+	return publishCollectionWith(ctx, OSOutput(), reg, targetFolder, registry, namespace, collectionType, logLevelStr)
 }
 
-func publishCollectionWith(out Output, reg oci.Registry, targetFolder, registry, namespace, collectionType, logLevelStr string) error {
+func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, targetFolder, registry, namespace, collectionType, logLevelStr string) error {
 	logger := log.New(log.Options{
-		Level:  log.MapLogLevel(logLevelStr),
+		Level:  log.ParseLevel(logLevelStr),
 		Format: "text",
 		Writer: os.Stderr,
 	})
@@ -460,7 +461,7 @@ func publishCollectionWith(out Output, reg oci.Registry, targetFolder, registry,
 		}
 		// Empty on first publish (repository does not exist yet).
 		published, _ := ociClient.GetPublishedTags(ref)
-		tags, skip, tagErr := oci.GetSemanticTags(version, published)
+		tags, skip, tagErr := oci.SemanticTags(version, published)
 		if tagErr != nil {
 			logger.Write(fmt.Sprintf("(!) ERR: %v, skipping...", tagErr), log.LevelError)
 			failures++
@@ -470,7 +471,7 @@ func publishCollectionWith(out Output, reg oci.Registry, targetFolder, registry,
 			logger.Write(fmt.Sprintf("(!) WARNING: Version %s already exists, skipping %s...", version, resource), log.LevelWarning)
 			return &oci.PushResult{PublishedTags: []string{}}, true
 		}
-		pushResult, err := ociClient.PushArtifact(ref, archivePath, tags, collectionType, annotations)
+		pushResult, err := ociClient.PushArtifact(ctx, ref, archivePath, tags, collectionType, annotations)
 		if err != nil {
 			logger.Write(fmt.Sprintf("(!) ERR: Failed to publish %s: %v", resource, err), log.LevelError)
 			failures++
@@ -523,7 +524,7 @@ func publishCollectionWith(out Output, reg oci.Registry, targetFolder, registry,
 	// items are discoverable (containers.dev, `devcontainer outdated`).
 	collectionResource := fmt.Sprintf("%s/%s", registry, namespace)
 	if collRef, refErr := oci.ParseRef(collectionResource); refErr == nil {
-		if _, err := ociClient.PushCollectionMetadata(collRef, collMetaPath); err != nil {
+		if _, err := ociClient.PushCollectionMetadata(ctx, collRef, collMetaPath); err != nil {
 			logger.Write(fmt.Sprintf("(!) ERR: Failed to publish collection metadata: %v", err), log.LevelError)
 			failures++
 		}
@@ -554,7 +555,7 @@ var templatesReadmeTemplate string
 // child writes <child>/README.md from the metadata file, preserving option order.
 func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, collectionType, logLevelStr string) error {
 	logger := log.New(log.Options{
-		Level:  log.MapLogLevel(logLevelStr),
+		Level:  log.ParseLevel(logLevelStr),
 		Format: "text",
 		Writer: os.Stderr,
 	})
@@ -827,9 +828,8 @@ func createTarArchive(archivePath, sourceDir string) error {
 	defer file.Close()
 
 	tw := tar.NewWriter(file)
-	defer tw.Close()
 
-	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+	walkErr := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -872,6 +872,20 @@ func createTarArchive(archivePath, sourceDir string) error {
 		_, err = io.Copy(tw, f)
 		return err
 	})
+	if walkErr != nil {
+		return walkErr
+	}
+
+	// Close flushes the tar footer/padding; a deferred Close would drop that
+	// error and let us push a truncated archive to the registry as if it were
+	// whole.
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("finalize tar: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", archivePath, err)
+	}
+	return nil
 }
 
 func mustJSON(v interface{}) []byte {

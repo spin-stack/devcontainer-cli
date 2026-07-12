@@ -8,7 +8,7 @@ import (
 )
 
 // ProcessFeature resolves a single feature (identified by node.UserFeatureID and
-// node.Options) into a FeatureSet. The returned FeatureSet must have its
+// node.Options) into a Set. The returned Set must have its
 // SourceInfo populated and Features[0] carrying the feature metadata
 // (id/legacyIds/dependsOn/installsAfter), read annotation-first with a blob
 // fallback for OCI features. Returning (nil, nil) signals "could not be
@@ -19,7 +19,7 @@ import (
 // Go consumers (install, resolve-dependencies, mermaid) supply their own
 // implementation: the install path fetches and extracts the blob so the feature
 // can be built, while the read-only consumers only fetch enough to read metadata.
-type ProcessFeature func(node *FNode) (*FeatureSet, error)
+type ProcessFeature func(node *FNode) (*Set, error)
 
 // BuildDependencyGraph is the Go port of buildDependencyGraph from
 // containerFeaturesOrder.ts. It walks the user-provided features, recursively
@@ -32,7 +32,7 @@ type ProcessFeature func(node *FNode) (*FeatureSet, error)
 // ComputeInstallationOrder (pass a nil override there — priorities are already
 // applied here) and by GenerateMermaidDiagram.
 func BuildDependencyGraph(
-	logger log.Log,
+	logger log.Logger,
 	processFeature ProcessFeature,
 	userFeatures []DevContainerFeature,
 	overrideOrder []string,
@@ -73,7 +73,7 @@ func BuildDependencyGraph(
 // skipped without being re-added; genuine cycles are surfaced later by
 // ComputeInstallationOrder.
 func resolveDependencyGraph(
-	logger log.Log,
+	logger log.Logger,
 	processFeature ProcessFeature,
 	rootNodes []*FNode,
 ) ([]*FNode, error) {
@@ -93,7 +93,7 @@ func resolveDependencyGraph(
 		if processed == nil {
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  You may not have permission to access this Feature, or may not be logged in.  If the issue persists, report this to the Feature author.", current.UserFeatureID)
 		}
-		current.FeatureSet = processed
+		current.Set = processed
 
 		// Already in the accumulator? Skip. This stops cycles from looping here;
 		// they are reported by the round-based order calculation instead.
@@ -146,7 +146,7 @@ func resolveDependencyGraph(
 				if softSet == nil {
 					return nil, fmt.Errorf("installsAfter dependency '%s' of Feature '%s' could not be processed.", iaID, current.UserFeatureID)
 				}
-				dep.FeatureSet = softSet
+				dep.Set = softSet
 				if len(softSet.Features) > 0 {
 					dep.FeatureIDAliases = aliasesFor(softSet.Features[0])
 				}
@@ -166,7 +166,7 @@ func resolveDependencyGraph(
 // dependency (OCI identity + legacyIds). An override id that cannot be processed
 // aborts the build, unlike the previous string-prefix matcher which ignored it.
 func applyOverrideFeatureInstallOrder(
-	logger log.Log,
+	logger log.Logger,
 	processFeature ProcessFeature,
 	worklist []*FNode,
 	overrideOrder []string,
@@ -192,7 +192,7 @@ func applyOverrideFeatureInstallOrder(
 		if processed == nil {
 			return fmt.Errorf("Feature '%s' in 'overrideFeatureInstallOrder' could not be processed.", overrideID)
 		}
-		override.FeatureSet = processed
+		override.Set = processed
 		if len(processed.Features) > 0 {
 			override.FeatureIDAliases = aliasesFor(processed.Features[0])
 		}

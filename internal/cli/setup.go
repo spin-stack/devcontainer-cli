@@ -73,7 +73,7 @@ func newSetUpCmd() *cobra.Command {
 
 			logger := log.New(log.Options{
 				Version:    cliVersion(),
-				Level:      log.MapLogLevel(logLevel),
+				Level:      log.ParseLevel(logLevel),
 				Format:     logFormat,
 				Writer:     logDst,
 				Dimensions: logDimensions(terminalColumns, terminalRows),
@@ -95,7 +95,7 @@ func newSetUpCmd() *cobra.Command {
 			containerEnv := envSliceToMap(inspect.Config.Env)
 
 			// Load config if provided
-			var cfg *config.DevContainerConfig
+			var cfg *config.DevContainer
 			if configPath != "" {
 				loadResult, loadErr := config.LoadDevContainerConfig(".", resolvePath(configPath), "")
 				if loadErr == nil {

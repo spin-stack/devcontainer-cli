@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -72,7 +73,7 @@ func (e *HookError) Unwrap() error {
 
 // HookRunner runs lifecycle hooks against a merged config.
 func RunHooks(
-	logger log.Log,
+	logger log.Logger,
 	executor CommandExecutor,
 	merged *imagemeta.MergedConfig,
 	opts RunOptions,
@@ -161,7 +162,7 @@ func isPostCreatePhase(p Phase) bool {
 // executeCommand runs a single lifecycle command entry. If the command is a
 // map (object syntax), entries are executed in parallel matching TS behavior
 // (Promise.allSettled). All commands run to completion; errors are collected.
-func executeCommand(executor CommandExecutor, logger log.Log, phase Phase, cmd interface{}) error {
+func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cmd interface{}) error {
 	m, isMap := cmd.(map[string]interface{})
 	if !isMap {
 		cmdStr := commandToString(cmd)
@@ -199,14 +200,17 @@ func executeCommand(executor CommandExecutor, logger log.Log, phase Phase, cmd i
 	wg.Wait()
 	close(results)
 
-	var errs []string
+	var errs []error
 	for r := range results {
 		if r.err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", r.name, r.err))
+			// Wrap with %w (not %v) so the underlying *CommandError chain survives:
+			// errors.Join exposes Unwrap() []error, which errors.As walks, letting
+			// run_user_commands reach the CommandError just like the sequential path.
+			errs = append(errs, fmt.Errorf("%s: %w", r.name, r.err))
 		}
 	}
 	if len(errs) > 0 {
-		return &HookError{Phase: phase, Err: fmt.Errorf("%s", strings.Join(errs, "; "))}
+		return &HookError{Phase: phase, Err: errors.Join(errs...)}
 	}
 	return nil
 }

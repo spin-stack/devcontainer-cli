@@ -17,11 +17,11 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// DockerAPI is the subset of the Docker client API that EngineClient needs.
+// API is the subset of the Docker client API that EngineClient needs.
 // Defined as an interface so it can be replaced in tests. It targets the
 // moby/moby/client v29 "options-in, result-out" surface (the github.com/docker/docker
 // module is deprecated in favor of github.com/moby/moby/{client,api}).
-type DockerAPI interface {
+type API interface {
 	io.Closer
 	ContainerCreate(ctx context.Context, options mobyclient.ContainerCreateOptions) (mobyclient.ContainerCreateResult, error)
 	ContainerInspect(ctx context.Context, containerID string, options mobyclient.ContainerInspectOptions) (mobyclient.ContainerInspectResult, error)
@@ -40,15 +40,15 @@ type DockerAPI interface {
 
 // EngineClient talks to the Docker Engine via the SDK instead of shelling out.
 type EngineClient struct {
-	API DockerAPI
-	Log log.Log
+	API API
+	Log log.Logger
 }
 
 // NewEngineClient connects to the Docker daemon using environment defaults
 // (DOCKER_HOST, DOCKER_TLS_VERIFY, etc.) with automatic API version negotiation.
 // When DOCKER_HOST is not set, it resolves the active Docker context endpoint
 // to match the behavior of the Docker CLI.
-func NewEngineClient(logger log.Log, extraOpts ...mobyclient.Opt) (*EngineClient, error) {
+func NewEngineClient(logger log.Logger, extraOpts ...mobyclient.Opt) (*EngineClient, error) {
 	// API-version negotiation is enabled by default in the v29 client.
 	opts := []mobyclient.Opt{
 		mobyclient.FromEnv,
@@ -244,8 +244,8 @@ var (
 	collapsiblePattern = regexp.MustCompile(`(\.[\._-]|_[\.-]|__[\._-]|-+[\._])[\._-]*`)
 )
 
-// ToDockerImageName sanitises a string into a valid Docker image name component.
-func ToDockerImageName(name string) string {
+// ToImageName sanitises a string into a valid Docker image name component.
+func ToImageName(name string) string {
 	s := strings.ToLower(name)
 	s = invalidImageChars.ReplaceAllString(s, "")
 	s = collapsiblePattern.ReplaceAllStringFunc(s, func(m string) string {

@@ -53,7 +53,7 @@ func TestBuild_RoutesArgsThroughRunner(t *testing.T) {
 	rr := &recordingRunner{}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
 
-	_, err := c.Build(BuildOptions{
+	_, err := c.Build(t.Context(), BuildOptions{
 		Dockerfile:  "Dockerfile",
 		ContextPath: "/ctx",
 		Tags:        []string{"img:1"},
@@ -75,7 +75,7 @@ func TestTag_Args(t *testing.T) {
 	rr := &recordingRunner{}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
 
-	if err := c.Tag("src:latest", "dst:latest"); err != nil {
+	if err := c.Tag(t.Context(), "src:latest", "dst:latest"); err != nil {
 		t.Fatalf("Tag error: %v", err)
 	}
 	want := []string{"tag", "src:latest", "dst:latest"}
@@ -88,7 +88,7 @@ func TestTag_Args(t *testing.T) {
 func TestTag_NonZeroExitFails(t *testing.T) {
 	rr := &recordingRunner{responses: []cannedResponse{{stderr: []byte("no such image"), code: 1}}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
-	if err := c.Tag("a", "b"); err == nil {
+	if err := c.Tag(t.Context(), "a", "b"); err == nil {
 		t.Fatal("expected error on non-zero exit")
 	}
 }
@@ -99,7 +99,7 @@ func TestDetectBuildKit(t *testing.T) {
 	// Available: buildx version returns 0 with a version banner.
 	rr := &recordingRunner{responses: []cannedResponse{{stdout: []byte("github.com/docker/buildx v0.12.0\n"), code: 0}}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
-	info := c.DetectBuildKit()
+	info := c.DetectBuildKit(t.Context())
 	if !info.Available || info.Version != "github.com/docker/buildx v0.12.0" {
 		t.Errorf("DetectBuildKit = %+v", info)
 	}
@@ -110,7 +110,7 @@ func TestDetectBuildKit(t *testing.T) {
 	// Unavailable: non-zero exit.
 	rr2 := &recordingRunner{responses: []cannedResponse{{code: 1}}}
 	c2 := &Client{DockerPath: "docker", Log: log.Null, Runner: rr2}
-	if c2.DetectBuildKit().Available {
+	if c2.DetectBuildKit(t.Context()).Available {
 		t.Error("expected unavailable on non-zero exit")
 	}
 }
@@ -119,7 +119,7 @@ func TestDetectActiveBuilder(t *testing.T) {
 	out := "Name:   default\nDriver: docker\nNodes:\n"
 	rr := &recordingRunner{responses: []cannedResponse{{stdout: []byte(out), code: 0}}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
-	info := c.DetectActiveBuilder()
+	info := c.DetectActiveBuilder(t.Context())
 	if info.Name != "default" || info.Driver != "docker" {
 		t.Errorf("DetectActiveBuilder = %+v", info)
 	}
@@ -145,7 +145,7 @@ func TestFindDockerDriverBuilder(t *testing.T) {
 		{stdout: []byte(lsOut), code: 0},         // buildx ls
 	}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
-	if got := c.FindDockerDriverBuilder(); got != "mycontext" {
+	if got := c.FindDockerDriverBuilder(t.Context()); got != "mycontext" {
 		t.Errorf("FindDockerDriverBuilder = %q, want mycontext", got)
 	}
 
@@ -155,7 +155,7 @@ func TestFindDockerDriverBuilder(t *testing.T) {
 		{stdout: []byte(lsOut), code: 0},
 	}}
 	c2 := &Client{DockerPath: "docker", Log: log.Null, Runner: rr2}
-	if got := c2.FindDockerDriverBuilder(); got != "default" {
+	if got := c2.FindDockerDriverBuilder(t.Context()); got != "default" {
 		t.Errorf("fallback = %q, want default", got)
 	}
 }
@@ -176,7 +176,7 @@ func newComposeV2(rr *recordingRunner, version []int) *ComposeClient {
 func TestComposeRun_V2PrependsSubcommand(t *testing.T) {
 	rr := &recordingRunner{}
 	c := newComposeV2(rr, []int{2, 24, 0})
-	if _, err := c.Run("ps"); err != nil {
+	if _, err := c.Run(t.Context(), "ps"); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 	got := rr.last()
@@ -191,7 +191,7 @@ func TestComposeRun_V2PrependsSubcommand(t *testing.T) {
 func TestComposeRun_V1NoSubcommand(t *testing.T) {
 	rr := &recordingRunner{}
 	c := &ComposeClient{Command: []string{"docker-compose"}, Log: log.Null, Runner: rr}
-	if _, err := c.Run("ps"); err != nil {
+	if _, err := c.Run(t.Context(), "ps"); err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 	got := rr.last()
@@ -207,6 +207,7 @@ func TestComposeBuild_Args(t *testing.T) {
 	rr := &recordingRunner{}
 	c := newComposeV2(rr, []int{2, 24, 0})
 	err := c.Build(
+		t.Context(),
 		[]string{"docker-compose.yml", "docker-compose.override.yml"},
 		".env",
 		[]string{"--progress", "plain"},
@@ -233,7 +234,7 @@ func TestComposeBuild_Args(t *testing.T) {
 func TestComposeBuild_NoCacheOmittedNoServices(t *testing.T) {
 	rr := &recordingRunner{}
 	c := newComposeV2(rr, []int{2, 24, 0})
-	if err := c.Build([]string{"c.yml"}, "", nil, nil, false); err != nil {
+	if err := c.Build(t.Context(), []string{"c.yml"}, "", nil, nil, false); err != nil {
 		t.Fatalf("Build error: %v", err)
 	}
 	want := []string{"compose", "-f", "c.yml", "build"}
@@ -246,6 +247,7 @@ func TestComposeUp_Args(t *testing.T) {
 	rr := &recordingRunner{}
 	c := newComposeV2(rr, []int{2, 24, 0})
 	err := c.Up(
+		t.Context(),
 		[]string{"docker-compose.yml"},
 		".env",
 		[]string{"--profile", "dev"},
@@ -273,7 +275,7 @@ func TestComposeUp_Args(t *testing.T) {
 func TestComposeUp_NoProjectNoRecreate(t *testing.T) {
 	rr := &recordingRunner{}
 	c := newComposeV2(rr, []int{2, 24, 0})
-	if err := c.Up([]string{"c.yml"}, "", nil, "", nil, false); err != nil {
+	if err := c.Up(t.Context(), []string{"c.yml"}, "", nil, "", nil, false); err != nil {
 		t.Fatalf("Up error: %v", err)
 	}
 	want := []string{"compose", "-f", "c.yml", "up", "-d"}
@@ -287,7 +289,7 @@ func TestComposeConfig_ArgsAndParse(t *testing.T) {
 		{stdout: []byte(`{"services":{"app":{"image":"x"}}}`), code: 0},
 	}}
 	c := newComposeV2(rr, []int{2, 24, 0})
-	cfg, err := c.Config([]string{"c.yml"}, ".env")
+	cfg, err := c.Config(t.Context(), []string{"c.yml"}, ".env")
 	if err != nil {
 		t.Fatalf("Config error: %v", err)
 	}
@@ -309,7 +311,7 @@ func TestComposeConfig_ArgsAndParse(t *testing.T) {
 func TestComposeBuild_NonZeroExitFails(t *testing.T) {
 	rr := &recordingRunner{responses: []cannedResponse{{stderr: []byte("boom"), code: 2}}}
 	c := newComposeV2(rr, []int{2, 24, 0})
-	if err := c.Build([]string{"c.yml"}, "", nil, nil, false); err == nil {
+	if err := c.Build(t.Context(), []string{"c.yml"}, "", nil, nil, false); err == nil {
 		t.Fatal("expected error on non-zero compose exit")
 	}
 }

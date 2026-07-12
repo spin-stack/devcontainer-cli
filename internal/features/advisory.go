@@ -22,8 +22,8 @@ type DisallowedFeature struct {
 	DocumentationURL string `json:"documentationURL,omitempty"`
 }
 
-// FeatureAdvisory describes a security advisory for a feature version range.
-type FeatureAdvisory struct {
+// Advisory describes a security advisory for a feature version range.
+type Advisory struct {
 	FeatureID           string `json:"featureId"`
 	IntroducedInVersion string `json:"introducedInVersion"`
 	FixedInVersion      string `json:"fixedInVersion"`
@@ -34,7 +34,7 @@ type FeatureAdvisory struct {
 // ControlManifest contains advisories and disallowed features from containers.dev.
 type ControlManifest struct {
 	DisallowedFeatures []DisallowedFeature `json:"disallowedFeatures"`
-	FeatureAdvisories  []FeatureAdvisory   `json:"featureAdvisories"`
+	FeatureAdvisories  []Advisory          `json:"featureAdvisories"`
 }
 
 const (
@@ -45,7 +45,7 @@ const (
 
 // GetControlManifest fetches the control manifest with 5-minute caching. The
 // fetch is bound to ctx so a cancelled command aborts the (network) request.
-func GetControlManifest(ctx context.Context, cacheFolder string, httpClient *httpx.Client, logger log.Log) *ControlManifest {
+func GetControlManifest(ctx context.Context, cacheFolder string, httpClient *httpx.Client, logger log.Logger) *ControlManifest {
 	cachePath := filepath.Join(cacheFolder, controlManifestFile)
 
 	// Check cache
@@ -93,18 +93,18 @@ func GetControlManifest(ctx context.Context, cacheFolder string, httpClient *htt
 }
 
 // CheckAdvisories returns features that have active advisories.
-func CheckAdvisories(manifest *ControlManifest, featureSets []*FeatureSet) []FeatureWithAdvisory {
+func CheckAdvisories(manifest *ControlManifest, featureSets []*Set) []WithAdvisory {
 	if len(manifest.FeatureAdvisories) == 0 {
 		return nil
 	}
 
 	// Index advisories by feature ID
-	advisoryMap := make(map[string][]FeatureAdvisory)
+	advisoryMap := make(map[string][]Advisory)
 	for _, a := range manifest.FeatureAdvisories {
 		advisoryMap[a.FeatureID] = append(advisoryMap[a.FeatureID], a)
 	}
 
-	var results []FeatureWithAdvisory
+	var results []WithAdvisory
 	for _, fs := range featureSets {
 		ociSrc, ok := fs.SourceInfo.(*OCISource)
 		if !ok || len(fs.Features) == 0 {
@@ -124,7 +124,7 @@ func CheckAdvisories(manifest *ControlManifest, featureSets []*FeatureSet) []Fea
 			continue
 		}
 
-		var matching []FeatureAdvisory
+		var matching []Advisory
 		for _, a := range advisories {
 			introducedVer := parseVersion(a.IntroducedInVersion)
 			fixedVer := parseVersion(a.FixedInVersion)
@@ -138,7 +138,7 @@ func CheckAdvisories(manifest *ControlManifest, featureSets []*FeatureSet) []Fea
 		}
 
 		if len(matching) > 0 {
-			results = append(results, FeatureWithAdvisory{
+			results = append(results, WithAdvisory{
 				FeatureID:  featureID,
 				Version:    version,
 				Advisories: matching,
@@ -148,11 +148,11 @@ func CheckAdvisories(manifest *ControlManifest, featureSets []*FeatureSet) []Fea
 	return results
 }
 
-// FeatureWithAdvisory pairs a feature with its applicable advisories.
-type FeatureWithAdvisory struct {
+// WithAdvisory pairs a feature with its applicable advisories.
+type WithAdvisory struct {
 	FeatureID  string
 	Version    string
-	Advisories []FeatureAdvisory
+	Advisories []Advisory
 }
 
 // DisallowedFeatureError reports a config feature that the control manifest
@@ -228,7 +228,7 @@ func sanitizeManifest(data []byte) *ControlManifest {
 	}
 
 	if a, ok := raw["featureAdvisories"]; ok {
-		var advisories []FeatureAdvisory
+		var advisories []Advisory
 		if json.Unmarshal(a, &advisories) == nil {
 			for _, adv := range advisories {
 				if adv.FeatureID != "" && adv.IntroducedInVersion != "" && adv.FixedInVersion != "" && adv.Description != "" {
@@ -244,7 +244,7 @@ func sanitizeManifest(data []byte) *ControlManifest {
 func emptyManifest() *ControlManifest {
 	return &ControlManifest{
 		DisallowedFeatures: []DisallowedFeature{},
-		FeatureAdvisories:  []FeatureAdvisory{},
+		FeatureAdvisories:  []Advisory{},
 	}
 }
 

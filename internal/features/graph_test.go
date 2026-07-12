@@ -22,8 +22,8 @@ type stubFeature struct {
 // ids ("registry/ns/id:tag") from an in-memory registry keyed by resource. An id
 // not present in the registry resolves to (nil, nil) — "could not be processed".
 func newStubProcessFeature(registry map[string]stubFeature) ProcessFeature {
-	return func(node *FNode) (*FeatureSet, error) {
-		resource := StripVersionFromFeatureID(node.UserFeatureID)
+	return func(node *FNode) (*Set, error) {
+		resource := StripVersionFromID(node.UserFeatureID)
 		sf, ok := registry[resource]
 		if !ok {
 			return nil, nil
@@ -37,7 +37,7 @@ func newStubProcessFeature(registry map[string]stubFeature) ProcessFeature {
 		if featID == "" {
 			featID = id
 		}
-		return &FeatureSet{
+		return &Set{
 			SourceInfo: &OCISource{
 				Type:           "oci",
 				Registry:       reg,

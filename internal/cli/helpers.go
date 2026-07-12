@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -46,7 +47,7 @@ func envSliceToMap(envs []string) map[string]string {
 // features are only added if their key doesn't already exist.
 // The returned set holds the keys that originated only from --additional-features
 // (not present in config.features). These are excluded from the lockfile.
-func mergeAdditionalFeatures(cfg *config.DevContainerConfig, additionalFeaturesJSON string) (map[string]bool, error) {
+func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON string) (map[string]bool, error) {
 	if additionalFeaturesJSON == "" {
 		return nil, nil
 	}
@@ -109,7 +110,7 @@ func validateMounts(mounts []string) error {
 // logDimensions returns Dimensions for the logger if terminal size was provided.
 // cliVersion returns the CLI version for the log banner (set via ldflags).
 func cliVersion() string {
-	return product.GetConfig().Version
+	return product.Get().Version
 }
 
 // appPortPublishArgs turns the config `appPort` (number | string | array) into
@@ -174,7 +175,7 @@ func validateEnum(flagName, value string, choices []string) error {
 }
 
 // checkGPUAvailability determines if GPU should be enabled based on the flag value.
-func checkGPUAvailability(gpuFlag string, dockerClient *docker.Client) bool {
+func checkGPUAvailability(ctx context.Context, gpuFlag string, dockerClient *docker.Client) bool {
 	switch gpuFlag {
 	case "all":
 		return true
@@ -185,7 +186,7 @@ func checkGPUAvailability(gpuFlag string, dockerClient *docker.Client) bool {
 		// reports "nvidia-container-runtime". When absent, the Go template renders
 		// "<no value>", which is non-empty — so an emptiness check wrongly enabled
 		// GPUs and made `up` fail on hosts without nvidia.
-		res, err := dockerClient.Run("info", "-f", "{{.Runtimes.nvidia}}")
+		res, err := dockerClient.Run(ctx, "info", "-f", "{{.Runtimes.nvidia}}")
 		return err == nil && strings.Contains(string(res.Stdout), "nvidia-container-runtime")
 	}
 }
@@ -235,7 +236,7 @@ func secretValuesFromFile(path string) []string {
 	return values
 }
 
-func metadataMounts(cfg *config.DevContainerConfig) []interface{} {
+func metadataMounts(cfg *config.DevContainer) []interface{} {
 	if len(cfg.Mounts) == 0 {
 		return nil
 	}
@@ -359,5 +360,5 @@ func mountFromMetadata(entry interface{}, devcontainerID string) (dockermount.Mo
 func folderImageName(folderPath string) string {
 	basename := filepath.Base(folderPath)
 	hash := sha256.Sum256([]byte(folderPath))
-	return docker.ToDockerImageName(fmt.Sprintf("vsc-%s-%x", basename, hash))
+	return docker.ToImageName(fmt.Sprintf("vsc-%s-%x", basename, hash))
 }

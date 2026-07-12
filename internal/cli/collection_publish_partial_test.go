@@ -25,7 +25,7 @@ func TestPublishCollection_CollectionMetadataFailureCounts(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	err := publishCollectionWith(out, reg, target, "ghcr.io", "me/features", "feature", "info")
+	err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info")
 	if err == nil || !strings.Contains(err.Error(), "publish operation(s) failed") {
 		t.Fatalf("err = %v, want a partial-publish failure from the collection push", err)
 	}
@@ -61,7 +61,7 @@ func TestPublishCollection_SkipsAlreadyPublishedVersion(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	if err := publishCollectionWith(out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
+	if err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
 		t.Fatalf("skip path should not error: %v", err)
 	}
 	if len(reg.pushed) != 0 {
@@ -98,7 +98,7 @@ func TestPublishCollection_RepublishesLegacyIds(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	if err := publishCollectionWith(out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
+	if err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
 		t.Fatalf("publish failed: %v", err)
 	}
 

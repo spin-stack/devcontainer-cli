@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,11 +87,11 @@ func (f *fakeTemplateRegistry) GetPublishedTags(ref *oci.Ref) ([]string, error) 
 	return nil, fmt.Errorf("GetPublishedTags not used")
 }
 
-func (f *fakeTemplateRegistry) PushArtifact(ref *oci.Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*oci.PushResult, error) {
+func (f *fakeTemplateRegistry) PushArtifact(ctx context.Context, ref *oci.Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*oci.PushResult, error) {
 	return nil, fmt.Errorf("PushArtifact not used")
 }
 
-func (f *fakeTemplateRegistry) PushCollectionMetadata(ref *oci.Ref, collectionJSONPath string) (*oci.PushResult, error) {
+func (f *fakeTemplateRegistry) PushCollectionMetadata(ctx context.Context, ref *oci.Ref, collectionJSONPath string) (*oci.PushResult, error) {
 	return nil, fmt.Errorf("PushCollectionMetadata not used")
 }
 

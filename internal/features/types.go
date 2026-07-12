@@ -1,14 +1,14 @@
 package features
 
-// FeatureSet represents a resolved feature with its source and metadata.
-type FeatureSet struct {
+// Set represents a resolved feature with its source and metadata.
+type Set struct {
 	SourceInfo      SourceInfo `json:"sourceInformation"`
 	Features        []Feature  `json:"features"`
 	ComputedDigest  string     `json:"computedDigest,omitempty"`
 	InternalVersion string     `json:"internalVersion,omitempty"`
 }
 
-// Feature represents a single feature within a FeatureSet.
+// Feature represents a single feature within a Set.
 type Feature struct {
 	ID                   string                 `json:"id"`
 	Version              string                 `json:"version,omitempty"`
@@ -83,9 +83,9 @@ type LocalSource struct {
 func (s *LocalSource) SourceType() string    { return "file-path" }
 func (s *LocalSource) UserFeatureID() string { return s.UserID }
 
-// FeaturesConfig holds the fully resolved features configuration.
-type FeaturesConfig struct {
-	FeatureSets []*FeatureSet
+// Config holds the fully resolved features configuration.
+type Config struct {
+	FeatureSets []*Set
 }
 
 // DevContainerFeature is a user's feature reference from devcontainer.json.

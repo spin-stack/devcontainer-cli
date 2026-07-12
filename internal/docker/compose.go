@@ -19,7 +19,7 @@ type ComposeClient struct {
 	Command []string
 	Version []int // parsed version e.g. [2, 24, 0]
 	Env     []string
-	Log     log.Log
+	Log     log.Logger
 	// Runner is the seam over process execution. When nil, a default OS-backed
 	// runner is used.
 	Runner exec.Runner
@@ -28,7 +28,7 @@ type ComposeClient struct {
 // NewComposeClient detects Compose v2 (`docker compose`) and returns a client.
 // Compose v1 (`docker-compose`) is out of scope for this CLI; --docker-compose-path
 // is accepted for flag parity but only surfaces in the not-found error.
-func NewComposeClient(dockerPath, composePath string, env []string, logger log.Log) (*ComposeClient, error) {
+func NewComposeClient(dockerPath, composePath string, env []string, logger log.Logger) (*ComposeClient, error) {
 	if dockerPath == "" {
 		dockerPath = "docker"
 	}
@@ -46,8 +46,8 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 	return nil, fmt.Errorf("'docker compose' (v2) not found")
 }
 
-// Run executes a compose command.
-func (c *ComposeClient) Run(args ...string) (*ExecResult, error) {
+// Run executes a compose command. ctx cancels the subprocess (e.g. on SIGINT).
+func (c *ComposeClient) Run(ctx context.Context, args ...string) (*ExecResult, error) {
 	fullArgs := append(c.Command[1:], args...)
 
 	// Emit a "Run:" start/stop pair around the subprocess, like the TS CLI wraps
@@ -61,7 +61,7 @@ func (c *ComposeClient) Run(args ...string) (*ExecResult, error) {
 	if runner == nil {
 		runner = exec.OSRunner{Env: c.Env}
 	}
-	stdout, stderr, exitCode, err := runner.Run(context.Background(), c.Command[0], fullArgs...)
+	stdout, stderr, exitCode, err := runner.Run(ctx, c.Command[0], fullArgs...)
 	c.Log.Stop(runLine, startTS, log.LevelDebug)
 	if err != nil {
 		return nil, fmt.Errorf("exec compose: %w", err)
@@ -75,11 +75,11 @@ func (c *ComposeClient) Run(args ...string) (*ExecResult, error) {
 }
 
 // Config runs `docker compose config` and returns parsed YAML.
-func (c *ComposeClient) Config(composeFiles []string, envFile string) (map[string]interface{}, error) {
+func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFile string) (map[string]interface{}, error) {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	args = append(args, "config", "--format", "json")
 
-	res, err := c.Run(args...)
+	res, err := c.Run(ctx, args...)
 	if err != nil {
 		return nil, fmt.Errorf("compose config: %w", err)
 	}
@@ -95,7 +95,7 @@ func (c *ComposeClient) Config(composeFiles []string, envFile string) (map[strin
 }
 
 // Build runs `docker compose build`.
-func (c *ComposeClient) Build(composeFiles []string, envFile string, globalArgs, services []string, noCache bool) error {
+func (c *ComposeClient) Build(ctx context.Context, composeFiles []string, envFile string, globalArgs, services []string, noCache bool) error {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	args = append(args, globalArgs...)
 	args = append(args, "build")
@@ -104,7 +104,7 @@ func (c *ComposeClient) Build(composeFiles []string, envFile string, globalArgs,
 	}
 	args = append(args, services...)
 
-	res, err := c.Run(args...)
+	res, err := c.Run(ctx, args...)
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func (c *ComposeClient) Build(composeFiles []string, envFile string, globalArgs,
 }
 
 // Up runs `docker compose up`.
-func (c *ComposeClient) Up(composeFiles []string, envFile string, globalArgs []string, projectName string, services []string, noRecreate bool) error {
+func (c *ComposeClient) Up(ctx context.Context, composeFiles []string, envFile string, globalArgs []string, projectName string, services []string, noRecreate bool) error {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	if projectName != "" {
 		args = append(args, "--project-name", projectName)
@@ -127,7 +127,7 @@ func (c *ComposeClient) Up(composeFiles []string, envFile string, globalArgs []s
 	}
 	args = append(args, services...)
 
-	res, err := c.Run(args...)
+	res, err := c.Run(ctx, args...)
 	if err != nil {
 		return err
 	}

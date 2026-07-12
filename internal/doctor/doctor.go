@@ -116,7 +116,7 @@ type Env struct {
 	// ProbeDir is the base directory for the cache-export probe's temp context.
 	// Defaults to os.TempDir().
 	ProbeDir string
-	// CLIVersion stamps the Report. Defaults to product.GetConfig().Version.
+	// CLIVersion stamps the Report. Defaults to product.Get().Version.
 	CLIVersion string
 }
 

@@ -60,23 +60,23 @@ type FeatureBuildOptions struct {
 // Dockerfile, and builds the image with features installed.
 // fetchFeatureResult holds fetched features and their temp directory.
 type fetchFeatureResult struct {
-	FeatureSets []*features.FeatureSet
+	FeatureSets []*features.Set
 	TmpDir      string // caller must os.RemoveAll when done
 }
 
 // fetchFeatureSets fetches features and returns them in install order. reg is the
 // registry seam; pass nil for the default OCI client.
-func fetchFeatureSets(logger log.Log, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
+func fetchFeatureSets(logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
 	return fetchFeatureSetsWithOrder(logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
 }
 
 // fetchFeatureSetsWithOrder resolves the feature dependency graph through the
 // unified features.BuildDependencyGraph builder, applying
 // overrideFeatureInstallOrder and returning the FeatureSets in install
-// order. Each returned FeatureSet's content is staged under the returned TmpDir
+// order. Each returned Set's content is staged under the returned TmpDir
 // at _dev_container_feature_<installOrderIndex>, matching the generated
 // Dockerfile's COPY paths.
-func fetchFeatureSetsWithOrder(logger log.Log, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
@@ -111,7 +111,7 @@ func fetchFeatureSetsWithOrder(logger log.Log, reg oci.Registry, featuresCfg map
 		return dir
 	}
 
-	processFeature := func(node *features.FNode) (*features.FeatureSet, error) {
+	processFeature := func(node *features.FNode) (*features.Set, error) {
 		return processInstallFeature(logger, ociClient, node, featuresBasePath, skipAutoMapping, lockfile, nextStageDir)
 	}
 
@@ -142,20 +142,20 @@ func fetchFeatureSetsWithOrder(logger log.Log, reg oci.Registry, featuresCfg map
 
 // processInstallFeature is the install-path implementation of the processFeature
 // seam. It resolves and extracts a single feature (local / direct-tarball / OCI)
-// into a staging directory and returns a FeatureSet whose Features[0] carries the
+// into a staging directory and returns a Set whose Features[0] carries the
 // feature metadata, so the graph builder can expand its dependencies.
 func processInstallFeature(
-	logger log.Log,
+	logger log.Logger,
 	ociClient oci.Registry,
 	node *features.FNode,
 	featuresBasePath string,
 	skipAutoMapping bool,
 	lockfile *features.Lockfile,
 	nextStageDir func() string,
-) (*features.FeatureSet, error) {
+) (*features.Set, error) {
 	id := node.UserFeatureID
 	opts := node.Options
-	srcType := features.ClassifyFeatureID(id)
+	srcType := features.ClassifyID(id)
 
 	if srcType == features.SourceLegacyShorthand {
 		name := id
@@ -171,7 +171,7 @@ func processInstallFeature(
 			logger.Write(fmt.Sprintf("(!) WARNING: Falling back to the deprecated '%s' Feature. It is now part of the '%s' Feature.", name, m.MapTo), log.LevelWarning)
 			id = fmt.Sprintf("ghcr.io/devcontainers/features/%s:1", m.MapTo)
 			opts = addFeatureOption(opts, m.Option)
-			srcType = features.ClassifyFeatureID(id)
+			srcType = features.ClassifyID(id)
 		}
 	}
 
@@ -231,7 +231,7 @@ func processInstallFeature(
 			Included:             true,
 			CachePath:            featureDir,
 		}
-		return &features.FeatureSet{
+		return &features.Set{
 			SourceInfo:      &features.LocalSource{LocalPath: id, ResolvedPath: resolvedPath, UserID: id},
 			Features:        []features.Feature{feat},
 			InternalVersion: "2",
@@ -291,14 +291,14 @@ func processInstallFeature(
 			Included:             true,
 			CachePath:            featureDir,
 		}
-		return &features.FeatureSet{
+		return &features.Set{
 			SourceInfo:      &features.TarballSource{TarballURI: id, UserID: id},
 			Features:        []features.Feature{feat},
 			InternalVersion: "2",
 		}, nil
 
 	default: // OCI (and legacy shorthand resolved to OCI)
-		resolvedID, _ := features.ResolveFeatureID(id, skipAutoMapping)
+		resolvedID, _ := features.ResolveID(id, skipAutoMapping)
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %v", id, err)
@@ -379,7 +379,7 @@ func processInstallFeature(
 			userIDNoVer = id[:idx]
 		}
 
-		set := &features.FeatureSet{
+		set := &features.Set{
 			SourceInfo: &features.OCISource{
 				Type:     "oci",
 				Registry: ref.Registry, Namespace: ref.Namespace,
@@ -424,12 +424,12 @@ func processInstallFeature(
 	}
 }
 
-// realignFeatureDirs renames each ordered FeatureSet's staging directory to
+// realignFeatureDirs renames each ordered Set's staging directory to
 // _dev_container_feature_<installOrderIndex> under tmpDir, so the generated
 // Dockerfile's `COPY _dev_container_feature_<i>` resolves to the right content.
 // Orphaned staging directories (duplicates and soft-dependency probes that are
 // not installed) are removed so they don't bloat the build context.
-func realignFeatureDirs(tmpDir string, sets []*features.FeatureSet) error {
+func realignFeatureDirs(tmpDir string, sets []*features.Set) error {
 	keep := make(map[string]bool, len(sets))
 	for i, set := range sets {
 		if len(set.Features) == 0 || set.Features[0].CachePath == "" {
@@ -467,7 +467,7 @@ func realignFeatureDirs(tmpDir string, sets []*features.FeatureSet) error {
 // Returns the new image name.
 func extendImageWithFeatures(
 	ctx context.Context,
-	logger log.Log,
+	logger log.Logger,
 	dockerClient *docker.Client,
 	engine *docker.EngineClient,
 	baseImage string,
@@ -505,7 +505,7 @@ func extendImageWithFeatures(
 	// --experimental-lockfile / --experimental-frozen-lockfile flags). Writing
 	// records the resolved digests for reproducibility; frozen aborts on drift.
 	if fbOpts != nil && (fbOpts.Lockfile || fbOpts.FrozenLockfile) && fbOpts.ConfigPath != "" {
-		lf := features.GenerateLockfile(&features.FeaturesConfig{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
+		lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
 		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, fbOpts.FrozenLockfile, fbOpts.Lockfile); err != nil {
 			return nil, fmt.Errorf("lockfile: %w", err)
 		}
@@ -613,9 +613,9 @@ func extendImageWithFeatures(
 	// locally-built images (FROM $base fails with "pull access denied").
 	// Find a builder with the "docker" driver that shares the host image store.
 	if useBuildx {
-		activeBuilder := dockerClient.DetectActiveBuilder()
+		activeBuilder := dockerClient.DetectActiveBuilder(ctx)
 		if activeBuilder.Driver == "docker-container" || activeBuilder.Driver == "remote" {
-			dockerBuilder := dockerClient.FindDockerDriverBuilder()
+			dockerBuilder := dockerClient.FindDockerDriverBuilder(ctx)
 			if dockerBuilder != "" {
 				logger.Write(fmt.Sprintf("Active builder %q uses %s driver; switching to %q for feature build",
 					activeBuilder.Name, activeBuilder.Driver, dockerBuilder), log.LevelTrace)
@@ -630,7 +630,7 @@ func extendImageWithFeatures(
 	defer authCleanup()
 	buildOpts.Env = authEnv
 
-	buildResult, err := dockerClient.Build(buildOpts)
+	buildResult, err := dockerClient.Build(ctx, buildOpts)
 	if err != nil {
 		return nil, fmt.Errorf("build extended image: %w", err)
 	}
@@ -646,7 +646,7 @@ func extendImageWithFeatures(
 	return []string{outputName}, nil
 }
 
-func featureMetadataEntry(fs *features.FeatureSet, skipPersistCustoms bool) imagemeta.Entry {
+func featureMetadataEntry(fs *features.Set, skipPersistCustoms bool) imagemeta.Entry {
 	feat := fs.Features[0]
 	id := feat.ID
 	if src, ok := fs.SourceInfo.(*features.OCISource); ok && src.UserID != "" {
@@ -725,17 +725,30 @@ func extractTarGz(archivePath, destDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			os.MkdirAll(target, 0755)
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
 		case tar.TypeReg:
-			os.MkdirAll(filepath.Dir(target), 0755)
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
 			out, err := os.Create(target)
 			if err != nil {
 				return err
 			}
-			_, _ = io.Copy(out, tr)
-			out.Close()
+			// A truncated copy must fail the install, not silently produce a
+			// corrupt Feature that we report as success.
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return fmt.Errorf("extract %s: %w", target, err)
+			}
+			if err := out.Close(); err != nil {
+				return fmt.Errorf("close %s: %w", target, err)
+			}
 			if header.Mode != 0 {
-				os.Chmod(target, os.FileMode(header.Mode))
+				if err := os.Chmod(target, os.FileMode(header.Mode)); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -778,7 +791,7 @@ func addFeatureOption(opts interface{}, key string) map[string]interface{} {
 	return m
 }
 
-func featureSetIDs(sets []*features.FeatureSet) string {
+func featureSetIDs(sets []*features.Set) string {
 	ids := make([]string, len(sets))
 	for i, s := range sets {
 		if len(s.Features) > 0 {

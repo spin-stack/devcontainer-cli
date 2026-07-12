@@ -122,7 +122,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 
 	logger := log.New(log.Options{
 		Version:    cliVersion(),
-		Level:      log.MapLogLevel(opts.logLevel),
+		Level:      log.ParseLevel(opts.logLevel),
 		Format:     opts.logFormat,
 		Writer:     logDst,
 		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
@@ -171,7 +171,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	}
 
 	// Load config from --workspace-folder or --config
-	var cfg *config.DevContainerConfig
+	var cfg *config.DevContainer
 	if loadResult != nil {
 		cfg = loadResult.Config
 	} else if opts.workspaceFolder != "" || opts.configPath != "" {

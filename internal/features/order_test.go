@@ -12,7 +12,7 @@ func makeOCINode(id, registry, namespace, featureID string, deps ...*FNode) *FNo
 		Type:          "user-provided",
 		UserFeatureID: id,
 		Options:       map[string]interface{}{},
-		FeatureSet: &FeatureSet{
+		Set: &Set{
 			SourceInfo: &OCISource{
 				Registry:  registry,
 				Namespace: namespace,
@@ -142,7 +142,7 @@ func TestComputeInstallOrder(t *testing.T) {
 				local := &FNode{
 					Type:          "user-provided",
 					UserFeatureID: "./local-feat",
-					FeatureSet: &FeatureSet{
+					Set: &Set{
 						SourceInfo: &LocalSource{
 							LocalPath:    "./local-feat",
 							ResolvedPath: "/abs/local-feat",
@@ -179,7 +179,7 @@ func TestComputeInstallOrder(t *testing.T) {
 	}
 }
 
-func extractIDs(sets []*FeatureSet) []string {
+func extractIDs(sets []*Set) []string {
 	ids := make([]string, len(sets))
 	for i, s := range sets {
 		if len(s.Features) > 0 {

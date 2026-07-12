@@ -21,13 +21,13 @@ func TestCheckAdvisories(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manifest := &ControlManifest{FeatureAdvisories: []FeatureAdvisory{{
+			manifest := &ControlManifest{FeatureAdvisories: []Advisory{{
 				FeatureID:           "ghcr.io/devcontainers/features/go",
 				IntroducedInVersion: tt.introduced,
 				FixedInVersion:      tt.fixed,
 				Description:         "issue",
 			}}}
-			featureSets := []*FeatureSet{{
+			featureSets := []*Set{{
 				SourceInfo: &OCISource{Registry: "ghcr.io", Namespace: "devcontainers/features", ID: "go"},
 				Features:   []Feature{{Version: tt.version}},
 			}}

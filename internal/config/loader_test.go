@@ -114,8 +114,8 @@ func TestLoadDevContainerConfig(t *testing.T) {
 				if !result.Config.IsDockerfileConfig() {
 					t.Error("expected dockerfile config")
 				}
-				if result.Config.GetDockerfile() != "Dockerfile" {
-					t.Errorf("dockerfile = %q", result.Config.GetDockerfile())
+				if result.Config.Dockerfile() != "Dockerfile" {
+					t.Errorf("dockerfile = %q", result.Config.Dockerfile())
 				}
 			},
 		},
@@ -295,11 +295,11 @@ func TestWorkspaceFromPath(t *testing.T) {
 }
 
 func TestGetDockerComposeFilePaths_FromConfig(t *testing.T) {
-	c := &DevContainerConfig{
+	c := &DevContainer{
 		ConfigFilePath:    "/project/.devcontainer/devcontainer.json",
 		DockerComposeFile: StringOrStrings{"docker-compose.yml"},
 	}
-	paths, err := GetDockerComposeFilePaths(c, map[string]string{}, "/project")
+	paths, err := DockerComposeFilePaths(c, map[string]string{}, "/project")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,9 +312,9 @@ func TestGetDockerComposeFilePaths_FromConfig(t *testing.T) {
 }
 
 func TestGetDockerComposeFilePaths_FromEnv(t *testing.T) {
-	c := &DevContainerConfig{ConfigFilePath: "/project/devcontainer.json"}
+	c := &DevContainer{ConfigFilePath: "/project/devcontainer.json"}
 	env := map[string]string{"COMPOSE_FILE": "a.yml:b.yml"}
-	paths, err := GetDockerComposeFilePaths(c, env, "/project")
+	paths, err := DockerComposeFilePaths(c, env, "/project")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,8 +327,8 @@ func TestGetDockerComposeFilePaths_Defaults(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("version: '3'"), 0644)
 
-	c := &DevContainerConfig{ConfigFilePath: filepath.Join(dir, "devcontainer.json")}
-	paths, err := GetDockerComposeFilePaths(c, map[string]string{}, dir)
+	c := &DevContainer{ConfigFilePath: filepath.Join(dir, "devcontainer.json")}
+	paths, err := DockerComposeFilePaths(c, map[string]string{}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestGetDockerComposeFilePaths_Defaults(t *testing.T) {
 
 	// Add override
 	os.WriteFile(filepath.Join(dir, "docker-compose.override.yml"), []byte("version: '3'"), 0644)
-	paths, err = GetDockerComposeFilePaths(c, map[string]string{}, dir)
+	paths, err = DockerComposeFilePaths(c, map[string]string{}, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

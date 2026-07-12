@@ -11,12 +11,12 @@ func TestDevContainerConfig(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		check func(t *testing.T, c *DevContainerConfig)
+		check func(t *testing.T, c *DevContainer)
 	}{
 		{
 			name:  "image variant",
 			input: `{"image": "ubuntu:22.04", "remoteUser": "vscode"}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				if !c.IsImageConfig() {
 					t.Error("expected image config")
 				}
@@ -34,24 +34,24 @@ func TestDevContainerConfig(t *testing.T) {
 		{
 			name:  "dockerfile variant legacy",
 			input: `{"dockerFile": "Dockerfile", "context": "."}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				if !c.IsDockerfileConfig() {
 					t.Error("expected dockerfile config")
 				}
-				if c.GetDockerfile() != "Dockerfile" {
-					t.Errorf("dockerfile = %q", c.GetDockerfile())
+				if c.Dockerfile() != "Dockerfile" {
+					t.Errorf("dockerfile = %q", c.Dockerfile())
 				}
 			},
 		},
 		{
 			name:  "dockerfile variant build",
 			input: `{"build": {"dockerfile": "Dockerfile.dev", "target": "dev", "args": {"NODE_VERSION": "18"}}}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				if !c.IsDockerfileConfig() {
 					t.Error("expected dockerfile config")
 				}
-				if c.GetDockerfile() != "Dockerfile.dev" {
-					t.Errorf("dockerfile = %q", c.GetDockerfile())
+				if c.Dockerfile() != "Dockerfile.dev" {
+					t.Errorf("dockerfile = %q", c.Dockerfile())
 				}
 				if c.Build.Target != "dev" {
 					t.Errorf("target = %q", c.Build.Target)
@@ -64,7 +64,7 @@ func TestDevContainerConfig(t *testing.T) {
 		{
 			name:  "compose variant",
 			input: `{"dockerComposeFile": "docker-compose.yml", "service": "app", "workspaceFolder": "/workspace"}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				if !c.IsComposeConfig() {
 					t.Error("expected compose config")
 				}
@@ -79,7 +79,7 @@ func TestDevContainerConfig(t *testing.T) {
 		{
 			name:  "compose variant array",
 			input: `{"dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"], "service": "app", "workspaceFolder": "/workspace"}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				if len(c.DockerComposeFile) != 2 {
 					t.Errorf("dockerComposeFile len = %d", len(c.DockerComposeFile))
 				}
@@ -89,7 +89,7 @@ func TestDevContainerConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var c DevContainerConfig
+			var c DevContainer
 			if err := json.Unmarshal([]byte(tt.input), &c); err != nil {
 				t.Fatal(err)
 			}
@@ -102,12 +102,12 @@ func TestLifecycleCommand(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		check func(t *testing.T, c *DevContainerConfig)
+		check func(t *testing.T, c *DevContainer)
 	}{
 		{
 			name:  "string",
 			input: `{"postCreateCommand": "npm install"}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				s, ok := c.PostCreateCommand.AsString()
 				if !ok || s != "npm install" {
 					t.Errorf("postCreateCommand = %q, ok = %v", s, ok)
@@ -117,7 +117,7 @@ func TestLifecycleCommand(t *testing.T) {
 		{
 			name:  "array",
 			input: `{"postCreateCommand": ["npm", "install"]}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				arr, ok := c.PostCreateCommand.AsStringSlice()
 				if !ok || len(arr) != 2 || arr[0] != "npm" || arr[1] != "install" {
 					t.Errorf("postCreateCommand = %v, ok = %v", arr, ok)
@@ -127,7 +127,7 @@ func TestLifecycleCommand(t *testing.T) {
 		{
 			name:  "map",
 			input: `{"postCreateCommand": {"install": "npm install", "build": "npm run build"}}`,
-			check: func(t *testing.T, c *DevContainerConfig) {
+			check: func(t *testing.T, c *DevContainer) {
 				m, ok := c.PostCreateCommand.AsMap()
 				if !ok {
 					t.Fatal("expected map")
@@ -141,7 +141,7 @@ func TestLifecycleCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var c DevContainerConfig
+			var c DevContainer
 			if err := json.Unmarshal([]byte(tt.input), &c); err != nil {
 				t.Fatal(err)
 			}
@@ -152,7 +152,7 @@ func TestLifecycleCommand(t *testing.T) {
 
 func TestMountOrString_String(t *testing.T) {
 	input := `{"mounts": ["source=vol,target=/data,type=volume"]}`
-	var c DevContainerConfig
+	var c DevContainer
 	if err := json.Unmarshal([]byte(input), &c); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestMountOrString_String(t *testing.T) {
 
 func TestMountOrString_Object(t *testing.T) {
 	input := `{"mounts": [{"type": "volume", "source": "vol", "target": "/data"}]}`
-	var c DevContainerConfig
+	var c DevContainer
 	if err := json.Unmarshal([]byte(input), &c); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestStringOrStrings_Array(t *testing.T) {
 }
 
 func TestUpdateFromOldProperties(t *testing.T) {
-	c := &DevContainerConfig{
+	c := &DevContainer{
 		Extensions: []string{"ms-python.python"},
 		DevPort:    intPtr(3000),
 	}
@@ -232,7 +232,7 @@ func TestUpdateFromOldProperties(t *testing.T) {
 
 func TestFeatures(t *testing.T) {
 	input := `{"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/go:1": {"version": "1.21"}, "ghcr.io/devcontainers/features/node:1": true}}`
-	var c DevContainerConfig
+	var c DevContainer
 	if err := json.Unmarshal([]byte(input), &c); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestParseFixture_WithJSONC(t *testing.T) {
 		"postCreateCommand": "go version",
 	}`)
 
-	var c DevContainerConfig
+	var c DevContainer
 	if err := jsonc.Unmarshal(input, &c); err != nil {
 		t.Fatal(err)
 	}

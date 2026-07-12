@@ -11,20 +11,20 @@ import (
 	"time"
 )
 
-// LogLevel mirrors the TS enum values for compatibility.
-type LogLevel int
+// Level mirrors the TS enum values for compatibility.
+type Level int
 
 const (
-	LevelTrace    LogLevel = 1
-	LevelDebug    LogLevel = 2
-	LevelInfo     LogLevel = 3
-	LevelWarning  LogLevel = 4
-	LevelError    LogLevel = 5
-	LevelCritical LogLevel = 6
-	LevelOff      LogLevel = 7
+	LevelTrace    Level = 1
+	LevelDebug    Level = 2
+	LevelInfo     Level = 3
+	LevelWarning  Level = 4
+	LevelError    Level = 5
+	LevelCritical Level = 6
+	LevelOff      Level = 7
 )
 
-func (l LogLevel) String() string {
+func (l Level) String() string {
 	switch l {
 	case LevelTrace:
 		return "trace"
@@ -45,8 +45,8 @@ func (l LogLevel) String() string {
 	}
 }
 
-// MapLogLevel converts a CLI string flag to a LogLevel.
-func MapLogLevel(text string) LogLevel {
+// ParseLevel converts a CLI string flag to a Level.
+func ParseLevel(text string) Level {
 	switch strings.ToLower(text) {
 	case "trace":
 		return LevelTrace
@@ -69,25 +69,25 @@ type Dimensions struct {
 
 // Event represents a structured log event, matching the TS LogEvent union.
 type Event struct {
-	Type           string   `json:"type"`                     // "text", "raw", "start", "stop", "progress"
-	Level          LogLevel `json:"level,omitempty"`          // for text/raw/start/stop
-	Timestamp      int64    `json:"timestamp,omitempty"`      // unix millis
-	Text           string   `json:"text,omitempty"`           // for text/raw/start/stop
-	StartTimestamp int64    `json:"startTimestamp,omitempty"` // for stop
-	Name           string   `json:"name,omitempty"`           // for progress
-	Status         string   `json:"status,omitempty"`         // for progress: "running","succeeded","failed"
-	StepDetail     string   `json:"stepDetail,omitempty"`     // for progress
-	Channel        string   `json:"channel,omitempty"`        // optional grouping
+	Type           string `json:"type"`                     // "text", "raw", "start", "stop", "progress"
+	Level          Level  `json:"level,omitempty"`          // for text/raw/start/stop
+	Timestamp      int64  `json:"timestamp,omitempty"`      // unix millis
+	Text           string `json:"text,omitempty"`           // for text/raw/start/stop
+	StartTimestamp int64  `json:"startTimestamp,omitempty"` // for stop
+	Name           string `json:"name,omitempty"`           // for progress
+	Status         string `json:"status,omitempty"`         // for progress: "running","succeeded","failed"
+	StepDetail     string `json:"stepDetail,omitempty"`     // for progress
+	Channel        string `json:"channel,omitempty"`        // optional grouping
 }
 
-// Log is the primary logging interface consumed by all subsystems.
-type Log interface {
-	Write(text string, level ...LogLevel)
-	Raw(text string, level ...LogLevel)
-	Start(text string, level ...LogLevel) int64
-	Stop(text string, startTimestamp int64, level ...LogLevel)
+// Logger is the primary logging interface consumed by all subsystems.
+type Logger interface {
+	Write(text string, level ...Level)
+	Raw(text string, level ...Level)
+	Start(text string, level ...Level) int64
+	Stop(text string, startTimestamp int64, level ...Level)
 	Event(e Event)
-	GetDimensions() *Dimensions
+	Dimensions() *Dimensions
 }
 
 // Handler processes log events. Multiple handlers can be combined.
@@ -95,9 +95,9 @@ type Handler interface {
 	HandleEvent(e Event)
 }
 
-// Options configures a new Log instance.
+// Options configures a new Logger instance.
 type Options struct {
-	Level      LogLevel
+	Level      Level
 	Format     string // "text" or "json"
 	Writer     io.Writer
 	Dimensions *Dimensions
@@ -110,14 +110,14 @@ type Options struct {
 
 type logger struct {
 	handler      Handler
-	defaultLevel LogLevel
+	defaultLevel Level
 	dimensions   *Dimensions
 	secrets      []string
 }
 
-// New creates a Log from Options. It selects the appropriate handler
+// New creates a Logger from Options. It selects the appropriate handler
 // based on Format.
-func New(opts Options) Log {
+func New(opts Options) Logger {
 	if opts.Writer == nil {
 		opts.Writer = os.Stderr
 	}
@@ -196,14 +196,14 @@ func prepareSecrets(values []string) []string {
 	return out
 }
 
-func (l *logger) resolveLevel(level []LogLevel) LogLevel {
+func (l *logger) resolveLevel(level []Level) Level {
 	if len(level) > 0 {
 		return level[0]
 	}
 	return LevelDebug
 }
 
-func (l *logger) Write(text string, level ...LogLevel) {
+func (l *logger) Write(text string, level ...Level) {
 	l.Event(Event{
 		Type:      "text",
 		Level:     l.resolveLevel(level),
@@ -212,7 +212,7 @@ func (l *logger) Write(text string, level ...LogLevel) {
 	})
 }
 
-func (l *logger) Raw(text string, level ...LogLevel) {
+func (l *logger) Raw(text string, level ...Level) {
 	l.Event(Event{
 		Type:      "raw",
 		Level:     l.resolveLevel(level),
@@ -221,7 +221,7 @@ func (l *logger) Raw(text string, level ...LogLevel) {
 	})
 }
 
-func (l *logger) Start(text string, level ...LogLevel) int64 {
+func (l *logger) Start(text string, level ...Level) int64 {
 	ts := nowMillis()
 	l.Event(Event{
 		Type:      "start",
@@ -232,7 +232,7 @@ func (l *logger) Start(text string, level ...LogLevel) int64 {
 	return ts
 }
 
-func (l *logger) Stop(text string, startTimestamp int64, level ...LogLevel) {
+func (l *logger) Stop(text string, startTimestamp int64, level ...Level) {
 	l.Event(Event{
 		Type:           "stop",
 		Level:          l.resolveLevel(level),
@@ -251,31 +251,31 @@ func (l *logger) Event(e Event) {
 	l.handler.HandleEvent(e)
 }
 
-func (l *logger) GetDimensions() *Dimensions {
+func (l *logger) Dimensions() *Dimensions {
 	return l.dimensions
 }
 
 // Null is a no-op logger.
-var Null Log = &nullLog{}
+var Null Logger = &nullLog{}
 
 type nullLog struct{}
 
-func (n *nullLog) Write(string, ...LogLevel)       {}
-func (n *nullLog) Raw(string, ...LogLevel)         {}
-func (n *nullLog) Start(string, ...LogLevel) int64 { return nowMillis() }
-func (n *nullLog) Stop(string, int64, ...LogLevel) {}
-func (n *nullLog) Event(Event)                     {}
-func (n *nullLog) GetDimensions() *Dimensions      { return nil }
+func (n *nullLog) Write(string, ...Level)       {}
+func (n *nullLog) Raw(string, ...Level)         {}
+func (n *nullLog) Start(string, ...Level) int64 { return nowMillis() }
+func (n *nullLog) Stop(string, int64, ...Level) {}
+func (n *nullLog) Event(Event)                  {}
+func (n *nullLog) Dimensions() *Dimensions      { return nil }
 
 // --- Terminal handler ---
 
 type terminalHandler struct {
 	w        io.Writer
 	start    int64
-	minLevel LogLevel
+	minLevel Level
 }
 
-func newTerminalHandler(w io.Writer, start time.Time, minLevel LogLevel) Handler {
+func newTerminalHandler(w io.Writer, start time.Time, minLevel Level) Handler {
 	if minLevel == 0 {
 		minLevel = LevelInfo
 	}

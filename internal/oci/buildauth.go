@@ -23,7 +23,7 @@ import (
 // ok is false (dir "", no-op cleanup) when no credentials resolved; the caller
 // then leaves the build's ambient auth untouched — so this never regresses a
 // build that already authenticates via the environment.
-func ResolveBuildAuth(env map[string]string, registries []string, logger log.Log) (dir string, cleanup func(), ok bool, err error) {
+func ResolveBuildAuth(env map[string]string, registries []string, logger log.Logger) (dir string, cleanup func(), ok bool, err error) {
 	noop := func() {}
 
 	seen := map[string]bool{}

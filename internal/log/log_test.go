@@ -11,7 +11,7 @@ import (
 func TestMapLogLevel(t *testing.T) {
 	tests := []struct {
 		input string
-		want  LogLevel
+		want  Level
 	}{
 		{"trace", LevelTrace},
 		{"debug", LevelDebug},
@@ -23,8 +23,8 @@ func TestMapLogLevel(t *testing.T) {
 		{"", LevelInfo},
 	}
 	for _, tt := range tests {
-		if got := MapLogLevel(tt.input); got != tt.want {
-			t.Errorf("MapLogLevel(%q) = %d, want %d", tt.input, got, tt.want)
+		if got := ParseLevel(tt.input); got != tt.want {
+			t.Errorf("ParseLevel(%q) = %d, want %d", tt.input, got, tt.want)
 		}
 	}
 }
@@ -169,7 +169,7 @@ func TestNullLog(t *testing.T) {
 	ts := Null.Start("test")
 	Null.Stop("test", ts)
 	Null.Event(Event{Type: "text"})
-	if Null.GetDimensions() != nil {
+	if Null.Dimensions() != nil {
 		t.Error("Null dimensions should be nil")
 	}
 }
@@ -178,7 +178,7 @@ func TestLogLevelFilter_TerminalVsJSON(t *testing.T) {
 	// Terminal handler filters by --log-level (like the TS CLI): at info,
 	// debug/trace lines are dropped; at debug, debug shows; trace shows all.
 	cases := []struct {
-		min                            LogLevel
+		min                            Level
 		wantInfo, wantDebug, wantTrace bool
 	}{
 		{LevelInfo, true, false, false},

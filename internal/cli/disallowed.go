@@ -36,7 +36,7 @@ func cacheFolder() string {
 //
 // cfg.Features is expected to already include any --additional-features (merged in
 // by mergeAdditionalFeatures), so both are covered by checking it.
-func enforceDisallowedFeatures(ctx context.Context, cfg *config.DevContainerConfig, logger log.Log) error {
+func enforceDisallowedFeatures(ctx context.Context, cfg *config.DevContainer, logger log.Logger) error {
 	if cfg == nil || len(cfg.Features) == 0 {
 		return nil
 	}

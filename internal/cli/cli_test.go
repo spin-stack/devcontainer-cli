@@ -183,7 +183,7 @@ func TestComposeServiceConfig(t *testing.T) {
 
 func TestConfigToMetadataEntry_IncludesMountsAndUIDSetting(t *testing.T) {
 	trueValue := true
-	cfg := &config.DevContainerConfig{
+	cfg := &config.DevContainer{
 		UpdateRemoteUserUID: &trueValue,
 		Mounts: []config.MountOrString{
 			mountString("type=volume,target=/data"),
@@ -212,7 +212,7 @@ func TestConfigToMetadataEntry_IncludesMountsAndUIDSetting(t *testing.T) {
 }
 
 func TestDockerfileBuildMetadataEntries_PreservesBaseAndConfigMetadata(t *testing.T) {
-	cfg := &config.DevContainerConfig{
+	cfg := &config.DevContainer{
 		PostCreateCommand: lifecycleCommand("touch /tmp/postCreateCommand.testmarker"),
 		PostStartCommand:  lifecycleCommand("touch /tmp/postStartCommand.testmarker"),
 		PostAttachCommand: lifecycleCommand("touch /tmp/postAttachCommand.testmarker"),

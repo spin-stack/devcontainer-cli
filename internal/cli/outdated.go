@@ -144,7 +144,7 @@ func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevel
 	defer closeLog()
 
 	logger := log.New(log.Options{
-		Level:  log.MapLogLevel(logLevelStr),
+		Level:  log.ParseLevel(logLevelStr),
 		Format: logFormatStr,
 		Writer: logDst,
 	})
@@ -179,7 +179,7 @@ func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevel
 	result := make(map[string]outdatedEntry)
 
 	for id := range cfg.Features {
-		resolvedID, _ := features.ResolveFeatureID(id, false)
+		resolvedID, _ := features.ResolveID(id, false)
 
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
@@ -416,7 +416,7 @@ func newUpgradeCmd() *cobra.Command {
 			defer closeLog()
 
 			logger := log.New(log.Options{
-				Level:  log.MapLogLevel(logLevel),
+				Level:  log.ParseLevel(logLevel),
 				Format: "text",
 				Writer: logDst,
 			})
@@ -440,7 +440,7 @@ func newUpgradeCmd() *cobra.Command {
 			ociClient := oci.NewClient(logger, osEnvMap())
 
 			featureSets := resolveFeatureSets(cfg, ociClient, logger)
-			lf := features.GenerateLockfile(&features.FeaturesConfig{FeatureSets: featureSets}, nil)
+			lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, nil)
 
 			if dryRun {
 				data, _ := json.MarshalIndent(lf, "", "  ")
@@ -476,14 +476,14 @@ func newUpgradeCmd() *cobra.Command {
 	return cmd
 }
 
-func resolveFeatureSets(cfg *config.DevContainerConfig, ociClient oci.Registry, logger log.Log) []*features.FeatureSet {
+func resolveFeatureSets(cfg *config.DevContainer, ociClient oci.Registry, logger log.Logger) []*features.Set {
 	if cfg.Features == nil {
 		return nil
 	}
 
-	var sets []*features.FeatureSet
+	var sets []*features.Set
 	for id, opts := range cfg.Features {
-		resolvedID, _ := features.ResolveFeatureID(id, false)
+		resolvedID, _ := features.ResolveID(id, false)
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
 			continue
@@ -515,7 +515,7 @@ func resolveFeatureSets(cfg *config.DevContainerConfig, ociClient oci.Registry, 
 			}
 		}
 
-		set := &features.FeatureSet{
+		set := &features.Set{
 			SourceInfo: &features.OCISource{
 				Registry:       ref.Registry,
 				Namespace:      ref.Namespace,

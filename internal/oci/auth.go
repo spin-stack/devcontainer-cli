@@ -22,7 +22,7 @@ type credential struct {
 
 // getCredential resolves credentials for a registry.
 // Order: DEVCONTAINERS_OCI_AUTH → docker config/credHelper → GITHUB_TOKEN → platform default → anonymous.
-func getCredential(env map[string]string, registry string, logger log.Log) *credential {
+func getCredential(env map[string]string, registry string, logger log.Logger) *credential {
 	// 1. DEVCONTAINERS_OCI_AUTH env var
 	if ociAuth := env["DEVCONTAINERS_OCI_AUTH"]; ociAuth != "" {
 		for _, entry := range strings.Split(ociAuth, ",") {
@@ -66,7 +66,7 @@ type dockerConfigAuth struct {
 	IdentityToken string `json:"identitytoken"`
 }
 
-func getCredentialFromDockerConfig(env map[string]string, registry string, logger log.Log) *credential {
+func getCredentialFromDockerConfig(env map[string]string, registry string, logger log.Logger) *credential {
 	configPath := env["DOCKER_CONFIG"]
 	if configPath == "" {
 		home, _ := os.UserHomeDir()
@@ -119,7 +119,7 @@ func getCredentialFromDockerConfig(env map[string]string, registry string, logge
 	return nil
 }
 
-func tryPlatformDefaultHelper(registry string, logger log.Log) *credential {
+func tryPlatformDefaultHelper(registry string, logger log.Logger) *credential {
 	helper := defaultCredentialHelperName()
 	if helper == "" {
 		return nil
@@ -162,7 +162,7 @@ type credHelperResult struct {
 	Secret   string `json:"Secret"`
 }
 
-func getCredentialFromHelper(registry, helperName string, logger log.Log) *credential {
+func getCredentialFromHelper(registry, helperName string, logger log.Logger) *credential {
 	cmd := exec.Command("docker-credential-"+helperName, "get")
 	cmd.Stdin = strings.NewReader(registry)
 

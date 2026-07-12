@@ -144,7 +144,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			// 0.88: read-configuration exits 1 silently (banner only) when no
 			// config is found — it does not print an error envelope. Parse/other
 			// errors still surface normally.
-			var notFound *config.ConfigNotFoundError
+			var notFound *config.NotFoundError
 			if errors.As(loadErr, &notFound) {
 				return &coreerrors.ExitCodeError{Code: 1}
 			}
@@ -202,7 +202,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	// Find container for containerEnv substitution
-	lgr := log.New(log.Options{Version: cliVersion(), Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
+	lgr := log.New(log.Options{Version: cliVersion(), Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
 	engine, engineErr := docker.NewEngineClient(lgr)
 	if engineErr != nil {
 		// Non-fatal: container lookup features won't work but config can still be read.
@@ -269,7 +269,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	// Include features configuration if requested (or needed for merged config without container)
 	needsFeaturesConfig := opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 	if needsFeaturesConfig && result != nil && len(result.Config.Features) > 0 {
-		lgr := log.New(log.Options{Level: log.MapLogLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
+		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
 		featResult, featErr := fetchFeatureSets(lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if featErr == nil && featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
@@ -374,10 +374,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	return nil
 }
 
-// configToMetadataEntry converts a DevContainerConfig to a metadata Entry
+// configToMetadataEntry converts a DevContainer to a metadata Entry
 // for merging. When omitRemoteEnv is true, remoteEnv is excluded from the
 // entry (used for image metadata labels with --omit-config-remote-env-from-metadata).
-func configToMetadataEntry(cfg *config.DevContainerConfig, omitRemoteEnv ...bool) imagemeta.Entry {
+func configToMetadataEntry(cfg *config.DevContainer, omitRemoteEnv ...bool) imagemeta.Entry {
 	entry := imagemeta.Entry{
 		RemoteUser:          cfg.RemoteUser,
 		ContainerUser:       cfg.ContainerUser,

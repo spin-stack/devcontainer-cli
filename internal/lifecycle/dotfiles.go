@@ -15,7 +15,7 @@ type DotfilesConfig struct {
 }
 
 // InstallDotfiles clones and runs a dotfiles repository in the container.
-func InstallDotfiles(logger log.Log, executor CommandExecutor, config DotfilesConfig) error {
+func InstallDotfiles(logger log.Logger, executor CommandExecutor, config DotfilesConfig) error {
 	if config.Repository == "" {
 		return nil
 	}

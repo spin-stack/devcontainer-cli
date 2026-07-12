@@ -15,14 +15,14 @@ import (
 type Client struct {
 	DockerPath string
 	Env        []string
-	Log        log.Log
+	Log        log.Logger
 	// Runner is the seam over process execution. When nil, a default OS-backed
 	// runner is used. Tests inject a fake to avoid shelling out.
 	Runner exec.Runner
 }
 
 // NewClient creates a Docker CLI client.
-func NewClient(dockerPath string, env []string, logger log.Log) *Client {
+func NewClient(dockerPath string, env []string, logger log.Logger) *Client {
 	if dockerPath == "" {
 		dockerPath = "docker"
 	}
@@ -49,11 +49,12 @@ func (c *Client) runner() exec.Runner {
 	return exec.OSRunner{Env: c.Env}
 }
 
-// Run executes a docker command and captures output.
-func (c *Client) Run(args ...string) (*ExecResult, error) {
+// Run executes a docker command and captures output. ctx cancels the subprocess
+// (e.g. on SIGINT), so a long-running `docker build` unwinds on Ctrl-C.
+func (c *Client) Run(ctx context.Context, args ...string) (*ExecResult, error) {
 	c.Log.Write(fmt.Sprintf("Run: %s %s", c.DockerPath, strings.Join(args, " ")), log.LevelTrace)
 
-	stdout, stderr, exitCode, err := c.runner().Run(context.Background(), c.DockerPath, args...)
+	stdout, stderr, exitCode, err := c.runner().Run(ctx, c.DockerPath, args...)
 	if err != nil {
 		return nil, fmt.Errorf("exec docker: %w", err)
 	}
@@ -69,26 +70,26 @@ func (c *Client) Run(args ...string) (*ExecResult, error) {
 // entries are appended to the subprocess environment (used to point DOCKER_CONFIG
 // at a temporary credentials directory for private base-image pulls / --push /
 // --cache-to, without mutating the ambient environment).
-func (c *Client) Build(opts BuildOptions) (*ExecResult, error) {
+func (c *Client) Build(ctx context.Context, opts BuildOptions) (*ExecResult, error) {
 	args := c.buildArgs(opts)
 	// Secret values reach BuildKit through the subprocess environment (referenced
 	// by `--secret id=KEY,env=KEY`), never on the command line.
 	extraEnv := append(append([]string{}, opts.Env...), opts.Secrets...)
 	if len(extraEnv) > 0 {
-		return c.runWithEnv(extraEnv, args...)
+		return c.runWithEnv(ctx, extraEnv, args...)
 	}
-	return c.Run(args...)
+	return c.Run(ctx, args...)
 }
 
 // runWithEnv is Run with extra environment entries appended for this invocation.
-func (c *Client) runWithEnv(extraEnv []string, args ...string) (*ExecResult, error) {
+func (c *Client) runWithEnv(ctx context.Context, extraEnv []string, args ...string) (*ExecResult, error) {
 	c.Log.Write(fmt.Sprintf("Run: %s %s", c.DockerPath, strings.Join(args, " ")), log.LevelTrace)
 
 	var r exec.Runner = exec.OSRunner{Env: append(append([]string{}, c.Env...), extraEnv...)}
 	if c.Runner != nil {
 		r = c.Runner // tests inject a fake; env is irrelevant there
 	}
-	stdout, stderr, exitCode, err := r.Run(context.Background(), c.DockerPath, args...)
+	stdout, stderr, exitCode, err := r.Run(ctx, c.DockerPath, args...)
 	if err != nil {
 		return nil, fmt.Errorf("exec docker: %w", err)
 	}
@@ -198,8 +199,8 @@ func (c *Client) buildArgs(opts BuildOptions) []string {
 }
 
 // Tag runs `docker tag`.
-func (c *Client) Tag(source, target string) error {
-	res, err := c.Run("tag", source, target)
+func (c *Client) Tag(ctx context.Context, source, target string) error {
+	res, err := c.Run(ctx, "tag", source, target)
 	if err != nil {
 		return err
 	}
@@ -216,8 +217,8 @@ type BuildKitInfo struct {
 }
 
 // DetectBuildKit checks if BuildKit is available via `docker buildx version`.
-func (c *Client) DetectBuildKit() *BuildKitInfo {
-	res, err := c.Run("buildx", "version")
+func (c *Client) DetectBuildKit(ctx context.Context) *BuildKitInfo {
+	res, err := c.Run(ctx, "buildx", "version")
 	if err != nil || res.ExitCode != 0 {
 		return &BuildKitInfo{Available: false}
 	}
@@ -235,8 +236,8 @@ type BuilderInfo struct {
 }
 
 // DetectActiveBuilder returns information about the currently active buildx builder.
-func (c *Client) DetectActiveBuilder() *BuilderInfo {
-	res, err := c.Run("buildx", "inspect")
+func (c *Client) DetectActiveBuilder(ctx context.Context) *BuilderInfo {
+	res, err := c.Run(ctx, "buildx", "inspect")
 	if err != nil || res.ExitCode != 0 {
 		return &BuilderInfo{}
 	}
@@ -255,12 +256,12 @@ func (c *Client) DetectActiveBuilder() *BuilderInfo {
 
 // FindDockerDriverBuilder finds the name of a buildx builder using the "docker" driver
 // that matches the current Docker context. This builder can access local images.
-func (c *Client) FindDockerDriverBuilder() string {
+func (c *Client) FindDockerDriverBuilder(ctx context.Context) string {
 	// Get the current Docker context
-	ctxRes, _ := c.Run("context", "inspect", "--format", "{{.Name}}")
+	ctxRes, _ := c.Run(ctx, "context", "inspect", "--format", "{{.Name}}")
 	currentContext := strings.TrimSpace(string(ctxRes.Stdout))
 
-	res, err := c.Run("buildx", "ls")
+	res, err := c.Run(ctx, "buildx", "ls")
 	if err != nil || res.ExitCode != 0 {
 		return ""
 	}

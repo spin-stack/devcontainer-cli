@@ -13,7 +13,7 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// --- mock implementation of DockerAPI ---
+// --- mock implementation of API ---
 //
 // The func fields keep the "inner" moby types (container.InspectResponse, …) so
 // test setups stay concise; the interface methods wrap them into the v29
@@ -148,7 +148,7 @@ func TestInspectContainer(t *testing.T) {
 		},
 	}
 	e := newTestEngine(api)
-	resp, err := e.InspectContainer(context.Background(), "abc123")
+	resp, err := e.InspectContainer(t.Context(), "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestInspectContainers(t *testing.T) {
 		},
 	}
 	e := newTestEngine(api)
-	results, err := e.InspectContainers(context.Background(), "a", "b", "c")
+	results, err := e.InspectContainers(t.Context(), "a", "b", "c")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestInspectImage(t *testing.T) {
 		},
 	}
 	e := newTestEngine(api)
-	resp, err := e.InspectImage(context.Background(), "myimage:latest")
+	resp, err := e.InspectImage(t.Context(), "myimage:latest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestListContainers(t *testing.T) {
 		},
 	}
 	e := newTestEngine(api)
-	ids, err := e.ListContainers(context.Background(), true, []string{"devcontainer.local_folder=/project"})
+	ids, err := e.ListContainers(t.Context(), true, []string{"devcontainer.local_folder=/project"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestRemoveContainer(t *testing.T) {
 				api.eventsFn = tt.events
 			}
 			e := newTestEngine(api)
-			if err := e.RemoveContainer(context.Background(), "xyz"); err != nil {
+			if err := e.RemoveContainer(t.Context(), "xyz"); err != nil {
 				t.Fatal(err)
 			}
 			if calls != tt.wantCalls {
@@ -314,7 +314,7 @@ func TestImageTag(t *testing.T) {
 		},
 	}
 	e := newTestEngine(api)
-	if err := e.ImageTag(context.Background(), "src:v1", "dst:v2"); err != nil {
+	if err := e.ImageTag(t.Context(), "src:v1", "dst:v2"); err != nil {
 		t.Fatal(err)
 	}
 	if !tagged {
@@ -339,9 +339,9 @@ func TestToDockerImageName(t *testing.T) {
 		{"", ""},
 	}
 	for _, tt := range tests {
-		got := ToDockerImageName(tt.input)
+		got := ToImageName(tt.input)
 		if got != tt.want {
-			t.Errorf("ToDockerImageName(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("ToImageName(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
@@ -358,7 +358,7 @@ func TestEvents(t *testing.T) {
 		},
 	}
 	e := newTestEngine(api)
-	ctx := context.Background()
+	ctx := t.Context()
 	msgCh, errCh := e.Events(ctx, map[string][]string{"container": {"abc"}})
 	var msgs []events.Message
 	for msg := range msgCh {

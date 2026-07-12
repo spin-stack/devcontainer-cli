@@ -95,8 +95,7 @@ func newBuildCmd() *cobra.Command {
 // buildRunner carries the dependencies shared across the `build` flow so they
 // don't have to be threaded through every helper by hand.
 type buildRunner struct {
-	ctx    context.Context
-	log    log.Log
+	log    log.Logger
 	docker *docker.Client
 	engine *docker.EngineClient
 	opts   *buildOpts
@@ -151,7 +150,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	// Setup logger
 	logger := log.New(log.Options{
 		Version: cliVersion(),
-		Level:   log.MapLogLevel(opts.logLevel),
+		Level:   log.ParseLevel(opts.logLevel),
 		Format:  opts.logFormat,
 		Writer:  os.Stderr,
 	})
@@ -181,12 +180,12 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	}
 	defer engine.Close()
 
-	run := &buildRunner{ctx: ctx, log: logger, docker: dockerClient, engine: engine, opts: opts}
+	run := &buildRunner{log: logger, docker: dockerClient, engine: engine, opts: opts}
 
 	// Detect BuildKit
 	var useBuildx bool
 	if opts.buildkit != "never" {
-		bk := dockerClient.DetectBuildKit()
+		bk := dockerClient.DetectBuildKit(ctx)
 		useBuildx = bk.Available
 	}
 
@@ -214,12 +213,12 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	var imageNameResult []string
 
 	if cfg.IsDockerfileConfig() {
-		imageNameResult, err = run.buildDockerfile(cfg, loadResult, useBuildx)
+		imageNameResult, err = run.buildDockerfile(ctx, cfg, loadResult, useBuildx)
 	} else if cfg.IsComposeConfig() {
-		imageNameResult, err = run.buildCompose(cfg, useBuildx)
+		imageNameResult, err = run.buildCompose(ctx, cfg, useBuildx)
 	} else {
 		// Image-based config
-		imageNameResult, err = run.buildImage(cfg, loadResult, useBuildx)
+		imageNameResult, err = run.buildImage(ctx, cfg, loadResult, useBuildx)
 	}
 
 	if err != nil {
@@ -237,10 +236,10 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	})
 }
 
-func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	// Read Dockerfile
-	dockerfilePath := cfg.GetDockerfile()
+	dockerfilePath := cfg.Dockerfile()
 	if dockerfilePath == "" {
 		return nil, fmt.Errorf("no Dockerfile specified")
 	}
@@ -263,7 +262,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		stageName = cfg.Build.Target
 	} else {
 		var modifiedContent string
-		stageName, modifiedContent = docker.EnsureDockerfileHasFinalStageName(string(content), "dev_container_auto_added_stage_label")
+		stageName, modifiedContent = docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
 		if modifiedContent != "" {
 			// Write modified Dockerfile to temp location
 			tmpDockerfile := dockerfilePath + ".devcontainer.build"
@@ -303,8 +302,8 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 
 	// Build context
 	contextPath := configDir
-	if cfg.GetBuildContext() != "" {
-		contextPath = filepath.Join(configDir, cfg.GetBuildContext())
+	if cfg.BuildContext() != "" {
+		contextPath = filepath.Join(configDir, cfg.BuildContext())
 	}
 
 	// Build args from config
@@ -366,7 +365,7 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 		Secrets:     buildSecrets,
 	}
 
-	result, err := dockerClient.Build(buildOpts)
+	result, err := dockerClient.Build(ctx, buildOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -404,8 +403,8 @@ func (r *buildRunner) buildDockerfile(cfg *config.DevContainerConfig, loadResult
 	return imageNames, nil
 }
 
-func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Image == "" {
 		return nil, fmt.Errorf("no image specified in devcontainer.json")
 	}
@@ -414,7 +413,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 	// surface immediately instead of after an expensive pull.
 	if len(cfg.Features) > 0 {
 		for id := range cfg.Features {
-			srcType := features.ClassifyFeatureID(id)
+			srcType := features.ClassifyID(id)
 			if srcType == features.SourceLegacyShorthand {
 				name := id
 				if idx := strings.LastIndex(id, ":"); idx > 0 {
@@ -521,7 +520,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 		authEnv, authCleanup := bridgeBuildAuth(logger, "", featureImageNames, opts.cacheFrom, opts.cacheTo)
 		defer authCleanup()
 
-		result, buildErr := dockerClient.Build(docker.BuildOptions{
+		result, buildErr := dockerClient.Build(ctx, docker.BuildOptions{
 			Dockerfile:  dfPath,
 			ContextPath: tmpDir,
 			Tags:        featureImageNames,
@@ -560,7 +559,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 			return nil, fmt.Errorf("write temp Dockerfile: %w", err)
 		}
 
-		result, buildErr := dockerClient.Build(docker.BuildOptions{
+		result, buildErr := dockerClient.Build(ctx, docker.BuildOptions{
 			Dockerfile:  dfPath,
 			ContextPath: tmpDir,
 			Tags:        imageNames,
@@ -572,7 +571,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 		}
 		if result.ExitCode != 0 {
 			for _, name := range opts.imageNames {
-				if tagErr := dockerClient.Tag(cfg.Image, name); tagErr != nil {
+				if tagErr := dockerClient.Tag(ctx, cfg.Image, name); tagErr != nil {
 					return nil, fmt.Errorf("failed to build and tag image %q: %w", name, tagErr)
 				}
 			}
@@ -591,7 +590,7 @@ func (r *buildRunner) buildImage(cfg *config.DevContainerConfig, loadResult *con
 // (string or array). It applies only to the build of the user's Dockerfile; the
 // feature layers take the flag values alone (matching TS containerFeatures, which
 // uses additionalCacheFroms only).
-func cacheFromForDockerfileBuild(flagCacheFrom []string, cfg *config.DevContainerConfig) []string {
+func cacheFromForDockerfileBuild(flagCacheFrom []string, cfg *config.DevContainer) []string {
 	if cfg == nil || cfg.Build == nil || len(cfg.Build.CacheFrom) == 0 {
 		return flagCacheFrom
 	}
@@ -601,14 +600,14 @@ func cacheFromForDockerfileBuild(flagCacheFrom []string, cfg *config.DevContaine
 	return combined
 }
 
-func buildArgsFromConfig(cfg *config.DevContainerConfig) map[string]string {
+func buildArgsFromConfig(cfg *config.DevContainer) map[string]string {
 	if cfg.Build == nil || cfg.Build.Args == nil {
 		return map[string]string{}
 	}
 	return cfg.Build.Args
 }
 
-func dockerfileBuildMetadataEntries(cfg *config.DevContainerConfig, baseLabels map[string]string, logger log.Log) []imagemeta.Entry {
+func dockerfileBuildMetadataEntries(cfg *config.DevContainer, baseLabels map[string]string, logger log.Logger) []imagemeta.Entry {
 	metadata := []imagemeta.Entry{}
 	if len(baseLabels) > 0 {
 		metadata = append(metadata, imagemeta.ReadMetadataFromLabels(baseLabels, logger)...)
@@ -627,7 +626,7 @@ func resolvePath(p string) string {
 	return filepath.Join(cwd, p)
 }
 
-func buildOptionsFromConfig(cfg *config.DevContainerConfig) []string {
+func buildOptionsFromConfig(cfg *config.DevContainer) []string {
 	if cfg.Build == nil || len(cfg.Build.Options) == 0 {
 		return nil
 	}
@@ -669,14 +668,14 @@ func isUserFacingBuildError(err error) bool {
 	return strings.HasPrefix(msg, legacyFeaturePrefix)
 }
 
-func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx bool) ([]string, error) {
-	ctx, logger, dockerClient, engine, opts := r.ctx, r.log, r.docker, r.engine, r.opts
+func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer, useBuildx bool) ([]string, error) {
+	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
 		return nil, fmt.Errorf("dockerComposeFile config requires 'service' property")
 	}
 
 	env := osEnvMap()
-	composeFiles, err := config.GetDockerComposeFilePaths(cfg, env, filepath.Dir(cfg.ConfigFilePath))
+	composeFiles, err := config.DockerComposeFilePaths(cfg, env, filepath.Dir(cfg.ConfigFilePath))
 	if err != nil {
 		return nil, fmt.Errorf("resolve compose files: %w", err)
 	}
@@ -686,7 +685,7 @@ func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx boo
 		return nil, fmt.Errorf("compose client: %w", err)
 	}
 
-	composeConfig, err := composeClient.Config(composeFiles, "")
+	composeConfig, err := composeClient.Config(ctx, composeFiles, "")
 	if err != nil {
 		return nil, fmt.Errorf("compose config: %w", err)
 	}
@@ -706,7 +705,7 @@ func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx boo
 
 	if hasBuild {
 		logger.Write(fmt.Sprintf("Building compose service %s...", cfg.Service), log.LevelInfo)
-		buildErr := composeClient.Build(composeFiles, "", []string{"--project-name", projectName}, []string{cfg.Service}, opts.noCache)
+		buildErr := composeClient.Build(ctx, composeFiles, "", []string{"--project-name", projectName}, []string{cfg.Service}, opts.noCache)
 		if buildErr != nil {
 			return nil, fmt.Errorf("compose build: %w", buildErr)
 		}
@@ -763,7 +762,7 @@ func (r *buildRunner) buildCompose(cfg *config.DevContainerConfig, useBuildx boo
 			return nil, fmt.Errorf("write temp Dockerfile: %w", err)
 		}
 
-		result, buildErr := dockerClient.Build(docker.BuildOptions{
+		result, buildErr := dockerClient.Build(ctx, docker.BuildOptions{
 			Dockerfile:  dfPath,
 			ContextPath: tmpDir,
 			Tags:        opts.imageNames,

@@ -32,7 +32,7 @@ func TestRunUsesRunnerSeam(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("hello"), stderr: []byte("warn"), code: 7}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
 
-	res, err := c.Run("ps", "-a")
+	res, err := c.Run(t.Context(), "ps", "-a")
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestRunPropagatesRunnerError(t *testing.T) {
 	fr := &fakeRunner{err: sentinel}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
 
-	res, err := c.Run("ps")
+	res, err := c.Run(t.Context(), "ps")
 	if err == nil {
 		t.Fatal("expected error from failing runner, got nil")
 	}
@@ -70,7 +70,7 @@ func TestRunPropagatesRunnerError(t *testing.T) {
 func TestBuildWithEnvRoutesThroughRunner(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("ok"), code: 0}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
-	res, err := c.Build(BuildOptions{ContextPath: ".", Env: []string{"DOCKER_CONFIG=/tmp/x"}})
+	res, err := c.Build(t.Context(), BuildOptions{ContextPath: ".", Env: []string{"DOCKER_CONFIG=/tmp/x"}})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

@@ -166,7 +166,7 @@ func writeLocalFeature(t *testing.T, baseDir, name string, dependsOn map[string]
 }
 
 func TestFeatureMetadataEntry_SkipPersistCustomizations(t *testing.T) {
-	set := &features.FeatureSet{
+	set := &features.Set{
 		SourceInfo: &features.LocalSource{UserID: "./localFeatureA"},
 		Features: []features.Feature{{
 			ID:                "./localFeatureA",
@@ -191,7 +191,7 @@ func TestFeatureMetadataEntry_SkipPersistCustomizations(t *testing.T) {
 }
 
 func TestFeatureMetadataEntry_UsesOCIUserID(t *testing.T) {
-	set := &features.FeatureSet{
+	set := &features.Set{
 		SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/feature-starter/hello:1"},
 		Features: []features.Feature{{
 			ID: "hello",

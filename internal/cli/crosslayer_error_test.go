@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -38,7 +37,7 @@ func asExitCode(t *testing.T, err error) *coreerrors.ExitCodeError {
 
 func TestRunBuild_InvalidEnum_PreDocker(t *testing.T) {
 	out := &captureOutput{}
-	err := runBuild(context.Background(), out, &buildOpts{
+	err := runBuild(t.Context(), out, &buildOpts{
 		workspaceFolder: t.TempDir(),
 		logLevel:        "bogus", // fails validateEnum before any Docker work
 		logFormat:       "text",
@@ -66,7 +65,7 @@ func TestRunBuild_ConfigLoadError_PreDocker(t *testing.T) {
 	// failure is reported (JSON envelope on stdout, exit 1) before the engine is
 	// built.
 	out := &captureOutput{}
-	err := runBuild(context.Background(), out, &buildOpts{
+	err := runBuild(t.Context(), out, &buildOpts{
 		workspaceFolder: t.TempDir(),
 		logLevel:        "info",
 		logFormat:       "text",
@@ -87,7 +86,7 @@ func TestRunBuild_ConfigLoadError_PreDocker(t *testing.T) {
 
 func TestRunUp_InvalidMount_PreDocker(t *testing.T) {
 	out := &captureOutput{}
-	err := runUp(context.Background(), out, &upOpts{
+	err := runUp(t.Context(), out, &upOpts{
 		workspaceFolder: t.TempDir(),
 		logLevel:        "info",
 		logFormat:       "text",
@@ -110,7 +109,7 @@ func TestRunUp_InvalidMount_PreDocker(t *testing.T) {
 
 func TestRunUp_InvalidEnum_PreDocker(t *testing.T) {
 	out := &captureOutput{}
-	err := runUp(context.Background(), out, &upOpts{
+	err := runUp(t.Context(), out, &upOpts{
 		workspaceFolder: t.TempDir(),
 		logLevel:        "info",
 		logFormat:       "text",
@@ -130,7 +129,7 @@ func TestRunUp_InvalidEnum_PreDocker(t *testing.T) {
 func TestRunExec_InvalidEnum_PreDocker(t *testing.T) {
 	// runExec returns validation errors as plain errors (the top-level command
 	// maps them to exit 1). The point is they surface before the engine.
-	err := runExec(context.Background(), &execOpts{
+	err := runExec(t.Context(), &execOpts{
 		workspaceFolder: t.TempDir(),
 		logLevel:        "verbose", // not in {info, debug, trace}
 		logFormat:       "text",
@@ -150,7 +149,7 @@ func TestRunExec_InvalidEnum_PreDocker(t *testing.T) {
 func TestRunExec_ConfigLoadError_PreDocker(t *testing.T) {
 	// With a workspace folder and no --container-id, an unloadable config is
 	// returned before the engine is constructed.
-	err := runExec(context.Background(), &execOpts{
+	err := runExec(t.Context(), &execOpts{
 		workspaceFolder: t.TempDir(), // empty: no devcontainer.json
 		logLevel:        "info",
 		logFormat:       "text",

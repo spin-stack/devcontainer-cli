@@ -1,7 +1,6 @@
 package oci
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -37,7 +36,7 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 	}
 	htpasswd := user + ":" + string(hash) + "\n"
 
-	ctx := context.Background()
+	ctx := t.Context()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        "registry:3",
@@ -89,7 +88,7 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 	authEnv := dockerConfigEnv(t, registry, user, pass)
 	client := NewClient(log.Null, authEnv)
 
-	res, err := client.PushArtifact(ref, tgz, []string{"1.0.0", "latest"}, "feature", nil)
+	res, err := client.PushArtifact(t.Context(), ref, tgz, []string{"1.0.0", "latest"}, "feature", nil)
 	if err != nil {
 		t.Fatalf("authenticated push failed (401->auth->retry loop broken?): %v", err)
 	}
@@ -117,7 +116,7 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	anon := NewClient(log.Null, anonEnv)
-	if _, err := anon.PushArtifact(ref, tgz, []string{"9.9.9"}, "feature", nil); err == nil {
+	if _, err := anon.PushArtifact(t.Context(), ref, tgz, []string{"9.9.9"}, "feature", nil); err == nil {
 		t.Fatal("anonymous push unexpectedly succeeded; auth is not enforced")
 	}
 }

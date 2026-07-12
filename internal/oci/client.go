@@ -18,7 +18,7 @@ import (
 // Client performs OCI registry operations (pull manifest, download blob, list
 // tags, push artifacts) on top of oras-go.
 type Client struct {
-	log log.Log
+	log log.Logger
 	env map[string]string
 	// authCache is shared across every repository() built by this client so that
 	// a bearer token / auth challenge negotiated for one operation (e.g. a push)
@@ -35,7 +35,7 @@ type Client struct {
 
 // NewClient creates an OCI client. Auth and retries are handled by oras-go (see
 // repository()); the HTTP transport is the shared proxy/CA-aware transport.
-func NewClient(logger log.Log, env map[string]string) *Client {
+func NewClient(logger log.Logger, env map[string]string) *Client {
 	return &Client{
 		log:         logger,
 		env:         env,

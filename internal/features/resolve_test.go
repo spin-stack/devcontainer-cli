@@ -7,7 +7,7 @@ import (
 func TestClassifyFeatureID(t *testing.T) {
 	tests := []struct {
 		id   string
-		want FeatureSourceType
+		want SourceType
 	}{
 		{"ghcr.io/devcontainers/features/go:1", SourceOCI},
 		{"ghcr.io/devcontainers/features/node:latest", SourceOCI},
@@ -22,9 +22,9 @@ func TestClassifyFeatureID(t *testing.T) {
 		{"my-feature", SourceLegacyShorthand},
 	}
 	for _, tt := range tests {
-		got := ClassifyFeatureID(tt.id)
+		got := ClassifyID(tt.id)
 		if got != tt.want {
-			t.Errorf("ClassifyFeatureID(%q) = %d, want %d", tt.id, got, tt.want)
+			t.Errorf("ClassifyID(%q) = %d, want %d", tt.id, got, tt.want)
 		}
 	}
 }
@@ -100,7 +100,7 @@ func TestResolveFeatureID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, mapped := ResolveFeatureID(tt.id, tt.skipAutoMapping)
+			id, mapped := ResolveID(tt.id, tt.skipAutoMapping)
 			if id != tt.wantID {
 				t.Errorf("id = %q, want %q", id, tt.wantID)
 			}
@@ -141,9 +141,9 @@ func TestStripVersionFromFeatureID(t *testing.T) {
 		{"node:18", "node"},
 	}
 	for _, tt := range tests {
-		got := StripVersionFromFeatureID(tt.input)
+		got := StripVersionFromID(tt.input)
 		if got != tt.want {
-			t.Errorf("StripVersionFromFeatureID(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("StripVersionFromID(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

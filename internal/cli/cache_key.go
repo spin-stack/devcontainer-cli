@@ -45,10 +45,10 @@ func computeCacheKey(result *config.LoadResult, env map[string]string) (string, 
 	if err != nil {
 		return "", err
 	}
-	in := cacheKeyInput{Config: cfgJSON, Context: cfg.GetBuildContext()}
+	in := cacheKeyInput{Config: cfgJSON, Context: cfg.BuildContext()}
 
 	configDir := filepath.Dir(cfg.ConfigFilePath)
-	if df := cfg.GetDockerfile(); df != "" {
+	if df := cfg.Dockerfile(); df != "" {
 		if content, rerr := os.ReadFile(filepath.Join(configDir, df)); rerr == nil {
 			in.Dockerfile = string(content)
 		}

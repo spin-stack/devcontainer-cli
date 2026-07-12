@@ -5,20 +5,20 @@ import (
 	"strings"
 )
 
-// FeatureSourceType identifies how a feature ID should be resolved.
-type FeatureSourceType int
+// SourceType identifies how a feature ID should be resolved.
+type SourceType int
 
 const (
-	SourceOCI FeatureSourceType = iota
+	SourceOCI SourceType = iota
 	SourceDirectTarball
 	SourceLocalPath
 	SourceLegacyShorthand
 	SourceGitHubShorthand // namespace/feature without domain (e.g., codspace/myfeatures/helloworld)
 )
 
-// ClassifyFeatureID determines the source type of a feature identifier.
+// ClassifyID determines the source type of a feature identifier.
 // Matches TS processFeatureIdentifier() routing logic.
-func ClassifyFeatureID(id string) FeatureSourceType {
+func ClassifyID(id string) SourceType {
 	if strings.HasPrefix(id, "http://") || strings.HasPrefix(id, "https://") {
 		return SourceDirectTarball
 	}
@@ -85,11 +85,11 @@ func IsKnownLegacyFeature(name string) bool {
 	return ok
 }
 
-// ResolveFeatureID resolves a user-provided feature ID to its canonical OCI reference.
+// ResolveID resolves a user-provided feature ID to its canonical OCI reference.
 // For legacy shorthands, applies the deprecated feature map.
 // Returns the resolved ID and whether auto-mapping was applied.
-func ResolveFeatureID(id string, skipAutoMapping bool) (string, bool) {
-	srcType := ClassifyFeatureID(id)
+func ResolveID(id string, skipAutoMapping bool) (string, bool) {
+	srcType := ClassifyID(id)
 
 	// GitHub shorthand: namespace/feature → ghcr.io/namespace/feature
 	if srcType == SourceGitHubShorthand {
@@ -129,8 +129,8 @@ func ResolveFeatureID(id string, skipAutoMapping bool) (string, bool) {
 	return fmt.Sprintf("%s/%s%s", newFeaturePath, target, tag), true
 }
 
-// StripVersionFromFeatureID removes the version portion (:tag or @digest) from a feature ID.
-func StripVersionFromFeatureID(id string) string {
+// StripVersionFromID removes the version portion (:tag or @digest) from a feature ID.
+func StripVersionFromID(id string) string {
 	// Check for digest first
 	if idx := strings.LastIndex(id, "@"); idx > 0 {
 		return id[:idx]

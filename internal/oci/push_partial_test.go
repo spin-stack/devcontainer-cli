@@ -44,7 +44,7 @@ func TestPushArtifact_BearerAuthAndPartialTagFailure(t *testing.T) {
 	}
 	client := NewClient(log.Null, dockerConfigEnv(t, registry, user, pass))
 
-	res, err := client.PushArtifact(ref, writeTarball(t, "layer"), []string{"1.0.0", "latest"}, "feature", nil)
+	res, err := client.PushArtifact(t.Context(), ref, writeTarball(t, "layer"), []string{"1.0.0", "latest"}, "feature", nil)
 	if err != nil {
 		t.Fatalf("push returned error, want partial success: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestPushArtifact_AllTagsFail(t *testing.T) {
 	}
 	client := NewClient(log.Null, nil)
 
-	if _, err := client.PushArtifact(ref, writeTarball(t, "layer"), []string{"1", "1.0.0", "latest"}, "feature", nil); err == nil {
+	if _, err := client.PushArtifact(t.Context(), ref, writeTarball(t, "layer"), []string{"1", "1.0.0", "latest"}, "feature", nil); err == nil {
 		t.Fatal("expected an error when all tags fail, got nil")
 	}
 }
@@ -104,7 +104,7 @@ func TestPushArtifact_BlobExistsSkipsReupload(t *testing.T) {
 	client := NewClient(log.Null, nil)
 	tgz := writeTarball(t, "same-layer-bytes")
 
-	if _, err := client.PushArtifact(ref, tgz, []string{"1.0.0"}, "feature", nil); err != nil {
+	if _, err := client.PushArtifact(t.Context(), ref, tgz, []string{"1.0.0"}, "feature", nil); err != nil {
 		t.Fatalf("first push failed: %v", err)
 	}
 	reg.mu.Lock()
@@ -116,7 +116,7 @@ func TestPushArtifact_BlobExistsSkipsReupload(t *testing.T) {
 
 	// Re-publish the identical artifact under a new tag: blobs are unchanged.
 	ref2, _ := ParseRef(registry + "/ns/hello:1.0.1")
-	if _, err := client.PushArtifact(ref2, tgz, []string{"1.0.1"}, "feature", nil); err != nil {
+	if _, err := client.PushArtifact(t.Context(), ref2, tgz, []string{"1.0.1"}, "feature", nil); err != nil {
 		t.Fatalf("second push failed: %v", err)
 	}
 	reg.mu.Lock()
@@ -150,7 +150,7 @@ func TestPushCollectionMetadata_SuccessAndFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		client := NewClient(log.Null, nil)
-		res, err := client.PushCollectionMetadata(ref, collPath)
+		res, err := client.PushCollectionMetadata(t.Context(), ref, collPath)
 		if err != nil {
 			t.Fatalf("collection metadata push failed: %v", err)
 		}
@@ -174,7 +174,7 @@ func TestPushCollectionMetadata_SuccessAndFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		client := NewClient(log.Null, nil)
-		if _, err := client.PushCollectionMetadata(ref, collPath); err == nil {
+		if _, err := client.PushCollectionMetadata(t.Context(), ref, collPath); err == nil {
 			t.Fatal("expected error when the collection manifest is rejected, got nil")
 		}
 	})
@@ -184,7 +184,7 @@ func TestPushCollectionMetadata_SuccessAndFailure(t *testing.T) {
 		registry := reg.start(t)
 		ref, _ := ParseRef(registry + "/me/features")
 		client := NewClient(log.Null, nil)
-		if _, err := client.PushCollectionMetadata(ref, filepath.Join(t.TempDir(), "nope.json")); err == nil {
+		if _, err := client.PushCollectionMetadata(t.Context(), ref, filepath.Join(t.TempDir(), "nope.json")); err == nil {
 			t.Fatal("expected error for a missing metadata file, got nil")
 		}
 	})

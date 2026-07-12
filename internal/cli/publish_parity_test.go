@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +34,7 @@ func TestPublishParity(t *testing.T) {
 		t.Skip("docker required")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        "registry:3",

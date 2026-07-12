@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -218,5 +219,41 @@ func TestCommandToString_ArrayQuoted(t *testing.T) {
 	// String form passes through unchanged (runs via shell).
 	if s := commandToString("echo $HOME"); s != "echo $HOME" {
 		t.Errorf("commandToString(string) = %q", s)
+	}
+}
+
+// cmdErrExecutor returns a *CommandError on failure, mirroring ShellExecutor, so
+// we can assert the error chain survives the parallel (object-syntax) hook path.
+type cmdErrExecutor struct{ failOn string }
+
+func (e *cmdErrExecutor) Exec(command string) error {
+	if e.failOn != "" && strings.Contains(command, e.failOn) {
+		return &CommandError{Command: command, ExitCode: 1}
+	}
+	return nil
+}
+
+// Object-syntax hooks run in parallel and their errors are aggregated. The
+// aggregate must still expose the underlying *CommandError via errors.As, so
+// run_user_commands can special-case it exactly like the sequential path.
+func TestExecuteCommand_ParallelPreservesCommandError(t *testing.T) {
+	cmd := map[string]interface{}{
+		"one": "run-one",
+		"two": "run-two-fails",
+	}
+	err := executeCommand(&cmdErrExecutor{failOn: "fails"}, log.Null, PhasePostCreate, cmd)
+	if err == nil {
+		t.Fatal("expected an error from the failing parallel hook")
+	}
+	var hook *HookError
+	if !errors.As(err, &hook) {
+		t.Fatalf("expected a *HookError, got %T", err)
+	}
+	var cmdErr *CommandError
+	if !errors.As(err, &cmdErr) {
+		t.Fatalf("*CommandError chain lost in parallel aggregation: %v", err)
+	}
+	if cmdErr.ExitCode != 1 {
+		t.Errorf("unexpected exit code: %d", cmdErr.ExitCode)
 	}
 }

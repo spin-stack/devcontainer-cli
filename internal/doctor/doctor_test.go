@@ -50,7 +50,7 @@ func bigDisk(string) (uint64, error) { return 100 << 30, nil }
 
 func TestRunAllHealthy(t *testing.T) {
 	env := &Env{Runner: &scriptRunner{fn: healthyDocker}, DiskFree: bigDisk, ProbeDir: t.TempDir()}
-	rep := Run(context.Background(), env)
+	rep := Run(t.Context(), env)
 
 	if rep.Overall != StatusOK {
 		t.Fatalf("overall = %s, want ok; results=%+v", rep.Overall, rep.Results)
@@ -75,7 +75,7 @@ func TestDockerDaemonDownIsFatal(t *testing.T) {
 		}},
 		DiskFree: bigDisk, ProbeDir: t.TempDir(),
 	}
-	rep := Run(context.Background(), env)
+	rep := Run(t.Context(), env)
 	if rep.Overall != StatusFail {
 		t.Fatalf("overall = %s, want fail", rep.Overall)
 	}
@@ -91,7 +91,7 @@ func TestDockerBinaryMissing(t *testing.T) {
 		}},
 		DiskFree: bigDisk, ProbeDir: t.TempDir(),
 	}
-	rep := Run(context.Background(), env)
+	rep := Run(t.Context(), env)
 	got := findResult(t, rep, "docker-daemon")
 	if got.Status != StatusFail || !strings.Contains(got.Summary, "not found") {
 		t.Fatalf("docker-daemon = %+v, want fail 'not found'", got)
@@ -108,7 +108,7 @@ func TestCacheExportUnsupportedIsFixableWarn(t *testing.T) {
 		}},
 		DiskFree: bigDisk, ProbeDir: t.TempDir(),
 	}
-	rep := Run(context.Background(), env)
+	rep := Run(t.Context(), env)
 	got := findResult(t, rep, "build-cache-export")
 	if got.Status != StatusWarn || !got.Fixable {
 		t.Fatalf("build-cache-export = %+v, want fixable warn", got)
@@ -134,7 +134,7 @@ func TestBuildxAndComposeMissingAreWarn(t *testing.T) {
 		}},
 		DiskFree: bigDisk, ProbeDir: t.TempDir(),
 	}
-	rep := Run(context.Background(), env)
+	rep := Run(t.Context(), env)
 	for _, name := range []string{"buildx", "compose-v2"} {
 		if got := findResult(t, rep, name); got.Status != StatusWarn {
 			t.Errorf("%s = %s, want warn", name, got.Status)
@@ -148,7 +148,7 @@ func TestDiskSpaceLowWarns(t *testing.T) {
 		DiskFree: func(string) (uint64, error) { return 1 << 30, nil }, // 1 GiB < 5 GiB floor
 		ProbeDir: t.TempDir(),
 	}
-	rep := Run(context.Background(), env)
+	rep := Run(t.Context(), env)
 	got := findResult(t, rep, "disk-space")
 	if got.Status != StatusWarn || !strings.Contains(got.Summary, "low free disk") {
 		t.Fatalf("disk-space = %+v, want low-space warn", got)

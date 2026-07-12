@@ -15,7 +15,7 @@ func TestClientOperationsHonorCanceledContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	tests := []struct {
@@ -41,7 +41,7 @@ func TestClientOperationsHonorCanceledContext(t *testing.T) {
 func TestFetchManifestContextRejectsNonDomainBeforeTransport(t *testing.T) {
 	client := NewClient(log.Null, nil)
 	ref := &Ref{Registry: "registry", Path: "owner/demo", Resource: "registry/owner/demo", Version: "latest"}
-	_, err := client.FetchManifestContext(context.Background(), ref, "")
+	_, err := client.FetchManifestContext(t.Context(), ref, "")
 	if err == nil || !strings.Contains(err.Error(), "does not look like a domain") {
 		t.Fatalf("error = %v", err)
 	}

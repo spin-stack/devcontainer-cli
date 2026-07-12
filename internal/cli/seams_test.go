@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -47,7 +48,7 @@ func (f *fakeRegistry) GetPublishedTags(ref *oci.Ref) ([]string, error) {
 	return f.published[ref.Resource], nil
 }
 
-func (f *fakeRegistry) PushArtifact(ref *oci.Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*oci.PushResult, error) {
+func (f *fakeRegistry) PushArtifact(ctx context.Context, ref *oci.Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*oci.PushResult, error) {
 	if f.failIDs[ref.ID] {
 		return nil, fmt.Errorf("simulated push failure for %s", ref.ID)
 	}
@@ -58,7 +59,7 @@ func (f *fakeRegistry) PushArtifact(ref *oci.Ref, tgzPath string, tags []string,
 	return &oci.PushResult{Digest: "sha256:deadbeef", PublishedTags: tags}, nil
 }
 
-func (f *fakeRegistry) PushCollectionMetadata(ref *oci.Ref, collectionJSONPath string) (*oci.PushResult, error) {
+func (f *fakeRegistry) PushCollectionMetadata(ctx context.Context, ref *oci.Ref, collectionJSONPath string) (*oci.PushResult, error) {
 	f.collectionPush++
 	if f.failCollection {
 		return nil, fmt.Errorf("simulated collection metadata push failure")
@@ -92,7 +93,7 @@ func TestPublishCollectionPartialFailure(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	err := publishCollectionWith(out, reg, target, "ghcr.io", "me/features", "feature", "info")
+	err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info")
 	if err == nil {
 		t.Fatal("expected a partial-publish error, got nil")
 	}

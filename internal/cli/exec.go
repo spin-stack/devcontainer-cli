@@ -142,7 +142,7 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 
 	logger := log.New(log.Options{
 		Version:    cliVersion(),
-		Level:      log.MapLogLevel(opts.logLevel),
+		Level:      log.ParseLevel(opts.logLevel),
 		Format:     opts.logFormat,
 		Writer:     logDst,
 		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
@@ -357,7 +357,7 @@ func execExitCode(exitErr *exec.ExitError) int {
 // os/exec copies a command's stdout and stderr on separate goroutines, so the
 // mutex serializes writes into whole, non-interleaved raw events.
 type rawLogWriter struct {
-	logger log.Log
+	logger log.Logger
 	mu     sync.Mutex
 }
 
@@ -368,7 +368,7 @@ func (w *rawLogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Log) string {
+func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Logger) string {
 	labels := opts.idLabels
 	if len(labels) == 0 && opts.workspaceFolder != "" {
 		labels = []string{
@@ -391,7 +391,7 @@ func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts 
 	return ids[0]
 }
 
-func findComposeContainer(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Log) string {
+func findComposeContainer(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Logger) string {
 	if opts.workspaceFolder == "" {
 		return ""
 	}

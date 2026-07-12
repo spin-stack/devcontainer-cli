@@ -13,7 +13,7 @@ type FNode struct {
 	Type             string // "user-provided", "override", "resolved"
 	UserFeatureID    string
 	Options          interface{}
-	FeatureSet       *FeatureSet
+	Set              *Set
 	DependsOn        []*FNode
 	InstallsAfter    []*FNode
 	FeatureIDAliases []string
@@ -26,10 +26,10 @@ type FNode struct {
 //
 // This is the Go port of computeDependsOnInstallationOrder from containerFeaturesOrder.ts.
 func ComputeInstallationOrder(
-	logger log.Log,
+	logger log.Logger,
 	nodes []*FNode,
 	overrideOrder []string,
-) ([]*FeatureSet, error) {
+) ([]*Set, error) {
 
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("empty worklist")
@@ -37,8 +37,8 @@ func ComputeInstallationOrder(
 
 	// Verify all nodes have resolved feature sets
 	for _, n := range nodes {
-		if n.FeatureSet == nil {
-			return nil, fmt.Errorf("node %q has no resolved FeatureSet", n.UserFeatureID)
+		if n.Set == nil {
+			return nil, fmt.Errorf("node %q has no resolved Set", n.UserFeatureID)
 		}
 	}
 
@@ -113,16 +113,16 @@ func ComputeInstallationOrder(
 	}
 
 	// Extract FeatureSets
-	result := make([]*FeatureSet, len(installOrder))
+	result := make([]*Set, len(installOrder))
 	for i, n := range installOrder {
-		result[i] = n.FeatureSet
+		result[i] = n.Set
 	}
 	return result, nil
 }
 
 // --- Override priority ---
 
-func applyOverridePriority(logger log.Log, nodes []*FNode, overrideOrder []string) {
+func applyOverridePriority(logger log.Logger, nodes []*FNode, overrideOrder []string) {
 	for i := len(overrideOrder) - 1; i >= 0; i-- {
 		overrideID := overrideOrder[i]
 		priority := len(overrideOrder) - i
@@ -186,11 +186,11 @@ func anyNodeSatisfiesSoftDep(nodes []*FNode, softDep *FNode) bool {
 // nodeSatisfiesSoftDep checks if `node` satisfies `softDep` as a soft dependency.
 // Matching is by resource identity (not options/digest), accounting for legacyIds.
 func nodeSatisfiesSoftDep(node, softDep *FNode) bool {
-	if node.FeatureSet == nil || softDep.FeatureSet == nil {
+	if node.Set == nil || softDep.Set == nil {
 		return false
 	}
-	nSrc := node.FeatureSet.SourceInfo
-	sSrc := softDep.FeatureSet.SourceInfo
+	nSrc := node.Set.SourceInfo
+	sSrc := softDep.Set.SourceInfo
 	if nSrc == nil || sSrc == nil {
 		return false
 	}
@@ -228,7 +228,7 @@ func nodeSatisfiesSoftDep(node, softDep *FNode) bool {
 
 // nodesEqual checks if two nodes represent the same feature (same source + options).
 func nodesEqual(a, b *FNode) bool {
-	if a.FeatureSet == nil || b.FeatureSet == nil {
+	if a.Set == nil || b.Set == nil {
 		return false
 	}
 	return compareNodes(a, b) == 0
@@ -237,11 +237,11 @@ func nodesEqual(a, b *FNode) bool {
 // compareNodes compares two nodes for sorting.
 // Returns 0 if equal, <0 if a sorts before b, >0 if after.
 func compareNodes(a, b *FNode) int {
-	if a.FeatureSet == nil || b.FeatureSet == nil {
+	if a.Set == nil || b.Set == nil {
 		return strings.Compare(a.UserFeatureID, b.UserFeatureID)
 	}
-	aSrc := a.FeatureSet.SourceInfo
-	bSrc := b.FeatureSet.SourceInfo
+	aSrc := a.Set.SourceInfo
+	bSrc := b.Set.SourceInfo
 	if aSrc == nil || bSrc == nil {
 		return strings.Compare(a.UserFeatureID, b.UserFeatureID)
 	}
@@ -395,15 +395,15 @@ func typeName(v interface{}) string {
 }
 
 func matchesSoftDep(node *FNode, overrideID string) bool {
-	if node.FeatureSet == nil {
+	if node.Set == nil {
 		return false
 	}
-	src := node.FeatureSet.SourceInfo
+	src := node.Set.SourceInfo
 	if src == nil {
 		return false
 	}
-	strippedOverride := StripVersionFromFeatureID(overrideID)
-	strippedNode := StripVersionFromFeatureID(src.UserFeatureID())
+	strippedOverride := StripVersionFromID(overrideID)
+	strippedNode := StripVersionFromID(src.UserFeatureID())
 	return strippedOverride == strippedNode
 }
 

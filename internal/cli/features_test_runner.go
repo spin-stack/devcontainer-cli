@@ -81,7 +81,7 @@ const (
 // It creates temporary projects, spins up containers, and runs test scripts.
 func runFeaturesTestCommand(
 	out Output,
-	logger log.Log,
+	logger log.Logger,
 	collectionFolder string,
 	featuresList []string,
 	filter string,
@@ -177,7 +177,7 @@ func runFeaturesTestCommand(
 	return reportTestResults(out, results)
 }
 
-func runAutoTests(logger log.Log, collectionFolder string, features []string, baseImage, remoteUser string, quiet bool) []testResult {
+func runAutoTests(logger log.Logger, collectionFolder string, features []string, baseImage, remoteUser string, quiet bool) []testResult {
 	var results []testResult
 
 	// Create a single container with all features installed
@@ -263,7 +263,7 @@ func runAutoTests(logger log.Log, collectionFolder string, features []string, ba
 	return results
 }
 
-func runScenarioTests(logger log.Log, collectionFolder, featureTestDir, feature, filter, baseImage, remoteUser string, quiet bool) []testResult {
+func runScenarioTests(logger log.Logger, collectionFolder, featureTestDir, feature, filter, baseImage, remoteUser string, quiet bool) []testResult {
 	var results []testResult
 
 	scenariosPath := filepath.Join(featureTestDir, "scenarios.json")
@@ -385,7 +385,7 @@ func runScenarioTests(logger log.Log, collectionFolder, featureTestDir, feature,
 	return results
 }
 
-func runGlobalTests(logger log.Log, collectionFolder, filter, baseImage, remoteUser string, quiet bool) []testResult {
+func runGlobalTests(logger log.Logger, collectionFolder, filter, baseImage, remoteUser string, quiet bool) []testResult {
 	globalDir := filepath.Join(collectionFolder, "test", "_global")
 	if !pfs.IsDir(globalDir) {
 		return nil
@@ -458,7 +458,7 @@ func execTestInContainer(containerId, testScript, workspaceFolder string) bool {
 	return cmd.Run() == nil
 }
 
-func cleanupTestContainers(logger log.Log) {
+func cleanupTestContainers(logger log.Logger) {
 	cmd := exec.Command("docker", "ps", "-a", "--filter", "label=devcontainer.is_test_run=true", "--format", "{{.ID}}")
 	out, _ := cmd.Output()
 	ids := strings.Fields(strings.TrimSpace(string(out)))

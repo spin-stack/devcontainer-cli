@@ -15,7 +15,7 @@ import (
 
 // NewRootCommand creates the root `devcontainer` command with all subcommands.
 func NewRootCommand() *cobra.Command {
-	cfg := product.GetConfig()
+	cfg := product.Get()
 
 	root := &cobra.Command{
 		Use:     cfg.Name,

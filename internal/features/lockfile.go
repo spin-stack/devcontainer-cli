@@ -26,7 +26,7 @@ type LockfileEntry struct {
 // GenerateLockfile builds the lockfile from resolved feature sets. Features whose
 // userFeatureId is in excludeUserFeatureIDs are omitted — the upstream CLI does not
 // write features supplied only via --additional-features to the lockfile.
-func GenerateLockfile(config *FeaturesConfig, excludeUserFeatureIDs map[string]bool) *Lockfile {
+func GenerateLockfile(config *Config, excludeUserFeatureIDs map[string]bool) *Lockfile {
 	type entry struct {
 		id    string
 		entry LockfileEntry
@@ -94,7 +94,7 @@ func GenerateLockfile(config *FeaturesConfig, excludeUserFeatureIDs map[string]b
 // Returns (lockfile, initLockfile, error).
 // If the file is empty, initLockfile=true (marker to initialize on next build).
 func ReadLockfile(configPath string) (*Lockfile, bool, error) {
-	path := GetLockfilePath(configPath)
+	path := LockfilePath(configPath)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -118,7 +118,7 @@ func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 // WriteLockfile writes a lockfile to disk.
 // If frozen is true and the lockfile has changed, returns an error.
 func WriteLockfile(configPath string, lockfile *Lockfile, frozen bool, force bool) error {
-	path := GetLockfilePath(configPath)
+	path := LockfilePath(configPath)
 
 	newData, err := json.MarshalIndent(lockfile, "", "  ")
 	if err != nil {
@@ -153,10 +153,10 @@ func WriteLockfile(configPath string, lockfile *Lockfile, frozen bool, force boo
 	return os.WriteFile(path, newData, 0644)
 }
 
-// GetLockfilePath returns the lockfile path for a given config path.
+// LockfilePath returns the lockfile path for a given config path.
 // If config is .devcontainer.json → .devcontainer-lock.json
 // If config is devcontainer.json → devcontainer-lock.json
-func GetLockfilePath(configPath string) string {
+func LockfilePath(configPath string) string {
 	dir := filepath.Dir(configPath)
 	base := filepath.Base(configPath)
 	if strings.HasPrefix(base, ".") {

@@ -10,7 +10,7 @@ import (
 )
 
 func imageResult(image, cfgPath string) *config.LoadResult {
-	return &config.LoadResult{Config: &config.DevContainerConfig{Image: image, ConfigFilePath: cfgPath}}
+	return &config.LoadResult{Config: &config.DevContainer{Image: image, ConfigFilePath: cfgPath}}
 }
 
 func TestComputeCacheKeyFormatAndDeterminism(t *testing.T) {
@@ -58,9 +58,9 @@ func TestComputeCacheKeyIncludesDockerfile(t *testing.T) {
 	if err := os.WriteFile(dfPath, []byte("FROM ubuntu:22.04\nRUN echo v1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &config.LoadResult{Config: &config.DevContainerConfig{
+	r := &config.LoadResult{Config: &config.DevContainer{
 		ConfigFilePath: cfgPath,
-		Build:          &config.BuildConfig{Dockerfile: "Dockerfile"},
+		Build:          &config.Build{Dockerfile: "Dockerfile"},
 	}}
 	k1, err := computeCacheKey(r, nil)
 	if err != nil {
