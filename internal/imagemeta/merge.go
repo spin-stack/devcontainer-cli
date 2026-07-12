@@ -1,5 +1,12 @@
 package imagemeta
 
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
 // MergedConfig holds the result of merging devcontainer.json config with
 // image metadata entries. Lifecycle hooks are accumulated as arrays.
 type MergedConfig struct {
@@ -55,31 +62,35 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 	// Process entries in order. For lifecycle hooks, iterate all.
 	// For scalars, the last non-empty value wins (iterate in reverse for scalars).
 	for _, e := range entries {
-		// Lifecycle hooks — always append
-		if e.OnCreateCommand != nil {
+		// Lifecycle hooks — collect every truthy command (TS `if (command)`), so an
+		// empty-string command is skipped rather than emitted as a spurious "" entry.
+		if isNonEmptyCommand(e.OnCreateCommand) {
 			m.OnCreateCommands = append(m.OnCreateCommands, e.OnCreateCommand)
 		}
-		if e.UpdateContentCommand != nil {
+		if isNonEmptyCommand(e.UpdateContentCommand) {
 			m.UpdateContentCommands = append(m.UpdateContentCommands, e.UpdateContentCommand)
 		}
-		if e.PostCreateCommand != nil {
+		if isNonEmptyCommand(e.PostCreateCommand) {
 			m.PostCreateCommands = append(m.PostCreateCommands, e.PostCreateCommand)
 		}
-		if e.PostStartCommand != nil {
+		if isNonEmptyCommand(e.PostStartCommand) {
 			m.PostStartCommands = append(m.PostStartCommands, e.PostStartCommand)
 		}
-		if e.PostAttachCommand != nil {
+		if isNonEmptyCommand(e.PostAttachCommand) {
 			m.PostAttachCommands = append(m.PostAttachCommands, e.PostAttachCommand)
 		}
 
-		// Entrypoints — collect from features
+		// Entrypoints — collect ALL non-empty entrypoints (TS collectOrUndefined has
+		// NO de-dup): two features that register the same entrypoint script must both
+		// run, so appendUnique would wrongly drop one.
 		if e.Entrypoint != "" {
-			m.Entrypoints = appendUnique(m.Entrypoints, []string{e.Entrypoint})
+			m.Entrypoints = append(m.Entrypoints, e.Entrypoint)
 		}
 
 		// Arrays — union
 		m.CapAdd = appendUnique(m.CapAdd, e.CapAdd)
 		m.SecurityOpt = appendUnique(m.SecurityOpt, e.SecurityOpt)
+		// forwardPorts/mounts accumulate here and are de-duplicated after the loop.
 		m.ForwardPorts = append(m.ForwardPorts, e.ForwardPorts...)
 		m.Mounts = append(m.Mounts, e.Mounts...)
 
@@ -138,9 +149,6 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		if m.OtherPortsAttributes == nil && e.OtherPortsAttributes != nil {
 			m.OtherPortsAttributes = e.OtherPortsAttributes
 		}
-		if m.HostRequirements == nil && e.HostRequirements != nil {
-			m.HostRequirements = e.HostRequirements
-		}
 		if len(m.RunArgs) == 0 && len(e.RunArgs) > 0 {
 			m.RunArgs = append([]string{}, e.RunArgs...)
 		}
@@ -152,7 +160,229 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		}
 	}
 
+	// mounts: keep the LAST mount per target (TS mergeMounts de-dupes by target),
+	// so a later feature/config mount overrides an earlier one to the same path.
+	m.Mounts = dedupeMountsByTarget(m.Mounts)
+	// forwardPorts: de-dupe, treating the number N and the string "localhost:N" as
+	// the same port (TS mergeForwardPorts normalizes then Set-de-dupes).
+	m.ForwardPorts = dedupeForwardPorts(m.ForwardPorts)
+	// hostRequirements: per-field max across all entries (TS mergeHostRequirements),
+	// not last-wins of the whole object.
+	m.HostRequirements = mergeHostRequirements(entries)
+
 	return m
+}
+
+// isNonEmptyCommand reports whether a lifecycle command is "truthy" the way TS
+// treats it: a nil or empty-string command is skipped; arrays/objects are kept.
+func isNonEmptyCommand(cmd interface{}) bool {
+	return cmd != nil && cmd != ""
+}
+
+// mountTarget returns the container-side target of a mount (object or string
+// spec), used as the de-dup key. A string with no target= key is its own key so
+// distinct strings never collide.
+func mountTarget(mnt interface{}) string {
+	switch v := mnt.(type) {
+	case map[string]interface{}:
+		t, _ := v["target"].(string)
+		return t
+	case string:
+		for _, part := range strings.Split(v, ",") {
+			k, val, ok := strings.Cut(part, "=")
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(k) {
+			case "target", "destination", "dst":
+				return val
+			}
+		}
+		return v
+	}
+	return ""
+}
+
+func dedupeMountsByTarget(mounts []interface{}) []interface{} {
+	if len(mounts) == 0 {
+		return mounts
+	}
+	lastIdx := make(map[string]int, len(mounts))
+	for i, mnt := range mounts {
+		lastIdx[mountTarget(mnt)] = i
+	}
+	out := make([]interface{}, 0, len(mounts))
+	for i, mnt := range mounts {
+		if lastIdx[mountTarget(mnt)] == i {
+			out = append(out, mnt)
+		}
+	}
+	return out
+}
+
+// forwardPortNumber returns (N, true) for a numeric port (number or numeric
+// string is NOT treated as a number by TS — only actual JSON numbers are).
+func forwardPortNumber(p interface{}) (int, bool) {
+	switch v := p.(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	}
+	return 0, false
+}
+
+var localhostPortRe = regexp.MustCompile(`^localhost:\d+$`)
+
+func dedupeForwardPorts(ports []interface{}) []interface{} {
+	if len(ports) == 0 {
+		return ports
+	}
+	seen := make(map[string]bool, len(ports))
+	var keys []string
+	for _, p := range ports {
+		key := ""
+		if n, ok := forwardPortNumber(p); ok {
+			key = fmt.Sprintf("localhost:%d", n)
+		} else {
+			key = fmt.Sprintf("%v", p)
+		}
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	// Denormalize: a "localhost:N" key becomes the number N; anything else stays a
+	// string — matching TS's final .map(port => /localhost:\d+/.test ? parseInt : port).
+	out := make([]interface{}, 0, len(keys))
+	for _, k := range keys {
+		if localhostPortRe.MatchString(k) {
+			var n int
+			fmt.Sscanf(k, "localhost:%d", &n)
+			out = append(out, float64(n))
+		} else {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+var byteSizeRe = regexp.MustCompile(`^(\d+)([tgmk]b)?$`)
+
+// parseBytes mirrors the TS parseBytes: "8gb" -> 8589934592, unrecognized -> 0.
+func parseBytes(s string) int64 {
+	mm := byteSizeRe.FindStringSubmatch(s)
+	if mm == nil {
+		return 0
+	}
+	n, _ := strconv.ParseInt(mm[1], 10, 64)
+	unit := int64(1)
+	if mm[2] != "" {
+		switch mm[2][0] {
+		case 't':
+			unit = 1 << 40
+		case 'g':
+			unit = 1 << 30
+		case 'm':
+			unit = 1 << 20
+		case 'k':
+			unit = 1 << 10
+		}
+	}
+	return n * unit
+}
+
+func hrFloat(v interface{}) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	}
+	return 0
+}
+
+func hrString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return "0"
+}
+
+// mergeHostRequirements takes the per-field max of cpus/memory/storage and merges
+// gpu across all entries, matching TS mergeHostRequirements. Returns nil when no
+// entry sets any requirement.
+func mergeHostRequirements(entries []Entry) interface{} {
+	var cpus float64
+	var memory, storage int64
+	var gpu interface{}
+	for _, e := range entries {
+		hr, ok := e.HostRequirements.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if c := hrFloat(hr["cpus"]); c > cpus {
+			cpus = c
+		}
+		if b := parseBytes(hrString(hr["memory"])); b > memory {
+			memory = b
+		}
+		if b := parseBytes(hrString(hr["storage"])); b > storage {
+			storage = b
+		}
+		gpu = mergeGPURequirements(gpu, hr["gpu"])
+	}
+	if cpus == 0 && memory == 0 && storage == 0 && gpu == nil {
+		return nil
+	}
+	res := map[string]interface{}{"cpus": cpus}
+	if memory != 0 {
+		res["memory"] = strconv.FormatInt(memory, 10)
+	}
+	if storage != 0 {
+		res["storage"] = strconv.FormatInt(storage, 10)
+	}
+	if gpu != nil {
+		res["gpu"] = gpu
+	}
+	return res
+}
+
+// mergeGPURequirements ports TS mergeGpuRequirements: undefined/false yields the
+// other; two "optional" stay "optional"; otherwise take the per-field max of the
+// object forms (a non-object contributes {}).
+func mergeGPURequirements(a, b interface{}) interface{} {
+	if a == nil || a == false {
+		return b
+	}
+	if b == nil || b == false {
+		return a
+	}
+	if a == "optional" && b == "optional" {
+		return "optional"
+	}
+	ao, _ := a.(map[string]interface{})
+	bo, _ := b.(map[string]interface{})
+	cores := hrFloat(ao["cores"])
+	if c := hrFloat(bo["cores"]); c > cores {
+		cores = c
+	}
+	mem := parseBytes(hrString(ao["memory"]))
+	if m := parseBytes(hrString(bo["memory"])); m > mem {
+		mem = m
+	}
+	res := map[string]interface{}{}
+	if cores != 0 {
+		res["cores"] = cores
+	}
+	if mem != 0 {
+		res["memory"] = strconv.FormatInt(mem, 10)
+	}
+	return res
 }
 
 // appendUnique appends items from src to dst, skipping duplicates.
