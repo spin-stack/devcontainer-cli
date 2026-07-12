@@ -1,0 +1,5 @@
+{
+	"image": "alpine:3.20",
+	"overrideCommand": true,
+	"postCreateCommand": "printenv > secret.postCreateCommand.testMarker"
+}

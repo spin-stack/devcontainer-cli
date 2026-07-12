@@ -53,6 +53,24 @@ promotion of both cases (`build.buildkit-never-platform-failure` and the
 features-test one) — run with Docker/network on amd64 and flip `current_status → match`
 from the artifacted JSON. **Runs inside RW-018.**
 
+### Runtime-lane flake fixes (CI parity-runtime green) — ✅ DONE
+Once the CI disk pressure was removed (free the runner's preinstalled SDKs; `/mnt`
+is the same filesystem as `/` on hosted runners), three runtime cases still flaked:
+- `up`/`run-user-commands.workspace-secrets-success` copied the reference
+  `lifecycle-hooks-inline-commands` fixture, whose local features (`./tiger`,
+  `./panda` with `installsAfter`) and shared-counter `createMarker.sh` (with
+  `sleep 1s`) are inherently timing-fragile — reproducibly ~1/3 failures locally,
+  where even the **TS oracle** intermittently errored parsing `./tiger` (exit
+  1 vs Go 0) or the postCreate marker was lost. Root-caused and replaced with a
+  minimal deterministic fixture (`src/test/configs/secrets-lifecycle`: image +
+  inline `postCreateCommand` dumping the env to a fixed-name marker on the bind
+  mount). This isolates the actual assertion (secrets reach the lifecycle hook),
+  is now 5/5 stable, and ~10× faster.
+- `features.test-single-scenario-success` (network-heavy: pulls
+  `mcr.microsoft.com/devcontainers/base:ubuntu`) — added a `setup_cmd` that
+  pre-pulls the base image with retries, moving the flaky network op out of the
+  timed comparison.
+
 ## P1 — Data and platform compatibility
 
 ### RW-006 — TS↔Go metadata interop — 🟡 DONE (hermetic)
