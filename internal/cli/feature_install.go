@@ -751,6 +751,13 @@ func extractTarGz(archivePath, destDir string) error {
 		cleanName := filepath.Clean(header.Name)
 		target := filepath.Join(destDir, cleanName)
 
+		// Zip-slip guard: reject entries whose path escapes destDir (e.g.
+		// "../../etc/x"), so a malicious Feature tarball cannot write outside the
+		// extraction directory. filepath.Join cleans "..", so compare the result.
+		if target != destDir && !strings.HasPrefix(target, destDir+string(os.PathSeparator)) {
+			return fmt.Errorf("tar entry %q escapes the destination directory", header.Name)
+		}
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0755); err != nil {
