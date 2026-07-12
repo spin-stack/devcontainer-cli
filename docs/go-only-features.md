@@ -36,6 +36,7 @@ It probes:
 | `build-cache-export` | warn | The active builder can export build cache (`--cache-to` / `--output` / cross-`--platform`). *Fixable by `setup`.* |
 | `compose-v2` | warn | `docker compose` (v2) is available (only needed for Compose-based configs). |
 | `disk-space` | warn | The Docker data directory has enough free space. |
+| `selinux` | warn | SELinux is **not** enforcing. When it is, Docker doesn't relabel bind mounts, so the workspace mount fails with a cryptic "Permission denied" until you add `"runArgs": ["--security-opt", "label=disable"]` (or `:z`/`:Z`). |
 
 Each non-OK check prints a remediation hint. The command exits non-zero if a **fail**
 check fails, and it **persists** the result to a state file:

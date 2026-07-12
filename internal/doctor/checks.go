@@ -143,6 +143,36 @@ func checkDiskSpace(ctx context.Context, env *Env) Result {
 	return r
 }
 
+// checkSELinux warns when SELinux is in enforcing mode. Docker does not
+// auto-relabel bind mounts, so the workspace mount (and any `mounts`) then fail
+// with a cryptic "Permission denied" inside the container until relabeled — a
+// common Fedora/RHEL/CentOS gotcha. A warn, not a fail: image-only configs and
+// hosts that relabel out of band still work.
+func checkSELinux(_ context.Context, env *Env) Result {
+	r := Result{Name: "selinux"}
+	path := env.SELinuxEnforcePath
+	if path == "" {
+		path = "/sys/fs/selinux/enforce"
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// No selinuxfs → SELinux not enabled on this host.
+		r.Status = StatusOK
+		r.Summary = "SELinux not enabled"
+		return r
+	}
+	if strings.TrimSpace(string(data)) != "1" {
+		r.Status = StatusOK
+		r.Summary = "SELinux not enforcing"
+		return r
+	}
+	r.Status = StatusWarn
+	r.Summary = "SELinux is enforcing; workspace/bind mounts can fail with 'Permission denied' in the container"
+	r.Remediation = `Relabel bind mounts for the container: add "runArgs": ["--security-opt", "label=disable"] ` +
+		"to devcontainer.json, or append :z/:Z to bind-mount sources."
+	return r
+}
+
 // dockerDataRoot returns the daemon's Docker Root Dir when it can be read,
 // falling back to the user's home directory (a reasonable proxy filesystem).
 func dockerDataRoot(ctx context.Context, env *Env) string {

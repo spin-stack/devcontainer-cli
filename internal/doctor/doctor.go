@@ -118,6 +118,9 @@ type Env struct {
 	ProbeDir string
 	// CLIVersion stamps the Report. Defaults to product.Get().Version.
 	CLIVersion string
+	// SELinuxEnforcePath is the file read to determine SELinux mode. Defaults to
+	// /sys/fs/selinux/enforce (absent when SELinux is not enabled).
+	SELinuxEnforcePath string
 }
 
 func (e *Env) runner() exec.Runner {
@@ -142,6 +145,7 @@ var checks = []func(context.Context, *Env) Result{
 	checkCacheExport,
 	checkComposeV2,
 	checkDiskSpace,
+	checkSELinux,
 }
 
 // Run executes every check in order and returns a Report. It never returns an

@@ -49,7 +49,8 @@ func has(args []string, want string) bool {
 func bigDisk(string) (uint64, error) { return 100 << 30, nil }
 
 func TestRunAllHealthy(t *testing.T) {
-	env := &Env{Runner: &scriptRunner{fn: healthyDocker}, DiskFree: bigDisk, ProbeDir: t.TempDir()}
+	env := &Env{Runner: &scriptRunner{fn: healthyDocker}, DiskFree: bigDisk, ProbeDir: t.TempDir(),
+		SELinuxEnforcePath: "/nonexistent/selinux/enforce"} // deterministic: SELinux "not enabled"
 	rep := Run(t.Context(), env)
 
 	if rep.Overall != StatusOK {
