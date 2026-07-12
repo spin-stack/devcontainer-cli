@@ -2,7 +2,7 @@
 
 These commands and flags are **exclusive to this Go CLI** — they are not part of the
 official `@devcontainers/cli`. Everything else mirrors the upstream behavior (see the
-[parity docs](migration/)); the items here are deliberate additions or documented
+[parity docs](parity/)); the items here are deliberate additions or documented
 divergences, each covered by tests.
 
 - [`devcontainer check`](#devcontainer-check) — host preflight

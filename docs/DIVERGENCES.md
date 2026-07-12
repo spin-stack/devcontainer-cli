@@ -1,7 +1,7 @@
 # Divergences, decisions & accepted limitations
 
 This CLI is validated for behavioral parity with the reference TypeScript
-`@devcontainers/cli` (pinned at **v0.88.0**, see [`migration/`](migration/)). Where it
+`@devcontainers/cli` (pinned at **v0.88.0**, see [`parity/`](parity/)). Where it
 deliberately differs, the difference is recorded here — this is the durable record of
 *intentional* departures from the oracle, not a backlog. User-facing additions are
 documented in [`go-only-features.md`](go-only-features.md).

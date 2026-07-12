@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestFlagInventoryParity validates docs/migration/cli-flags-inventory.yaml against
+// TestFlagInventoryParity validates docs/parity/cli-flags-inventory.yaml against
 // the live Cobra command tree so the inventory cannot silently drift from the code.
 //
 // The Cobra tree is the source of truth: the test walks NewRootCommand().Commands()
@@ -81,7 +81,7 @@ func TestFlagInventoryParity(t *testing.T) {
 
 	// --- load the YAML mirror ------------------------------------------------
 	repoRoot := findRepoRoot(t)
-	yamlPath := filepath.Join(repoRoot, "docs", "migration", "cli-flags-inventory.yaml")
+	yamlPath := filepath.Join(repoRoot, "docs", "parity", "cli-flags-inventory.yaml")
 	data, err := os.ReadFile(yamlPath)
 	if err != nil {
 		t.Fatalf("read inventory: %v", err)

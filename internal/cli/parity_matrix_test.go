@@ -190,7 +190,7 @@ func writeParityReport(path string, snapshot map[parityOutcome][]string) error {
 
 func TestParityMatrix(t *testing.T) {
 	repoRoot := findRepoRoot(t)
-	matrixPath := filepath.Join(repoRoot, "docs", "migration", "parity-matrix.yaml")
+	matrixPath := filepath.Join(repoRoot, "docs", "parity", "parity-matrix.yaml")
 
 	data, err := os.ReadFile(matrixPath)
 	if err != nil {

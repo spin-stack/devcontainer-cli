@@ -112,8 +112,9 @@ matrix of ~200 cases runs the *same* command through both CLIs and asserts the
 outputs match (exit code, normalized stdout/stderr, and container/registry state).
 Deliberate divergences (like the Go-only features above) are recorded, not hidden.
 
-If you're evaluating a switch, the parity methodology and current status live in
-[`docs/migration/`](docs/migration/).
+If you're evaluating a switch, the deliberate divergences are documented in
+[`docs/DIVERGENCES.md`](docs/DIVERGENCES.md) and the full case matrix in
+[`docs/parity/parity-matrix.yaml`](docs/parity/parity-matrix.yaml).
 
 ## Contributing / building
 
@@ -134,9 +135,11 @@ task parity:contract  # hermetic contract lane (no Docker)
 task parity:runtime   # full matrix; creates real containers/images via Docker
 ```
 
-- **[`docs/migration/GO-REWRITE-STATUS.md`](docs/migration/GO-REWRITE-STATUS.md)** — parity status.
 - **[`docs/DIVERGENCES.md`](docs/DIVERGENCES.md)** — deliberate divergences, decisions & accepted limitations.
-- **[`docs/migration/parity-matrix.yaml`](docs/migration/parity-matrix.yaml)** — the case matrix.
+- **[`docs/parity/parity-matrix.yaml`](docs/parity/parity-matrix.yaml)** — the case matrix.
+
+Releases are cut by tagging (`YYYYMMDD.NN`); `release.yml` then builds the static
+binaries, SBOMs and the signed multi-arch image.
 
 ```
 cmd/, internal/      the Go CLI implementation
