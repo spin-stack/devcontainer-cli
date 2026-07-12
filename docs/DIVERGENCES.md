@@ -15,8 +15,9 @@ touches a compared surface, reflected in the parity matrix.
   `check` and `setup` (host preflight/remediation), `up --cache-image` (boot from a
   prebuilt image, skip build + feature install), `read-configuration --cache-key`
   (deterministic content hash; additive — default output is byte-identical to TS),
-  `build --secrets-file` (BuildKit build secrets; TS `build` has no such flag), and the
-  automatic credential bridge that hands the CLI's resolved auth to `docker build`.
+  `build --secrets-file` (BuildKit build secrets; TS `build` has no such flag), `open`
+  (launch VS Code attached to the workspace's dev container via a vscode-remote:// URI),
+  and the automatic credential bridge that hands the CLI's resolved auth to `docker build`.
 - **`--override-config` deep-merges** the override onto the base config, whereas TS
   replaces the config wholesale (`readDocument(overrideConfigFile ?? configFile)`). With
   no readable base, the override stands alone — identical to TS. This lets an orchestrator
@@ -57,18 +58,15 @@ touches a compared surface, reflected in the parity matrix.
   library would regress buildx or pull the heavy buildkit client), `docker compose` (its
   output is not in the compared stream, so a library adds large deps for zero parity
   gain), interactive `docker exec -it`, and the credential-helper protocol (external
-  executables by design).
+  executables by design). These shell-outs receive the command's `context.Context` (via
+  `exec.CommandContext`), so a deadline/cancel — or `Ctrl-C` — aborts an in-flight
+  `build`/`compose` subprocess rather than orphaning it.
 
 ## Accepted limitations
 
 Known gaps that are deliberately not closed; each is a conscious trade-off, not an
 oversight.
 
-- **Programmatic context cancellation of build/compose subprocesses is not wired.** The
-  `docker build`/`docker compose` shell-outs run under `context.Background()`, so a
-  ctx deadline/cancel does not abort an in-flight subprocess. Interactive `Ctrl-C` still
-  aborts it (SIGINT reaches the child via the shared process group). Wiring the command
-  `ctx` through the runner is a possible future refinement.
 - **Byte-for-byte tarball parity is unattainable** because of `mtime` differences; tarball
   contents are compared by parsed structure, not raw bytes.
 - **Cloud registry auth matrix is out of default CI scope.** The hermetic auth paths

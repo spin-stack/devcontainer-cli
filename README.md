@@ -98,6 +98,9 @@ devcontainer up --workspace-folder . --cache-image ghcr.io/acme/app-devcontainer
 
 # Pass BuildKit build secrets (RUN --mount=type=secret,id=…) without baking them into a layer
 devcontainer build --workspace-folder . --secrets-file secrets.json
+
+# Provision here, then open VS Code attached to the container (reconnects, doesn't rebuild)
+devcontainer up . && devcontainer open .
 ```
 
 Everything else — `up`, `build`, `exec`, `read-configuration`, `set-up`,
