@@ -140,6 +140,42 @@ func fetchFeatureSetsWithOrder(logger log.Logger, reg oci.Registry, featuresCfg 
 	return &fetchFeatureResult{FeatureSets: orderedSets, TmpDir: tmpDir}, nil
 }
 
+// featureFromMetadata builds a features.Feature for a local or direct-tarball
+// feature from its parsed devcontainer-feature.json (m), overriding the identity
+// and staging fields the caller controls. OCI features build their Feature
+// separately (they omit lifecycle commands here and merge annotation metadata
+// afterwards), so this helper covers only the two identical local/tarball paths.
+func featureFromMetadata(m features.Feature, id string, opts interface{}, cachePath string) features.Feature {
+	return features.Feature{
+		ID:                   id,
+		Version:              m.Version,
+		Name:                 m.Name,
+		Description:          m.Description,
+		DocumentationURL:     m.DocumentationURL,
+		Value:                opts,
+		UserOptions:          extractUserOptions(opts),
+		Options:              m.Options,
+		DependsOn:            m.DependsOn,
+		InstallsAfter:        m.InstallsAfter,
+		LegacyIds:            m.LegacyIds,
+		ContainerEnv:         m.ContainerEnv,
+		Mounts:               m.Mounts,
+		Init:                 m.Init,
+		Privileged:           m.Privileged,
+		CapAdd:               m.CapAdd,
+		SecurityOpt:          m.SecurityOpt,
+		Entrypoint:           m.Entrypoint,
+		OnCreateCommand:      m.OnCreateCommand,
+		UpdateContentCommand: m.UpdateContentCommand,
+		PostCreateCommand:    m.PostCreateCommand,
+		PostStartCommand:     m.PostStartCommand,
+		PostAttachCommand:    m.PostAttachCommand,
+		Customizations:       m.Customizations,
+		Included:             true,
+		CachePath:            cachePath,
+	}
+}
+
 // processInstallFeature is the install-path implementation of the processFeature
 // seam. It resolves and extracts a single feature (local / direct-tarball / OCI)
 // into a staging directory and returns a Set whose Features[0] carries the
@@ -203,34 +239,7 @@ func processInstallFeature(
 			return nil, fmt.Errorf("parse local feature %q metadata: %w", id, err)
 		}
 
-		feat := features.Feature{
-			ID:                   id,
-			Version:              m.Version,
-			Name:                 m.Name,
-			Description:          m.Description,
-			DocumentationURL:     m.DocumentationURL,
-			Value:                opts,
-			UserOptions:          extractUserOptions(opts),
-			Options:              m.Options,
-			DependsOn:            m.DependsOn,
-			InstallsAfter:        m.InstallsAfter,
-			LegacyIds:            m.LegacyIds,
-			ContainerEnv:         m.ContainerEnv,
-			Mounts:               m.Mounts,
-			Init:                 m.Init,
-			Privileged:           m.Privileged,
-			CapAdd:               m.CapAdd,
-			SecurityOpt:          m.SecurityOpt,
-			Entrypoint:           m.Entrypoint,
-			OnCreateCommand:      m.OnCreateCommand,
-			UpdateContentCommand: m.UpdateContentCommand,
-			PostCreateCommand:    m.PostCreateCommand,
-			PostStartCommand:     m.PostStartCommand,
-			PostAttachCommand:    m.PostAttachCommand,
-			Customizations:       m.Customizations,
-			Included:             true,
-			CachePath:            featureDir,
-		}
+		feat := featureFromMetadata(m, id, opts, featureDir)
 		return &features.Set{
 			SourceInfo:      &features.LocalSource{LocalPath: id, ResolvedPath: resolvedPath, UserID: id},
 			Features:        []features.Feature{feat},
@@ -263,34 +272,7 @@ func processInstallFeature(
 			featID = filepath.Base(featureDir)
 		}
 
-		feat := features.Feature{
-			ID:                   featID,
-			Version:              m.Version,
-			Name:                 m.Name,
-			Description:          m.Description,
-			DocumentationURL:     m.DocumentationURL,
-			Value:                opts,
-			UserOptions:          extractUserOptions(opts),
-			Options:              m.Options,
-			DependsOn:            m.DependsOn,
-			InstallsAfter:        m.InstallsAfter,
-			LegacyIds:            m.LegacyIds,
-			ContainerEnv:         m.ContainerEnv,
-			Mounts:               m.Mounts,
-			Init:                 m.Init,
-			Privileged:           m.Privileged,
-			CapAdd:               m.CapAdd,
-			SecurityOpt:          m.SecurityOpt,
-			Entrypoint:           m.Entrypoint,
-			OnCreateCommand:      m.OnCreateCommand,
-			UpdateContentCommand: m.UpdateContentCommand,
-			PostCreateCommand:    m.PostCreateCommand,
-			PostStartCommand:     m.PostStartCommand,
-			PostAttachCommand:    m.PostAttachCommand,
-			Customizations:       m.Customizations,
-			Included:             true,
-			CachePath:            featureDir,
-		}
+		feat := featureFromMetadata(m, featID, opts, featureDir)
 		return &features.Set{
 			SourceInfo:      &features.TarballSource{TarballURI: id, UserID: id},
 			Features:        []features.Feature{feat},
