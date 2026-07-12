@@ -7,6 +7,7 @@ divergences, each covered by tests.
 
 - [`devcontainer check`](#devcontainer-check) — host preflight
 - [`devcontainer setup`](#devcontainer-setup) — apply safe host fixes
+- [`devcontainer open`](#devcontainer-open) — launch VS Code attached to the dev container
 - [`up --cache-image`](#up---cache-image) — boot from a prebuilt image
 - [`read-configuration --cache-key`](#read-configuration---cache-key) — deterministic cache key
 - [`build --secrets-file`](#build---secrets-file) — BuildKit build secrets
@@ -66,6 +67,35 @@ devcontainer setup --json
 > *existing container* as a dev container. `setup` (one word) configures the **host**.
 
 Flags: `--json`, `--dry-run`, `--docker-path`.
+
+## `devcontainer open`
+
+Open a workspace folder in VS Code **inside its dev container**, from the shell. It builds
+the `vscode-remote://dev-container+…` folder URI for the workspace and launches the editor
+with it — VS Code's Dev Containers extension then provisions (or reconnects to) the
+container.
+
+```sh
+devcontainer up   --workspace-folder .    # provision (optional; VS Code will too)
+devcontainer open --workspace-folder .    # attach the editor
+# or just:
+devcontainer open .
+```
+
+Because `up` and `open` stamp/consume the same `devcontainer.local_folder` /
+`devcontainer.config_file` labels, running `up` first means VS Code **reconnects** to the
+container you already provisioned instead of building a new one; running `open` alone lets
+VS Code provision on connect. This is the bridge for using this CLI as the provisioner while
+still editing in VS Code (the extension bundles its own CLI and cannot be pointed at an
+external binary, so this URI hand-off is the supported path).
+
+The remote authority is `dev-container+<hex>`, where `<hex>` is the hex-encoded JSON
+`{"hostPath": <local folder>, "configFile": {"scheme": "file", "path": <devcontainer.json>}}`,
+followed by the container's `workspaceFolder`. Use `--dry-run` to print the URI and launch
+command without opening anything (handy for scripting or debugging).
+
+Flags: `--workspace-folder`, `--config`, `--editor` (default `code`; e.g. `code-insiders`,
+`cursor`), `--dry-run`.
 
 ## `up --cache-image`
 

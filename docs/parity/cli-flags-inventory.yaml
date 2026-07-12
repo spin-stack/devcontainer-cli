@@ -1045,6 +1045,25 @@ commands:
       docker-path:
         type: string
         description: "Docker CLI path."
+  # Go-only: launch VS Code attached to a workspace's dev container.
+  open:
+    description: "Open a workspace in VS Code, attached to its dev container"
+    handler: openHandler
+    flags:
+      workspace-folder:
+        type: string
+        description: "Workspace folder path (defaults to [path] or the current directory)."
+      config:
+        type: string
+        description: "devcontainer.json path."
+      editor:
+        type: string
+        default: "code"
+        description: "Editor launcher binary (e.g. code, code-insiders, cursor)."
+      dry-run:
+        type: boolean
+        default: false
+        description: "Print the folder URI and launch command without opening the editor."
 
 # =============================================================================
 # JSON OUTPUT ENVELOPES SUMMARY
