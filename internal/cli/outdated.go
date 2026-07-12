@@ -37,40 +37,43 @@ func getFeatureIdWithoutVersion(featureID string) string {
 }
 
 func newOutdatedCmd() *cobra.Command {
-	var (
-		workspaceFolder string
-		configPath      string
-		outputFormat    string
-		logLevel        string
-		logFormat       string
-		logFile         string
-		terminalLogFile string
-	)
+	var opts outdatedOpts
 
 	cmd := &cobra.Command{
 		Use:   "outdated",
 		Short: "Show current and available versions",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// 0.88: workspace-folder defaults to cwd when not provided.
-			if workspaceFolder == "" {
-				workspaceFolder, _ = os.Getwd()
+			if opts.workspaceFolder == "" {
+				opts.workspaceFolder, _ = os.Getwd()
 			}
-			return runOutdated(outputFor(cmd), workspaceFolder, configPath, outputFormat, logLevel, logFormat, logFile, terminalLogFile)
+			return runOutdated(outputFor(cmd), opts)
 		},
 	}
 
 	f := cmd.Flags()
-	f.StringVar(&workspaceFolder, "workspace-folder", "", "Workspace folder path.")
-	f.StringVar(&configPath, "config", "", "devcontainer.json path.")
-	f.StringVar(&outputFormat, "output-format", "text", "Output format.")
-	f.StringVar(&logLevel, "log-level", "info", "Log level.")
-	f.StringVar(&logFormat, "log-format", "text", "Log format.")
+	f.StringVar(&opts.workspaceFolder, "workspace-folder", "", "Workspace folder path.")
+	f.StringVar(&opts.configPath, "config", "", "devcontainer.json path.")
+	f.StringVar(&opts.outputFormat, "output-format", "text", "Output format.")
+	f.StringVar(&opts.logLevel, "log-level", "info", "Log level.")
+	f.StringVar(&opts.logFormat, "log-format", "text", "Log format.")
 	f.String("user-data-folder", "", "")
 	f.Int("terminal-columns", 0, "")
 	f.Int("terminal-rows", 0, "")
 
-	addLogFileFlags(cmd, &logFile, &terminalLogFile)
+	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
+}
+
+// outdatedOpts holds the flags for the `outdated` command.
+type outdatedOpts struct {
+	workspaceFolder string
+	configPath      string
+	outputFormat    string
+	logLevel        string
+	logFormat       string
+	logFile         string
+	terminalLogFile string
 }
 
 type outdatedEntry struct {
@@ -136,23 +139,23 @@ func majorOf(v string) string {
 	return fmt.Sprintf("%d", parsed.Major())
 }
 
-func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevelStr, logFormatStr, logFile, terminalLogFile string) error {
-	logDst, closeLog, logErr := logWriter(logFile, terminalLogFile)
+func runOutdated(out Output, opts outdatedOpts) error {
+	logDst, closeLog, logErr := logWriter(opts.logFile, opts.terminalLogFile)
 	if logErr != nil {
 		return fmt.Errorf("open log file: %w", logErr)
 	}
 	defer closeLog()
 
 	logger := log.New(log.Options{
-		Level:  log.ParseLevel(logLevelStr),
-		Format: logFormatStr,
+		Level:  log.ParseLevel(opts.logLevel),
+		Format: opts.logFormat,
 		Writer: logDst,
 	})
 
-	ws := resolvePath(workspaceFolder)
+	ws := resolvePath(opts.workspaceFolder)
 	cp := ""
-	if configPath != "" {
-		cp = resolvePath(configPath)
+	if opts.configPath != "" {
+		cp = resolvePath(opts.configPath)
 	}
 
 	loadResult, err := config.LoadDevContainerConfig(ws, cp, "")
@@ -162,7 +165,7 @@ func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevel
 
 	cfg := loadResult.Config
 	if len(cfg.Features) == 0 {
-		if outputFormat == "json" {
+		if opts.outputFormat == "json" {
 			fmt.Fprintln(out.Stdout(), `{"features":{}}`)
 		} else {
 			fmt.Fprintln(out.Stdout(), "No features configured.")
@@ -212,7 +215,7 @@ func runOutdated(out Output, workspaceFolder, configPath, outputFormat, logLevel
 		}
 	}
 
-	if outputFormat == "json" {
+	if opts.outputFormat == "json" {
 		payload := map[string]interface{}{"features": result}
 		data, _ := json.MarshalIndent(payload, "", "  ")
 		fmt.Fprintln(out.Stdout(), string(data))
