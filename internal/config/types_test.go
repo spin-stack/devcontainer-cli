@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/jsonc"
@@ -269,3 +270,50 @@ func TestParseFixture_WithJSONC(t *testing.T) {
 }
 
 func intPtr(i int) *int { return &i }
+
+// TestPortAttrsSpecFields locks all five spec-defined portsAttributes properties
+// (label, protocol, onAutoForward, requireLocalPort, elevateIfNeeded) through a
+// parse → re-marshal round-trip. protocol and requireLocalPort were previously
+// dropped, silently losing them from read-configuration and the metadata label.
+func TestPortAttrsSpecFields(t *testing.T) {
+	const input = `{
+		"image": "ubuntu",
+		"portsAttributes": {
+			"3000": {"label": "app", "protocol": "https", "onAutoForward": "notify", "requireLocalPort": true, "elevateIfNeeded": false}
+		},
+		"otherPortsAttributes": {"onAutoForward": "ignore", "protocol": "http"}
+	}`
+
+	var c DevContainer
+	if err := json.Unmarshal([]byte(input), &c); err != nil {
+		t.Fatal(err)
+	}
+
+	pa, ok := c.PortsAttributes["3000"]
+	if !ok {
+		t.Fatal("portsAttributes[3000] missing")
+	}
+	if pa.Label != "app" || pa.Protocol != "https" || pa.OnAutoForward != "notify" {
+		t.Errorf("scalars = %+v", pa)
+	}
+	if pa.RequireLocalPort == nil || !*pa.RequireLocalPort {
+		t.Errorf("requireLocalPort = %v, want true", pa.RequireLocalPort)
+	}
+	if pa.ElevateIfNeeded == nil || *pa.ElevateIfNeeded {
+		t.Errorf("elevateIfNeeded = %v, want false", pa.ElevateIfNeeded)
+	}
+	if c.OtherPortsAttributes == nil || c.OtherPortsAttributes.Protocol != "http" {
+		t.Errorf("otherPortsAttributes = %+v", c.OtherPortsAttributes)
+	}
+
+	// Re-marshal must preserve protocol and requireLocalPort (the regression).
+	out, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"protocol":"https"`, `"requireLocalPort":true`} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("re-marshaled config dropped %s: %s", want, out)
+		}
+	}
+}

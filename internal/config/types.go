@@ -74,11 +74,17 @@ type Build struct {
 	Options    []string          `json:"options,omitempty"`
 }
 
-// PortAttrs represents port attribute configuration.
+// PortAttrs represents port attribute configuration. Fields mirror the spec's
+// PortAttributes object (containers.dev json_reference): label, protocol
+// (http|https), onAutoForward, requireLocalPort, elevateIfNeeded. The CLI does
+// not act on these (port forwarding is the editor's job) but must preserve them
+// through read-configuration and the devcontainer.metadata label.
 type PortAttrs struct {
-	Label           string `json:"label,omitempty"`
-	OnAutoForward   string `json:"onAutoForward,omitempty"`
-	ElevateIfNeeded *bool  `json:"elevateIfNeeded,omitempty"`
+	Label            string `json:"label,omitempty"`
+	Protocol         string `json:"protocol,omitempty"`
+	OnAutoForward    string `json:"onAutoForward,omitempty"`
+	RequireLocalPort *bool  `json:"requireLocalPort,omitempty"`
+	ElevateIfNeeded  *bool  `json:"elevateIfNeeded,omitempty"`
 }
 
 // HostRequirements specifies minimum host resources.
