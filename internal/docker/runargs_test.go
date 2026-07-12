@@ -152,3 +152,27 @@ func TestCreateContainerArgs_MountConsistency(t *testing.T) {
 		t.Errorf("args = %q", joined)
 	}
 }
+
+// FuzzParseMountSpec targets user-controlled --mount strings. Beyond not
+// panicking, every accepted result must satisfy the invariants relied on by
+// container creation: a destination and an explicit/defaulted mount type.
+func FuzzParseMountSpec(f *testing.F) {
+	f.Add("type=bind,source=/workspace,target=/workspaces/project,readonly")
+	f.Add("type=volume,source=data,destination=/data")
+	f.Add("src=/tmp,dst=/tmp/container,ro=true")
+	f.Add("target=/default-bind")
+	f.Add("type=volume,source=missing-target")
+
+	f.Fuzz(func(t *testing.T, spec string) {
+		m, err := ParseMountSpec(spec)
+		if err != nil {
+			return
+		}
+		if m.Target == "" {
+			t.Fatal("accepted mount has an empty target")
+		}
+		if m.Type == "" {
+			t.Fatal("accepted mount has an empty type")
+		}
+	})
+}

@@ -146,6 +146,8 @@ single percentage:
 task coverage                 # hermetic unit profile + ratchet gate
 task coverage:e2e             # real Docker E2E profile (requires Docker)
 task coverage:parity-contract # instrumented CLI subprocess vs the TS oracle
+task coverage:parity-runtime  # full Docker parity, collected nightly in CI
+task coverage:parity-publish  # real publication to an ephemeral OCI registry
 ```
 
 The subprocess profile uses Go's application coverage (`go build -cover` plus

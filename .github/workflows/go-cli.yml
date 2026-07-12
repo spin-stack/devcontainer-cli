@@ -250,8 +250,8 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: task reference
-      - run: task parity:runtime
-      - run: task parity:publish
+      - run: task coverage:parity-runtime
+      - run: task coverage:parity-publish
       - if: always()
         run: |
           mkdir -p artifacts

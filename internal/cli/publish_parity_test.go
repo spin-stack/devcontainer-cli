@@ -26,7 +26,7 @@ func TestPublishParity(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")); err != nil {
 		t.Skip("TS reference not compiled")
 	}
-	goCLI := filepath.Join(repoRoot, "devcontainer")
+	goCLI := envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer"))
 	if _, err := os.Stat(goCLI); err != nil {
 		t.Skip("Go CLI not built")
 	}

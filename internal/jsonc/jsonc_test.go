@@ -1,8 +1,10 @@
 package jsonc
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -131,4 +133,35 @@ func TestUnmarshal_AllFixtures(t *testing.T) {
 		t.Skip("no fixtures found")
 	}
 	t.Logf("parsed %d fixtures successfully", count)
+}
+
+// FuzzStandardizePreservesMeaning checks the contract that accepted JSONC is
+// converted into valid JSON without changing the decoded value. The seed corpus
+// includes the syntax extensions and BOM behavior accepted by devcontainer.json.
+func FuzzStandardizePreservesMeaning(f *testing.F) {
+	f.Add([]byte(`{"image":"ubuntu"}`))
+	f.Add([]byte("\xef\xbb\xbf{\"image\":\"ubuntu\",}"))
+	f.Add([]byte("{/* comment */\"features\":{},}"))
+	f.Add([]byte(`{"nested":[1,true,null,{"x":"// not a comment"}]}`))
+
+	f.Fuzz(func(t *testing.T, input []byte) {
+		standard, err := StripComments(input)
+		if err != nil {
+			return
+		}
+		if !json.Valid(standard) {
+			t.Fatalf("StripComments succeeded with invalid JSON: %q", standard)
+		}
+
+		var fromJSONC, fromStandard any
+		if err := Unmarshal(input, &fromJSONC); err != nil {
+			t.Fatalf("StripComments accepted input that Unmarshal rejected: %v", err)
+		}
+		if err := json.Unmarshal(standard, &fromStandard); err != nil {
+			t.Fatalf("standard output cannot be decoded: %v", err)
+		}
+		if !reflect.DeepEqual(fromJSONC, fromStandard) {
+			t.Fatalf("standardization changed value: JSONC=%#v JSON=%#v", fromJSONC, fromStandard)
+		}
+	})
 }

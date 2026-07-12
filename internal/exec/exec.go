@@ -39,6 +39,12 @@ func (r OSRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 
 	err := cmd.Run()
 	if err != nil {
+		// CommandContext normally reports the signal used to kill the child as an
+		// *exec.ExitError. Preserve the more useful cancellation/deadline cause at
+		// this process boundary so callers can reliably use errors.Is.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return stdout.Bytes(), stderr.Bytes(), -1, ctxErr
+		}
 		if exitErr, ok := err.(*osexec.ExitError); ok {
 			// Ran and exited non-zero: report the code, not an error.
 			return stdout.Bytes(), stderr.Bytes(), exitErr.ExitCode(), nil

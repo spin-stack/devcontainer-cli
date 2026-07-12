@@ -11,6 +11,13 @@ vars:
   # Minimum hermetic-unit statement coverage the `coverage` gate enforces. Set as a
   # ratchet just below the current level; raise it as coverage grows (never lower).
   COVERAGE_MIN: "48"
+  # Package ratchets prevent well-covered parsing packages from masking a
+  # regression in the orchestration layers. Keep these just below the measured
+  # hermetic baseline and only move them upward.
+  COVERAGE_CLI_MIN: "28"
+  COVERAGE_DOCKER_MIN: "77"
+  COVERAGE_LIFECYCLE_MIN: "73"
+  COVERAGE_OCI_MIN: "85"
 
 tasks:
   default:
@@ -81,6 +88,27 @@ tasks:
             if (t+0 < m+0) { printf "FAIL: coverage %.1f%% is below the %s%% floor\n", t, m; exit 1 }
             printf "OK: coverage %.1f%% >= %s%% floor\n", t, m
           }'
+      # Weighted statement coverage per package. This catches the failure mode
+      # where gains in parsers hide lost coverage in CLI/OCI orchestration.
+      - cmd: |
+          check_pkg() {
+            pkg="$1"; min="$2"
+            result=$(awk -v p="github.com/devcontainers/cli/internal/${pkg}/" '
+              NR > 1 && index($1,p)==1 { total += $2; if ($3 > 0) covered += $2 }
+              END { if (total == 0) print "missing"; else printf "%.1f", covered*100/total }
+            ' coverage.out)
+            if [ "$result" = missing ]; then
+              echo "FAIL: no coverage data for internal/$pkg"; return 1
+            fi
+            awk -v p="$pkg" -v t="$result" -v m="$min" 'BEGIN {
+              if (t+0 < m+0) { printf "FAIL: internal/%s coverage %.1f%% is below %s%%\n", p,t,m; exit 1 }
+              printf "OK: internal/%s coverage %.1f%% >= %s%%\n", p,t,m
+            }'
+          }
+          check_pkg cli {{.COVERAGE_CLI_MIN}}
+          check_pkg docker {{.COVERAGE_DOCKER_MIN}}
+          check_pkg lifecycle {{.COVERAGE_LIFECYCLE_MIN}}
+          check_pkg oci {{.COVERAGE_OCI_MIN}}
 
   coverage:e2e:
     desc: Measure the real in-process E2E paths (requires Docker)
@@ -107,6 +135,37 @@ tasks:
       - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/contract CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-contract-coverage.json PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run '^TestParityMatrix$' -count=1 -timeout 10m -v {{.CLI_ARGS}}
       - go tool covdata textfmt -i=artifacts/coverage/data/contract -o=artifacts/coverage/parity-contract.out
       - go tool cover -func=artifacts/coverage/parity-contract.out
+
+  coverage:parity-runtime:
+    desc: Measure the instrumented Go binary through the full Docker parity lane
+    deps: [build:coverage, reference:compile]
+    preconditions:
+      - sh: docker info >/dev/null 2>&1
+        msg: Docker is required for runtime parity coverage
+      - sh: |
+          d=$(mktemp -d) && printf 'FROM busybox\n' > "$d/Dockerfile" && \
+          docker buildx build --cache-to=type=local,dest="$d/c" -t parity-coverage-builder-probe "$d" >/dev/null 2>&1; \
+          rc=$?; rm -rf "$d" >/dev/null 2>&1; exit $rc
+        msg: The Docker builder must support cache export for runtime parity coverage
+    cmds:
+      - rm -rf artifacts/coverage/data/runtime
+      - mkdir -p artifacts/coverage/data/runtime
+      - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/runtime CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run '^TestParityMatrix$' -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 60m -v {{.CLI_ARGS}}
+      - go tool covdata textfmt -i=artifacts/coverage/data/runtime -o=artifacts/coverage/parity-runtime.out
+      - go tool cover -func=artifacts/coverage/parity-runtime.out
+
+  coverage:parity-publish:
+    desc: Measure real feature/template publication against an ephemeral OCI registry
+    deps: [build:coverage, reference:compile]
+    preconditions:
+      - sh: docker info >/dev/null 2>&1
+        msg: Docker is required for publish parity coverage
+    cmds:
+      - rm -rf artifacts/coverage/data/publish
+      - mkdir -p artifacts/coverage/data/publish
+      - GOCOVERDIR={{.ROOT_DIR}}/artifacts/coverage/data/publish CLI_GO={{.ROOT_DIR}}/artifacts/coverage/bin/{{.BINARY}} go test ./internal/cli -run '^TestPublishParity$' -count=1 -timeout 10m -v {{.CLI_ARGS}}
+      - go tool covdata textfmt -i=artifacts/coverage/data/publish -o=artifacts/coverage/parity-publish.out
+      - go tool cover -func=artifacts/coverage/parity-publish.out
 
   test:e2e:
     desc: Run Go E2E tests with Docker
