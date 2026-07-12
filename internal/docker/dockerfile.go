@@ -2,9 +2,8 @@ package docker
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
-
-	"github.com/Masterminds/semver/v3"
 )
 
 // Dockerfile represents a parsed Dockerfile.
@@ -261,16 +260,32 @@ func SupportsBuildContexts(df *Dockerfile) (supported bool, unknown bool) {
 	if numVersion == "" {
 		return true, false // "latest", "labs", no specific tag → assume yes
 	}
+	// TS uses semver.intersects(numVersion, ">=1.4"): a partial tag like "1" is a
+	// RANGE (1.x, i.e. the floating latest 1.x), NOT the exact 1.0.0, so it
+	// intersects >=1.4 and supports build contexts. Parsing "1" as 1.0.0 (exact)
+	// would wrongly report false.
+	return intersectsAtLeast14(numVersion), false
+}
 
-	constraint, err := semver.NewConstraint(">= 1.4")
-	if err != nil {
-		return false, false
+// intersectsAtLeast14 reports whether the version range implied by a partial or
+// full semver tag overlaps [1.4.0, ∞) — replicating node-semver's
+// intersects(numVersion, ">=1.4"). A 1-part "N" spans [N, N+1); a 2-part "N.M"
+// spans [N.M, N.M+1); a 3-part tag is exact.
+func intersectsAtLeast14(numVersion string) bool {
+	parts := strings.Split(numVersion, ".")
+	atoi := func(s string) int { n, _ := strconv.Atoi(s); return n }
+	major := atoi(parts[0])
+	switch len(parts) {
+	case 1:
+		return major >= 1
+	case 2:
+		return major > 1 || (major == 1 && atoi(parts[1]) >= 4)
+	default:
+		if major != 1 {
+			return major > 1
+		}
+		return atoi(parts[1]) >= 4
 	}
-	v, err := semver.NewVersion(numVersion)
-	if err != nil {
-		return false, false
-	}
-	return constraint.Check(v), false
 }
 
 // --- Variable replacement (matching TS dockerfileUtils.ts) ---
@@ -368,14 +383,17 @@ func findValue(df *Dockerfile, buildArgs, baseImageEnv map[string]string, variab
 				return replaceVariables(df, buildArgs, baseImageEnv, instr.Value, stage, i)
 			}
 			if instr.Instruction == "ARG" && considerArg {
-				val := instr.Value
 				if override, ok := buildArgs[instr.Name]; ok {
-					val = override
+					return replaceVariables(df, buildArgs, baseImageEnv, override, stage, i)
 				}
-				if val != "" {
-					return replaceVariables(df, buildArgs, baseImageEnv, val, stage, i)
+				if instr.Value != "" {
+					return replaceVariables(df, buildArgs, baseImageEnv, instr.Value, stage, i)
 				}
-				return ""
+				// An unbound ARG (no value, no build-arg override) is NOT a
+				// definition: TS treats its value as undefined, which its match
+				// predicate excludes. Keep scanning so a preceding ENV of the same
+				// name wins instead of being shadowed by an empty "".
+				continue
 			}
 		}
 
