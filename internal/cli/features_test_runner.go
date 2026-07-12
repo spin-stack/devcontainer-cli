@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -250,6 +251,7 @@ func runAutoTests(logger log.Log, collectionFolder string, features []string, ba
 		}
 
 		logger.Write(fmt.Sprintf("Running test for %s...", feature), log.LevelInfo)
+		makeWorkspaceAccessible(tmpDir)
 		passed := execTestInContainer(containerId, feature+"/test.sh", tmpDir)
 		status := testFailed
 		if passed {
@@ -369,6 +371,7 @@ func runScenarioTests(logger log.Log, collectionFolder, featureTestDir, feature,
 			continue
 		}
 
+		makeWorkspaceAccessible(tmpDir)
 		passed := execTestInContainer(containerId, filepath.Base(featureTestDir)+"/"+scenarioName+".sh", tmpDir)
 		status := testFailed
 		if passed {
@@ -426,6 +429,21 @@ func upTestContainer(workspaceFolder string, quiet bool) (string, error) {
 
 	containerId, _ := result["containerId"].(string)
 	return containerId, nil
+}
+
+// makeWorkspaceAccessible chmod -R 0777 the bind-mounted test workspace so the
+// test/scenario script can enter it as the container's remote user regardless of
+// the host↔container UID mapping. Matches the TS features-test CLI, which
+// `chmod -R 777`s the workspace before running the scripts; without it, a
+// non-root remoteUser hits "cd: Permission denied" when the host and container
+// UIDs differ (e.g. on CI runners). Best-effort.
+func makeWorkspaceAccessible(dir string) {
+	_ = filepath.WalkDir(dir, func(path string, _ fs.DirEntry, err error) error {
+		if err == nil {
+			_ = os.Chmod(path, 0o777)
+		}
+		return nil
+	})
 }
 
 func execTestInContainer(containerId, testScript, workspaceFolder string) bool {
