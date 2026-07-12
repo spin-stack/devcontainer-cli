@@ -130,7 +130,7 @@ tasks:
       - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-network.json PARITY_STRICT=true PARITY_LANE=all PARITY_NETWORK_ONLY=true PARITY_SKIP_DOCKER=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 15m -v {{.CLI_ARGS}}
 
   parity:runtime:
-    desc: Run the complete parity matrix with Docker
+    desc: Run the runtime parity matrix with Docker (set PARITY_COMMAND=up,build to scope it)
     deps: [build, reference:compile]
     preconditions:
       - sh: docker info >/dev/null 2>&1
@@ -152,7 +152,17 @@ tasks:
       # -parallel default 2 for gate determinism: higher values overload the docker
       # daemon on contended runners and transiently fail compose/heavy cases (they
       # match in isolation). Raise via PARITY_PARALLEL on beefy/idle runners.
+      # PARITY_COMMAND (comma-separated, inherited from the environment) scopes the
+      # run to the cases affected by a change; unset/"all" runs the full matrix.
       - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 60m -v {{.CLI_ARGS}}
+
+  parity:publish:
+    desc: Run the OCI publish parity (features publish/package) — network + registry heavy
+    deps: [build, reference:compile]
+    preconditions:
+      - sh: docker info >/dev/null 2>&1
+        msg: Docker is required for publish parity
+    cmds:
       - go test ./internal/cli -run TestPublishParity -count=1 -timeout 10m -v
 
   clean:

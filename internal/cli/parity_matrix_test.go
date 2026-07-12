@@ -1093,8 +1093,20 @@ func matchesFilter(tc parityCase) bool {
 		selected(tc.CurrentStatus, os.Getenv("PARITY_STATUS"))
 }
 
+// selected reports whether value passes a filter. An empty filter or "all"
+// matches everything; otherwise the filter is a comma-separated allowlist and
+// value must equal one of its (trimmed) entries. The list form lets CI run the
+// cases affected by a change, e.g. PARITY_COMMAND="up,build".
 func selected(value, filter string) bool {
-	return filter == "" || filter == "all" || value == filter
+	if filter == "" || filter == "all" {
+		return true
+	}
+	for _, f := range strings.Split(filter, ",") {
+		if strings.TrimSpace(f) == value {
+			return true
+		}
+	}
+	return false
 }
 
 func selectedSubstring(value, filter string) bool {

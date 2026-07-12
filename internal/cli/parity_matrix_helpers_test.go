@@ -49,6 +49,27 @@ func TestMatchesFilter_NetworkOnly(t *testing.T) {
 	}
 }
 
+func TestSelected_CommaList(t *testing.T) {
+	cases := []struct {
+		value, filter string
+		want          bool
+	}{
+		{"up", "", true},                // empty matches all
+		{"up", "all", true},             // "all" matches all
+		{"up", "up", true},              // single exact
+		{"up", "build", false},          // single mismatch
+		{"up", "up,build", true},        // list contains
+		{"build", "up,build", true},     // list contains (2nd)
+		{"exec", "up,build", false},     // list excludes
+		{"build", " up , build ", true}, // whitespace tolerated
+	}
+	for _, c := range cases {
+		if got := selected(c.value, c.filter); got != c.want {
+			t.Errorf("selected(%q, %q) = %v, want %v", c.value, c.filter, got, c.want)
+		}
+	}
+}
+
 func TestWriteParityReport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "report.json")
 	want := map[parityOutcome][]string{parityMatched: {"a"}, parityInconclusive: {"b"}}
