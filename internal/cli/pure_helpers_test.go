@@ -70,13 +70,13 @@ func TestHighestSatisfyingTag(t *testing.T) {
 
 func TestMajorOf(t *testing.T) {
 	cases := map[string]string{
-		"":            "",
-		"1.2.3":       "1",
-		"2":           "2",
-		"0.5.0":       "0",
-		"not-semver":  "",
-		"10.20.30":    "10",
-		"v3.1.0":      "3", // semver tolerates a leading v
+		"":           "",
+		"1.2.3":      "1",
+		"2":          "2",
+		"0.5.0":      "0",
+		"not-semver": "",
+		"10.20.30":   "10",
+		"v3.1.0":     "3", // semver tolerates a leading v
 	}
 	for in, want := range cases {
 		if got := majorOf(in); got != want {
@@ -420,6 +420,27 @@ func TestIsBareVersion(t *testing.T) {
 	for in, want := range cases {
 		if got := isBareVersion(in); got != want {
 			t.Errorf("isBareVersion(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// TestFindPlatformArg covers #1241: extracting --platform from runArgs in both
+// "--platform=X" and "--platform X" forms.
+func TestFindPlatformArg(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--platform=linux/amd64"}, "linux/amd64"},
+		{[]string{"--platform", "linux/arm64"}, "linux/arm64"},
+		{[]string{"--cap-add=SYS_PTRACE", "--platform=linux/amd64", "--rm"}, "linux/amd64"},
+		{[]string{"--rm"}, ""},
+		{nil, ""},
+		{[]string{"--platform"}, ""}, // dangling flag, no value
+	}
+	for _, tc := range cases {
+		if got := findPlatformArg(tc.args); got != tc.want {
+			t.Errorf("findPlatformArg(%v) = %q, want %q", tc.args, got, tc.want)
 		}
 	}
 }

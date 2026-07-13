@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/log"
@@ -88,4 +89,18 @@ func logDimensions(columns, rows int) *log.Dimensions {
 		return &log.Dimensions{Columns: columns, Rows: rows}
 	}
 	return nil
+}
+
+// findPlatformArg extracts the target platform from runArgs, supporting both
+// "--platform=linux/amd64" and "--platform linux/amd64". Returns "" when absent.
+func findPlatformArg(runArgs []string) string {
+	for i, a := range runArgs {
+		if v, ok := strings.CutPrefix(a, "--platform="); ok {
+			return v
+		}
+		if a == "--platform" && i+1 < len(runArgs) {
+			return runArgs[i+1]
+		}
+	}
+	return ""
 }

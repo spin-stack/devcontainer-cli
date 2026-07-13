@@ -13,6 +13,7 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/api/types/image"
 	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -219,7 +220,32 @@ func (e *EngineClient) IsPodman(ctx context.Context) bool {
 // PullImage pulls an image from a registry, consuming the output stream to
 // completion. It uses no authentication by default (public images).
 func (e *EngineClient) PullImage(ctx context.Context, ref string) error {
-	reader, err := e.API.ImagePull(ctx, ref, mobyclient.ImagePullOptions{})
+	return e.PullImagePlatform(ctx, ref, "")
+}
+
+// parsePlatform splits an "os/arch[/variant]" platform string into an OCI
+// platform. Malformed input yields a best-effort value (the daemon rejects it).
+func parsePlatform(s string) ocispec.Platform {
+	parts := strings.SplitN(s, "/", 3)
+	p := ocispec.Platform{OS: parts[0]}
+	if len(parts) > 1 {
+		p.Architecture = parts[1]
+	}
+	if len(parts) > 2 {
+		p.Variant = parts[2]
+	}
+	return p
+}
+
+// PullImagePlatform pulls ref for a specific platform (e.g. "linux/amd64"), or
+// the daemon default when platform is empty. Used so an image-based dev container
+// is pulled for the platform it will actually run on (#1241).
+func (e *EngineClient) PullImagePlatform(ctx context.Context, ref, platform string) error {
+	opts := mobyclient.ImagePullOptions{}
+	if platform != "" {
+		opts.Platforms = []ocispec.Platform{parsePlatform(platform)}
+	}
+	reader, err := e.API.ImagePull(ctx, ref, opts)
 	if err != nil {
 		return err
 	}

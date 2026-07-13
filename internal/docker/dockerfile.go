@@ -94,6 +94,10 @@ func ExtractDockerfile(content string) *Dockerfile {
 				}
 			case *instructions.UserCommand:
 				st.Instructions = append(st.Instructions, Instruction{Instruction: "USER", Name: c.User})
+			case *instructions.LabelCommand:
+				for _, kv := range c.Labels {
+					st.Instructions = append(st.Instructions, Instruction{Instruction: "LABEL", Name: kv.Key, Value: trimQuotes(kv.Value)})
+				}
 			}
 		}
 		df.Stages = append(df.Stages, st)
@@ -104,6 +108,30 @@ func ExtractDockerfile(content string) *Dockerfile {
 		}
 	}
 	return df
+}
+
+// StageLabels returns the LABEL key/value pairs declared in the named build
+// stage (or the final stage when name is ""), with later labels overriding
+// earlier ones. Used to recover a user's `LABEL devcontainer.metadata` from the
+// Dockerfile so the CLI-stamped metadata label does not clobber it.
+func (d *Dockerfile) StageLabels(name string) map[string]string {
+	var st *Stage
+	if name != "" {
+		st = d.StagesByLabel[name]
+	}
+	if st == nil && len(d.Stages) > 0 {
+		st = &d.Stages[len(d.Stages)-1]
+	}
+	if st == nil {
+		return nil
+	}
+	labels := map[string]string{}
+	for _, ins := range st.Instructions {
+		if ins.Instruction == "LABEL" {
+			labels[ins.Name] = ins.Value
+		}
+	}
+	return labels
 }
 
 // syntaxVersion extracts the tag of a docker/dockerfile syntax directive

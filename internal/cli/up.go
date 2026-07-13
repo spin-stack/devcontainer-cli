@@ -69,6 +69,7 @@ type upOpts struct {
 	workspaceMountConsistency   string
 	updateRemoteUserUIDDefault  string
 	gpuAvailability             string
+	platform                    string
 	defaultUserEnvProbe         string
 	containerSessionDataFolder  string
 	skipFeatureAutoMapping      bool
@@ -129,6 +130,7 @@ func newUpCmd() *cobra.Command {
 	f.String("container-system-data-folder", "", "")
 	f.StringVar(&opts.workspaceMountConsistency, "workspace-mount-consistency", "cached", "Mount consistency.")
 	f.StringVar(&opts.gpuAvailability, "gpu-availability", "detect", "GPU availability (all|detect|none).")
+	f.StringVar(&opts.platform, "platform", "", "Target platform (e.g. linux/amd64). Used to resolve, pull and build the image; overrides a --platform in runArgs.")
 	f.StringVar(&opts.defaultUserEnvProbe, "default-user-env-probe", "loginInteractiveShell", "Env probe type.")
 	f.StringVar(&opts.updateRemoteUserUIDDefault, "update-remote-user-uid-default", "on", "UID update default.")
 	f.BoolVar(&opts.expectExistingContainer, "expect-existing-container", false, "Fail if no existing container is found.")
@@ -764,6 +766,8 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	if baseInspect, inspErr := engine.InspectImage(ctx, baseImage); inspErr == nil && baseInspect.Config != nil {
 		metadata = append(metadata, imagemeta.ReadMetadataFromLabels(baseInspect.Config.Labels, logger)...)
 	}
+	// Preserve a `LABEL devcontainer.metadata` from the user's Dockerfile (#1225).
+	metadata = append(metadata, imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)...)
 	metadata = append(metadata, imagemeta.Entry{RemoteUser: cfg.RemoteUser, ContainerUser: cfg.ContainerUser})
 	metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
 
@@ -808,6 +812,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	// Extend with features if any
 	if len(cfg.Features) > 0 {
 		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, imageName, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
+			Secrets:                     buildSecretsFromFile(opts.secretsFile),
 			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
@@ -837,11 +842,19 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 		return "", fmt.Errorf("no image specified in devcontainer.json")
 	}
 
+	// Target platform: the --platform flag wins, else a --platform in runArgs, so
+	// the image is pulled and (feature-)built for the platform it will run on —
+	// e.g. an amd64 image forced via runArgs on an arm64 host (#1241).
+	platform := opts.platform
+	if platform == "" {
+		platform = findPlatformArg(cfg.RunArgs)
+	}
+
 	// Pull if needed
 	_, err := engine.InspectImage(ctx, cfg.Image)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Pulling image %s...", cfg.Image), log.LevelInfo)
-		if pullErr := engine.PullImage(ctx, cfg.Image); pullErr != nil {
+		if pullErr := engine.PullImagePlatform(ctx, cfg.Image, platform); pullErr != nil {
 			return "", fmt.Errorf("pull image %q: %w", cfg.Image, pullErr)
 		}
 	}
@@ -850,6 +863,8 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 	imageName := cfg.Image
 	if len(cfg.Features) > 0 {
 		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
+			Platform:                    platform,
+			Secrets:                     buildSecretsFromFile(opts.secretsFile),
 			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
 			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
@@ -1342,8 +1357,11 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 			}
 
 			// Generate feature Dockerfile content for compose injection
+			// No build secrets here: `docker compose build` does not forward
+			// --secret to the injected feature stage, so mounting them would break
+			// the build. Compose feature build secrets remain unsupported for now.
 			featureContent := imagemeta.GenerateExtendImageBuildForCompose(
-				baseStageName, featureSets, metadata, containerUser, remoteUser, nil,
+				baseStageName, featureSets, metadata, containerUser, remoteUser, nil, nil,
 			)
 			combinedDockerfile := string(dockerfileContent) + "\n" + featureContent
 
@@ -1412,6 +1430,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 
 				logger.Write(fmt.Sprintf("Installing features on compose service %s...", cfg.Service), log.LevelInfo)
 				names, extErr := extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
+					Secrets:                     buildSecretsFromFile(opts.secretsFile),
 					OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 					FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
 					SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,

@@ -90,6 +90,17 @@ func (b *DockerfileBuilder) Run(cmd string) {
 	b.lines = append(b.lines, "RUN "+cmd)
 }
 
+// RunWithMounts adds a RUN instruction carrying the given `--mount=...` flags
+// (e.g. build secrets: `--mount=type=secret,id=X`). Falls back to a plain RUN
+// when there are none.
+func (b *DockerfileBuilder) RunWithMounts(mounts []string, cmd string) {
+	if len(mounts) == 0 {
+		b.Run(cmd)
+		return
+	}
+	b.lines = append(b.lines, "RUN "+strings.Join(mounts, " ")+" "+cmd)
+}
+
 // Label adds a LABEL instruction with proper escaping.
 // The value is double-quoted with \, ", and $ escaped.
 func (b *DockerfileBuilder) Label(key, value string) {

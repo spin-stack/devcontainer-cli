@@ -192,7 +192,7 @@ func TestMetadataInteropGoRoundTrip(t *testing.T) {
 	// Build the Dockerfile exactly as build.go does for the no-features case
 	// (base image + metadata label), but pin the base to `scratch` so the build
 	// needs no network.
-	info := imagemeta.GenerateExtendImageBuild("scratch", nil, entries, "root", "", false, nil)
+	info := imagemeta.GenerateExtendImageBuild("scratch", nil, entries, "root", "", false, nil, nil)
 	dockerfile := info.DockerfilePrefixContent + info.DockerfileContent
 
 	tmp := t.TempDir()

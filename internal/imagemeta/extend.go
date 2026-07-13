@@ -31,6 +31,10 @@ func GenerateExtendImageBuild(
 	containerUser, remoteUser string,
 	useBuildKitContexts bool,
 	configContainerEnv map[string]string,
+	// secretIDs are Docker build-secret ids mounted into every feature-install RUN
+	// as `--mount=type=secret,id=<id>`, so a Feature's install.sh can read
+	// /run/secrets/<id> (#1078). Empty when no build secrets are in play.
+	secretIDs []string,
 ) *ExtendImageBuildInfo {
 	if len(featureSets) == 0 {
 		// No features — just add metadata label
@@ -66,6 +70,11 @@ func GenerateExtendImageBuild(
 	df.From("$_DEV_CONTAINERS_BASE_IMAGE").As("dev_containers_target_stage")
 	df.User("root")
 
+	secretMounts := make([]string, 0, len(secretIDs))
+	for _, id := range secretIDs {
+		secretMounts = append(secretMounts, "--mount=type=secret,id="+id)
+	}
+
 	// Install each feature
 	for i, fs := range featureSets {
 		if len(fs.Features) == 0 {
@@ -99,7 +108,7 @@ func GenerateExtendImageBuild(
 			installCmd = strings.Join(envs, " ") + " " + installCmd
 		}
 		runCmd := fmt.Sprintf("chmod +x %s/install.sh && %s", dstPath, installCmd)
-		df.Run(runCmd)
+		df.RunWithMounts(secretMounts, runCmd)
 	}
 
 	// Config-level containerEnv (overrides feature env vars)
@@ -151,12 +160,18 @@ func GenerateExtendImageBuildForCompose(
 	metadata []Entry,
 	containerUser, remoteUser string,
 	configContainerEnv map[string]string,
+	secretIDs []string,
 ) string {
 	df := docker.NewDockerfileBuilder()
 
 	df.BlankLine()
 	df.From(baseStageName).As("dev_containers_target_stage")
 	df.User("root")
+
+	secretMounts := make([]string, 0, len(secretIDs))
+	for _, id := range secretIDs {
+		secretMounts = append(secretMounts, "--mount=type=secret,id="+id)
+	}
 
 	for i, fs := range featureSets {
 		if len(fs.Features) == 0 {
@@ -185,7 +200,7 @@ func GenerateExtendImageBuildForCompose(
 			installCmd = strings.Join(envs, " ") + " " + installCmd
 		}
 		runCmd := fmt.Sprintf("chmod +x %s/install.sh && %s", dstPath, installCmd)
-		df.Run(runCmd)
+		df.RunWithMounts(secretMounts, runCmd)
 	}
 
 	if len(configContainerEnv) > 0 {

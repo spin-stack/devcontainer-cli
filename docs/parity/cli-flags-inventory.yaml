@@ -65,6 +65,9 @@ commands:
         choices: [all, detect, none]
         default: detect
         description: "Availability of GPUs in case the dev container requires any."
+      platform:
+        type: string
+        description: "Target platform (e.g. linux/amd64). Used to resolve, pull and build the image; overrides a --platform in runArgs."
       mount-workspace-git-root:
         type: boolean
         default: true

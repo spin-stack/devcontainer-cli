@@ -138,7 +138,9 @@ func TestOracle_Dockerfile_EnsureFinalStageName_unnamedPlatformWithComment(t *te
 }
 
 // TS: `without any from stage (invalid Dockerfile)` expects a THROW:
-//   'Error parsing Dockerfile: Dockerfile contains no FROM instructions'.
+//
+//	'Error parsing Dockerfile: Dockerfile contains no FROM instructions'.
+//
 // Go has no throw path: EnsureFinalStageName returns (defaultName, content)
 // unchanged when there are no FROM lines. We assert Go's ACTUAL contract here
 // and flag the divergence in the report (Go does not error/panic on this input).
@@ -333,4 +335,3 @@ FROM ${cloud:-"mcr.microsoft.com/"}azure-cli:latest as label
 		t.Errorf("got %q, want %q", got, "mcr.microsoft.com/azure-cli:latest")
 	}
 }
-

@@ -171,7 +171,7 @@ func TestGenerateExtendImageBuild(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info := GenerateExtendImageBuild(tt.baseImage, tt.featureSets, tt.metadata, tt.containerUser, tt.remoteUser, tt.useBuildKit, nil)
+			info := GenerateExtendImageBuild(tt.baseImage, tt.featureSets, tt.metadata, tt.containerUser, tt.remoteUser, tt.useBuildKit, nil, nil)
 			tt.check(t, info)
 		})
 	}
@@ -302,7 +302,7 @@ func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
 		Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
 	}}
 
-	withCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil)
+	withCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil, nil)
 	full := withCtx.DockerfilePrefixContent + withCtx.DockerfileContent
 	if !strings.HasPrefix(full, "# syntax=docker/dockerfile:1.4\n") {
 		t.Errorf("build-context build must start with the syntax directive, got:\n%s", full)
@@ -312,8 +312,35 @@ func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
 	}
 
 	// Without build contexts, no syntax directive is forced.
-	noCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", false, nil)
+	noCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", false, nil, nil)
 	if strings.Contains(noCtx.DockerfilePrefixContent, "syntax=") {
 		t.Errorf("non-context build must not force a syntax directive: %q", noCtx.DockerfilePrefixContent)
+	}
+}
+
+// TestExtend_BuildSecretsMountedIntoInstall guards #1078: build-secret ids are
+// mounted into each feature-install RUN as --mount=type=secret,id=<id>, and
+// absent when no secrets are provided.
+func TestExtend_BuildSecretsMountedIntoInstall(t *testing.T) {
+	fss := []*features.Set{{
+		SourceInfo: &features.OCISource{ID: "go"},
+		Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+	}}
+
+	withSecrets := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil, []string{"NPM_TOKEN", "GH_TOKEN"})
+	df := withSecrets.DockerfileContent
+	if !strings.Contains(df, "RUN --mount=type=secret,id=NPM_TOKEN --mount=type=secret,id=GH_TOKEN ") {
+		t.Errorf("feature install RUN missing secret mounts:\n%s", df)
+	}
+
+	noSecrets := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil, nil)
+	if strings.Contains(noSecrets.DockerfileContent, "type=secret") {
+		t.Errorf("no secrets provided, but a secret mount leaked in:\n%s", noSecrets.DockerfileContent)
+	}
+
+	// Compose variant mounts secrets too.
+	compose := GenerateExtendImageBuildForCompose("base_stage", fss, nil, "root", "root", nil, []string{"TOK"})
+	if !strings.Contains(compose, "RUN --mount=type=secret,id=TOK ") {
+		t.Errorf("compose feature install RUN missing secret mount:\n%s", compose)
 	}
 }

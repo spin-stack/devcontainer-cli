@@ -43,3 +43,29 @@ func secretValuesFromFile(path string) []string {
 	}
 	return values
 }
+
+// buildSecretsFromFile reads build secrets ("KEY=VALUE") from a --secrets-file
+// path, or nil when unset/unreadable (a read error is non-fatal — the build
+// proceeds without secrets, matching the main build path).
+func buildSecretsFromFile(path string) []string {
+	if path == "" {
+		return nil
+	}
+	secrets, err := readSecretsFile(path)
+	if err != nil {
+		return nil
+	}
+	return secrets
+}
+
+// buildSecretIDs extracts the secret id (the KEY of each "KEY=VALUE") so it can
+// be mounted into a feature-install RUN as --mount=type=secret,id=KEY.
+func buildSecretIDs(secrets []string) []string {
+	ids := make([]string, 0, len(secrets))
+	for _, s := range secrets {
+		if i := strings.IndexByte(s, '='); i > 0 {
+			ids = append(ids, s[:i])
+		}
+	}
+	return ids
+}

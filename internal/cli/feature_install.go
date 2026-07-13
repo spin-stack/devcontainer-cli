@@ -33,13 +33,18 @@ type FeatureBuildOptions struct {
 	NoCache bool
 	// HostSub, when set, resolves ${localEnv:…}/${localWorkspaceFolder}/… in each
 	// Feature's containerEnv/mounts — same as the config's own substitution.
-	HostSub                *config.HostSubContext
-	CacheFrom              []string
-	CacheTo                string
-	Labels                 []string
-	Platform               string
-	Push                   bool
-	Output                 string
+	HostSub   *config.HostSubContext
+	CacheFrom []string
+	CacheTo   string
+	Labels    []string
+	Platform  string
+	Push      bool
+	Output    string
+	// Secrets are Docker build secrets ("KEY=VALUE") forwarded to the
+	// feature-install image build as buildx `--secret id=KEY,env=KEY`, so a
+	// Feature's install.sh can use `RUN --mount=type=secret` (#1078). Requires
+	// buildx; ignored by the legacy builder.
+	Secrets                []string
 	ContainerEnv           map[string]string
 	SkipFeatureAutoMapping bool
 	SkipPersistCustoms     bool
@@ -598,8 +603,14 @@ func extendImageWithFeatures(
 		configContainerEnv = fbOpts.ContainerEnv
 	}
 
+	// Build secrets are mounted into each feature-install RUN, but only when the
+	// build uses buildx (RUN --mount=type=secret + --secret both require BuildKit).
+	var secretIDs []string
+	if useBuildx && fbOpts != nil {
+		secretIDs = buildSecretIDs(fbOpts.Secrets)
+	}
 	buildInfo := imagemeta.GenerateExtendImageBuild(
-		baseImage, featureSets, metadata, containerUser, remoteUser, useBuildx, configContainerEnv,
+		baseImage, featureSets, metadata, containerUser, remoteUser, useBuildx, configContainerEnv, secretIDs,
 	)
 
 	// Write the Dockerfile
@@ -640,6 +651,7 @@ func extendImageWithFeatures(
 		buildOpts.Platform = fbOpts.Platform
 		buildOpts.Push = fbOpts.Push
 		buildOpts.Output = fbOpts.Output
+		buildOpts.Secrets = fbOpts.Secrets
 	}
 
 	// Add BuildKit contexts — resolve relative paths to tmpDir

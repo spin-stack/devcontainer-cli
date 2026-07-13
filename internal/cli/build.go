@@ -348,6 +348,10 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	}
 	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
 	metadata := append([]imagemeta.Entry{}, baseMetadata...)
+	// Preserve a `LABEL devcontainer.metadata` declared in the user's Dockerfile
+	// (#1225): the CLI stamps its own computed metadata label below, which would
+	// otherwise clobber the user's entries on the built image.
+	metadata = append(metadata, imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)...)
 	if len(cfg.Features) == 0 {
 		metadata = append(metadata, configToMetadataEntry(cfg))
 	}
@@ -442,6 +446,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	if len(cfg.Features) > 0 {
 		baseImageName := imageNames[0]
 		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, &FeatureBuildOptions{
+			Secrets:                     buildSecretsFromFile(opts.secretsFile),
 			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 			NoCache:                     opts.noCache,
 			CacheFrom:                   opts.cacheFrom,
@@ -512,6 +517,7 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 			featureImageNames = []string{folderImageName(resolvePath(opts.workspaceFolder)) + "-features"}
 		}
 		return extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, featureImageNames, &FeatureBuildOptions{
+			Secrets:                     buildSecretsFromFile(opts.secretsFile),
 			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 			NoCache:                     opts.noCache,
 			CacheFrom:                   opts.cacheFrom,
@@ -545,6 +551,7 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 
 		if len(cfg.Features) > 0 {
 			return extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, featureImageNames, &FeatureBuildOptions{
+				Secrets:                     buildSecretsFromFile(opts.secretsFile),
 				OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 				NoCache:                     opts.noCache,
 				CacheFrom:                   opts.cacheFrom,
@@ -794,6 +801,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 			imageNames = []string{baseImageName + "-features"}
 		}
 		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, &FeatureBuildOptions{
+			Secrets:                     buildSecretsFromFile(opts.secretsFile),
 			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 			NoCache:                     opts.noCache,
 			CacheFrom:                   opts.cacheFrom,

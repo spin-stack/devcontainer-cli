@@ -27,11 +27,11 @@ func TestIsGitHubTarballURI(t *testing.T) {
 
 func TestIsPlainHTTPURL(t *testing.T) {
 	cases := map[string]bool{
-		"http://example.com/feat.tgz":   true,
-		"https://example.com/feat.tgz":  false,
-		"https://localhost:8080/x.tgz":  true, // localhost even over https
-		"http://localhost/x.tgz":        true,
-		"https://127.0.0.1:5000/x.tgz":  false, // only the literal "localhost" host is special
+		"http://example.com/feat.tgz":  true,
+		"https://example.com/feat.tgz": false,
+		"https://localhost:8080/x.tgz": true, // localhost even over https
+		"http://localhost/x.tgz":       true,
+		"https://127.0.0.1:5000/x.tgz": false, // only the literal "localhost" host is special
 	}
 	for u, want := range cases {
 		if got := isPlainHTTPURL(u); got != want {

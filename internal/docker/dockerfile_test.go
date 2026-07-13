@@ -232,7 +232,6 @@ RUN echo hello
 	}
 }
 
-
 func TestExtractDockerfile(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -319,4 +318,27 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestStageLabelsDevcontainerMetadata guards #1225: the parser must expose a
+// `LABEL devcontainer.metadata` from the (final) build stage so the CLI can
+// preserve it instead of clobbering it with its own computed label.
+func TestStageLabelsDevcontainerMetadata(t *testing.T) {
+	df := ExtractDockerfile("FROM ubuntu:22.04\n" +
+		"LABEL maintainer=me\n" +
+		"LABEL devcontainer.metadata='[{\"remoteUser\":\"foo\"}]'\n" +
+		"RUN echo hi\n")
+	labels := df.StageLabels("")
+	if got := labels["devcontainer.metadata"]; got != `[{"remoteUser":"foo"}]` {
+		t.Errorf("devcontainer.metadata label = %q", got)
+	}
+	if labels["maintainer"] != "me" {
+		t.Errorf("maintainer label = %q", labels["maintainer"])
+	}
+
+	// A Dockerfile without the label yields no metadata entry.
+	df2 := ExtractDockerfile("FROM ubuntu:22.04\nRUN echo hi\n")
+	if v, ok := df2.StageLabels("")["devcontainer.metadata"]; ok {
+		t.Errorf("unexpected devcontainer.metadata = %q", v)
+	}
 }
