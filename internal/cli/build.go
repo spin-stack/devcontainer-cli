@@ -338,14 +338,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 
 	// Generate base-image metadata. Ensure the base image is available locally so
 	// metadata from the published image label is preserved.
-	var baseLabels map[string]string
-	if baseInspect, inspErr := engine.InspectImage(ctx, baseImage); inspErr == nil && baseInspect.Config != nil {
-		baseLabels = baseInspect.Config.Labels
-	} else if pullErr := engine.PullImage(ctx, baseImage); pullErr == nil {
-		if baseInspect, inspErr := engine.InspectImage(ctx, baseImage); inspErr == nil && baseInspect.Config != nil {
-			baseLabels = baseInspect.Config.Labels
-		}
-	}
+	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
 	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
 	metadata := append([]imagemeta.Entry{}, baseMetadata...)
 	// Preserve a `LABEL devcontainer.metadata` declared in the user's Dockerfile

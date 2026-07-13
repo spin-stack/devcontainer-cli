@@ -444,3 +444,21 @@ func TestFindPlatformArg(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildSecretIDs covers #1078: extracting the KEY from each "KEY=VALUE"
+// build secret for mounting as --mount=type=secret,id=KEY.
+func TestBuildSecretIDs(t *testing.T) {
+	got := buildSecretIDs([]string{"NPM_TOKEN=abc", "GH_TOKEN=xyz=with=eq", "=novalue", "noeq"})
+	want := []string{"NPM_TOKEN", "GH_TOKEN"}
+	if len(got) != len(want) {
+		t.Fatalf("buildSecretIDs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("id[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if len(buildSecretIDs(nil)) != 0 {
+		t.Error("buildSecretIDs(nil) should be empty")
+	}
+}

@@ -5,10 +5,16 @@ import (
 	"errors"
 	"testing"
 
+	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/jsonstream"
 	mobyclient "github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"io"
+	"iter"
+	"strings"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -84,7 +90,7 @@ func (m *mockAPI) ImagePull(ctx context.Context, ref string, opts mobyclient.Ima
 	if m.imagePullFn != nil {
 		return m.imagePullFn(ctx, ref, opts)
 	}
-	return nil, nil
+	return fakePullResponse{strings.NewReader("")}, nil
 }
 
 func (m *mockAPI) ContainerInspect(ctx context.Context, id string, _ mobyclient.ContainerInspectOptions) (mobyclient.ContainerInspectResult, error) {
@@ -394,4 +400,108 @@ func TestEvents(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Errorf("got %d messages, want 2", len(msgs))
 	}
+}
+
+// TestImageLabelsEnsuringPresent guards the inspect→pull→inspect fallback: the
+// base image's baked metadata (e.g. devcontainer.metadata remoteUser) must be
+// read even on a fresh run where the image is not cached yet. Without the pull
+// the metadata is lost and exec/lifecycle fall back to root.
+func TestImageLabelsEnsuringPresent(t *testing.T) {
+	labels := map[string]string{"devcontainer.metadata": `[{"remoteUser":"node"}]`}
+	withLabels := func() (image.InspectResponse, error) {
+		return image.InspectResponse{Config: &dockerspec.DockerOCIImageConfig{
+			ImageConfig: ocispec.ImageConfig{Labels: labels},
+		}}, nil
+	}
+	notFound := func() (image.InspectResponse, error) {
+		return image.InspectResponse{}, errors.New("no such image")
+	}
+
+	t.Run("present: returns labels without pulling", func(t *testing.T) {
+		pulled := false
+		api := &mockAPI{
+			imageInspectFn: func(context.Context, string, ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
+				return withLabels()
+			},
+			imagePullFn: func(context.Context, string, mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
+				pulled = true
+				return fakePullResponse{strings.NewReader("pulling\n")}, nil
+			},
+		}
+		got := newTestEngine(api).ImageLabelsEnsuringPresent(t.Context(), "img")
+		if got["devcontainer.metadata"] != labels["devcontainer.metadata"] {
+			t.Errorf("labels = %v", got)
+		}
+		if pulled {
+			t.Error("pulled despite the image already being present")
+		}
+	})
+
+	t.Run("absent: pulls then returns labels", func(t *testing.T) {
+		n, pulled := 0, false
+		api := &mockAPI{
+			imageInspectFn: func(context.Context, string, ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
+				n++
+				if n == 1 {
+					return notFound()
+				}
+				return withLabels()
+			},
+			imagePullFn: func(context.Context, string, mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
+				pulled = true
+				return fakePullResponse{strings.NewReader("pulling\n")}, nil
+			},
+		}
+		got := newTestEngine(api).ImageLabelsEnsuringPresent(t.Context(), "img")
+		if !pulled {
+			t.Error("did not pull the missing image")
+		}
+		if got["devcontainer.metadata"] != labels["devcontainer.metadata"] {
+			t.Errorf("labels after pull = %v", got)
+		}
+	})
+
+	t.Run("absent and unpullable: nil", func(t *testing.T) {
+		api := &mockAPI{
+			imageInspectFn: func(context.Context, string, ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
+				return notFound()
+			},
+			imagePullFn: func(context.Context, string, mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
+				return nil, errors.New("pull failed")
+			},
+		}
+		if got := newTestEngine(api).ImageLabelsEnsuringPresent(t.Context(), "img"); got != nil {
+			t.Errorf("labels = %v, want nil", got)
+		}
+	})
+}
+
+// TestParsePlatform covers #1241 platform parsing into an OCI platform.
+func TestParsePlatform(t *testing.T) {
+	cases := []struct {
+		in             string
+		os, arch, var_ string
+	}{
+		{"linux/amd64", "linux", "amd64", ""},
+		{"linux/arm64/v8", "linux", "arm64", "v8"},
+		{"linux", "linux", "", ""},
+	}
+	for _, c := range cases {
+		p := parsePlatform(c.in)
+		if p.OS != c.os || p.Architecture != c.arch || p.Variant != c.var_ {
+			t.Errorf("parsePlatform(%q) = %+v", c.in, p)
+		}
+	}
+}
+
+// fakePullResponse is a minimal but complete mobyclient.ImagePullResponse for
+// tests: it streams the wrapped reader (so io.Copy drains it exactly like the
+// real client) and satisfies the JSONMessages/Wait/Close surface.
+type fakePullResponse struct{ r io.Reader }
+
+func (f fakePullResponse) Read(p []byte) (int, error) { return f.r.Read(p) }
+func (f fakePullResponse) Close() error               { return nil }
+func (f fakePullResponse) Wait(context.Context) error { return nil }
+func (f fakePullResponse) JSONMessages(context.Context) iter.Seq2[jsonstream.Message, error] {
+	return func(func(jsonstream.Message, error) bool) {}
 }

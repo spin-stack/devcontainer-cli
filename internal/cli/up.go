@@ -763,9 +763,12 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget)
 
 	metadata := []imagemeta.Entry{}
-	if baseInspect, inspErr := engine.InspectImage(ctx, baseImage); inspErr == nil && baseInspect.Config != nil {
-		metadata = append(metadata, imagemeta.ReadMetadataFromLabels(baseInspect.Config.Labels, logger)...)
-	}
+	// Read the FROM image's baked devcontainer.metadata (e.g. remoteUser=node on
+	// the mcr devcontainers images). The metadata is computed before the build, so
+	// on a fresh run the base image is otherwise absent and its metadata would be
+	// silently lost — making exec/lifecycle fall back to root.
+	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
+	metadata = append(metadata, imagemeta.ReadMetadataFromLabels(baseLabels, logger)...)
 	// Preserve a `LABEL devcontainer.metadata` from the user's Dockerfile (#1225).
 	metadata = append(metadata, imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)...)
 	metadata = append(metadata, imagemeta.Entry{RemoteUser: cfg.RemoteUser, ContainerUser: cfg.ContainerUser})

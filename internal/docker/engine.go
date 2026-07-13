@@ -223,6 +223,23 @@ func (e *EngineClient) PullImage(ctx context.Context, ref string) error {
 	return e.PullImagePlatform(ctx, ref, "")
 }
 
+// ImageLabelsEnsuringPresent returns ref's image labels, pulling ref first when
+// it is not present locally so its baked metadata (e.g. the devcontainer.metadata
+// label carrying remoteUser) is not lost when read before a build. Returns nil
+// when the image can't be inspected even after a pull.
+func (e *EngineClient) ImageLabelsEnsuringPresent(ctx context.Context, ref string) map[string]string {
+	if info, err := e.InspectImage(ctx, ref); err == nil && info.Config != nil {
+		return info.Config.Labels
+	}
+	if err := e.PullImage(ctx, ref); err != nil {
+		return nil
+	}
+	if info, err := e.InspectImage(ctx, ref); err == nil && info.Config != nil {
+		return info.Config.Labels
+	}
+	return nil
+}
+
 // parsePlatform splits an "os/arch[/variant]" platform string into an OCI
 // platform. Malformed input yields a best-effort value (the daemon rejects it).
 func parsePlatform(s string) ocispec.Platform {
