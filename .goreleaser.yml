@@ -81,12 +81,32 @@ dockers_v2:
       org.opencontainers.image.created: "{{ .Date }}"
 
 changelog:
+  use: git
   sort: asc
+  groups:
+    - title: Breaking changes
+      regexp: '^.*![:(]'
+      order: 0
+    - title: Features
+      regexp: '^.*feat(\(.+\))?:'
+      order: 10
+    - title: Bug fixes
+      regexp: '^.*fix(\(.+\))?:'
+      order: 20
+    - title: Performance
+      regexp: '^.*perf(\(.+\))?:'
+      order: 30
+    - title: Internal improvements
+      regexp: '^.*(refactor|ci|build)(\(.+\))?:'
+      order: 40
+    - title: Other changes
+      order: 999
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^Update PROGRESS"
+      - '^.*docs(\(.+\))?:'
+      - '^.*test(\(.+\))?:'
+      - '^.*chore(\(.+\))?:'
+      - '^.*Update PROGRESS'
 
 release:
   github:
