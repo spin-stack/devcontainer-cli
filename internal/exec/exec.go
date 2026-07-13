@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
+	"sync"
 )
 
 // Runner runs an external command to completion, capturing its stdout and
@@ -37,8 +38,15 @@ func (r OSRunner) Run(ctx context.Context, stream io.Writer, name string, args .
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = tee(&stdout, stream)
-	cmd.Stderr = tee(&stderr, stream)
+	// os/exec copies stdout and stderr on two separate goroutines. Each has its
+	// own capture buffer (no sharing there), but both tee to the single `stream`
+	// writer, so that shared writer must be serialized or the two goroutines race.
+	live := stream
+	if stream != nil {
+		live = &syncWriter{w: stream}
+	}
+	cmd.Stdout = tee(&stdout, live)
+	cmd.Stderr = tee(&stderr, live)
 
 	err := cmd.Run()
 	if err != nil {
@@ -65,4 +73,17 @@ func tee(buf *bytes.Buffer, live io.Writer) io.Writer {
 		return buf
 	}
 	return io.MultiWriter(buf, live)
+}
+
+// syncWriter serializes concurrent writes to an underlying writer, so the same
+// stream target can back both the stdout and stderr copy goroutines safely.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
 }
