@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -243,6 +244,14 @@ func TestParityMatrix(t *testing.T) {
 
 	dockerAvailable := isDockerAvailable()
 
+	// Sharding: split the selected cases round-robin across parallel CI jobs, so
+	// N runners (with independent docker daemons) share the wall-clock. Inert when
+	// PARITY_SHARD_TOTAL is unset or <= 1. Cases in other shards stay not-selected,
+	// which the strict gate ignores (it only fails on inconclusive cases), so each
+	// shard gates its own subset and the union covers everything exactly once.
+	shardIndex, shardTotal := parityShard(t)
+	selected := 0
+
 	for _, tc := range matrix.InitialCases {
 		tc := tc
 		if !matchesFilter(tc) {
@@ -251,6 +260,13 @@ func TestParityMatrix(t *testing.T) {
 		// With no explicit lane, runtime is intentionally outside this invocation.
 		// Keep it as not-selected rather than creating a misleading skipped subtest.
 		if tc.Lane == "runtime" && os.Getenv("PARITY_LANE") == "" {
+			continue
+		}
+		// Round-robin over the selected set (stable matrix order); consecutive
+		// cases land on different shards, which spreads the heavy build.* cases.
+		caseIndex := selected
+		selected++
+		if !inShard(caseIndex, shardIndex, shardTotal) {
 			continue
 		}
 
@@ -1073,6 +1089,36 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// inShard reports whether the case at caseIndex (its position in the selected
+// stream) belongs to shard index of total. total <= 1 means no sharding (every
+// case runs). The modulo partitions the stream into disjoint shards whose union
+// is the whole set.
+func inShard(caseIndex, index, total int) bool {
+	return total <= 1 || caseIndex%total == index
+}
+
+// parityShard reads PARITY_SHARD_INDEX / PARITY_SHARD_TOTAL for CI sharding.
+// Total defaults to 1 (no sharding). An invalid pair fails the test so a
+// misconfigured matrix is loud rather than silently skipping cases.
+func parityShard(t *testing.T) (index, total int) {
+	total = 1
+	if v := os.Getenv("PARITY_SHARD_TOTAL"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			t.Fatalf("PARITY_SHARD_TOTAL=%q: must be a positive integer", v)
+		}
+		total = n
+	}
+	if v := os.Getenv("PARITY_SHARD_INDEX"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n >= total {
+			t.Fatalf("PARITY_SHARD_INDEX=%q: must be in [0,%d)", v, total)
+		}
+		index = n
+	}
+	return index, total
 }
 
 func isDockerAvailable() bool {

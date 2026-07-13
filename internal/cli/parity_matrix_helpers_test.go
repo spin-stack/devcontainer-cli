@@ -167,3 +167,34 @@ func TestExtractCLIResultEnv_EmbeddedJSON(t *testing.T) {
 		t.Fatalf("IMAGE_NAME = %q", got["IMAGE_NAME"])
 	}
 }
+
+// TestInShardPartitions proves the shard split is a proper partition: with N
+// shards, every case is claimed by exactly one shard and the union is the whole
+// set (no case dropped, none run twice).
+func TestInShardPartitions(t *testing.T) {
+	const cases = 189
+	for _, total := range []int{1, 2, 3, 4, 7} {
+		claimed := make([]int, cases)
+		for shard := 0; shard < total; shard++ {
+			for i := 0; i < cases; i++ {
+				if inShard(i, shard, total) {
+					claimed[i]++
+				}
+			}
+		}
+		for i, c := range claimed {
+			if c != 1 {
+				t.Errorf("total=%d: case %d claimed by %d shards, want exactly 1", total, i, c)
+			}
+		}
+	}
+}
+
+// TestInShardNoShardingRunsEverything proves total<=1 disables sharding.
+func TestInShardNoShardingRunsEverything(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		if !inShard(i, 0, 1) {
+			t.Errorf("inShard(%d,0,1) = false, want every case to run when unsharded", i)
+		}
+	}
+}
