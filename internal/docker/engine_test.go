@@ -3,18 +3,15 @@ package docker
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
-	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/api/types/image"
-	"github.com/moby/moby/api/types/jsonstream"
 	mobyclient "github.com/moby/moby/client"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"io"
-	"iter"
-	"strings"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -90,7 +87,7 @@ func (m *mockAPI) ImagePull(ctx context.Context, ref string, opts mobyclient.Ima
 	if m.imagePullFn != nil {
 		return m.imagePullFn(ctx, ref, opts)
 	}
-	return fakePullResponse{strings.NewReader("")}, nil
+	return nil, nil
 }
 
 func (m *mockAPI) ContainerInspect(ctx context.Context, id string, _ mobyclient.ContainerInspectOptions) (mobyclient.ContainerInspectResult, error) {
@@ -407,30 +404,21 @@ func TestEvents(t *testing.T) {
 // read even on a fresh run where the image is not cached yet. Without the pull
 // the metadata is lost and exec/lifecycle fall back to root.
 func TestImageLabelsEnsuringPresent(t *testing.T) {
-	labels := map[string]string{"devcontainer.metadata": `[{"remoteUser":"node"}]`}
-	withLabels := func() (image.InspectResponse, error) {
-		return image.InspectResponse{Config: &dockerspec.DockerOCIImageConfig{
-			ImageConfig: ocispec.ImageConfig{Labels: labels},
-		}}, nil
-	}
-	notFound := func() (image.InspectResponse, error) {
-		return image.InspectResponse{}, errors.New("no such image")
-	}
+	const inspectBody = `{"Id":"sha256:x","Config":{"Labels":{"devcontainer.metadata":"[{\"remoteUser\":\"node\"}]"}}}`
+	const wantLabel = `[{"remoteUser":"node"}]`
+	isPull := func(r *http.Request) bool { return strings.HasSuffix(r.URL.Path, "/images/create") }
 
 	t.Run("present: returns labels without pulling", func(t *testing.T) {
 		pulled := false
-		api := &mockAPI{
-			imageInspectFn: func(context.Context, string, ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
-				return withLabels()
-			},
-			imagePullFn: func(context.Context, string, mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
+		e := newMockEngine(t, func(r *http.Request) (*http.Response, error) {
+			if isPull(r) {
 				pulled = true
-				return fakePullResponse{strings.NewReader("pulling\n")}, nil
-			},
-		}
-		got := newTestEngine(api).ImageLabelsEnsuringPresent(t.Context(), "img")
-		if got["devcontainer.metadata"] != labels["devcontainer.metadata"] {
-			t.Errorf("labels = %v", got)
+				return httpJSON(200, `{"status":"ok"}`), nil
+			}
+			return httpJSON(200, inspectBody), nil
+		})
+		if got := e.ImageLabelsEnsuringPresent(t.Context(), "img")["devcontainer.metadata"]; got != wantLabel {
+			t.Errorf("label = %q, want %q", got, wantLabel)
 		}
 		if pulled {
 			t.Error("pulled despite the image already being present")
@@ -438,39 +426,34 @@ func TestImageLabelsEnsuringPresent(t *testing.T) {
 	})
 
 	t.Run("absent: pulls then returns labels", func(t *testing.T) {
-		n, pulled := 0, false
-		api := &mockAPI{
-			imageInspectFn: func(context.Context, string, ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
-				n++
-				if n == 1 {
-					return notFound()
-				}
-				return withLabels()
-			},
-			imagePullFn: func(context.Context, string, mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
+		inspects, pulled := 0, false
+		e := newMockEngine(t, func(r *http.Request) (*http.Response, error) {
+			if isPull(r) {
 				pulled = true
-				return fakePullResponse{strings.NewReader("pulling\n")}, nil
-			},
+				return httpJSON(200, `{"status":"Pulling"}`), nil
+			}
+			inspects++
+			if inspects == 1 {
+				return httpJSON(404, `{"message":"no such image"}`), nil
+			}
+			return httpJSON(200, inspectBody), nil
+		})
+		if got := e.ImageLabelsEnsuringPresent(t.Context(), "img")["devcontainer.metadata"]; got != wantLabel {
+			t.Errorf("label after pull = %q, want %q", got, wantLabel)
 		}
-		got := newTestEngine(api).ImageLabelsEnsuringPresent(t.Context(), "img")
 		if !pulled {
 			t.Error("did not pull the missing image")
-		}
-		if got["devcontainer.metadata"] != labels["devcontainer.metadata"] {
-			t.Errorf("labels after pull = %v", got)
 		}
 	})
 
 	t.Run("absent and unpullable: nil", func(t *testing.T) {
-		api := &mockAPI{
-			imageInspectFn: func(context.Context, string, ...mobyclient.ImageInspectOption) (image.InspectResponse, error) {
-				return notFound()
-			},
-			imagePullFn: func(context.Context, string, mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
-				return nil, errors.New("pull failed")
-			},
-		}
-		if got := newTestEngine(api).ImageLabelsEnsuringPresent(t.Context(), "img"); got != nil {
+		e := newMockEngine(t, func(r *http.Request) (*http.Response, error) {
+			if isPull(r) {
+				return httpJSON(500, `{"message":"pull failed"}`), nil
+			}
+			return httpJSON(404, `{"message":"no such image"}`), nil
+		})
+		if got := e.ImageLabelsEnsuringPresent(t.Context(), "img"); got != nil {
 			t.Errorf("labels = %v, want nil", got)
 		}
 	})
@@ -494,14 +477,33 @@ func TestParsePlatform(t *testing.T) {
 	}
 }
 
-// fakePullResponse is a minimal but complete mobyclient.ImagePullResponse for
-// tests: it streams the wrapped reader (so io.Copy drains it exactly like the
-// real client) and satisfies the JSONMessages/Wait/Close surface.
-type fakePullResponse struct{ r io.Reader }
+// --- moby-style HTTP transport fake ---
+//
+// newMockEngine builds an EngineClient backed by the REAL moby client with a fake
+// http.RoundTripper, mirroring moby's own WithMockClient test helper. This
+// exercises the client's actual request-building and response parsing (including
+// constructing the ImagePullResponse from the HTTP body) instead of stubbing the
+// client methods. WithAPIVersion pins the version so no /_ping negotiation runs.
+func newMockEngine(t *testing.T, doer func(*http.Request) (*http.Response, error)) *EngineClient {
+	t.Helper()
+	cli, err := mobyclient.NewClientWithOpts(
+		mobyclient.WithHTTPClient(&http.Client{Transport: roundTripFunc(doer)}),
+		mobyclient.WithAPIVersion("1.51"),
+	)
+	if err != nil {
+		t.Fatalf("mock client: %v", err)
+	}
+	return &EngineClient{API: cli, Log: log.Null}
+}
 
-func (f fakePullResponse) Read(p []byte) (int, error) { return f.r.Read(p) }
-func (f fakePullResponse) Close() error               { return nil }
-func (f fakePullResponse) Wait(context.Context) error { return nil }
-func (f fakePullResponse) JSONMessages(context.Context) iter.Seq2[jsonstream.Message, error] {
-	return func(func(jsonstream.Message, error) bool) {}
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func httpJSON(code int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: code,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
 }
