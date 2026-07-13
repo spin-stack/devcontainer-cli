@@ -1,5 +1,7 @@
 #  Licensed under the Apache License, Version 2.0. See LICENSE.txt in the project root for license information.
-ARG BASE_IMAGE
+# Default value avoids BuildKit's InvalidDefaultArgInFrom lint warning; the real
+# base image is always supplied via --build-arg BASE_IMAGE (docker.UpdateRemoteUserUID).
+ARG BASE_IMAGE=placeholder
 FROM $BASE_IMAGE
 
 USER root
