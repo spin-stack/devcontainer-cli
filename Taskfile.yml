@@ -133,6 +133,8 @@ tasks:
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for runtime parity coverage
+      - sh: docker info 2>/dev/null | grep -q io.containerd.snapshotter
+        msg: The parity runtime lane requires the containerd image store (docker build --platform on local images); enable it with `task ci:prepare-runner`.
       - sh: bash scripts/docker-cache-export.sh
         msg: The Docker builder must support cache export (see scripts/ci-prepare-runner.sh)
     cmds:
@@ -221,6 +223,16 @@ tasks:
     preconditions:
       - sh: docker info >/dev/null 2>&1
         msg: Docker is required for runtime parity
+      # Fail fast (~1s) if the containerd image store is off: the runtime lane's
+      # update-UID / cache-export builds run `docker build --platform` against
+      # locally-built images, which only the containerd store can resolve. Without
+      # it the TS oracle fails those builds while Go succeeds → false divergences.
+      # The test itself re-checks this (so a direct `go test` is covered too).
+      - sh: docker info 2>/dev/null | grep -q io.containerd.snapshotter
+        msg: |
+          The parity runtime lane requires the containerd image store (docker build
+          --platform against locally-built images). Enable it with `task ci:prepare-runner`,
+          or add {"features":{"containerd-snapshotter":true}} to /etc/docker/daemon.json.
       # Fail fast (~1s) if the builder can't export build cache — otherwise the
       # runtime cases (build.cache-to-*, build.output-oci-*) fail ~4 min deep with
       # a cryptic buildkit error. The default `docker` driver lacks cache export.

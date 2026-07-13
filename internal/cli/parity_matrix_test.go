@@ -244,6 +244,20 @@ func TestParityMatrix(t *testing.T) {
 
 	dockerAvailable := isDockerAvailable()
 
+	// The runtime lane's update-UID and cache-export builds run
+	// `docker build --platform` against locally-built images, which the legacy
+	// graph-driver builder cannot resolve — only the containerd image store can.
+	// Without it the TS oracle fails those builds while the Go CLI (which omits
+	// --platform) succeeds, producing false TS-vs-Go divergences. Enforce the
+	// store up front — including on a direct `go test` that skips the Taskfile
+	// precondition — so a misconfigured daemon fails loudly with a fix, not as a
+	// confusing per-case divergence.
+	runtimeLane := os.Getenv("PARITY_LANE") != "" && os.Getenv("PARITY_SKIP_DOCKER") != "true"
+	if runtimeLane && dockerAvailable && !hasContainerdImageStore() {
+		t.Fatal("parity runtime lane requires the containerd image store (docker build --platform against local images). " +
+			"Enable it with `task ci:prepare-runner`, or add {\"features\":{\"containerd-snapshotter\":true}} to /etc/docker/daemon.json and restart Docker.")
+	}
+
 	// Sharding: split the selected cases round-robin across parallel CI jobs, so
 	// N runners (with independent docker daemons) share the wall-clock. Inert when
 	// PARITY_SHARD_TOTAL is unset or <= 1. Cases in other shards stay not-selected,
@@ -1126,6 +1140,17 @@ func isDockerAvailable() bool {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	return cmd.Run() == nil
+}
+
+// hasContainerdImageStore reports whether the Docker daemon has the containerd
+// image store enabled (daemon.json {"features":{"containerd-snapshotter":true}}),
+// which surfaces as an io.containerd.snapshotter driver in `docker info`.
+func hasContainerdImageStore() bool {
+	out, err := exec.Command("docker", "info", "--format", "{{json .DriverStatus}}").Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "io.containerd.snapshotter")
 }
 
 func matchesFilter(tc parityCase) bool {
