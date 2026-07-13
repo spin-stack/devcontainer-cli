@@ -1,21 +1,87 @@
 name: Release
 
 on:
+  # Traditional flow: push a bare tag `vX` (a human/PAT push triggers the gates
+  # + build below). Do NOT create the release from the GitHub Releases UI — that
+  # creates a published (immutable) release the build then can't attach to.
   push:
     tags:
       - "v*"
+  # UI button (Actions → Release → Run workflow). Pick the branch to release and
+  # optionally a version; the tag is created only AFTER the gates pass, so a
+  # failing gate never leaves an orphan immutable tag. The tag is pushed with
+  # GITHUB_TOKEN, which does not re-trigger this workflow (no double run).
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without leading v (blank = auto CalVer YYYYMMDD.NN)"
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  # Resolve the version, tag and commit to release. On a tag push the tag already
+  # exists; on dispatch we compute the version and validate the tag is free, but
+  # DO NOT tag yet (the `tag` job below tags only after the gates pass).
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: resolve
+        # Untrusted dispatch input passed via env (never interpolated into the
+        # script) to avoid shell injection.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${VERSION_INPUT#v}"
+            if [ -z "$VERSION" ]; then
+              # Auto CalVer: YYYYMMDD.<next build number for today>.
+              DATE="$(date -u +%Y%m%d)"
+              N="$(git tag -l "v${DATE}.*" | wc -l | tr -d ' ')"
+              VERSION="${DATE}.$(printf '%02d' "$((N + 1))")"
+            fi
+            # Reject anything that is not a plain version token (defense in depth:
+            # this value later reaches git/docker command lines).
+            case "$VERSION" in
+              *[!0-9A-Za-z.+-]*|"")
+                echo "::error::invalid version '${VERSION}': use only [0-9A-Za-z.+-]"; exit 1 ;;
+            esac
+            TAG="v${VERSION}"
+            if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+              echo "::error::tag ${TAG} already exists — releases are immutable, bump the build number"
+              exit 1
+            fi
+            SHA="$(git rev-parse HEAD)"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+            SHA="${GITHUB_SHA}"
+          fi
+          echo "version=${VERSION}" >>"$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >>"$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >>"$GITHUB_OUTPUT"
+          echo "Releasing ${TAG} (version ${VERSION}) from ${SHA}" >>"$GITHUB_STEP_SUMMARY"
+
   # Hermetic gates — the same task targets CI runs on every push/PR.
   # The release is blocked unless these pass.
   gate:
     runs-on: ubuntu-latest
+    needs: prepare
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
       - uses: actions/setup-go@v6
         with:
@@ -41,9 +107,11 @@ jobs:
   # Runtime lane (real Docker containers). ubuntu-latest ships Docker.
   gate-runtime:
     runs-on: ubuntu-latest
+    needs: prepare
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
       - uses: actions/setup-go@v6
         with:
@@ -71,9 +139,36 @@ jobs:
       - if: always()
         run: task clean
 
+  # Create the tag ONLY on the dispatch path and ONLY after the gates pass, so a
+  # failing gate never leaves an orphan (immutable) tag. On a tag push this job is
+  # skipped (the tag already exists). The GITHUB_TOKEN push does not re-trigger the
+  # workflow, so there is no second run.
+  tag:
+    runs-on: ubuntu-latest
+    needs: [prepare, gate, gate-runtime]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.prepare.outputs.tag }}" -m "Release ${{ needs.prepare.outputs.version }}"
+          git push origin "${{ needs.prepare.outputs.tag }}"
+
   goreleaser:
     runs-on: ubuntu-latest
-    needs: [gate, gate-runtime]
+    needs: [prepare, gate, gate-runtime, tag]
+    # `tag` is skipped on the push path, so gate on explicit success/skip rather
+    # than the default all-succeeded semantics.
+    if: |
+      always() &&
+      needs.gate.result == 'success' &&
+      needs.gate-runtime.result == 'success' &&
+      (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     # Scoped least-privilege for the publishing job:
     #   contents: write  -> create the draft GitHub Release
     #   packages: write  -> push images to GHCR (ghcr.io/spin-stack/devcontainer-cli)
@@ -85,6 +180,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # Build at the tag so GoReleaser runs in release (not snapshot) mode.
+          ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
@@ -117,11 +214,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --- Post-publish: smoke test, sign, and record the image digest. ---
-      # Derive the goreleaser version (tag without the leading "v").
       - name: Compute image ref
         id: img
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.prepare.outputs.version }}"
           IMAGE="ghcr.io/spin-stack/devcontainer-cli:${VERSION}"
           echo "version=${VERSION}" >>"$GITHUB_OUTPUT"
           echo "image=${IMAGE}" >>"$GITHUB_OUTPUT"
@@ -164,11 +260,12 @@ jobs:
   # Non-gating: perf/distribution metrics recorded per release, never blocks.
   metrics:
     runs-on: ubuntu-latest
-    needs: [goreleaser]
+    needs: [prepare, goreleaser]
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.tag }}
           submodules: recursive
       - uses: actions/setup-go@v6
         with:
