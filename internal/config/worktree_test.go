@@ -196,3 +196,70 @@ func TestLoadDevContainerConfigWithMountsWorktree(t *testing.T) {
 		t.Errorf("default load AdditionalMounts = %q, want none", res2.WorkspaceConfig.AdditionalMounts)
 	}
 }
+
+// TestWorktreeCommonDirCustomWorkspaceMount ports upstream #1261: when the config
+// sets a custom workspaceMount/workspaceFolder, the common-dir mount is still
+// added, with its target resolved relative to the custom mount target.
+func TestWorktreeCommonDirCustomWorkspaceMount(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("oracle pins the linux consistency behavior (empty suffix)")
+	}
+
+	t.Run("common dir target relative to custom mount", func(t *testing.T) {
+		base := t.TempDir()
+		wt := writeGitlink(t, base, "worktrees/feature", "gitdir: ../main/.git/worktrees/feature")
+		mainGit := filepath.Join(base, "worktrees", "main", ".git")
+
+		wc := computeWorkspaceConfig(&Workspace{RootFolderPath: wt}, &DevContainer{
+			WorkspaceMount:  "type=bind,source=/host/wt,target=/workspace",
+			WorkspaceFolder: "/workspace",
+		}, true, true)
+
+		// Custom mount/folder respected verbatim; common dir mounted, target
+		// resolved relative to /workspace → /main/.git.
+		if wc.WorkspaceMount != "type=bind,source=/host/wt,target=/workspace" {
+			t.Errorf("workspaceMount = %q", wc.WorkspaceMount)
+		}
+		if wc.WorkspaceFolder != "/workspace" {
+			t.Errorf("workspaceFolder = %q", wc.WorkspaceFolder)
+		}
+		want := "type=bind,source=" + mainGit + ",target=/main/.git"
+		if len(wc.AdditionalMounts) != 1 || wc.AdditionalMounts[0] != want {
+			t.Errorf("additionalMounts = %q, want [%q]", wc.AdditionalMounts, want)
+		}
+	})
+
+	t.Run("variables in the custom mount target are substituted", func(t *testing.T) {
+		base := t.TempDir()
+		wt := writeGitlink(t, base, "worktrees/feature", "gitdir: ../main/.git/worktrees/feature")
+		mainGit := filepath.Join(base, "worktrees", "main", ".git")
+
+		// target uses ${localWorkspaceFolderBasename} → "feature".
+		wc := computeWorkspaceConfig(&Workspace{RootFolderPath: wt}, &DevContainer{
+			WorkspaceMount:  "type=bind,source=/host/wt,target=/src/${localWorkspaceFolderBasename}",
+			WorkspaceFolder: "/src/feature",
+		}, true, true)
+
+		// common dir resolved relative to the substituted target /src/feature →
+		// /src/main/.git.
+		want := "type=bind,source=" + mainGit + ",target=/src/main/.git"
+		if len(wc.AdditionalMounts) != 1 || wc.AdditionalMounts[0] != want {
+			t.Errorf("additionalMounts = %q, want [%q]", wc.AdditionalMounts, want)
+		}
+	})
+}
+
+func TestMountTarget(t *testing.T) {
+	cases := map[string]string{
+		"type=bind,source=/a,target=/b":                    "/b",
+		"type=bind,source=/a,target=/b,consistency=cached": "/b",
+		`type=bind,source="/a,x",target="/b,y"`:            "/b,y",
+		"type=volume,source=vol,target=/data":              "/data",
+		"type=bind,source=/a":                              "",
+	}
+	for spec, want := range cases {
+		if got := mountTarget(spec); got != want {
+			t.Errorf("mountTarget(%q) = %q, want %q", spec, got, want)
+		}
+	}
+}

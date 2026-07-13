@@ -95,6 +95,10 @@ func TestVariableResolverHostPhase(t *testing.T) {
 		{"localEnv with suffix", localEnvCtx, "${localEnv:HOME}/project", "/home/user/project"},
 		{"localEnv missing", localEnvCtx, "${localEnv:MISSING}", ""},
 		{"localEnv missing with fallback", localEnvCtx, "${localEnv:MISSING:fallback}", "fallback"},
+		// A default value may itself contain colons (URLs, image:tag, host:port) —
+		// only the first colon separates the var name from its default (#1213).
+		{"localEnv fallback with colons", localEnvCtx, "${localEnv:MISSING:my.registry.io:5000/img:tag}", "my.registry.io:5000/img:tag"},
+		{"localEnv present ignores colon fallback", localEnvCtx, "${localEnv:HOME:a:b:c}", "/home/user"},
 		{"no vars", localEnvCtx, "no vars here", "no vars here"},
 		{"multiple localEnv", localEnvCtx, "${localEnv:USER}@${localEnv:HOME}", "test@/home/user"},
 

@@ -243,7 +243,10 @@ func resolveEnvTag(isWin bool, env map[string]string, args []string, tag, config
 		return value, true, nil
 	}
 	if len(args) > 1 {
-		return args[1], true, nil
+		// Rejoin the remaining parts so a default value may itself contain colons
+		// (e.g. ${localEnv:REG:my.registry.io:5000/img}); only the first colon
+		// separates the variable name from its default.
+		return strings.Join(args[1:], ":"), true, nil
 	}
 	return "", true, nil
 }
