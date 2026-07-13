@@ -1,181 +1,187 @@
-# devcontainer (Go)
+# devcontainer
 
-**A single static binary that runs your [dev containers](https://containers.dev) —
-a drop-in replacement for the official `@devcontainers/cli` on **Linux + Docker +
-Docker Compose v2**, with none of the Node.js baggage and a few superpowers the
-original doesn't have.**
+**Run Dev Containers anywhere you have Linux and Docker.**
 
-Point your tooling at this `devcontainer` binary instead of `node devcontainer.js`
-and, within its validated scope — the seven command families in the parity matrix
-(`up`, `build`, `exec`, `read-configuration`, `run-user-commands`, `features`,
-`templates`) on Linux/Docker/Compose v2 — it behaves the same, except it starts
-faster, ships as one file, and fixes the papercuts you hit every day. The deliberate
-differences (Podman and macOS/Windows are out of scope; distinct `--override-config`
-merge and terminal logging; no legacy-Feature fallback) are recorded in
-[Divergences](docs/DIVERGENCES.md).
+`devcontainer` is a self-contained CLI for starting development environments from
+[`devcontainer.json`](https://containers.dev) in CI, remote development hosts, and
+internal developer platforms. It ships as a single static binary, requires no
+Node.js runtime, and is behaviorally compatible with the official
+`@devcontainers/cli` within its [supported scope](#supported-scope).
 
----
+Use it to give developers and automation the same reproducible environment, add
+Dev Container support to Linux hosts without managing Node.js, and build prebuild
+workflows without reimplementing Dev Container behavior.
 
-## Why switch?
+## Choose your path
 
-If you use the official CLI, you already know the friction:
+- **I already have a Dev Container:** [install the binary](docs/installation.md),
+  run `devcontainer up`, and follow the [migration guide](docs/migration.md) for
+  compatibility details.
+- **I want to use Dev Containers in CI:** see the
+  [CI workflow](docs/use-cases.md#ci-workflows) for a minimal build-and-run example.
+- **I am building a remote development platform:** see the
+  [platform workflow](docs/use-cases.md#remote-development-platforms) for prebuilds,
+  deterministic cache keys, lifecycle management, and editor hand-off.
+- **I am evaluating compatibility:** read the
+  [supported scope](#supported-scope) and [deliberate divergences](docs/DIVERGENCES.md).
 
-| Daily pain with `@devcontainers/cli` | With this binary |
+## Why use this CLI?
+
+| What you need | What `devcontainer` provides |
 | --- | --- |
-| `npm i -g @devcontainers/cli` pulls a Node runtime + hundreds of MB of `node_modules`, and drifts out of sync across machines/CI | **One static binary.** `CGO_ENABLED=0`, no runtime, no `node_modules`. Drop it in `FROM scratch`, a distroless CI image, or an air-gapped host. |
-| Node interpreter warm-up on every invocation | **Fast cold start**, low overhead. |
-| Pulling a **private base image** or `--push`/`--cache-to` to a private registry means running `docker login` by hand — sometimes in several places | **Credential bridge:** the CLI's own auth chain (`DEVCONTAINERS_OCI_AUTH`, cred helpers, `GITHUB_TOKEN`) is handed to `docker build` automatically. |
-| A missing buildx, no cache-export, or a wrong Compose version surfaces as a cryptic error **deep into a build** | **`devcontainer check`** preflights your host and tells you exactly what's wrong (and `setup` fixes what it safely can). |
-| Reusing a prebuilt image means re-implementing config hashing and clone-and-mutate hacks in your orchestrator | **`--cache-key`** emits a deterministic content hash; **`up --cache-image`** boots from a prebuilt image and skips feature install. |
-| A TLS-intercepting proxy breaks image pulls because the CA isn't honored everywhere | Proxy + `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE` honored on **every** request path. |
+| A predictable artifact for hosts and runners | One static Linux binary with no Node.js runtime or `node_modules` |
+| Existing Dev Container behavior | The core command surface is tested against a pinned official CLI |
+| Fast, actionable host validation | `devcontainer check` diagnoses Docker, buildx, cache export, Compose, disk, and SELinux; `setup` applies safe fixes |
+| Reusable prebuilds | A deterministic `--cache-key` and `up --cache-image` workflow |
+| Private registry access in automated builds | Credentials resolved by the CLI are passed to `docker build` automatically |
+| Safer image builds | BuildKit secrets through `build --secrets-file` |
+| Workspace lifecycle outside an editor | `open`, `stop`, and `down`, including Docker Compose projects |
 
-Same behavior where it counts, better ergonomics where it hurts.
+The official CLI remains the compatibility reference. This project focuses on
+portable distribution and operational workflows around it.
 
-## Install
+## Quick start
 
-Build it yourself — it's one command, and the result is a single self-contained file:
+### 1. Install
+
+Download the archive for your architecture from the
+[Releases page](https://github.com/spin-stack/devcontainer-cli/releases), extract
+`devcontainer`, and place it on your `PATH`:
 
 ```sh
-git clone https://github.com/spin-stack/devcontainer-cli
-cd devcontainer-cli
-task build            # or: go build -o devcontainer ./cmd/devcontainer
+tar xzf devcontainer_<version>_linux_<amd64-or-arm64>.tar.gz
+chmod +x devcontainer
 sudo mv devcontainer /usr/local/bin/
+devcontainer --version
 ```
 
-Tagged releases publish prebuilt **static** binaries (Linux amd64/arm64) and a
-container image to the
-[Releases page](https://github.com/spin-stack/devcontainer-cli/releases) — grab those
-instead once a version is cut.
+See [Installation](docs/installation.md) for checksum verification, building from
+source, prerequisites, and the OCI image's intended use.
 
-Confirm it's a single self-contained file:
+### 2. Run an existing project
+
+From a repository that contains `.devcontainer/devcontainer.json`:
 
 ```sh
-file ./devcontainer   # → "statically linked"
-ldd  ./devcontainer   # → "not a dynamic executable"
+devcontainer check
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . sh -lc 'printf "ready: %s\n" "$USER"'
 ```
 
-> **Scope: Linux + Docker.** Supported and validated on **Linux** (amd64, arm64) with
-> **Docker** and Compose **v2**. Windows, macOS and Podman are not targets.
+`up` builds or pulls the configured image, installs Features, starts the container,
+and mounts the workspace. `exec` runs a command in that environment.
 
-## Hello, dev container (60 seconds)
+If you do not have a Dev Container configuration yet, start with the
+[Dev Container specification and templates](https://containers.dev).
 
-Create a project with a minimal dev container config:
+## Common workflows
 
-```sh
-mkdir hello-devcontainer && cd hello-devcontainer
-mkdir -p .devcontainer
-cat > .devcontainer/devcontainer.json <<'JSON'
-{
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": {}
-  },
-  "postCreateCommand": "node --version"
-}
-JSON
-```
-
-Bring it up, then run a command inside it:
+### Use the same environment in CI
 
 ```sh
 devcontainer up --workspace-folder .
-devcontainer exec --workspace-folder . bash -lc 'node --version && whoami'
+devcontainer exec --workspace-folder . sh -lc './scripts/test'
+devcontainer down --workspace-folder .
 ```
 
-That's it — a real container, your feature installed, your workspace bind-mounted.
-Any automation that shells out to the `devcontainer` CLI (CI pipelines, prebuild
-services, scripts) can call this binary instead of `node devcontainer.js`.
-
-## Superpowers (Go-only)
-
-These commands and flags don't exist in the upstream CLI. Full reference:
-**[docs/go-only-features.md](docs/go-only-features.md)**.
+### Open the workspace in VS Code
 
 ```sh
-# Preflight the host — daemon, buildx, cache export, Compose v2, disk — before you build
-devcontainer check
-devcontainer setup            # apply the safe fixes (e.g. a cache-capable buildx builder)
+devcontainer up --workspace-folder .
+devcontainer open --workspace-folder .
+```
 
-# Deterministic cache key for prebuild reuse (hash of config + Dockerfile + features + proxy)
+The editor reconnects to the provisioned container instead of creating a separate
+one.
+
+### Reuse a prebuilt environment
+
+```sh
 devcontainer read-configuration --workspace-folder . --cache-key
+devcontainer up --workspace-folder . \
+  --cache-image ghcr.io/acme/project-dev:sha-abc123
+```
 
-# Boot from a prebuilt image, skipping build + feature install
-devcontainer up --workspace-folder . --cache-image ghcr.io/acme/app-devcontainer:sha-abc123
+The cache key represents the resolved configuration and build inputs. A platform
+can use it to select a prebuilt image without reproducing the CLI's hashing logic.
+See [Use cases](docs/use-cases.md) for a complete workflow.
 
-# Pass BuildKit build secrets (RUN --mount=type=secret,id=…) without baking them into a layer
+## Supported scope
+
+This project supports and validates:
+
+- Linux on amd64 and arm64.
+- Docker Engine API v1.44 or newer (Docker 25+).
+- Docker Compose v2 for Compose-based configurations.
+- The core `up`, `build`, `exec`, `read-configuration`, `run-user-commands`,
+  `features`, and `templates` command families.
+
+Windows, macOS, Podman, Docker Compose v1, and legacy Feature fallback through
+GitHub Releases are not supported targets. “Compatible” means compatibility within
+this scope; it does not mean that every platform or historical upstream behavior is
+implemented.
+
+A pinned official TypeScript CLI (`reference/`, currently v0.88.0) is the behavioral
+oracle. Roughly 200 cases run commands through both CLIs and compare exit status,
+normalized output, and relevant container or registry state. See the
+[parity matrix](docs/parity/parity-matrix.yaml) and
+[documented divergences](docs/DIVERGENCES.md).
+
+## Features unique to this implementation
+
+```sh
+devcontainer check
+devcontainer setup
+devcontainer open .
+devcontainer stop .
+devcontainer down .
+
+devcontainer read-configuration --workspace-folder . --cache-key
+devcontainer up --workspace-folder . --cache-image <image>
 devcontainer build --workspace-folder . --secrets-file secrets.json
-
-# Provision here, then open VS Code attached to the container (reconnects, doesn't rebuild)
-devcontainer up . && devcontainer open .
-
-# Pause / tear down a workspace (great on a remote host); `up` restarts a stopped one
-devcontainer stop .    # graceful stop, keep the container + data
-devcontainer down .    # stop and remove it
 ```
 
-Everything else — `up`, `build`, `exec`, `read-configuration`, `set-up`,
-`run-user-commands`, `features` (info/package/publish/test/…), `templates`
-(apply/publish/…), `outdated`, `upgrade` — mirrors the official CLI.
+The [Go-only features reference](docs/go-only-features.md) documents their behavior,
+flags, limitations, and automation-friendly JSON output.
 
-## Is it really compatible?
+## Documentation
 
-Compatibility is **validated**, not assumed. A pinned copy of the official
-TypeScript CLI (`reference/`, currently **v0.88.0**) is the behavioral oracle: a
-matrix of ~200 cases runs the *same* command through both CLIs and asserts the
-outputs match (exit code, normalized stdout/stderr, and container/registry state).
-Deliberate divergences (like the Go-only features above) are recorded, not hidden.
+- [Documentation overview](docs/README.md)
+- [Installation and prerequisites](docs/installation.md)
+- [Migrating from `@devcontainers/cli`](docs/migration.md)
+- [CI and remote development platform workflows](docs/use-cases.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Go-only features](docs/go-only-features.md)
+- [Divergences and accepted limitations](docs/DIVERGENCES.md)
 
-If you're evaluating a switch, the deliberate divergences are documented in
-[`docs/DIVERGENCES.md`](docs/DIVERGENCES.md) and the full case matrix in
-[`docs/parity/parity-matrix.yaml`](docs/parity/parity-matrix.yaml).
+## Contributing
 
-## Contributing / building
+The usual local development loop is:
 
 ```sh
-task build            # statically-linked ./devcontainer (CGO_ENABLED=0)
-task test:unit        # hermetic Go unit tests
-task test:integration # local HTTP integration tests
-task lint             # linters
-task build:cross      # static binaries for linux/{amd64,arm64}
+task build
+task test:unit
+task test:integration
+task lint
 ```
 
-Coverage is reported by execution layer instead of folding unlike suites into a
-single percentage:
-
-```sh
-task coverage                 # hermetic unit profile + ratchet gate
-task coverage:e2e             # real Docker E2E profile (requires Docker)
-task coverage:parity-contract # instrumented CLI subprocess vs the TS oracle
-task coverage:parity-runtime  # full Docker parity, collected nightly in CI
-task coverage:parity-publish  # real publication to an ephemeral OCI registry
-```
-
-The subprocess profile uses Go's application coverage (`go build -cover` plus
-`GOCOVERDIR`), so command paths exercised by parity are measured without replacing
-Docker, Node, registries, or internal collaborators with mocks. Profiles live under
-`artifacts/coverage/` and remain separate so a broad E2E run cannot hide a drop in
-fast unit coverage.
-
-Running the parity matrix (needs the submodule + Node + Docker):
+Parity and Docker-backed suites have additional prerequisites:
 
 ```sh
 git submodule update --init reference
-task reference        # compile the TypeScript oracle
-task parity:contract  # hermetic contract lane (no Docker)
-task parity:runtime   # full matrix; creates real containers/images via Docker
+task reference
+task parity:contract
+task test:e2e
+task parity:runtime
 ```
 
-- **[`docs/DIVERGENCES.md`](docs/DIVERGENCES.md)** — deliberate divergences, decisions & accepted limitations.
-- **[`docs/parity/parity-matrix.yaml`](docs/parity/parity-matrix.yaml)** — the case matrix.
+Coverage is kept separate by execution layer so a broad Docker or parity suite
+cannot hide a regression in fast unit coverage. Run `task --list` for all development,
+coverage, compliance, and release tasks.
 
-Releases are cut by pushing a `v`-prefixed CalVer tag (`vYYYYMMDD.NN`, e.g.
-`v20260712.01` — matching `release.yml`'s `v*` trigger); GoReleaser then builds the
-static binaries, SBOMs and the signed multi-arch image, published under
-`spin-stack/devcontainer-cli`.
+Releases use `v`-prefixed CalVer tags (`vYYYYMMDD.NN`) and publish static archives,
+checksums, SBOMs, and the signed multi-architecture image.
 
-```
-cmd/, internal/      the Go CLI implementation
-docs/                user + migration docs
-src/test/configs/    fixtures used by the parity matrix
-reference/           git submodule → the official CLI @ v0.88.0 (parity oracle)
-```
+## License
+
+See [LICENSE.txt](LICENSE.txt).
