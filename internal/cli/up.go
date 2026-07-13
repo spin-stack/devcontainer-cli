@@ -315,7 +315,10 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 
 	// Load config — requires workspaceFolder (guaranteed non-empty at this point)
-	loadResult, err := config.LoadDevContainerConfig(workspaceFolder, configPath, overridePath)
+	loadResult, err := config.LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overridePath, config.MountOptions{
+		MountWorkspaceGitRoot:     opts.mountWorkspaceGitRoot,
+		MountGitWorktreeCommonDir: opts.mountGitWorktreeCommonDir,
+	})
 	if err != nil {
 		return writeErrorResult(out, err.Error())
 	}
@@ -984,6 +987,18 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 		wsMount.Consistency = dockermount.Consistency(opts.workspaceMountConsistency)
 	}
 	mounts := []dockermount.Mount{wsMount}
+	// Extra workspace-derived mounts (currently the Git worktree common dir from
+	// --mount-git-worktree-common-dir) so Git works inside the container.
+	for _, spec := range loadResult.WorkspaceConfig.AdditionalMounts {
+		parsed, parseErr := docker.ParseMountSpec(spec)
+		if parseErr != nil {
+			return "", fmt.Errorf("invalid additional mount %q: %w", spec, parseErr)
+		}
+		if opts.workspaceMountConsistency != "" {
+			parsed.Consistency = dockermount.Consistency(opts.workspaceMountConsistency)
+		}
+		mounts = append(mounts, parsed)
+	}
 	idLabelMap := map[string]string{}
 	for _, label := range idLabels {
 		if i := strings.IndexByte(label, '='); i >= 0 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -38,6 +39,11 @@ type LoadResult struct {
 type WorkspaceConfig struct {
 	WorkspaceFolder string `json:"workspaceFolder"`
 	WorkspaceMount  string `json:"workspaceMount,omitempty"`
+	// AdditionalMounts holds extra bind mounts the workspace needs beyond the
+	// workspace mount itself — currently the Git worktree common dir, so Git
+	// operations work inside the container for `git worktree add --relative-paths`
+	// checkouts (--mount-git-worktree-common-dir).
+	AdditionalMounts []string `json:"-"`
 }
 
 // Workspace describes the local workspace.
@@ -84,9 +90,29 @@ func FindConfigFile(configFolderPath string) string {
 	return ""
 }
 
-// LoadDevContainerConfig loads and parses a devcontainer.json file.
-// If configPath is empty, it discovers the config file from workspaceFolder.
+// MountOptions controls how the workspace is bind-mounted into the container.
+type MountOptions struct {
+	// MountWorkspaceGitRoot mounts the workspace's Git root rather than the
+	// workspace folder itself (--mount-workspace-git-root, default true).
+	MountWorkspaceGitRoot bool
+	// MountGitWorktreeCommonDir additionally mounts a Git worktree's common dir so
+	// Git works in the container for `git worktree add --relative-paths` checkouts
+	// (--mount-git-worktree-common-dir, default false).
+	MountGitWorktreeCommonDir bool
+}
+
+// LoadDevContainerConfig loads and parses a devcontainer.json file with the
+// default mount behavior (mount the Git root, no worktree common dir). If
+// configPath is empty, it discovers the config file from workspaceFolder.
 func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath string) (*LoadResult, error) {
+	return LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfigPath, MountOptions{MountWorkspaceGitRoot: true})
+}
+
+// LoadDevContainerConfigWithMounts is LoadDevContainerConfig with explicit mount
+// options, so commands that create the container (up) or report its config
+// (read-configuration) can honor --mount-workspace-git-root /
+// --mount-git-worktree-common-dir.
+func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfigPath string, mounts MountOptions) (*LoadResult, error) {
 	workspace := WorkspaceFromPath(workspaceFolder)
 
 	// Discover config path
@@ -155,8 +181,8 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 		config.ConfigFilePath = overrideConfigPath
 	}
 
-	// Compute workspace config
-	wsConfig := computeWorkspaceConfig(workspace, &config, true)
+	// Compute workspace config using the caller's mount options.
+	wsConfig := computeWorkspaceConfig(workspace, &config, mounts.MountWorkspaceGitRoot, mounts.MountGitWorktreeCommonDir)
 
 	// Apply host-side variable substitution
 	// Trim trailing slash from paths to avoid double-slash in substitution
@@ -294,7 +320,7 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 
 // --- Helpers ---
 
-func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWorkspaceGitRoot bool) *WorkspaceConfig {
+func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWorkspaceGitRoot, mountGitWorktreeCommonDir bool) *WorkspaceConfig {
 	sourceFolder := workspace.RootFolderPath
 
 	// Detect git root for workspace mounting (matches TS getHostMountFolder)
@@ -304,42 +330,44 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 		}
 	}
 
-	containerFolder := "/workspaces/" + filepath.Base(sourceFolder)
+	// 0.88 only appends consistency on non-Linux hosts (macOS/Windows); on Linux
+	// the bind mount carries no consistency= suffix (getWorkspaceConfiguration).
+	consistency := ""
+	if runtime.GOOS != "linux" {
+		consistency = ",consistency=consistent"
+	}
 
-	// If the workspace is inside a subfolder of the git root, adjust the container path
+	// The workspace mounts at /workspaces/<basename>. A Git worktree created with
+	// `git worktree add --relative-paths` remaps this so the worktree's relative
+	// gitdir still resolves to the mounted common dir inside the container.
+	containerMountFolder := "/workspaces/" + filepath.Base(sourceFolder)
+	var additionalMounts []string
+	if mountWorkspaceGitRoot && mountGitWorktreeCommonDir && !config.IsComposeConfig() {
+		if remapped, commonDirMount, ok := gitWorktreeCommonDirMount(sourceFolder, consistency); ok {
+			containerMountFolder = remapped
+			additionalMounts = append(additionalMounts, commonDirMount)
+		}
+	}
+
+	// workspaceFolder is the container mount folder, plus the workspace's path
+	// relative to the git root when it sits in a subfolder.
+	containerFolder := containerMountFolder
 	if mountWorkspaceGitRoot && sourceFolder != workspace.RootFolderPath {
 		rel, err := filepath.Rel(sourceFolder, workspace.RootFolderPath)
 		if err == nil && rel != "." {
-			containerFolder = "/workspaces/" + filepath.Base(sourceFolder) + "/" + rel
+			containerFolder = path.Join(containerMountFolder, filepath.ToSlash(rel))
 		}
 	}
 
 	wc := &WorkspaceConfig{
-		WorkspaceFolder: containerFolder,
+		WorkspaceFolder:  containerFolder,
+		AdditionalMounts: additionalMounts,
 	}
 
-	// Only compute workspaceMount for non-compose configs
-	// Docker Compose manages its own mounts via the compose file
+	// Only compute workspaceMount for non-compose configs; Docker Compose manages
+	// its own mounts via the compose file.
 	if !config.IsComposeConfig() {
-		// 0.88 only appends consistency on non-Linux hosts (macOS/Windows);
-		// on Linux the bind mount carries no consistency= suffix (getWorkspaceConfiguration).
-		consistency := ""
-		if runtime.GOOS != "linux" {
-			consistency = ",consistency=consistent"
-		}
-		// A comma in the source/target path would otherwise be read by Docker as a
-		// mount-option boundary and break the mount — quote the affected segment,
-		// matching the TS srcQuote/tgtQuote guard.
-		containerMountFolder := "/workspaces/" + filepath.Base(sourceFolder)
-		srcQuote, tgtQuote := "", ""
-		if strings.Contains(sourceFolder, ",") {
-			srcQuote = `"`
-		}
-		if strings.Contains(containerMountFolder, ",") {
-			tgtQuote = `"`
-		}
-		wc.WorkspaceMount = fmt.Sprintf("type=bind,%ssource=%s%s,%starget=%s%s%s",
-			srcQuote, sourceFolder, srcQuote, tgtQuote, containerMountFolder, tgtQuote, consistency)
+		wc.WorkspaceMount = bindMount(sourceFolder, containerMountFolder, consistency)
 	}
 
 	if config.WorkspaceFolder != "" {
@@ -349,6 +377,73 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 		wc.WorkspaceMount = config.WorkspaceMount
 	}
 	return wc
+}
+
+// bindMount formats a `type=bind` mount string, quoting the source/target when it
+// contains a comma (which Docker would otherwise read as an option boundary),
+// matching the TS srcQuote/tgtQuote guard.
+func bindMount(source, target, consistency string) string {
+	srcQuote, tgtQuote := "", ""
+	if strings.Contains(source, ",") {
+		srcQuote = `"`
+	}
+	if strings.Contains(target, ",") {
+		tgtQuote = `"`
+	}
+	return fmt.Sprintf("type=bind,%ssource=%s%s,%starget=%s%s%s",
+		srcQuote, source, srcQuote, tgtQuote, target, tgtQuote, consistency)
+}
+
+// gitWorktreeCommonDirMount ports getWorkspaceConfiguration's worktree handling:
+// when hostMountFolder is a Git worktree whose `.git` gitlink file points at a
+// RELATIVE gitdir (i.e. created with `git worktree add --relative-paths`), it
+// returns a remapped container mount folder that preserves enough of the host
+// path structure for that relative path to resolve, plus a bind mount that maps
+// the shared common dir (the main repo's `.git`) into the container. ok is false
+// for a normal clone (`.git` is a directory), an absolute gitdir, or a missing
+// gitlink — all cases where no extra mount is needed.
+func gitWorktreeCommonDirMount(hostMountFolder, consistency string) (containerMountFolder, additionalMount string, ok bool) {
+	info, err := os.Stat(filepath.Join(hostMountFolder, ".git"))
+	if err != nil || !info.Mode().IsRegular() {
+		return "", "", false
+	}
+	data, err := os.ReadFile(filepath.Join(hostMountFolder, ".git"))
+	if err != nil {
+		return "", "", false
+	}
+	gitdir, ok := parseGitdir(string(data))
+	if !ok || filepath.IsAbs(gitdir) {
+		return "", "", false
+	}
+
+	// gitdir points at .git/worktrees/<name>; the common dir is .git, two levels up.
+	gitCommonDir := filepath.Clean(filepath.Join(hostMountFolder, gitdir, "..", ".."))
+
+	// Collect the host path segments from hostMountFolder up to (but not past) the
+	// directory that also contains gitCommonDir, so the container mount keeps just
+	// enough structure for the relative gitdir to resolve.
+	sep := string(os.PathSeparator)
+	var segments []string
+	for current := hostMountFolder; !strings.HasPrefix(gitCommonDir, current+sep) && current != filepath.Dir(current); current = filepath.Dir(current) {
+		segments = append([]string{filepath.Base(current)}, segments...)
+	}
+	containerMountFolder = path.Join(append([]string{"/workspaces"}, segments...)...)
+
+	// The common dir lands at the same relative offset inside the container.
+	containerGitCommonDir := path.Clean(path.Join(containerMountFolder, filepath.ToSlash(gitdir), "..", ".."))
+	return containerMountFolder, bindMount(gitCommonDir, containerGitCommonDir, consistency), true
+}
+
+// parseGitdir extracts the target of a `gitdir: <path>` line from a `.git`
+// gitlink file. No regexp, matching the rest of the package.
+func parseGitdir(content string) (string, bool) {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if rest, found := strings.CutPrefix(line, "gitdir:"); found {
+			return strings.TrimSpace(rest), true
+		}
+	}
+	return "", false
 }
 
 // detectGitRoot finds the git working-tree root for the given path by walking up

@@ -79,12 +79,6 @@ touches a compared surface, reflected in the parity matrix.
 Known gaps that are deliberately not closed; each is a conscious trade-off, not an
 oversight.
 
-- **`--mount-git-worktree-common-dir` is accepted for parity but not yet implemented.**
-  `up`/`build`/`exec`/`read-configuration`/`run-user-commands` accept the flag (so
-  automation that passes it does not break), but the CLI does not yet mount a Git
-  worktree's common dir. It only matters for workspaces that are Git worktrees created
-  with `git worktree add --relative-paths` — an edge case; the ordinary
-  `--mount-workspace-git-root` path is unaffected.
 - **Byte-for-byte tarball parity is unattainable** because of `mtime` differences; tarball
   contents are compared by parsed structure, not raw bytes.
 - **Cloud registry auth matrix is out of default CI scope.** The hermetic auth paths

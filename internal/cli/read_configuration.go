@@ -25,24 +25,25 @@ var mergedPassthroughKeys = []string{
 }
 
 type readConfigOpts struct {
-	workspaceFolder        string
-	configPath             string
-	overrideConfig         string
-	mountWorkspaceGitRoot  bool
-	includeFeaturesCfg     bool
-	includeMergedCfg       bool
-	logLevel               string
-	logFormat              string
-	logFile                string
-	terminalLogFile        string
-	containerID            string
-	idLabels               []string
-	dockerPath             string
-	additionalFeatures     string
-	skipFeatureAutoMapping bool
-	terminalColumns        int
-	terminalRows           int
-	cacheKey               bool
+	workspaceFolder           string
+	configPath                string
+	overrideConfig            string
+	mountWorkspaceGitRoot     bool
+	mountGitWorktreeCommonDir bool
+	includeFeaturesCfg        bool
+	includeMergedCfg          bool
+	logLevel                  string
+	logFormat                 string
+	logFile                   string
+	terminalLogFile           string
+	containerID               string
+	idLabels                  []string
+	dockerPath                string
+	additionalFeatures        string
+	skipFeatureAutoMapping    bool
+	terminalColumns           int
+	terminalRows              int
+	cacheKey                  bool
 }
 
 func newReadConfigurationCmd() *cobra.Command {
@@ -61,7 +62,7 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.StringVar(&opts.configPath, "config", "", "devcontainer.json path.")
 	f.StringVar(&opts.overrideConfig, "override-config", "", "devcontainer.json path to override.")
 	f.BoolVar(&opts.mountWorkspaceGitRoot, "mount-workspace-git-root", true, "Mount the workspace using its Git root.")
-	f.Bool("mount-git-worktree-common-dir", false, "Mount the Git worktree common dir for Git operations to work in the container.")
+	f.BoolVar(&opts.mountGitWorktreeCommonDir, "mount-git-worktree-common-dir", false, "Mount the Git worktree common dir for Git operations to work in the container.")
 	f.BoolVar(&opts.includeFeaturesCfg, "include-features-configuration", false, "Include features configuration.")
 	f.BoolVar(&opts.includeMergedCfg, "include-merged-configuration", false, "Include merged configuration.")
 	f.StringVar(&opts.logLevel, "log-level", "info", "Log level.")
@@ -140,7 +141,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	var result *config.LoadResult
 	if workspaceFolder != "" || configPath != "" {
 		var loadErr error
-		result, loadErr = config.LoadDevContainerConfig(workspaceFolder, configPath, overridePath)
+		result, loadErr = config.LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overridePath, config.MountOptions{
+			MountWorkspaceGitRoot:     opts.mountWorkspaceGitRoot,
+			MountGitWorktreeCommonDir: opts.mountGitWorktreeCommonDir,
+		})
 		if loadErr != nil {
 			// 0.88: read-configuration exits 1 silently (banner only) when no
 			// config is found — it does not print an error envelope. Parse/other
