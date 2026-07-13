@@ -62,9 +62,11 @@ dockers_v2:
     dockerfile: Dockerfile
     images:
       - ghcr.io/spin-stack/devcontainer-cli
+    # Only the immutable, versioned tag here. `latest` is a moving tag, which is
+    # incompatible with GHCR immutable tags and would fail the whole release; it
+    # is updated best-effort as a separate step in release.yml instead.
     tags:
       - "{{ .Version }}"
-      - latest
     platforms:
       - linux/amd64
       - linux/arm64
@@ -92,6 +94,10 @@ release:
     name: devcontainer-cli
   draft: true
   prerelease: auto
+  # Re-runs of an unpublished draft get a clean artifact set. Safe with draft:true:
+  # GoReleaser only ever operates on the draft (never a published, immutable
+  # release), and the release workflow blocks re-tagging an existing version.
+  mode: replace
   name_template: "Go CLI {{.Version}}"
   header: |
     ## Dev Container CLI (Go)

@@ -246,6 +246,17 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           docker buildx imagetools inspect "$IMAGE"
 
+      # Move the mutable :latest tag to this release's digest. Best-effort: a
+      # `latest` tag is incompatible with GHCR immutable tags, so if the registry
+      # rejects the update the versioned release still succeeds.
+      - name: Update :latest (best-effort)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            -t ghcr.io/spin-stack/devcontainer-cli:latest \
+            "ghcr.io/spin-stack/devcontainer-cli@${{ steps.digest.outputs.digest }}"
+
       # Image-level SBOM + keyless provenance signature against the immutable
       # digest (not the mutable tag). This is the cosign/syft path chosen over
       # inline buildx --provenance/--sbom, which would break docker_manifests.
