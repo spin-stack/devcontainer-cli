@@ -109,25 +109,24 @@ func TestWorkflowShardMatrixMatchesShardTotal(t *testing.T) {
 		}
 	}
 
-	// Both the push/PR (parity-runtime-shard) and the daily (parity-runtime-full)
-	// lanes are sharded; if neither is found the parsing (or the jobs) regressed.
-	if sharded < 2 {
-		t.Errorf("found %d sharded parity jobs, want at least 2 (push/PR + daily full)", sharded)
+	// The unified runtime lane (parity-runtime) is sharded; if it isn't found the
+	// parsing (or the job) regressed.
+	if sharded < 1 {
+		t.Errorf("found %d sharded parity jobs, want at least 1 (parity-runtime)", sharded)
 	}
 }
 
-// TestWorkflowRuntimeJobsShareCompositeAction locks in the reuse between the two
-// runtime lanes: both must set up their runner through the shared composite action
-// (toolchain + ci:prepare-runner + reference) so the push/PR and daily environments
-// can't drift apart. (A lane may also add a bare setup-go before the composite —
-// parity-runtime-shard needs the Go toolchain for the devtool affected-commands
-// step that decides whether the composite even runs — but node/task setup belongs
-// only in the shared action, never re-inlined.)
+// TestWorkflowRuntimeJobsShareCompositeAction locks in the reuse for the runtime
+// lanes: they must set up their runner through the shared composite action
+// (toolchain + ci:prepare-runner + reference) so the environments can't drift apart.
+// (A lane may also add a bare setup-go before the composite — parity-runtime needs
+// the Go toolchain for the devtool plan step that decides whether the composite even
+// runs — but node/task setup belongs only in the shared action, never re-inlined.)
 func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 	wf := loadWorkflow(t)
 	const action = "./.github/actions/setup-parity-runtime"
 
-	for _, name := range []string{"parity-runtime-shard", "parity-runtime-full"} {
+	for _, name := range []string{"parity-runtime", "parity-publish-full"} {
 		job, ok := wf.Jobs[name]
 		if !ok {
 			t.Errorf("job %q missing", name)
@@ -152,14 +151,15 @@ func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 // TestWorkflowDailyLanesGatedOnChanges asserts the expensive daily lanes only run
 // when the repo changed that day: each must `needs: daily-changes` and gate on its
 // output. Dropping either turns the change-detection into a no-op and the matrix
-// runs (and bills) every day regardless.
+// runs (and bills) every day regardless. (parity-runtime also runs on push/PR; its
+// `if` gates the daily path on the same output.)
 func TestWorkflowDailyLanesGatedOnChanges(t *testing.T) {
 	wf := loadWorkflow(t)
 
 	if _, ok := wf.Jobs["daily-changes"]; !ok {
 		t.Fatal("daily-changes job missing — nothing gates the daily lanes")
 	}
-	for _, name := range []string{"parity-runtime-full", "parity-publish-full"} {
+	for _, name := range []string{"parity-runtime", "parity-publish-full"} {
 		job, ok := wf.Jobs[name]
 		if !ok {
 			t.Errorf("job %q missing", name)
