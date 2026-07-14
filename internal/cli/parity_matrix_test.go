@@ -1018,6 +1018,14 @@ func parityEnv(caseID, side, repoRoot string, isolateCompose bool) map[string]st
 		"PARITY_CASE_ID":   sanitizeEnvValue(caseID),
 		"PARITY_SIDE":      side,
 		"PARITY_REPO_ROOT": repoRoot,
+		// The CLI a setup_cmd must invoke is the SAME binary under test for this
+		// lane, not a hardcoded path: the coverage lane sets CLI_GO to the
+		// instrumented binary and never builds ./devcontainer, so a setup_cmd that
+		// hard-coded ${PARITY_REPO_ROOT}/devcontainer fails there (missing binary →
+		// no container → "Dev container not found"). Mirror the cliGO/cliTS defaults
+		// (lines above) so setup and the measured command always agree.
+		"PARITY_CLI_GO": envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer")),
+		"PARITY_CLI_TS": envOr("CLI_TS", "node "+filepath.Join(repoRoot, "reference", "devcontainer.js")),
 		// Newer BuildKit attaches provenance/SBOM attestations by default, wrapping
 		// the feature-content image in an attestation manifest list. That breaks the
 		// TS CLI's `COPY --from=dev_containers_feature_content_source ...` feature
