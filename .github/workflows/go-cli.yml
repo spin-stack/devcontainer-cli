@@ -172,26 +172,11 @@ jobs:
             base="${{ github.event.before }}"; head="${{ github.sha }}"
           fi
           bash scripts/parity-affected-commands.sh "$base" "$head" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@v6
-        if: steps.affected.outputs.run == 'true'
+      # Toolchain + runner prep + reference oracle, shared with parity-runtime-full.
+      - if: steps.affected.outputs.run == 'true'
+        uses: ./.github/actions/setup-parity-runtime
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v6
-        if: steps.affected.outputs.run == 'true'
-        with:
-          node-version: "20"
-      - uses: go-task/setup-task@v2
-        if: steps.affected.outputs.run == 'true'
-        with:
-          version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      # Free disk + enable the containerd image store (build-cache export). Reuses
-      # the Taskfile so the runner prep is identical to release.yml.
-      - if: steps.affected.outputs.run == 'true'
-        run: task ci:prepare-runner
-
-      - if: steps.affected.outputs.run == 'true'
-        run: task reference
       - if: steps.affected.outputs.run == 'true'
         env:
           PARITY_COMMAND: ${{ steps.affected.outputs.commands }}
@@ -225,42 +210,64 @@ jobs:
             *) echo "one or more runtime shards failed"; exit 1 ;;
           esac
 
-  # Full runtime parity matrix + publish parity. Runs once a day (schedule) and
-  # on manual dispatch — the exhaustive backstop for the scoped push/PR job above.
-  parity-runtime-full:
+  # Gate the expensive daily lanes on "did the repo change today?". A manual dispatch
+  # always runs; a scheduled run only proceeds if HEAD has a commit within the last
+  # day (scripts/daily-changed.sh). On a private/billed repo this skips the full
+  # runtime matrix + publish on quiet days. Runs on schedule/dispatch so it is never
+  # skipped for those events — the heavy jobs `needs:` it, and a skipped need would
+  # skip them regardless of its output.
+  daily-changes:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: lint-and-test
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual dispatch → always run" >&2
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            bash scripts/daily-changed.sh >> "$GITHUB_OUTPUT"
+          fi
+
+  # Full runtime parity matrix. Runs once a day (schedule, only when the repo changed
+  # — see daily-changes) and on manual dispatch — the exhaustive backstop for the
+  # scoped push/PR job above. Sharded across independent runners (same
+  # PARITY_SHARD_INDEX/TOTAL harness as the push/PR lane) so the 175-case matrix no
+  # longer contends for one runner's CPU/disk/daemon, which was starving the
+  # container setups and failing downstream exec cases. PARITY_SHARD_TOTAL MUST equal
+  # the length of matrix.shard — parity_sharding_workflow_test.go enforces that, so a
+  # mismatch can't silently drop cases.
+  parity-runtime-full:
+    needs: [lint-and-test, daily-changes]
+    if: needs.daily-changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast off so one shard's failure still reports the others.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     env:
       PARITY_RUNTIME_TIMEOUT: "10m"
-      # Exhaustive daily run on a dedicated (non-gating) job: raise parallelism to
-      # 3 now that per-case isolation makes concurrent builds safe. Not sharded
-      # here because this lane also measures coverage (single covdata merge).
-      PARITY_PARALLEL: "3"
+      # Each shard owns ~a quarter of the matrix, so -parallel 2 per runner matches
+      # the push/PR shard lane's proven-safe load instead of the old single-runner 3.
+      PARITY_PARALLEL: "2"
+      PARITY_SHARD_INDEX: ${{ matrix.shard }}
+      PARITY_SHARD_TOTAL: "4"
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-go@v6
+      - uses: ./.github/actions/setup-parity-runtime
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-      - uses: go-task/setup-task@v2
-        with:
-          version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: task ci:prepare-runner
-
-      - run: task reference
-      # The full lanes run the instrumented binary, so this measures coverage AND
-      # gates parity; coverage:merge unions them into one cross-lane report.
+      # Instrumented binary: measures coverage AND gates parity on this shard's slice.
       - run: task coverage:parity-runtime
-      - run: task coverage:parity-publish
-      - name: Merged coverage report
+      - name: Coverage summary
         if: always()
-        run: task coverage:merge | tee -a "$GITHUB_STEP_SUMMARY"
+        run: bash scripts/coverage-report.sh artifacts/coverage/data/runtime "parity:runtime shard ${{ matrix.shard }}" >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         run: |
           mkdir -p artifacts
@@ -268,13 +275,95 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: parity-runtime-full-v0.88.0
-          path: |
-            artifacts/
-            artifacts/coverage/
+          name: parity-runtime-full-v0.88.0-shard-${{ matrix.shard }}
+          path: artifacts/
+          if-no-files-found: error
+      # covdata slice for the cross-lane merge (distinct name per shard so the merge
+      # job unions them instead of clobbering).
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: covdata-runtime-shard-${{ matrix.shard }}
+          path: artifacts/coverage/data/runtime
           if-no-files-found: error
       - if: always()
         run: task clean
+
+  # Publish parity (features/templates → ephemeral OCI registry). Independent of the
+  # runtime matrix, so it runs as its own job rather than stealing a runtime shard's
+  # runner. Was folded into the old monolithic parity-runtime-full.
+  parity-publish-full:
+    needs: [lint-and-test, daily-changes]
+    if: needs.daily-changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-parity-runtime
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: task coverage:parity-publish
+      - name: Coverage summary
+        if: always()
+        run: bash scripts/coverage-report.sh artifacts/coverage/data/publish "parity:publish" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: covdata-publish
+          path: artifacts/coverage/data/publish
+          if-no-files-found: error
+      - if: always()
+        run: task clean
+
+  # Daily gate + cross-lane coverage. Aggregates the sharded runtime lane and the
+  # publish lane into one pass/fail (mirrors the push/PR parity-runtime gate) and
+  # merges every lane's covdata — unit + e2e + contract (which also run on schedule)
+  # plus the runtime shards + publish — into the one true cross-lane number.
+  parity-runtime-full-report:
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, e2e, parity, parity-runtime-full, parity-publish-full]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: go-task/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download all lane covdata
+        uses: actions/download-artifact@v8
+        with:
+          pattern: covdata-*
+          path: artifacts/coverage/data
+      # download-artifact nests each artifact under covdata-<lane>/; flatten to <lane>/
+      # so coverage:merge sees one dir per lane (the runtime shards stay distinct).
+      - name: Normalize lane dirs
+        run: |
+          cd artifacts/coverage/data
+          for d in covdata-*; do [ -d "$d" ] && mv "$d" "${d#covdata-}"; done
+          ls -R . || true
+      - name: Merged coverage report
+        run: task coverage:merge | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: covdata-merged-full
+          path: artifacts/coverage/data/merged.out
+          if-no-files-found: warn
+      # Final verdict last, so the coverage report is posted even when a shard failed.
+      - name: Gate on all runtime shards + publish
+        run: |
+          runtime="${{ needs.parity-runtime-full.result }}"
+          publish="${{ needs.parity-publish-full.result }}"
+          echo "runtime shards: $runtime, publish: $publish"
+          for r in "$runtime" "$publish"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "runtime/publish parity failed"; exit 1 ;;
+            esac
+          done
 
   # Experimental, NON-gating: arm64 runtime via QEMU emulation. arm64 runtime is
   # unsupported for now, so its cases are skipped-arm64 in the gate above. This job
