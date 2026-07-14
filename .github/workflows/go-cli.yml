@@ -34,7 +34,7 @@ jobs:
       - run: task coverage
       - name: Coverage summary
         if: always()
-        run: bash scripts/coverage-report.sh coverage.out "unit (hermetic)" >> "$GITHUB_STEP_SUMMARY"
+        run: go run ./cmd/devtool coverage-report coverage.out "unit (hermetic)" >> "$GITHUB_STEP_SUMMARY"
       - run: task test:integration
       - run: task build
       - run: ./devcontainer --version
@@ -76,7 +76,7 @@ jobs:
       - run: task coverage:e2e
       - name: Coverage summary
         if: always()
-        run: bash scripts/coverage-report.sh artifacts/coverage/data/e2e "e2e" >> "$GITHUB_STEP_SUMMARY"
+        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/e2e "e2e" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -115,7 +115,7 @@ jobs:
       - run: task coverage:parity-contract
       - name: Coverage summary
         if: always()
-        run: bash scripts/coverage-report.sh artifacts/coverage/data/contract "parity:contract" >> "$GITHUB_STEP_SUMMARY"
+        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/contract "parity:contract" >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         run: |
           mkdir -p artifacts
@@ -135,7 +135,7 @@ jobs:
 
   # Runtime lane of the parity matrix (creates real containers via Docker) on
   # push/PR, SCOPED to the commands affected by the change: the full matrix takes
-  # ~45 min, so scripts/parity-affected.sh maps the diff to a
+  # ~45 min, so the devtool parity-affected mapping reduces the diff to a
   # PARITY_COMMAND allowlist (or "all"/"none"). The daily parity-runtime-full job
   # is the backstop that always runs the whole thing.
   parity-runtime-shard:
@@ -163,6 +163,11 @@ jobs:
           submodules: recursive
           # Full history so the diff base (PR base / previous push) is present.
           fetch-depth: 0
+      # devtool (the affected-commands mapping) runs before the composite setup,
+      # so it needs the Go toolchain here.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - name: Determine affected parity commands
         id: affected
         run: |
@@ -171,7 +176,7 @@ jobs:
           else
             base="${{ github.event.before }}"; head="${{ github.sha }}"
           fi
-          bash scripts/parity-affected-commands.sh "$base" "$head" >> "$GITHUB_OUTPUT"
+          go run ./cmd/devtool parity-affected-commands "$base" "$head" >> "$GITHUB_OUTPUT"
       # Toolchain + runner prep + reference oracle, shared with parity-runtime-full.
       - if: steps.affected.outputs.run == 'true'
         uses: ./.github/actions/setup-parity-runtime
@@ -212,7 +217,7 @@ jobs:
 
   # Gate the expensive daily lanes on "did the repo change today?". A manual dispatch
   # always runs; a scheduled run only proceeds if HEAD has a commit within the last
-  # day (scripts/daily-changed.sh). On a private/billed repo this skips the full
+  # day (devtool daily-changed). On a private/billed repo this skips the full
   # runtime matrix + publish on quiet days. Runs on schedule/dispatch so it is never
   # skipped for those events — the heavy jobs `needs:` it, and a skipped need would
   # skip them regardless of its output.
@@ -223,13 +228,16 @@ jobs:
       run: ${{ steps.check.outputs.run }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - id: check
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "manual dispatch → always run" >&2
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            bash scripts/daily-changed.sh >> "$GITHUB_OUTPUT"
+            go run ./cmd/devtool daily-changed >> "$GITHUB_OUTPUT"
           fi
 
   # Full runtime parity matrix. Runs once a day (schedule, only when the repo changed
@@ -267,7 +275,7 @@ jobs:
       - run: task coverage:parity-runtime
       - name: Coverage summary
         if: always()
-        run: bash scripts/coverage-report.sh artifacts/coverage/data/runtime "parity:runtime shard ${{ matrix.shard }}" >> "$GITHUB_STEP_SUMMARY"
+        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/runtime "parity:runtime shard ${{ matrix.shard }}" >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         run: |
           mkdir -p artifacts
@@ -306,7 +314,7 @@ jobs:
       - run: task coverage:parity-publish
       - name: Coverage summary
         if: always()
-        run: bash scripts/coverage-report.sh artifacts/coverage/data/publish "parity:publish" >> "$GITHUB_STEP_SUMMARY"
+        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/publish "parity:publish" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -364,43 +372,6 @@ jobs:
               *) echo "runtime/publish parity failed"; exit 1 ;;
             esac
           done
-
-  # Experimental, NON-gating: arm64 runtime via QEMU emulation. arm64 runtime is
-  # unsupported for now, so its cases are skipped-arm64 in the gate above. This job
-  # is SLOW (QEMU) and only runs on a manual trigger (workflow_dispatch), not on
-  # every push/PR — enable it when validating arm64.
-  parity-runtime-arm64-experimental:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-    continue-on-error: true
-    env:
-      PARITY_ARM64: "true"
-      PARITY_RUNTIME_TIMEOUT: "15m"
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - name: Set up QEMU (arm64 emulation)
-        uses: docker/setup-qemu-action@v4
-        with:
-          platforms: arm64
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-      - uses: go-task/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: task ci:prepare-runner
-      - run: task reference
-      - run: task parity:runtime
-      - if: always()
-        run: task clean
-
 
   # Cross-lane coverage: merge the per-PR lanes' covdata (unit + e2e + contract)
   # into the one number no single lane shows, and post it to the run summary.

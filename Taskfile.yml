@@ -90,9 +90,9 @@ tasks:
       # -test.gocoverdir also emits binary covdata so `coverage:merge` can union it
       # with the e2e/parity lanes.
       - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -coverprofile=coverage.out -count=1 -args -test.gocoverdir={{.ROOT_DIR}}/{{.COVER_DATA}}/unit
-      - bash scripts/coverage-report.sh coverage.out "unit (hermetic)"
+      - go run ./cmd/devtool coverage-report coverage.out "unit (hermetic)"
       # Ratchet: total + per-package floors (parsers must not mask lost CLI/OCI coverage).
-      - bash scripts/coverage-gate.sh coverage.out TOTAL={{.COVERAGE_MIN}} cli={{.COVERAGE_CLI_MIN}} docker={{.COVERAGE_DOCKER_MIN}} lifecycle={{.COVERAGE_LIFECYCLE_MIN}} oci={{.COVERAGE_OCI_MIN}}
+      - go run ./cmd/devtool coverage-gate coverage.out TOTAL={{.COVERAGE_MIN}} cli={{.COVERAGE_CLI_MIN}} docker={{.COVERAGE_DOCKER_MIN}} lifecycle={{.COVERAGE_LIFECYCLE_MIN}} oci={{.COVERAGE_OCI_MIN}}
 
   coverage:e2e:
     desc: Coverage of the real in-process E2E paths (requires Docker)
@@ -104,7 +104,7 @@ tasks:
       # -coverpkg instruments the whole module (these tests invoke NewRootCommand
       # directly); -test.gocoverdir emits binary covdata for the merge.
       - go test ./internal/cli -run '^TestE2E' -count=1 -timeout 5m -coverpkg=./... -args -test.gocoverdir={{.ROOT_DIR}}/{{.COVER_DATA}}/e2e
-      - bash scripts/coverage-report.sh {{.COVER_DATA}}/e2e "e2e"
+      - go run ./cmd/devtool coverage-report {{.COVER_DATA}}/e2e "e2e"
 
   # coverage:_parity-lane runs the instrumented CLI (build:coverage) through a
   # parity lane, collecting covdata into COVER_DATA/<LANE> and printing the table.
@@ -115,7 +115,7 @@ tasks:
     cmds:
       - rm -rf {{.COVER_DATA}}/{{.LANE}} && mkdir -p {{.COVER_DATA}}/{{.LANE}}
       - GOCOVERDIR={{.ROOT_DIR}}/{{.COVER_DATA}}/{{.LANE}} CLI_GO={{.ROOT_DIR}}/{{.COVER_DIR}}/bin/{{.BINARY}} {{.RUN}}
-      - bash scripts/coverage-report.sh {{.COVER_DATA}}/{{.LANE}} "parity:{{.LANE}}"
+      - go run ./cmd/devtool coverage-report {{.COVER_DATA}}/{{.LANE}} "parity:{{.LANE}}"
 
   coverage:parity-contract:
     desc: Coverage of the instrumented binary through the hermetic contract parity lane
@@ -135,8 +135,8 @@ tasks:
         msg: Docker is required for runtime parity coverage
       - sh: docker info 2>/dev/null | grep -q io.containerd.snapshotter
         msg: The parity runtime lane requires the containerd image store (docker build --platform on local images); enable it with `task ci:prepare-runner`.
-      - sh: bash scripts/docker-cache-export.sh
-        msg: The Docker builder must support cache export (see scripts/ci-prepare-runner.sh)
+      - sh: go run ./cmd/devtool docker-cache-export
+        msg: The Docker builder must support cache export (see `devtool ci-prepare-runner`)
     cmds:
       - task: coverage:_parity-lane
         vars:
@@ -160,7 +160,7 @@ tasks:
   coverage:merge:
     desc: Union every per-lane covdata dir into the true cross-lane coverage report
     cmds:
-      - bash scripts/coverage-merge.sh {{.COVER_DATA}} {{.COVER_DATA}}/merged "merged (all lanes)"
+      - go run ./cmd/devtool coverage-merge {{.COVER_DATA}} {{.COVER_DATA}}/merged "merged (all lanes)"
 
   test:e2e:
     desc: Run Go E2E tests with Docker
@@ -236,11 +236,11 @@ tasks:
       # Fail fast (~1s) if the builder can't export build cache — otherwise the
       # runtime cases (build.cache-to-*, build.output-oci-*) fail ~4 min deep with
       # a cryptic buildkit error. The default `docker` driver lacks cache export.
-      - sh: bash scripts/docker-cache-export.sh
+      - sh: go run ./cmd/devtool docker-cache-export
         msg: |
           The Docker builder cannot export build cache (needed by the runtime parity
           matrix: build.cache-to-*, build.output-oci-*). Enable the containerd image
-          store (scripts/ci-prepare-runner.sh) or use a docker-container buildx builder.
+          store (`devtool ci-prepare-runner`) or use a docker-container buildx builder.
     cmds:
       # -parallel default 2 for gate determinism: higher values overload the docker
       # daemon on contended runners and transiently fail compose/heavy cases (they
@@ -261,7 +261,7 @@ tasks:
   ci:prepare-runner:
     desc: "CI-ONLY: free disk + enable the containerd image store (uses sudo; not for local dev)"
     cmds:
-      - bash scripts/ci-prepare-runner.sh
+      - go run ./cmd/devtool ci-prepare-runner
 
   clean:
     desc: Remove generated artifacts and test containers

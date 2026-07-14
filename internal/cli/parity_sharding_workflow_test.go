@@ -118,8 +118,11 @@ func TestWorkflowShardMatrixMatchesShardTotal(t *testing.T) {
 
 // TestWorkflowRuntimeJobsShareCompositeAction locks in the reuse between the two
 // runtime lanes: both must set up their runner through the shared composite action
-// (toolchain + ci:prepare-runner + reference) rather than re-inlining the steps, so
-// the push/PR and daily environments can't drift apart.
+// (toolchain + ci:prepare-runner + reference) so the push/PR and daily environments
+// can't drift apart. (A lane may also add a bare setup-go before the composite —
+// parity-runtime-shard needs the Go toolchain for the devtool affected-commands
+// step that decides whether the composite even runs — but node/task setup belongs
+// only in the shared action, never re-inlined.)
 func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 	wf := loadWorkflow(t)
 	const action = "./.github/actions/setup-parity-runtime"
@@ -135,8 +138,8 @@ func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 			if s.Uses == action {
 				used = true
 			}
-			// The inlined toolchain setup must be gone (that's the point of the reuse).
-			if strings.HasPrefix(s.Uses, "actions/setup-go") || strings.HasPrefix(s.Uses, "actions/setup-node") {
+			// node/task setup is the composite's job; re-inlining it defeats the reuse.
+			if strings.HasPrefix(s.Uses, "actions/setup-node") || strings.HasPrefix(s.Uses, "go-task/setup-task") {
 				t.Errorf("job %q re-inlines %q; use the composite action instead", name, s.Uses)
 			}
 		}
