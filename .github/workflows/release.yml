@@ -83,10 +83,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - uses: go-task/setup-task@v2
@@ -113,10 +113,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - uses: go-task/setup-task@v2
@@ -183,7 +183,7 @@ jobs:
           # Build at the tag so GoReleaser runs in release (not snapshot) mode.
           ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -278,10 +278,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.tag }}
           submodules: recursive
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - uses: go-task/setup-task@v2
