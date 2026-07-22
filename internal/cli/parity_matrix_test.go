@@ -518,7 +518,34 @@ func runParitySide(t *testing.T, ctx context.Context, repoRoot, cli string, tc p
 	return result
 }
 
+// parityInfraRetries bounds how many times a side is re-run when it fails with a
+// transient build/environment error. The runtime lane's docker builds flake on
+// contended CI runners (BuildKit "failed to solve", a registry hiccup, or a
+// container-setup failure surfaced as `Command failed: docker build`), which then
+// shows up as a false TS-vs-Go divergence (one side's build flaked while the other
+// succeeded). A single retry absorbs the flake. Retrying is safe: a deterministic
+// product failure reproduces on every attempt and still fails the case.
+const parityInfraRetries = 2 // total attempts, not extra retries
+
 func runParityCLI(ctx context.Context, repoRoot, cli, cmdArgs string, env map[string]string) (stdout, stderr string, exitCode int) {
+	return runWithInfraRetry(ctx, parityInfraRetries, func() (string, string, int) {
+		return runParityCLIOnce(ctx, repoRoot, cli, cmdArgs, env)
+	})
+}
+
+// runWithInfraRetry re-runs run while it fails with a retryable transient error,
+// up to maxAttempts total. It stops early on success, on a non-retryable failure,
+// or once the context is done (so a retry never runs past the per-case deadline).
+func runWithInfraRetry(ctx context.Context, maxAttempts int, run func() (stdout, stderr string, exitCode int)) (stdout, stderr string, exitCode int) {
+	for attempt := 1; ; attempt++ {
+		stdout, stderr, exitCode = run()
+		if exitCode == 0 || attempt >= maxAttempts || !isRetryableFailure(stdout, stderr) || ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+func runParityCLIOnce(ctx context.Context, repoRoot, cli, cmdArgs string, env map[string]string) (stdout, stderr string, exitCode int) {
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-lc", cli+" "+cmdArgs)
 	cmd.Dir = repoRoot
 	cmd.Env = append(os.Environ(), envList(env)...)
@@ -1205,6 +1232,32 @@ func isInfraError(stdout, stderr string) bool {
 	}
 	for _, p := range infraPatterns {
 		if strings.Contains(strings.ToLower(combined), strings.ToLower(p)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isRetryableFailure reports whether a non-zero CLI result looks like a transient
+// build/environment failure worth re-running, as opposed to a stable product
+// divergence. It is deliberately BROADER than isInfraError: a retry is safe (a
+// deterministic failure reproduces on the next attempt and still goes RED), so it
+// also matches the container-setup / `docker build` wrapper a flaky BuildKit or
+// registry hiccup surfaces without a recognizable low-level signal. Do NOT use it
+// to mark a side an unusable oracle — classifyParitySide/isInfraError must stay
+// narrow so a real divergence is never silently skipped; use this only to decide a
+// retry.
+func isRetryableFailure(stdout, stderr string) bool {
+	if isInfraError(stdout, stderr) {
+		return true
+	}
+	combined := strings.ToLower(stdout + stderr)
+	retryablePatterns := []string{
+		"an error occurred setting up the container",
+		"command failed: docker build",
+	}
+	for _, p := range retryablePatterns {
+		if strings.Contains(combined, p) {
 			return true
 		}
 	}
