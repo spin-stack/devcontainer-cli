@@ -537,7 +537,15 @@ func runParityCLI(ctx context.Context, repoRoot, cli, cmdArgs string, env map[st
 // up to maxAttempts total. It stops early on success, on a non-retryable failure,
 // or once the context is done (so a retry never runs past the per-case deadline).
 func runWithInfraRetry(ctx context.Context, maxAttempts int, run func() (stdout, stderr string, exitCode int)) (stdout, stderr string, exitCode int) {
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
 	for attempt := 1; ; attempt++ {
+		// Always allow the first attempt; after that, don't start new work once the
+		// per-case context is done.
+		if attempt > 1 && ctx.Err() != nil {
+			return
+		}
 		stdout, stderr, exitCode = run()
 		if exitCode == 0 || attempt >= maxAttempts || !isRetryableFailure(stdout, stderr) || ctx.Err() != nil {
 			return
