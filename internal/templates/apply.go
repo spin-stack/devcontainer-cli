@@ -191,7 +191,9 @@ func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFe
 		return fmt.Errorf("parse %s: %w", configPath, stdErr)
 	}
 	var config map[string]json.RawMessage
-	json.Unmarshal(stdData, &config)
+	if err := json.Unmarshal(stdData, &config); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", configPath, err)
+	}
 	existing := map[string]bool{}
 	_, hasFeatures := config["features"]
 	if hasFeatures {
