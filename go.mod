@@ -1,11 +1,6 @@
 module github.com/devcontainers/cli
 
-go 1.26.3
-
-// Pin the patched toolchain: go1.26.0's crypto/x509 has known vulnerabilities
-// (GO-2026-4599/4600, reachable via TLS verification on image pulls), fixed in
-// go1.26.1. Keep this at or above the latest patch; `task vuln` gates it.
-toolchain go1.26.5
+go 1.27
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
@@ -17,7 +12,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
+	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/testcontainers/testcontainers-go v0.44.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.58.0
@@ -53,7 +48,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/go-archive v0.2.0 // indirect
+	github.com/moby/go-archive v0.3.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
 	github.com/moby/sys/user v0.4.1 // indirect
