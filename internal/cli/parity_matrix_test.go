@@ -921,6 +921,9 @@ var reChoiceYargs = regexp.MustCompile(`(?m)Argument:\s*([^,]+),\s*Given:\s*"([^
 var reChoiceGo = regexp.MustCompile(`(?m)Invalid value "([^"]+)" for --([^.\s]+)\.\s*Choose from:\s*(.+)$`)
 var reInvalidMode = regexp.MustCompile(`(?m)Invalid mode "([^"]+)".*Choose from:\s*(.+)$`)
 var reSetupEnv = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
+var reRequiredPrefix = regexp.MustCompile(`(?i)^One of\s+`)
+var reRequiredSuffix = regexp.MustCompile(`(?i)\s+is required\.?$`)
+var reRequiredSplit = regexp.MustCompile(`\s+or\s+|,\s*`)
 
 func matchChoiceYargs(text string) string {
 	match := reChoiceYargs.FindStringSubmatch(text)
@@ -968,9 +971,9 @@ func normalizeChoices(raw string) string {
 }
 
 func normalizeRequired(raw string) string {
-	raw = regexp.MustCompile(`(?i)^One of\s+`).ReplaceAllString(raw, "")
-	raw = regexp.MustCompile(`(?i)\s+is required\.?$`).ReplaceAllString(raw, "")
-	parts := regexp.MustCompile(`\s+or\s+|,\s*`).Split(raw, -1)
+	raw = reRequiredPrefix.ReplaceAllString(raw, "")
+	raw = reRequiredSuffix.ReplaceAllString(raw, "")
+	parts := reRequiredSplit.Split(raw, -1)
 	var clean []string
 	for _, p := range parts {
 		p = strings.TrimSpace(strings.TrimPrefix(p, "--"))
@@ -1089,11 +1092,15 @@ func composeProjectName(caseID string) string {
 	var b strings.Builder
 	b.WriteString("dc")
 	for _, r := range strings.ToLower(caseID) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		if isComposeProjectNameRune(r) {
 			b.WriteRune(r)
 		}
 	}
 	return b.String()
+}
+
+func isComposeProjectNameRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
 }
 
 func sanitizeEnvValue(value string) string {

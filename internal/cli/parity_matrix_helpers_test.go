@@ -168,6 +168,22 @@ func TestExtractCLIResultEnv_EmbeddedJSON(t *testing.T) {
 	}
 }
 
+func TestNormalizeRequired(t *testing.T) {
+	got := normalizeRequired("One of --workspace-folder or --workspace-folder-data is required.")
+	want := "workspace-folder,workspace-folder-data"
+	if got != want {
+		t.Fatalf("normalizeRequired() = %q, want %q", got, want)
+	}
+}
+
+func TestComposeProjectName(t *testing.T) {
+	got := composeProjectName("Build_Feature-1 / alpine")
+	want := "dcbuild_feature-1alpine"
+	if got != want {
+		t.Fatalf("composeProjectName() = %q, want %q", got, want)
+	}
+}
+
 // TestInShardPartitions proves the shard split is a proper partition: with N
 // shards, every case is claimed by exactly one shard and the union is the whole
 // set (no case dropped, none run twice).
