@@ -9,7 +9,7 @@
 
 ## Orientation
 
-- **Go version:** 1.26
+- **Go version:** 1.27
 - **Build:** `task build`
 - **Lint:** `task lint`
 - **Prepare the TypeScript reference oracle:** `task reference`
