@@ -262,8 +262,12 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 	if err != nil {
 		return merged
 	}
+	standardized, err := hujson.Standardize(data)
+	if err != nil {
+		return merged
+	}
 	var meta TemplateMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
+	if err := json.Unmarshal(standardized, &meta); err != nil {
 		return merged
 	}
 	for key, raw := range meta.Options {
