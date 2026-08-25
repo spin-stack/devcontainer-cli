@@ -60,6 +60,25 @@ func TestApplyOptionDefaults(t *testing.T) {
 	}
 }
 
+func TestApplyOptionDefaults_JSONCMetadata(t *testing.T) {
+	dir := t.TempDir()
+	metadata := []byte(`{
+		// Template metadata permits JSON with comments and trailing commas.
+		"id": "x",
+		"options": {
+			"imageVariant": { "type": "string", "default": "bookworm", },
+		},
+	}`)
+	if err := os.WriteFile(filepath.Join(dir, "devcontainer-template.json"), metadata, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := applyOptionDefaults(pfs.OSFS{}, dir, nil, log.Null)
+	if got["imageVariant"] != "bookworm" {
+		t.Fatalf("imageVariant = %q, want JSONC default %q", got["imageVariant"], "bookworm")
+	}
+}
+
 func TestApplyOptionDefaults_NoMetadata(t *testing.T) {
 	// Missing devcontainer-template.json → returns the user options unchanged.
 	dir := t.TempDir()

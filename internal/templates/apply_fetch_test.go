@@ -194,6 +194,76 @@ func TestFetchAndApply_Success(t *testing.T) {
 	}
 }
 
+func TestFetchAndApply_DefaultTempDirIsRemoved(t *testing.T) {
+	tests := []struct {
+		name    string
+		blob    func(*testing.T) []byte
+		wantErr bool
+	}{
+		{
+			name: "success",
+			blob: func(t *testing.T) []byte {
+				return buildTemplateTarGz(t, templateEntries())
+			},
+		},
+		{
+			name: "extraction error",
+			blob: func(*testing.T) []byte {
+				return []byte("not a valid gzip tarball")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempRoot := t.TempDir()
+			t.Setenv("TMPDIR", tempRoot)
+			params := ApplyParams{
+				OCIClient:       &fakeTemplateRegistry{blob: tt.blob(t)},
+				FS:              pfs.OSFS{},
+				Logger:          log.Null,
+				WorkspaceFolder: t.TempDir(),
+			}
+
+			_, err := FetchAndApply(params, SelectedTemplate{ID: "ghcr.io/devcontainers/templates/sample:1"})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("FetchAndApply() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			entries, readErr := os.ReadDir(tempRoot)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("default temp root contains %v after FetchAndApply", entries)
+			}
+		})
+	}
+}
+
+func TestFetchAndApply_CallerTempDirIsPreserved(t *testing.T) {
+	tempRoot := t.TempDir()
+	params := ApplyParams{
+		OCIClient:       &fakeTemplateRegistry{blob: buildTemplateTarGz(t, templateEntries())},
+		FS:              pfs.OSFS{},
+		Logger:          log.Null,
+		WorkspaceFolder: t.TempDir(),
+		TmpDir:          tempRoot,
+	}
+
+	_, err := FetchAndApply(params, SelectedTemplate{ID: "ghcr.io/devcontainers/templates/sample:1"})
+	if err != nil {
+		t.Fatalf("FetchAndApply: %v", err)
+	}
+	entries, err := os.ReadDir(tempRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "template-sample" {
+		t.Fatalf("caller temp root contains %v, want preserved template-sample directory", entries)
+	}
+}
+
 // TestFetchAndApply_PartialWorkspaceWrite covers the partial-write risk: a WriteFile
 // that fails mid-Walk. The first workspace file is written, the second fails,
 // and the error must propagate (wrapped) instead of silently leaving a partial
