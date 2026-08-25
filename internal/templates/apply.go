@@ -62,10 +62,15 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 
 	// Extract to temp dir
 	tmpDir := params.TmpDir
+	var extractDir string
 	if tmpDir == "" {
-		tmpDir = os.TempDir()
+		extractDir, err = os.MkdirTemp("", "devcontainer-template-")
+		if err != nil {
+			return nil, fmt.Errorf("create extract dir: %w", err)
+		}
+	} else {
+		extractDir = filepath.Join(tmpDir, "template-"+ref.ID)
 	}
-	extractDir := filepath.Join(tmpDir, "template-"+ref.ID)
 	if err := fsys.MkdirAll(extractDir); err != nil {
 		return nil, fmt.Errorf("create extract dir: %w", err)
 	}
