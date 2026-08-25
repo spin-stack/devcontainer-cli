@@ -36,8 +36,10 @@ func TestRunInitializeCommand(t *testing.T) {
 		{"string form with substitution", cmdFromJSON(t, `"true # ${localWorkspaceFolder}"`), false},
 		{"string form non-zero exit", cmdFromJSON(t, `"false"`), true},
 		{"array form", cmdFromJSON(t, `["true"]`), false},
+		{"array form non-zero exit", cmdFromJSON(t, `["false"]`), true},
 		{"array form with substitution", cmdFromJSON(t, `["true", "${localWorkspaceFolder}"]`), false},
 		{"object form parallel", cmdFromJSON(t, `{"a": "true", "b": "true"}`), false},
+		{"object form parallel with failure", cmdFromJSON(t, `{"a": "true", "b": "false"}`), true},
 	}
 
 	for _, tt := range tests {
