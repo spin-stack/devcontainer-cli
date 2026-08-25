@@ -86,3 +86,25 @@ func TestExtractTarGz_ZipSlip(t *testing.T) {
 		t.Error("zip-slip guard failed: a file was written outside the destination")
 	}
 }
+
+// TestExtractTarGz_SymlinkEscape proves that lexical path checks are not the
+// only boundary: an existing link below the extraction directory must not let
+// a regular archive entry write outside it.
+func TestExtractTarGz_SymlinkEscape(t *testing.T) {
+	arc := writeTarGz(t, [][2]string{
+		{"link/escaped.txt", "pwned"},
+	})
+	dest := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dest, "link")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	err := extractTarGz(arc, dest)
+	if err == nil {
+		t.Fatal("expected a symlink escape rejection, got nil")
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "escaped.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("symlink escape wrote outside the destination: %v", statErr)
+	}
+}

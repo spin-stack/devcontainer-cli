@@ -662,8 +662,8 @@ func cacheFromForDockerfileBuild(flagCacheFrom []string, cfg *config.DevContaine
 	if cfg == nil || cfg.Build == nil || len(cfg.Build.CacheFrom) == 0 {
 		return flagCacheFrom
 	}
-	combined := make([]string, 0, len(flagCacheFrom)+len(cfg.Build.CacheFrom))
-	combined = append(combined, flagCacheFrom...)
+	combined := make([]string, len(flagCacheFrom))
+	copy(combined, flagCacheFrom)
 	combined = append(combined, cfg.Build.CacheFrom...)
 	return combined
 }
