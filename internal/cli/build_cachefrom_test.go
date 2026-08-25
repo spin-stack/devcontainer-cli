@@ -42,10 +42,17 @@ func TestCacheFromForDockerfileBuild(t *testing.T) {
 // aliasing/appending into the caller's flag slice (which extendImageWithFeatures
 // still passes verbatim for the feature layers).
 func TestCacheFromForDockerfileBuildDoesNotMutateFlag(t *testing.T) {
-	flag := []string{"flag1"}
+	flagBacking := []string{"flag1", "sentinel"}
+	flag := flagBacking[:1]
 	cfg := &config.DevContainer{Build: &config.Build{CacheFrom: config.StringOrStrings{"cfg1"}}}
-	_ = cacheFromForDockerfileBuild(flag, cfg)
+	got := cacheFromForDockerfileBuild(flag, cfg)
 	if len(flag) != 1 || flag[0] != "flag1" {
 		t.Fatalf("flag slice mutated: %v", flag)
+	}
+	if flagBacking[1] != "sentinel" {
+		t.Fatalf("flag backing array mutated: %v", flagBacking)
+	}
+	if !reflect.DeepEqual(got, []string{"flag1", "cfg1"}) {
+		t.Fatalf("merged cache-from = %v, want [flag1 cfg1]", got)
 	}
 }
