@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -764,6 +765,12 @@ func extractTarGz(archivePath, destDir string) error {
 	}
 
 	tr := tar.NewReader(reader)
+	root, err := os.OpenRoot(destDir)
+	if err != nil {
+		return fmt.Errorf("open extraction root: %w", err)
+	}
+	defer root.Close()
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -773,41 +780,41 @@ func extractTarGz(archivePath, destDir string) error {
 			return fmt.Errorf("tar read: %w", err)
 		}
 
-		cleanName := filepath.Clean(header.Name)
-		target := filepath.Join(destDir, cleanName)
-
-		// Zip-slip guard: reject entries whose path escapes destDir (e.g.
-		// "../../etc/x"), so a malicious Feature tarball cannot write outside the
-		// extraction directory. filepath.Join cleans "..", so compare the result.
-		if target != destDir && !strings.HasPrefix(target, destDir+string(os.PathSeparator)) {
+		// Tar paths always use forward slashes. Localize rejects absolute paths,
+		// parent traversal, and names that cannot be represented safely on the
+		// current platform. Root also prevents escapes through symlinks already
+		// present below destDir.
+		cleanName := path.Clean(header.Name)
+		localName, err := filepath.Localize(cleanName)
+		if err != nil || !filepath.IsLocal(localName) {
 			return fmt.Errorf("tar entry %q escapes the destination directory", header.Name)
 		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return err
+			if err := root.MkdirAll(localName, 0755); err != nil {
+				return fmt.Errorf("create directory for tar entry %q: %w", header.Name, err)
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
+			if err := root.MkdirAll(filepath.Dir(localName), 0755); err != nil {
+				return fmt.Errorf("create parent for tar entry %q: %w", header.Name, err)
 			}
-			out, err := os.Create(target)
+			out, err := root.Create(localName)
 			if err != nil {
-				return err
+				return fmt.Errorf("create tar entry %q: %w", header.Name, err)
 			}
 			// A truncated copy must fail the install, not silently produce a
 			// corrupt Feature that we report as success.
 			if _, err := io.Copy(out, tr); err != nil {
 				out.Close()
-				return fmt.Errorf("extract %s: %w", target, err)
+				return fmt.Errorf("extract tar entry %q: %w", header.Name, err)
 			}
 			if err := out.Close(); err != nil {
-				return fmt.Errorf("close %s: %w", target, err)
+				return fmt.Errorf("close tar entry %q: %w", header.Name, err)
 			}
 			if header.Mode != 0 {
-				if err := os.Chmod(target, os.FileMode(header.Mode)); err != nil {
-					return err
+				if err := root.Chmod(localName, os.FileMode(header.Mode)); err != nil {
+					return fmt.Errorf("set mode on tar entry %q: %w", header.Name, err)
 				}
 			}
 		}
