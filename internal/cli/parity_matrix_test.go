@@ -932,10 +932,16 @@ func matchChoiceYargs(text string) string {
 	choices := normalizeChoices(match[3])
 	return fmt.Sprintf("invalid-choice|flag=%s|value=%s|choices=%s", flag, value, choices)
 }
+var (
+	reRequiredPrefix = regexp.MustCompile(`(?i)^One of\s+`)
+	reRequiredSuffix = regexp.MustCompile(`(?i)\s+is required\.?$`)
+	reRequiredSplit  = regexp.MustCompile(`\s+or\s+|,\s*`)
+)
 
-func matchChoiceGo(text string) string {
-	match := reChoiceGo.FindStringSubmatch(text)
-	if len(match) < 4 {
+
+	raw = reRequiredPrefix.ReplaceAllString(raw, "")
+	raw = reRequiredSuffix.ReplaceAllString(raw, "")
+	parts := reRequiredSplit.Split(raw, -1)
 		return ""
 	}
 	value := strings.TrimSpace(match[1])
