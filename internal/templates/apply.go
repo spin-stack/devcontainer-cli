@@ -60,12 +60,19 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		return nil, fmt.Errorf("fetch template blob: %w", err)
 	}
 
-	// Extract to temp dir
-	tmpDir := params.TmpDir
-	if tmpDir == "" {
-		tmpDir = os.TempDir()
+	// Extract to a unique temporary directory when the caller did not provide
+	// one. Caller-provided directories retain the stable per-template layout and
+	// remain caller-owned.
+	var extractDir string
+	if params.TmpDir == "" {
+		extractDir, err = os.MkdirTemp("", "devcontainer-template-")
+		if err != nil {
+			return nil, fmt.Errorf("create extract dir: %w", err)
+		}
+		defer os.RemoveAll(extractDir)
+	} else {
+		extractDir = filepath.Join(params.TmpDir, "template-"+ref.ID)
 	}
-	extractDir := filepath.Join(tmpDir, "template-"+ref.ID)
 	if err := fsys.MkdirAll(extractDir); err != nil {
 		return nil, fmt.Errorf("create extract dir: %w", err)
 	}
@@ -191,7 +198,9 @@ func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFe
 		return fmt.Errorf("parse %s: %w", configPath, stdErr)
 	}
 	var config map[string]json.RawMessage
-	json.Unmarshal(stdData, &config)
+	if err := json.Unmarshal(stdData, &config); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", configPath, err)
+	}
 	existing := map[string]bool{}
 	_, hasFeatures := config["features"]
 	if hasFeatures {
@@ -262,8 +271,12 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 	if err != nil {
 		return merged
 	}
+	standardized, err := hujson.Standardize(data)
+	if err != nil {
+		return merged
+	}
 	var meta TemplateMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
+	if err := json.Unmarshal(standardized, &meta); err != nil {
 		return merged
 	}
 	for key, raw := range meta.Options {
