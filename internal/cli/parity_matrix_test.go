@@ -1054,7 +1054,7 @@ func parityEnv(caseID, side, repoRoot string, isolateCompose bool) map[string]st
 		"PARITY_SIDE":      side,
 		"PARITY_REPO_ROOT": repoRoot,
 		// The CLI a setup_cmd must invoke is the SAME binary under test for this
-		// lane, not a hardcoded path: the coverage lane sets CLI_GO to the
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
 		// instrumented binary and never builds ./devcontainer, so a setup_cmd that
 		// hard-coded ${PARITY_REPO_ROOT}/devcontainer fails there (missing binary →
 		// no container → "Dev container not found"). Mirror the cliGO/cliTS defaults
