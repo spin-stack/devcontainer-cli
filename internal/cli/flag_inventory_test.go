@@ -133,6 +133,31 @@ func TestFlagInventoryParity(t *testing.T) {
 		}
 	}
 
+	// Global flags live on the root's persistent flag set and are mirrored by the
+	// YAML `global_flags` block, diffed in both directions like the per-command ones.
+	actualGlobals := map[string]reflectedFlag{}
+	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		actualGlobals[f.Name] = reflectedFlag{
+			shorthand: f.Shorthand,
+			typ:       f.Value.Type(),
+			defValue:  f.DefValue,
+			hidden:    f.Hidden,
+		}
+	})
+	for _, name := range sortedFlagNames(actualGlobals) {
+		wf, ok := inv.GlobalFlags[name]
+		if !ok {
+			report("global flag --%s is declared on the root command but missing from the YAML", name)
+			continue
+		}
+		compareFlag("<global>", name, wf, actualGlobals[name], report)
+	}
+	for _, name := range sortedYAMLFlagNames(inv.GlobalFlags) {
+		if _, ok := actualGlobals[name]; !ok {
+			report("global flag --%s is in the YAML but not declared on the root command", name)
+		}
+	}
+
 	if len(problems) > 0 {
 		sort.Strings(problems)
 		t.Fatalf("flag inventory drift (%d):\n%s", len(problems), strings.Join(problems, "\n"))
@@ -164,7 +189,8 @@ type yamlCommand struct {
 }
 
 type yamlInventory struct {
-	Commands map[string]yamlCommand `yaml:"commands"`
+	Commands    map[string]yamlCommand `yaml:"commands"`
+	GlobalFlags map[string]yamlFlag    `yaml:"global_flags"`
 }
 
 // flattenYAMLCommand walks the YAML command/subcommand tree into a flat

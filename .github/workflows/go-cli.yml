@@ -109,7 +109,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: parity-contract-network-v0.88.0
+          name: parity-contract-network-v0.89.0
           path: artifacts/
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
@@ -222,7 +222,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always() && steps.plan.outputs.run == 'true'
         with:
-          name: parity-runtime-v0.88.0-shard-${{ matrix.shard }}
+          name: parity-runtime-v0.89.0-shard-${{ matrix.shard }}
           path: artifacts/
           if-no-files-found: error
       # daily only: covdata slice for the cross-lane merge (distinct name per shard).

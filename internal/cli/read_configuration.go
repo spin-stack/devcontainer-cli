@@ -274,7 +274,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	needsFeaturesConfig := opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 	if needsFeaturesConfig && result != nil && len(result.Config.Features) > 0 {
 		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
-		featResult, featErr := fetchFeatureSets(lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
+		featResult, featErr := fetchFeatureSets(ctx, lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if featErr == nil && featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
 			output["featuresConfiguration"] = map[string]interface{}{
@@ -311,7 +311,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 				}
 			}
 			if len(result.Config.Features) > 0 {
-				if fr, ferr := fetchFeatureSets(lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil); ferr == nil && fr != nil {
+				if fr, ferr := fetchFeatureSets(ctx, lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil); ferr == nil && fr != nil {
 					defer os.RemoveAll(fr.TmpDir)
 					for _, fs := range fr.FeatureSets {
 						entries = append(entries, featureMetadataEntry(fs, false))
@@ -371,6 +371,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			output["mergedConfiguration"] = merged
 		}
 	}
+
+	// OCI auth diagnostics for this invocation (TS readConfiguration emits it
+	// unconditionally, even when no registry was contacted).
+	output["ociAuthDiagnostics"] = ociAuthDiagnostics(ctx)
 
 	data, err := json.Marshal(output)
 	if err != nil {

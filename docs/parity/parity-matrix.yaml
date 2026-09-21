@@ -9,6 +9,7 @@ meta:
   scope:
     languages: [ts, go]
     commands: [features-info, read-configuration, exec, run-user-commands, set-up, up, build]
+    global_flags: [oci-auth-hardening, allow-cross-origin-auth-host]
   lanes:
     contract:
       description: "Parsing, required args, enums, error formats, output shape"
@@ -490,6 +491,61 @@ initial_cases:
     asserts: [exit_code, stderr_normalized]
     class: format-validation
     current_status: match
+
+  - id: read-configuration.oci-auth-hardening-accepted
+    lane: contract
+    command: read-configuration
+    priority: p0
+    docker_required: false
+    ts_cmd: "--oci-auth-hardening read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stdout_normalized]
+    class: global-flags
+    current_status: match
+    notes: "0.89 global flag: accepted before the command name and the output carries the ociAuthDiagnostics envelope field (all false when no registry is contacted)."
+
+  - id: read-configuration.cross-origin-auth-host-requires-hardening
+    lane: contract
+    command: read-configuration
+    priority: p0
+    docker_required: false
+    ts_cmd: "--allow-cross-origin-auth-host registry.example=auth.example read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stderr_normalized]
+    class: global-flags
+    current_status: match
+    notes: "0.89 yargs .check(): --allow-cross-origin-auth-host requires --oci-auth-hardening."
+
+  - id: read-configuration.cross-origin-auth-host-invalid-pair
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "--oci-auth-hardening --allow-cross-origin-auth-host bad read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stderr_normalized]
+    class: global-flags
+    current_status: match
+    notes: "0.89: each entry must be '<registry-host>=<auth-host>'."
+
+  - id: read-configuration.cross-origin-auth-host-invalid-authority
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "--oci-auth-hardening --allow-cross-origin-auth-host a/b=c read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stderr_normalized]
+    class: global-flags
+    current_status: match
+    notes: "0.89: both sides of the mapping must be bare authorities."
+
+  - id: read-configuration.global-options-consume-one-argument
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "--oci-auth-hardening --allow-cross-origin-auth-host registry.example=auth.example read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stdout_normalized]
+    class: global-flags
+    current_status: match
+    notes: "Mirrors the oracle's own 'Global options consume exactly one argument' test (src/test/cli.test.ts), asserted on read-configuration because yargs and cobra render --help differently: the repeatable flag must consume exactly one value and leave the subcommand intact."
 
   - id: read-configuration.terminal-columns-implies-rows
     lane: contract

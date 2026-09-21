@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,7 +30,7 @@ func realFeaturesInfoCmd() *cobra.Command {
 				return fmt.Errorf("Invalid mode %q. Choose from: manifest, tags, dependencies, verbose", mode)
 			}
 			featureID := args[1]
-			return runFeaturesInfo(outputFor(cmd), mode, featureID, logLevel, outputFormat)
+			return runFeaturesInfo(cmd.Context(), outputFor(cmd), mode, featureID, logLevel, outputFormat)
 		},
 	}
 
@@ -39,7 +40,7 @@ func realFeaturesInfoCmd() *cobra.Command {
 	return cmd
 }
 
-func runFeaturesInfo(out Output, mode, featureID, logLevel, outputFormat string) error {
+func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel, outputFormat string) error {
 	for _, v := range []struct {
 		flag, val string
 		choices   []string
@@ -66,8 +67,7 @@ func runFeaturesInfo(out Output, mode, featureID, logLevel, outputFormat string)
 		return fmt.Errorf("Failed to parse Feature identifier %q", featureID)
 	}
 
-	env := osEnvMap()
-	client := oci.NewClient(logger, env)
+	client := newOCIClient(ctx, logger)
 
 	jsonOutput := make(map[string]interface{})
 

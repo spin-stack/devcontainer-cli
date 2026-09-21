@@ -33,6 +33,21 @@ type Ref struct {
 	Digest    string // "sha256:..." (empty if tag)
 }
 
+// Scheme is the transport the registry is addressed over, mirroring the TS
+// getRegistryScheme (containerCollectionsOCI.ts): plain HTTP for a localhost
+// registry, HTTPS otherwise. It is part of the `read-configuration` output
+// (featuresConfiguration.featureSets[].sourceInformation.featureRef.scheme).
+func (r *Ref) Scheme() string {
+	host := r.Registry
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	if strings.EqualFold(host, "localhost") {
+		return "http"
+	}
+	return "https"
+}
+
 // CollectionRef represents a collection metadata artifact reference.
 // e.g., ghcr.io/devcontainers/features:latest
 type CollectionRef struct {

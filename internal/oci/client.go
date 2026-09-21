@@ -53,11 +53,22 @@ type Client struct {
 	// certs (NODE_EXTRA_CA_CERTS/SSL_CERT_FILE), so registry access behaves like
 	// the plain httpx path — including behind a TLS-intercepting proxy.
 	retryClient *http.Client
+	// authPolicy carries the invocation-wide OCI authentication policy
+	// (--oci-auth-hardening, trusted cross-origin auth hosts) and accumulates the
+	// auth diagnostics reported in the command's JSON output.
+	authPolicy *AuthPolicy
 }
 
 // NewClient creates an OCI client. Auth and retries are handled by oras-go (see
 // repository()); the HTTP transport is the shared proxy/CA-aware transport.
 func NewClient(logger log.Logger, env map[string]string) *Client {
+	return NewClientWithAuthPolicy(logger, env, DefaultAuthPolicy())
+}
+
+// NewClientWithAuthPolicy is NewClient with an explicit OCI auth policy, so every
+// client built for one CLI invocation shares its hardening settings and
+// diagnostics.
+func NewClientWithAuthPolicy(logger log.Logger, env map[string]string, policy *AuthPolicy) *Client {
 	base := httpx.NewTransport()
 	// Cut off a registry that connects but never sends response headers.
 	base.ResponseHeaderTimeout = responseHeaderTimeout
@@ -66,6 +77,7 @@ func NewClient(logger log.Logger, env map[string]string) *Client {
 		env:         env,
 		authCache:   auth.NewCache(),
 		retryClient: &http.Client{Transport: retry.NewTransport(base)},
+		authPolicy:  policy,
 	}
 }
 

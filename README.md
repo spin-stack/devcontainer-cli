@@ -121,7 +121,7 @@ GitHub Releases are not supported targets. “Compatible” means compatibility 
 this scope; it does not mean that every platform or historical upstream behavior is
 implemented.
 
-A pinned official TypeScript CLI (`reference/`, currently v0.88.0) is the behavioral
+A pinned official TypeScript CLI (`reference/`, currently v0.89.0) is the behavioral
 oracle. Roughly 200 cases run commands through both CLIs and compare exit status,
 normalized output, and relevant container or registry state. See the
 [parity matrix](docs/parity/parity-matrix.yaml) and

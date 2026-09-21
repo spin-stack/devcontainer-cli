@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,7 +20,7 @@ func realTemplatesMetadataCmd() *cobra.Command {
 		Short: "Fetch a published Template's metadata",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTemplatesMetadata(outputFor(cmd), args[0], logLevel)
+			return runTemplatesMetadata(cmd.Context(), outputFor(cmd), args[0], logLevel)
 		},
 	}
 
@@ -27,7 +28,7 @@ func realTemplatesMetadataCmd() *cobra.Command {
 	return cmd
 }
 
-func runTemplatesMetadata(out Output, templateID, logLevel string) error {
+func runTemplatesMetadata(ctx context.Context, out Output, templateID, logLevel string) error {
 	logger := log.New(log.Options{
 		Level:  log.ParseLevel(logLevel),
 		Format: "text",
@@ -40,7 +41,7 @@ func runTemplatesMetadata(out Output, templateID, logLevel string) error {
 		return fmt.Errorf("parse template identifier %q: %w", templateID, err)
 	}
 
-	client := oci.NewClient(logger, osEnvMap())
+	client := newOCIClient(ctx, logger)
 
 	manifest, err := client.FetchManifest(ref, "")
 	if err != nil {
