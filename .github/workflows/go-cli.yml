@@ -13,7 +13,7 @@ on:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
     steps:
@@ -47,7 +47,7 @@ jobs:
           if-no-files-found: error
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: lint-and-test
     steps:
       - uses: actions/checkout@v7
@@ -75,7 +75,7 @@ jobs:
   # Hermetic parity gate: read-configuration golden comparison + the contract
   # lane of the parity matrix (flag validation / output contract, no Docker).
   parity:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: lint-and-test
     steps:
       - uses: actions/checkout@v7
@@ -125,7 +125,7 @@ jobs:
   # on quiet days. Runs on schedule/dispatch so the daily lanes' `needs:` is satisfied.
   daily-changes:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
@@ -161,7 +161,7 @@ jobs:
       && needs.lint-and-test.result == 'success'
       && (github.event_name == 'push' || github.event_name == 'pull_request'
           || needs.daily-changes.outputs.run == 'true')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -240,7 +240,7 @@ jobs:
   parity-publish-full:
     needs: [lint-and-test, daily-changes]
     if: needs.daily-changes.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v7
         with:
@@ -268,7 +268,7 @@ jobs:
   # publish) into the one true cross-lane number.
   parity-runtime-gate:
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [lint-and-test, e2e, parity, parity-runtime, parity-publish-full]
     steps:
       - uses: actions/checkout@v7
@@ -313,7 +313,7 @@ jobs:
           done
 
   cross-compile:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: lint-and-test
     steps:
       - uses: actions/checkout@v7
