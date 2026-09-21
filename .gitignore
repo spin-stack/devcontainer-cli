@@ -7,3 +7,9 @@ coverage.xml
 *.test
 .claude/
 .task/
+
+# BuildKit daemon configs that useblacksmith/setup-docker-builder writes into the
+# job's working directory (the repo checkout) in the release workflow. Left
+# untracked they make the tree dirty and GoReleaser refuses to release.
+/buildkitd.toml
+/docker-container-buildkitd.toml
