@@ -26,10 +26,27 @@ func readConfigAuths(t *testing.T, dir string) map[string]dockerConfigAuth {
 	return cf.Auths
 }
 
+// isolatedDockerConfig returns a DOCKER_CONFIG directory holding a config.json
+// with credentials for an unrelated registry. Credential resolution must not fall
+// back to the developer's own ~/.docker/config.json or to a platform credential
+// helper: both would resolve real credentials for ghcr.io/docker.io and make
+// these tests assert against whatever the host happens to be logged into (and
+// print that credential on failure).
+func isolatedDockerConfig(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := `{"auths":{"unrelated.example.com":{"auth":"dXNlcjpwYXNz"}}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatalf("write docker config: %v", err)
+	}
+	return dir
+}
+
 func TestResolveBuildAuthFromOCIEnvAndGitHubToken(t *testing.T) {
 	env := map[string]string{
 		"DEVCONTAINERS_OCI_AUTH": "myreg.example.com|user|s3cr3t",
 		"GITHUB_TOKEN":           "ghtok",
+		"DOCKER_CONFIG":          isolatedDockerConfig(t),
 	}
 	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{"myreg.example.com", "ghcr.io", "docker.io"}, log.Null)
 	if err != nil || !ok {
@@ -56,7 +73,8 @@ func TestResolveBuildAuthFromOCIEnvAndGitHubToken(t *testing.T) {
 }
 
 func TestResolveBuildAuthNoCredsIsNoop(t *testing.T) {
-	dir, cleanup, ok, err := ResolveBuildAuth(map[string]string{}, []string{"private.example.com", "docker.io"}, log.Null)
+	env := map[string]string{"DOCKER_CONFIG": isolatedDockerConfig(t)}
+	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{"private.example.com", "docker.io"}, log.Null)
 	defer cleanup()
 	if ok || dir != "" || err != nil {
 		t.Fatalf("expected no-op: ok=%v dir=%q err=%v", ok, dir, err)
@@ -64,7 +82,7 @@ func TestResolveBuildAuthNoCredsIsNoop(t *testing.T) {
 }
 
 func TestResolveBuildAuthCleanupRemovesDir(t *testing.T) {
-	env := map[string]string{"DEVCONTAINERS_OCI_AUTH": "reg.example.com|u|p"}
+	env := map[string]string{"DEVCONTAINERS_OCI_AUTH": "reg.example.com|u|p", "DOCKER_CONFIG": isolatedDockerConfig(t)}
 	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{"reg.example.com"}, log.Null)
 	if !ok || err != nil {
 		t.Fatalf("ok=%v err=%v", ok, err)
@@ -79,7 +97,7 @@ func TestResolveBuildAuthCleanupRemovesDir(t *testing.T) {
 }
 
 func TestResolveBuildAuthDedupesRegistries(t *testing.T) {
-	env := map[string]string{"DEVCONTAINERS_OCI_AUTH": "reg.example.com|u|p"}
+	env := map[string]string{"DEVCONTAINERS_OCI_AUTH": "reg.example.com|u|p", "DOCKER_CONFIG": isolatedDockerConfig(t)}
 	dir, cleanup, ok, _ := ResolveBuildAuth(env, []string{"reg.example.com", "reg.example.com", ""}, log.Null)
 	if !ok {
 		t.Fatal("expected ok")
