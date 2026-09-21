@@ -1344,7 +1344,7 @@ initial_cases:
     docker_required: true
     network_required: true
     ts_cmd: "up --workspace-folder src/test/configs/app-port --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
-    verify_cmd: "P=$(docker inspect --format '{{json .HostConfig.PortBindings}}' ${CONTAINER_ID}); echo \"$P\" | grep -q '\"HostPort\":\"3000\"' && echo \"$P\" | grep -q '\"HostPort\":\"8080\"' && printf ok"
+    verify_cmd: "P=$(docker inspect --format '{{json .HostConfig.PortBindings}}' ${CONTAINER_ID}); echo \"$P\" | grep -q '\"HostPort\":\"31300\"' && echo \"$P\" | grep -q '\"HostPort\":\"31808\"' && printf ok"
     cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
@@ -1540,13 +1540,13 @@ initial_cases:
     docker_required: true
     network_required: true
     ts_cmd: "up --workspace-folder src/test/configs/compose-image-with-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
-    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    setup_cmd: "docker pull --platform linux/amd64 redis:alpine >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
     verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
     cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Unblocked by pinning the harness setup with `docker pull --platform linux/amd64 mongo:latest` before compose."
+    notes: "Unblocked by pinning the harness setup with `docker pull --platform linux/amd64 redis:alpine` (the fixture's db service) before compose."
 
   - id: up.compose-dockerfile-with-features-omit-config-remote-env-from-metadata-success
     lane: runtime
@@ -1555,13 +1555,13 @@ initial_cases:
     docker_required: true
     network_required: true
     ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --omit-config-remote-env-from-metadata --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
-    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    setup_cmd: "docker pull --platform linux/amd64 redis:alpine >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
     verify_cmd: "test \"$(docker exec ${CONTAINER_ID} cat /postCreateCommand.txt)\" = \"Val: ENV\" && ! docker inspect --format '{{ index .Config.Labels \"devcontainer.metadata\" }}' ${CONTAINER_ID} | grep -q 'TEST_ESCAPING' && printf ok"
     cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true"
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
-    notes: "Closed out after aligning the metadata of Dockerfile+features builds; the setup keeps `docker pull --platform linux/amd64 mongo:latest` to avoid platform drift in compose."
+    notes: "Closed out after aligning the metadata of Dockerfile+features builds; the setup keeps `docker pull --platform linux/amd64 redis:alpine` (the fixture's db service) to avoid platform drift in compose."
 
   - id: up.compose-dockerfile-without-features-omit-config-remote-env-from-metadata-success
     lane: runtime
@@ -1729,7 +1729,7 @@ initial_cases:
     docker_required: true
     network_required: true
     ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER}"
-    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; USER_DATA_FOLDER=/tmp/parity-user-data-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then ${PARITY_CLI_TS} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; else ${PARITY_CLI_GO} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; fi; ORIGINAL_CONTAINER_ID=$(docker ps -aq --filter label=com.docker.compose.project=compose-dockerfile-with-features_devcontainer --filter label=com.docker.compose.service=app | head -n1); docker compose --project-name compose-dockerfile-with-features_devcontainer stop >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; echo USER_DATA_FOLDER=${USER_DATA_FOLDER}; echo ORIGINAL_CONTAINER_ID=${ORIGINAL_CONTAINER_ID}"
+    setup_cmd: "docker pull --platform linux/amd64 redis:alpine >/dev/null; USER_DATA_FOLDER=/tmp/parity-user-data-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then ${PARITY_CLI_TS} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; else ${PARITY_CLI_GO} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; fi; ORIGINAL_CONTAINER_ID=$(docker ps -aq --filter label=com.docker.compose.project=compose-dockerfile-with-features_devcontainer --filter label=com.docker.compose.service=app | head -n1); docker compose --project-name compose-dockerfile-with-features_devcontainer stop >/dev/null; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; echo USER_DATA_FOLDER=${USER_DATA_FOLDER}; echo ORIGINAL_CONTAINER_ID=${ORIGINAL_CONTAINER_ID}"
     verify_cmd: "test \"${CONTAINER_ID#$ORIGINAL_CONTAINER_ID}\" != \"${CONTAINER_ID}\" && test \"$(find ${USER_DATA_FOLDER}/docker-compose -maxdepth 1 -type f | wc -l | tr -d ' ')\" = \"2\" && find ${USER_DATA_FOLDER}/docker-compose -maxdepth 1 -type f -name 'docker-compose.devcontainer.build-*' | grep -q . && find ${USER_DATA_FOLDER}/docker-compose -maxdepth 1 -type f -name 'docker-compose.devcontainer.containerFeatures-*' | grep -q . && printf ok"
     cleanup_cmd: "docker compose --project-name compose-dockerfile-with-features_devcontainer -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true; rm -rf ${USER_DATA_FOLDER}"
     asserts: [exit_code, stdout_normalized]
@@ -1746,7 +1746,7 @@ initial_cases:
     docker_required: true
     network_required: true
     ts_cmd: "up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER}"
-    setup_cmd: "docker pull --platform linux/amd64 mongo:latest >/dev/null; USER_DATA_FOLDER=/tmp/parity-user-data-reset-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then ${PARITY_CLI_TS} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; else ${PARITY_CLI_GO} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; fi; ORIGINAL_CONTAINER_ID=$(docker ps -aq --filter label=com.docker.compose.project=compose-dockerfile-with-features_devcontainer --filter label=com.docker.compose.service=app | head -n1); docker compose --project-name compose-dockerfile-with-features_devcontainer stop >/dev/null; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; echo USER_DATA_FOLDER=${USER_DATA_FOLDER}; echo ORIGINAL_CONTAINER_ID=${ORIGINAL_CONTAINER_ID}"
+    setup_cmd: "docker pull --platform linux/amd64 redis:alpine >/dev/null; USER_DATA_FOLDER=/tmp/parity-user-data-reset-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then ${PARITY_CLI_TS} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; else ${PARITY_CLI_GO} up --workspace-folder src/test/configs/compose-Dockerfile-with-features --buildkit=never --user-data-folder ${USER_DATA_FOLDER} --remove-existing-container >/dev/null; fi; ORIGINAL_CONTAINER_ID=$(docker ps -aq --filter label=com.docker.compose.project=compose-dockerfile-with-features_devcontainer --filter label=com.docker.compose.service=app | head -n1); docker compose --project-name compose-dockerfile-with-features_devcontainer stop >/dev/null; rm -rf ${USER_DATA_FOLDER}; mkdir -p ${USER_DATA_FOLDER}; echo DOCKER_DEFAULT_PLATFORM=linux/amd64; echo USER_DATA_FOLDER=${USER_DATA_FOLDER}; echo ORIGINAL_CONTAINER_ID=${ORIGINAL_CONTAINER_ID}"
     verify_cmd: "docker inspect ${CONTAINER_ID} >/dev/null && printf ok"
     cleanup_cmd: "docker compose --project-name compose-dockerfile-with-features_devcontainer -f src/test/configs/compose-Dockerfile-with-features/.devcontainer/docker-compose.yml down >/dev/null 2>&1 || true; rm -rf ${USER_DATA_FOLDER}"
     asserts: [exit_code, stdout_normalized]
