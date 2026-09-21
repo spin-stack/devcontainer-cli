@@ -11,6 +11,14 @@ on:
     # push/PR only the cases affected by the change run (see parity-runtime).
     - cron: "0 6 * * *"
 
+# Least privilege for every job in this workflow: the jobs only check out the repo
+# and read the API (setup-task's repo-token). A job that needs more must widen it
+# for itself. Without this default, GITHUB_TOKEN falls back to the repository's
+# (possibly write) default — see the CodeQL "workflow does not contain permissions"
+# rule, which TestWorkflowsDeclarePermissions pins.
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
