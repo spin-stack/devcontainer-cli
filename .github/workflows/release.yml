@@ -26,7 +26,7 @@ jobs:
   # exists; on dispatch we compute the version and validate the tag is free, but
   # DO NOT tag yet (the `tag` job below tags only after the gates pass).
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
@@ -76,7 +76,7 @@ jobs:
   # Hermetic gates — the same task targets CI runs on every push/PR.
   # The release is blocked unless these pass.
   gate:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: prepare
     steps:
       - uses: actions/checkout@v7
@@ -106,7 +106,7 @@ jobs:
 
   # Runtime lane (real Docker containers). ubuntu-latest ships Docker.
   gate-runtime:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: prepare
     steps:
       - uses: actions/checkout@v7
@@ -144,7 +144,7 @@ jobs:
   # skipped (the tag already exists). The GITHUB_TOKEN push does not re-trigger the
   # workflow, so there is no second run.
   tag:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [prepare, gate, gate-runtime]
     if: github.event_name == 'workflow_dispatch'
     steps:
@@ -160,7 +160,7 @@ jobs:
           git push origin "${{ needs.prepare.outputs.tag }}"
 
   goreleaser:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [prepare, gate, gate-runtime, tag]
     # `tag` is skipped on the push path, so gate on explicit success/skip rather
     # than the default all-succeeded semantics.
@@ -193,7 +193,8 @@ jobs:
       # Multi-arch image build (arm64 emulated) + buildx driver for the
       # dockers:/docker_manifests: blocks in .goreleaser.yml.
       - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       # GHCR login. Only reached on the tag path (this workflow is push.tags),
       # never on PRs, so images are pushed exclusively from an approved tag run.
@@ -270,7 +271,7 @@ jobs:
 
   # Non-gating: perf/distribution metrics recorded per release, never blocks.
   metrics:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [prepare, goreleaser]
     continue-on-error: true
     steps:
