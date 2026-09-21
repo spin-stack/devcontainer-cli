@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -66,7 +67,7 @@ func newOutdatedCmd() *cobra.Command {
 			if opts.workspaceFolder == "" {
 				opts.workspaceFolder, _ = os.Getwd()
 			}
-			return runOutdated(outputFor(cmd), opts)
+			return runOutdated(cmd.Context(), outputFor(cmd), opts)
 		},
 	}
 
@@ -158,7 +159,7 @@ func majorOf(v string) string {
 	return fmt.Sprintf("%d", parsed.Major())
 }
 
-func runOutdated(out Output, opts outdatedOpts) error {
+func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	logDst, closeLog, logErr := logWriter(opts.logFile, opts.terminalLogFile)
 	if logErr != nil {
 		return fmt.Errorf("open log file: %w", logErr)
@@ -192,7 +193,7 @@ func runOutdated(out Output, opts outdatedOpts) error {
 		return nil
 	}
 
-	ociClient := oci.NewClient(logger, osEnvMap())
+	ociClient := newOCIClient(ctx, logger)
 
 	// Lockfile pins the concrete "current" version when present (matches TS
 	// loadVersionInfo: current = lockfileVersion || wanted).
@@ -459,7 +460,7 @@ func newUpgradeCmd() *cobra.Command {
 			// Generate new lockfile from current features config
 			// This is a simplified version — the full implementation
 			// would resolve all features via OCI and compute digests.
-			ociClient := oci.NewClient(logger, osEnvMap())
+			ociClient := newOCIClient(cmd.Context(), logger)
 
 			featureSets := resolveFeatureSets(cfg, ociClient, logger)
 			lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, nil)

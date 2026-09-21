@@ -257,6 +257,8 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
 		Secrets:    secretValuesFromFile(opts.secretsFile),
 	})
+	// Route the OCI auth diagnostic lines at this command's logger.
+	ociAuthPolicy(ctx).SetLogger(logger)
 
 	// Engine SDK client for container/image operations
 	engine, err := docker.NewEngineClient(logger)
@@ -493,6 +495,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		"containerId":           containerID,
 		"remoteUser":            remoteUser,
 		"remoteWorkspaceFolder": remoteWorkspaceFolder,
+		"ociAuthDiagnostics":    ociAuthDiagnostics(ctx),
 	}
 	if opts.composeProjectName != "" {
 		result["composeProjectName"] = opts.composeProjectName
@@ -647,6 +650,7 @@ func (r *upRunner) finishUp(ctx context.Context, containerID string, cfg *config
 		"containerId":           containerID,
 		"remoteUser":            remoteUser,
 		"remoteWorkspaceFolder": remoteWorkspaceFolder,
+		"ociAuthDiagnostics":    ociAuthDiagnostics(ctx),
 	}
 
 	return writeSuccessJSON(out, result)
@@ -1269,7 +1273,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 		serviceBuildTarget := svcBuild.Target
 
 		// Fetch and resolve features
-		fetchResult, fetchErr := fetchFeatureSets(logger, nil, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
+		fetchResult, fetchErr := fetchFeatureSets(ctx, logger, nil, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if fetchErr != nil {
 			return "", fetchErr
 		}

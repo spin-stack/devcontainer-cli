@@ -62,6 +62,11 @@ func newExecCmd() *cobra.Command {
 			if err := cmd.ParseFlags(flagArgs); err != nil {
 				return err
 			}
+			// DisableFlagParsing skips the root's PersistentPreRunE validation, so
+			// the global OCI auth flags are validated here, once parsed.
+			if err := applyOCIAuthPolicy(cmd); err != nil {
+				return err
+			}
 
 			opts.workspaceFolder, _ = cmd.Flags().GetString("workspace-folder")
 			opts.configPath, _ = cmd.Flags().GetString("config")
@@ -433,6 +438,7 @@ func splitExecArgs(args []string) (flags []string, cmd []string) {
 		"--default-user-env-probe": true, "--user-data-folder": true,
 		"--terminal-columns": true, "--terminal-rows": true,
 		"--log-file": true, "--terminal-log-file": true,
+		"--" + flagAllowCrossOriginAuthHos: true,
 	}
 
 	i := 0

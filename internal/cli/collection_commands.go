@@ -238,6 +238,7 @@ func realFeaturesTestCmd() *cobra.Command {
 				preserve,
 				quiet,
 				permitRandomization,
+				ociAuthGlobalArgs(cmd),
 			)
 			if exitCode != 0 {
 				return &coreerrors.ExitCodeError{Code: exitCode}
@@ -438,7 +439,7 @@ func publishCollection(ctx context.Context, targetFolder, registry, namespace, c
 		Format: "text",
 		Writer: os.Stderr,
 	})
-	reg := oci.NewClient(logger, osEnvMap())
+	reg := newOCIClient(ctx, logger)
 	return publishCollectionWith(ctx, OSOutput(), reg, targetFolder, registry, namespace, collectionType, logLevelStr)
 }
 

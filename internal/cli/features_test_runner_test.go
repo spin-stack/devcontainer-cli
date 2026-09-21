@@ -14,7 +14,7 @@ func TestRunAutoTests_ReportsStagingError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results := runAutoTests(log.Null, base, []string{"missing"}, "alpine", "", true)
+	results := runAutoTests(log.Null, base, []string{"missing"}, "alpine", "", true, nil)
 	if len(results) != 1 || results[0].Status != testError {
 		t.Fatalf("results = %#v, want one setup error", results)
 	}
@@ -30,7 +30,7 @@ func TestRunScenarioTests_ReportsInvalidScenarios(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results := runScenarioTests(log.Null, base, testDir, "sample", "", "alpine", "", true)
+	results := runScenarioTests(log.Null, base, testDir, "sample", "", "alpine", "", true, nil)
 	if len(results) != 1 || results[0].Status != testError {
 		t.Fatalf("results = %#v, want one parse error", results)
 	}
@@ -46,7 +46,7 @@ func TestRunScenarioTests_ReportsMissingScriptAsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results := runScenarioTests(log.Null, base, testDir, "sample", "", "alpine", "", true)
+	results := runScenarioTests(log.Null, base, testDir, "sample", "", "alpine", "", true, nil)
 	if len(results) != 1 || results[0].Status != testSkipped {
 		t.Fatalf("results = %#v, want one skipped scenario", results)
 	}

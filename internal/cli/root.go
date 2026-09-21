@@ -28,11 +28,23 @@ func NewRootCommand() *cobra.Command {
 		// Match yargs: boolean-negation disabled, strict mode
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Validate the global OCI auth flags before any subcommand runs and stash
+		// the resulting policy on the context (yargs `.check()` equivalent).
+		// `exec` parses its own flags (DisableFlagParsing), so it applies the
+		// policy itself once its flags are parsed.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.DisableFlagParsing {
+				return nil
+			}
+			return applyOCIAuthPolicy(cmd)
+		},
 	}
 
 	// Print just the bare version (e.g. "0.74.0"), matching the TS CLI (yargs
 	// .version()) instead of Cobra's "<name> version <v>" template.
 	root.SetVersionTemplate("{{.Version}}\n")
+
+	addOCIAuthFlags(root)
 
 	// Register subcommands
 	root.AddCommand(

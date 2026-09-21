@@ -1,7 +1,7 @@
 # Divergences, decisions & accepted limitations
 
 This CLI is validated for behavioral parity with the reference TypeScript
-`@devcontainers/cli` (pinned at **v0.88.0**, see [`parity/`](parity/)). Where it
+`@devcontainers/cli` (pinned at **v0.89.0**, see [`parity/`](parity/)). Where it
 deliberately differs, the difference is recorded here — this is the durable record of
 *intentional* departures from the oracle, not a backlog. User-facing additions are
 documented in [`go-only-features.md`](go-only-features.md).
@@ -32,6 +32,16 @@ touches a compared surface, reflected in the parity matrix.
 - **`config.build.cacheFrom`** is honored (wired to `--cache-from` after the flag's
   values) — matching `singleContainer.ts`. Upstream defines the field; this is a parity
   fix, noted here because it was previously a dead field.
+- **OCI auth hardening is enforced through `oras-go`, which is stricter by default.**
+  `--oci-auth-hardening` and `--allow-cross-origin-auth-host` behave as documented
+  upstream (bearer realms pinned to the registry authority or a trusted auth host,
+  token endpoints may not redirect), and `ociAuthDiagnostics` reports the same three
+  flags in `up`/`build`/`read-configuration`. The difference is what happens
+  **without** the flag: the reference CLI still forwards registry credentials to a
+  challenge that arrives from another origin, while `oras-go` never does
+  (GHSA-vh4v-2xq2-g5cg). Hardening off is therefore already safe here; the
+  diagnostics still report what hardening *would* change, so the flag remains a
+  faithful compatibility probe.
 - **`BUILDKIT_INLINE_CACHE=1`** is omitted when `--cache-to` is an inline exporter
   (`/type\s*=\s*inline/i`), matching TS `isBuildxCacheToInline` — a parity fix over the
   earlier unconditional build-arg.

@@ -79,8 +79,8 @@ type fetchFeatureResult struct {
 
 // fetchFeatureSets fetches features and returns them in install order. reg is the
 // registry seam; pass nil for the default OCI client.
-func fetchFeatureSets(logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsWithOrder(logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
+func fetchFeatureSets(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsWithOrder(ctx, logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
 }
 
 // fetchFeatureSetsWithOrder resolves the feature dependency graph through the
@@ -89,7 +89,7 @@ func fetchFeatureSets(logger log.Logger, reg oci.Registry, featuresCfg map[strin
 // order. Each returned Set's content is staged under the returned TmpDir
 // at _dev_container_feature_<installOrderIndex>, matching the generated
 // Dockerfile's COPY paths.
-func fetchFeatureSetsWithOrder(logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
@@ -104,7 +104,7 @@ func fetchFeatureSetsWithOrder(logger log.Logger, reg oci.Registry, featuresCfg 
 
 	ociClient := reg
 	if ociClient == nil {
-		ociClient = oci.NewClient(logger, osEnvMap())
+		ociClient = newOCIClient(ctx, logger)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "devcontainer-features-")
@@ -396,6 +396,7 @@ func processInstallFeature(
 					"owner":    strings.SplitN(ref.Namespace, "/", 2)[0],
 					"path":     ref.Namespace + "/" + ref.ID,
 					"registry": ref.Registry,
+					"scheme":   ref.Scheme(),
 					"resource": ref.Resource,
 					"tag":      ref.Tag, "version": ref.Tag,
 				},
@@ -529,7 +530,7 @@ func extendImageWithFeatures(
 	if fbOpts != nil {
 		overrideOrder = fbOpts.OverrideFeatureInstallOrder
 	}
-	result, err := fetchFeatureSetsWithOrder(logger, nil, featuresCfg, featuresBasePath, skipAutoMap, lockfile, overrideOrder)
+	result, err := fetchFeatureSetsWithOrder(ctx, logger, nil, featuresCfg, featuresBasePath, skipAutoMap, lockfile, overrideOrder)
 	if err != nil {
 		return nil, err
 	}

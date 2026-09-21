@@ -35,6 +35,15 @@ func TestOracleFlagCoverage(t *testing.T) {
 	inventory := inventoryCommandFlags(t)
 
 	var problems []string
+
+	// Global options (yargs `.option(..., { global: true })`) belong to every
+	// command; the inventory tracks them under `global_flags`.
+	inventoryGlobals := inventoryGlobalFlags(t)
+	for f := range oracleGlobalFlags(string(src)) {
+		if !inventoryGlobals[f] {
+			problems = append(problems, "<global> --"+f)
+		}
+	}
 	for cmd, flags := range oracle {
 		invFlags, ok := inventory[cmd]
 		if !ok {
@@ -53,6 +62,44 @@ func TestOracleFlagCoverage(t *testing.T) {
 	if len(problems) > 0 {
 		t.Fatalf("oracle flags missing from cli-flags-inventory.yaml (add them to the command, or justify in deliberatelyUnmodeled): %v", problems)
 	}
+}
+
+// oracleGlobalFlags returns the flag names the oracle declares as global options
+// on the root yargs chain (before `.strict()`), i.e. the ones every command
+// accepts.
+func oracleGlobalFlags(src string) map[string]bool {
+	start := strings.Index(src, ".scriptName('devcontainer')")
+	end := strings.Index(src, ".strict();")
+	if start < 0 || end < 0 || end <= start {
+		return nil
+	}
+	chain := src[start:end]
+	optionRe := regexp.MustCompile(`\.option\('([a-z][a-z0-9-]*)',\s*\{`)
+	out := map[string]bool{}
+	for _, m := range optionRe.FindAllStringSubmatch(chain, -1) {
+		out[m[1]] = true
+	}
+	return out
+}
+
+// inventoryGlobalFlags loads the global flag names declared in the YAML.
+func inventoryGlobalFlags(t *testing.T) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile("../../docs/parity/cli-flags-inventory.yaml")
+	if err != nil {
+		t.Fatalf("read inventory: %v", err)
+	}
+	var doc struct {
+		GlobalFlags map[string]yaml.Node `yaml:"global_flags"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse inventory: %v", err)
+	}
+	out := map[string]bool{}
+	for name := range doc.GlobalFlags {
+		out[name] = true
+	}
+	return out
 }
 
 // oracleCommandFlags maps each top-level command name to the set of flag names

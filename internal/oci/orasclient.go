@@ -3,6 +3,7 @@ package oci
 import (
 	"context"
 	"encoding/base64"
+	"net/http"
 	"strings"
 
 	"oras.land/oras-go/v2/registry/remote"
@@ -46,6 +47,24 @@ func (c *Client) repository(ref *Ref) (*remote.Repository, error) {
 	if httpClient == nil {
 		httpClient = retry.DefaultClient
 	}
+	// Apply the OCI auth policy (realm pinning, token-redirect refusal, auth
+	// diagnostics) to this repository's traffic. The wrapper sits above the
+	// retrying transport so it observes the response the registry settled on.
+	policy := c.authPolicy
+	if policy == nil {
+		policy = DefaultAuthPolicy()
+	}
+	scheme := "https"
+	if repo.PlainHTTP {
+		scheme = "http"
+	}
+	baseTransport := httpClient.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	policyClient := *httpClient
+	policyClient.Transport = newAuthPolicyTransport(baseTransport, policy, scheme, ref.Registry)
+	httpClient = &policyClient
 	repo.Client = &auth.Client{
 		Client: httpClient,
 		Cache:  cache,

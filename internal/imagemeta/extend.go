@@ -39,7 +39,7 @@ func GenerateExtendImageBuild(
 	if len(featureSets) == 0 {
 		// No features — just add metadata label
 		df := docker.NewDockerfileBuilder()
-		df.Arg("_DEV_CONTAINERS_BASE_IMAGE", "placeholder")
+		df.Arg("_DEV_CONTAINERS_BASE_IMAGE", "scratch")
 		prefix := df.String()
 
 		df2 := docker.NewDockerfileBuilder()
@@ -59,7 +59,7 @@ func GenerateExtendImageBuild(
 	df := docker.NewDockerfileBuilder()
 
 	// Preamble
-	df.Arg("_DEV_CONTAINERS_BASE_IMAGE", "placeholder")
+	df.Arg("_DEV_CONTAINERS_BASE_IMAGE", "scratch")
 
 	if useBuildKitContexts {
 		df.From("scratch").As("dev_containers_feature_content_source")

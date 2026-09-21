@@ -7,7 +7,6 @@ import (
 
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
-	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/templates"
 	"github.com/spf13/cobra"
 )
@@ -66,7 +65,7 @@ func realTemplatesApplyCmd() *cobra.Command {
 				}
 			}
 
-			ociClient := oci.NewClient(logger, osEnvMap())
+			ociClient := newOCIClient(cmd.Context(), logger)
 
 			selected := templates.SelectedTemplate{
 				ID:        templateID,

@@ -10,7 +10,6 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/log"
-	"github.com/devcontainers/cli/internal/oci"
 	"github.com/spf13/cobra"
 )
 
@@ -52,7 +51,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				return &coreerrors.ExitCodeError{Code: 1}
 			}
 
-			ociClient := oci.NewClient(logger, osEnvMap())
+			ociClient := newOCIClient(cmd.Context(), logger)
 
 			// Read the lockfile (if any) so tarball/OCI resolution can pin digests.
 			var lockfile *features.Lockfile

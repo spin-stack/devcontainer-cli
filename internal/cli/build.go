@@ -163,6 +163,8 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		Format:  opts.logFormat,
 		Writer:  os.Stderr,
 	})
+	// Route the OCI auth diagnostic lines at this command's logger.
+	ociAuthPolicy(ctx).SetLogger(logger)
 
 	// Load config
 	loadResult, err := config.LoadDevContainerConfig(workspaceFolder, configPath, "")
@@ -243,8 +245,9 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	}
 
 	return writeSuccessJSON(out, map[string]interface{}{
-		"outcome":   "success",
-		"imageName": imageNameResult,
+		"outcome":            "success",
+		"imageName":          imageNameResult,
+		"ociAuthDiagnostics": ociAuthDiagnostics(ctx),
 	})
 }
 
