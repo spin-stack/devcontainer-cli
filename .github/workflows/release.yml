@@ -194,7 +194,7 @@ jobs:
       # dockers:/docker_manifests: blocks in .goreleaser.yml.
       - uses: docker/setup-qemu-action@v4
       - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+        uses: useblacksmith/setup-docker-builder@v2
 
       # GHCR login. Only reached on the tag path (this workflow is push.tags),
       # never on PRs, so images are pushed exclusively from an approved tag run.
