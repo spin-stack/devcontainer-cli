@@ -47,7 +47,7 @@ jobs:
       - run: ./devcontainer --version
 
       # Binary covdata for the cross-lane merge (coverage-report job).
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: covdata-unit
@@ -71,7 +71,7 @@ jobs:
       - name: Coverage summary
         if: always()
         run: go run ./cmd/devtool coverage-report artifacts/coverage/data/e2e "e2e" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: covdata-e2e
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "20"
       - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
@@ -114,13 +114,13 @@ jobs:
         run: |
           mkdir -p artifacts
           git -C reference rev-parse HEAD > artifacts/reference-commit.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: parity-contract-network-v0.89.0
           path: artifacts/
           if-no-files-found: error
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: covdata-contract
@@ -227,14 +227,14 @@ jobs:
         run: |
           mkdir -p artifacts
           git -C reference rev-parse HEAD > artifacts/reference-commit.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always() && steps.plan.outputs.run == 'true'
         with:
           name: parity-runtime-v0.89.0-shard-${{ matrix.shard }}
           path: artifacts/
           if-no-files-found: error
       # daily only: covdata slice for the cross-lane merge (distinct name per shard).
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always() && steps.plan.outputs.run == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         with:
           name: covdata-runtime-shard-${{ matrix.shard }}
@@ -260,7 +260,7 @@ jobs:
       - name: Coverage summary
         if: always()
         run: go run ./cmd/devtool coverage-report artifacts/coverage/data/publish "parity:publish" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: covdata-publish
@@ -288,7 +288,7 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download all lane covdata
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: covdata-*
           path: artifacts/coverage/data
@@ -301,7 +301,7 @@ jobs:
           ls -R . || true
       - name: Merged coverage report
         run: task coverage:merge | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: covdata-merged
           path: artifacts/coverage/data/merged.out
