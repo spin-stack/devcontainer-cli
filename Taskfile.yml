@@ -22,6 +22,8 @@ vars:
   # so `coverage:merge` can union them into the true cross-lane number.
   COVER_DIR: artifacts/coverage
   COVER_DATA: artifacts/coverage/data
+  # The image GoReleaser publishes (.goreleaser.yml's dockers), tagged with the version.
+  IMAGE: ghcr.io/spin-stack/devcontainer-cli
 
 tasks:
   default:
@@ -57,6 +59,13 @@ tasks:
       # Linux-only scope: only linux/amd64 + linux/arm64 are supported targets.
       - GOOS=linux   GOARCH=amd64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-amd64 ./cmd/devcontainer/
       - GOOS=linux   GOARCH=arm64 go build -ldflags "{{.LDFLAGS}}" -o dist/{{.BINARY}}-linux-arm64 ./cmd/devcontainer/
+      - ls -lh dist/
+
+  build:smoke:
+    desc: Build the CLI and check the binary runs
+    deps: [build]
+    cmds:
+      - ./{{.BINARY}} --version
 
   test:unit:
     desc: Run hermetic unit tests
@@ -158,9 +167,26 @@ tasks:
           RUN: go test ./internal/cli -run '^TestPublishParity$' -count=1 -timeout 10m -v
 
   coverage:merge:
-    desc: Union every per-lane covdata dir into the true cross-lane coverage report
+    desc: Union every per-lane covdata dir into the true cross-lane coverage report (and the CI job summary)
     cmds:
-      - go run ./cmd/devtool coverage-merge {{.COVER_DATA}} {{.COVER_DATA}}/merged "merged (all lanes)"
+      - go run ./cmd/devtool coverage-merge {{.COVER_DATA}} {{.COVER_DATA}}/merged "merged (all lanes)" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+  coverage:summary:
+    desc: Add one lane's coverage report (SRC, a coverage.out or covdata dir, titled TITLE) to the CI job summary, or print it
+    requires:
+      vars: [SRC, TITLE]
+    cmds:
+      - go run ./cmd/devtool coverage-report {{.SRC}} "{{.TITLE}}" >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+
+  # download-artifact nests each artifact under covdata-<lane>/; coverage:merge wants one dir per
+  # lane, the runtime shards still apart.
+  coverage:unpack:
+    desc: "CI-ONLY: flatten the downloaded covdata-<lane>/ artifacts into the <lane>/ dirs coverage:merge reads"
+    dir: "{{.COVER_DATA}}"
+    cmds:
+      - |
+        for d in covdata-*; do [ -d "$d" ] && mv "$d" "${d#covdata-}"; done
+        ls -R . || true
 
   test:e2e:
     desc: Run Go E2E tests with Docker
@@ -172,9 +198,11 @@ tasks:
       - go test ./internal/cli -run TestE2E -count=1 -timeout 5m -v {{.CLI_ARGS}}
 
   lint:
-    desc: Run Go static checks
+    desc: Run Go static checks; hold every workflow step to one task, and every install to pnpm through Socket Firewall
     cmds:
       - go vet ./cmd/... ./internal/...
+      - go tool taskgate
+      - go tool sfw check
 
   spec:compliance:
     desc: Verify spec compliance — schema attribute coverage + normative behavior (merge/lifecycle/discovery), excludes Go-only additions
@@ -195,6 +223,12 @@ tasks:
     cmds:
       - task: reference:install
       - task: reference:compile
+
+  reference:commit:
+    desc: Record the reference commit the parity reports were made against (artifacts/reference-commit.txt)
+    cmds:
+      - mkdir -p artifacts
+      - git -C reference rev-parse HEAD > artifacts/reference-commit.txt
 
   parity:contract:
     desc: Run the hermetic CLI contract matrix
@@ -249,6 +283,35 @@ tasks:
       # run to the cases affected by a change; unset/"all" runs the full matrix.
       - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-runtime.json PARITY_STRICT=true PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -count=1 -parallel {{.PARITY_PARALLEL | default "2"}} -timeout 60m -v {{.CLI_ARGS}}
 
+  parity:plan:
+    desc: "Plan a runtime parity run (run=, commands= to $GITHUB_OUTPUT, or the terminal): on a push or PR the commands DIFF_BASE..DIFF_HEAD can affect, else the full matrix"
+    cmds:
+      - |
+        out="${GITHUB_OUTPUT:-/dev/stdout}"
+        case "${GITHUB_EVENT_NAME:-}" in
+          push|pull_request)
+            go run ./cmd/devtool parity-affected-commands "$DIFF_BASE" "$DIFF_HEAD" >> "$out"
+            ;;
+          *)
+            # The daily run, which daily-changes has already let through.
+            echo "run=true" >> "$out"
+            echo "commands=all" >> "$out"
+            ;;
+        esac
+
+  # A skipped lane - publish on a push or PR, or the whole matrix on a quiet day - is a pass.
+  parity:gate:
+    desc: "CI-ONLY: fail unless the runtime and publish parity jobs (RUNTIME_RESULT, PUBLISH_RESULT) succeeded or were skipped"
+    cmds:
+      - |
+        echo "runtime: $RUNTIME_RESULT, publish: $PUBLISH_RESULT"
+        for r in "$RUNTIME_RESULT" "$PUBLISH_RESULT"; do
+          case "$r" in
+            success|skipped) ;;
+            *) echo "runtime/publish parity failed"; exit 1 ;;
+          esac
+        done
+
   parity:publish:
     desc: Run the OCI publish parity (features publish/package) — network + registry heavy
     deps: [build, reference:compile]
@@ -262,6 +325,18 @@ tasks:
     desc: "CI-ONLY: free disk + enable the containerd image store (uses sudo; not for local dev)"
     cmds:
       - go run ./cmd/devtool ci-prepare-runner
+
+  ci:daily-changes:
+    desc: "Whether the daily lanes run (run= to $GITHUB_OUTPUT, or the terminal): always on a manual dispatch, else only when HEAD changed in the last day"
+    cmds:
+      - |
+        out="${GITHUB_OUTPUT:-/dev/stdout}"
+        if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
+          echo "manual dispatch → always run" >&2
+          echo "run=true" >> "$out"
+        else
+          go run ./cmd/devtool daily-changed >> "$out"
+        fi
 
   clean:
     desc: Remove generated artifacts and test containers
@@ -277,6 +352,103 @@ tasks:
         msg: goreleaser is required
     cmds:
       - goreleaser release --clean {{.CLI_ARGS}}
+
+  # The release workflow's own steps. What only the workflow knows - the dispatch input, the
+  # prepare job's outputs, the published digest - comes in the environment.
+  release:resolve:
+    desc: "Resolve the version, tag and commit to release (to $GITHUB_OUTPUT, or the terminal): a dispatch's VERSION_INPUT or the next CalVer, else the pushed tag"
+    cmds:
+      # Outside CI there is no tag push, so it answers as a dispatch would: a dry run.
+      - |
+        set -euo pipefail
+        if [ "${GITHUB_EVENT_NAME:-workflow_dispatch}" = "workflow_dispatch" ]; then
+          VERSION="${VERSION_INPUT:-}"
+          VERSION="${VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            # Auto CalVer: YYYYMMDD.<next build number for today>.
+            DATE="$(date -u +%Y%m%d)"
+            N="$(git tag -l "v${DATE}.*" | wc -l | tr -d ' ')"
+            VERSION="${DATE}.$(printf '%02d' "$((N + 1))")"
+          fi
+          # Reject anything that is not a plain version token (defense in depth:
+          # this value later reaches git/docker command lines).
+          case "$VERSION" in
+            *[!0-9A-Za-z.+-]*|"")
+              echo "::error::invalid version '${VERSION}': use only [0-9A-Za-z.+-]"; exit 1 ;;
+          esac
+          TAG="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::tag ${TAG} already exists — releases are immutable, bump the build number"
+            exit 1
+          fi
+          SHA="$(git rev-parse HEAD)"
+        else
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          SHA="${GITHUB_SHA}"
+        fi
+        out="${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "version=${VERSION}" >>"$out"
+        echo "tag=${TAG}" >>"$out"
+        echo "sha=${SHA}" >>"$out"
+        echo "Releasing ${TAG} (version ${VERSION}) from ${SHA}" >>"${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+
+  release:tag:
+    desc: "CI-ONLY: create and push the annotated tag RELEASE_TAG for RELEASE_VERSION, as github-actions[bot]"
+    cmds:
+      - |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git tag -a "$RELEASE_TAG" -m "Release $RELEASE_VERSION"
+        git push origin "$RELEASE_TAG"
+
+  release:smoke:
+    desc: Check the published image of RELEASE_VERSION reports that version
+    cmds:
+      - |
+        set -euo pipefail
+        IMAGE="{{.IMAGE}}:$RELEASE_VERSION"
+        GOT="$(docker run --rm "$IMAGE" --version)"
+        echo "image reported version: $GOT (expected: $RELEASE_VERSION)"
+        test "$GOT" = "$RELEASE_VERSION"
+
+  release:digest:
+    desc: "Record the digest of the published image of RELEASE_VERSION (digest= to $GITHUB_OUTPUT, and the job summary)"
+    cmds:
+      - |
+        set -euo pipefail
+        IMAGE="{{.IMAGE}}:$RELEASE_VERSION"
+        DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{`{{ json .Manifest.Digest }}`}}' | tr -d '\"')"
+        echo "digest=${DIGEST}" >>"${GITHUB_OUTPUT:-/dev/stdout}"
+        {
+          echo "## Published image"
+          echo ""
+          echo "- \`${IMAGE}\`"
+          echo "- digest: \`${DIGEST}\`"
+        } >>"${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+        docker buildx imagetools inspect "$IMAGE"
+
+  release:latest:
+    desc: "CI-ONLY: move the image's mutable :latest tag to RELEASE_DIGEST"
+    cmds:
+      - |
+        set -euo pipefail
+        docker buildx imagetools create \
+          -t {{.IMAGE}}:latest \
+          "{{.IMAGE}}@${RELEASE_DIGEST}"
+
+  # Against the immutable digest, not the mutable tag. cosign/syft rather than buildx's own
+  # --provenance/--sbom, which would break docker_manifests.
+  release:sign:
+    desc: "CI-ONLY: sign the image at RELEASE_DIGEST and attest its SBOM (cosign keyless)"
+    cmds:
+      - |
+        set -euo pipefail
+        REF="{{.IMAGE}}@${RELEASE_DIGEST}"
+        cosign sign --yes "$REF"
+        syft "$REF" -o spdx-json=image.sbom.spdx.json
+        cosign attest --yes --predicate image.sbom.spdx.json --type spdxjson "$REF"
 
   metrics:
     desc: "Perf/distribution metrics (non-gating): Go startup vs Node oracle + artifact sizes -> artifacts/metrics.json"
@@ -377,12 +549,28 @@ tasks:
           cat "$out"
         ignore_error: true
 
+  # reference/ is upstream's submodule, pinned by upstream's yarn.lock. pnpm installs it, through
+  # the firewall: `pnpm import` reads yarn.lock into a pnpm-lock.yaml at the same versions, and
+  # the frozen install holds to it. Neither file pnpm needs can be committed to a submodule, so
+  # both are made here, and stay beside node_modules as files the submodule does not track.
   reference:install:
     internal: true
     dir: reference
     status: [test -d node_modules]
     cmds:
-      - yarn install --frozen-lockfile
+      # allowBuilds: the two install scripts yarn ran. esbuild's checks its platform binary, and
+      # node-pty, which the oracle loads to exec with a TTY, is compiled; pnpm runs no other.
+      # verifyDepsBeforeRun: `pnpm run` would otherwise install what it finds out of date itself,
+      # around the firewall.
+      - |
+        cat > pnpm-workspace.yaml <<'EOF'
+        allowBuilds:
+          esbuild: true
+          node-pty: true
+        verifyDepsBeforeRun: error
+        EOF
+      - go tool sfw pnpm import
+      - go tool sfw pnpm install --frozen-lockfile
 
   reference:compile:
     internal: true
@@ -391,7 +579,7 @@ tasks:
     sources: [src/**/*.ts, package.json, yarn.lock]
     generates: [dist/spec-node/devContainersSpecCLI.js]
     cmds:
-      - yarn compile
+      - pnpm run compile
 
   docker:clean:
     internal: true

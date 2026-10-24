@@ -11,8 +11,8 @@ on:
     # push/PR only the cases affected by the change run (see parity-runtime).
     - cron: "0 6 * * *"
 
-# Least privilege for every job in this workflow: the jobs only check out the repo
-# and read the API (setup-task's repo-token). A job that needs more must widen it
+# Least privilege for every job in this workflow: the jobs only check out the repo.
+# A job that needs more must widen it
 # for itself. Without this default, GITHUB_TOKEN falls back to the repository's
 # (possibly write) default — see the CodeQL "workflow does not contain permissions"
 # rule, which TestWorkflowsDeclarePermissions pins.
@@ -29,22 +29,18 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: task lint
-      - run: task spec:compliance
-      - run: task vuln
-      - run: task test:race
-      - run: task coverage
+      - run: go tool task lint
+      - run: go tool task spec:compliance
+      - run: go tool task vuln
+      - run: go tool task test:race
+      - run: go tool task coverage
       - name: Coverage summary
         if: always()
-        run: go run ./cmd/devtool coverage-report coverage.out "unit (hermetic)" >> "$GITHUB_STEP_SUMMARY"
-      - run: task test:integration
-      - run: task build
-      - run: ./devcontainer --version
+        run: go tool task coverage:summary SRC=coverage.out TITLE="unit (hermetic)"
+      - run: go tool task test:integration
+      - run: go tool task build
+      - run: go tool task build:smoke
 
       # Binary covdata for the cross-lane merge (coverage-report job).
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -62,15 +58,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: task coverage:e2e
+      - run: go tool task coverage:e2e
       - name: Coverage summary
         if: always()
-        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/e2e "e2e" >> "$GITHUB_STEP_SUMMARY"
+        run: go tool task coverage:summary SRC=artifacts/coverage/data/e2e TITLE=e2e
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -78,7 +70,7 @@ jobs:
           path: artifacts/coverage/data/e2e
           if-no-files-found: error
       - if: always()
-        run: task clean
+        run: go tool task clean
 
   # Hermetic parity gate: read-configuration golden comparison + the contract
   # lane of the parity matrix (flag validation / output contract, no Docker).
@@ -92,28 +84,26 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
+      # pnpm installs the reference, through the firewall (task reference); pnpm 11 needs Node 22.13+.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.27.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "20"
-      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: "24"
 
-      - run: task reference
-      - run: task parity:contract
-      - run: task parity:network
+      - run: go tool task reference
+      - run: go tool task parity:contract
+      - run: go tool task parity:network
       # Coverage is measured separately with an instrumented Go binary. Keep the
       # functional parity run above release-like, and avoid conflating subprocess
       # coverage with the hermetic unit profile.
-      - run: task coverage:parity-contract
+      - run: go tool task coverage:parity-contract
       - name: Coverage summary
         if: always()
-        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/contract "parity:contract" >> "$GITHUB_STEP_SUMMARY"
+        run: go tool task coverage:summary SRC=artifacts/coverage/data/contract TITLE=parity:contract
       - if: always()
-        run: |
-          mkdir -p artifacts
-          git -C reference rev-parse HEAD > artifacts/reference-commit.txt
+        run: go tool task reference:commit
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -142,13 +132,7 @@ jobs:
         with:
           go-version-file: go.mod
       - id: check
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "manual dispatch → always run" >&2
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            go run ./cmd/devtool daily-changed >> "$GITHUB_OUTPUT"
-          fi
+        run: go tool task ci:daily-changes
 
   # Single sharded runtime parity matrix, parameterized by event:
   #   push/PR — SCOPED to the commands the diff can affect (devtool parity-affected),
@@ -193,40 +177,28 @@ jobs:
           go-version-file: go.mod
       - name: Plan this run
         id: plan
-        run: |
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              base="${{ github.event.pull_request.base.sha }}"; head="${{ github.event.pull_request.head.sha }}"
-            else
-              base="${{ github.event.before }}"; head="${{ github.sha }}"
-            fi
-            go run ./cmd/devtool parity-affected-commands "$base" "$head" >> "$GITHUB_OUTPUT"
-          else
-            # daily: the full matrix (this job only runs when daily-changes said so).
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "commands=all" >> "$GITHUB_OUTPUT"
-          fi
+        # A pull request's diff is its base..head; a push's, what it moved the branch from..to.
+        env:
+          DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: go tool task parity:plan
       - if: steps.plan.outputs.run == 'true'
         uses: ./.github/actions/setup-parity-runtime
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
       # push/PR: scoped, plain binary — a fast gate.
       - name: Run parity (scoped, plain)
         if: steps.plan.outputs.run == 'true' && (github.event_name == 'push' || github.event_name == 'pull_request')
         env:
           PARITY_COMMAND: ${{ steps.plan.outputs.commands }}
-        run: task parity:runtime
+        run: go tool task parity:runtime
       # daily: full matrix, instrumented binary — gates parity AND measures coverage.
       - name: Run parity (full, instrumented)
         if: steps.plan.outputs.run == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        run: task coverage:parity-runtime
+        run: go tool task coverage:parity-runtime
       - name: Coverage summary
         if: always() && steps.plan.outputs.run == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/runtime "parity:runtime shard ${{ matrix.shard }}" >> "$GITHUB_STEP_SUMMARY"
+        run: go tool task coverage:summary SRC=artifacts/coverage/data/runtime TITLE="parity:runtime shard $PARITY_SHARD_INDEX"
       - if: always() && steps.plan.outputs.run == 'true'
-        run: |
-          mkdir -p artifacts
-          git -C reference rev-parse HEAD > artifacts/reference-commit.txt
+        run: go tool task reference:commit
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always() && steps.plan.outputs.run == 'true'
         with:
@@ -241,7 +213,7 @@ jobs:
           path: artifacts/coverage/data/runtime
           if-no-files-found: error
       - if: always() && steps.plan.outputs.run == 'true'
-        run: task clean
+        run: go tool task clean
 
   # Publish parity (features/templates → ephemeral OCI registry). Daily only, its own
   # job so it doesn't steal a runtime shard's runner.
@@ -254,12 +226,10 @@ jobs:
         with:
           submodules: recursive
       - uses: ./.github/actions/setup-parity-runtime
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: task coverage:parity-publish
+      - run: go tool task coverage:parity-publish
       - name: Coverage summary
         if: always()
-        run: go run ./cmd/devtool coverage-report artifacts/coverage/data/publish "parity:publish" >> "$GITHUB_STEP_SUMMARY"
+        run: go tool task coverage:summary SRC=artifacts/coverage/data/publish TITLE=parity:publish
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -267,7 +237,7 @@ jobs:
           path: artifacts/coverage/data/publish
           if-no-files-found: error
       - if: always()
-        run: task clean
+        run: go tool task clean
 
   # Single gate + cross-lane coverage for ALL events (absorbs the old push/PR
   # parity-runtime aggregator, the daily report, and the per-PR coverage-report):
@@ -283,24 +253,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download all lane covdata
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: covdata-*
           path: artifacts/coverage/data
-      # download-artifact nests each artifact under covdata-<lane>/; flatten to <lane>/
-      # so coverage:merge sees one dir per lane (the runtime shards stay distinct).
       - name: Normalize lane dirs
-        run: |
-          cd artifacts/coverage/data
-          for d in covdata-*; do [ -d "$d" ] && mv "$d" "${d#covdata-}"; done
-          ls -R . || true
+        run: go tool task coverage:unpack
       - name: Merged coverage report
-        run: task coverage:merge | tee -a "$GITHUB_STEP_SUMMARY"
+        run: go tool task coverage:merge
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: covdata-merged
@@ -309,16 +270,10 @@ jobs:
       # Final verdict last, so coverage is posted even when a shard failed. A skipped
       # lane (publish on push/PR, or the whole matrix on a quiet daily) counts as pass.
       - name: Gate on runtime + publish
-        run: |
-          runtime="${{ needs.parity-runtime.result }}"
-          publish="${{ needs.parity-publish-full.result }}"
-          echo "runtime: $runtime, publish: $publish"
-          for r in "$runtime" "$publish"; do
-            case "$r" in
-              success|skipped) ;;
-              *) echo "runtime/publish parity failed"; exit 1 ;;
-            esac
-          done
+        env:
+          RUNTIME_RESULT: ${{ needs.parity-runtime.result }}
+          PUBLISH_RESULT: ${{ needs.parity-publish-full.result }}
+        run: go tool task parity:gate
 
   cross-compile:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -328,10 +283,5 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: task build:cross
-      - run: ls -lh dist/
+      - run: go tool task build:cross
