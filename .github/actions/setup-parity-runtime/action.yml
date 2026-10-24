@@ -18,18 +18,10 @@ runs:
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: "24"
-    # Free disk + enable the containerd image store (build-cache export). Reuses
-    # the Taskfile so the runner prep is identical to release.yml.
+    # Free disk, enable the containerd image store (build-cache export) and turn
+    # bake's filesystem entitlement off. Reuses the Taskfile so the runner prep
+    # is identical to release.yml.
     - run: go tool task ci:prepare-runner
-      shell: bash
-    # The TS reference builds a compose service from a Dockerfile it writes under
-    # /tmp, outside the build context. Compose builds through bake, and bake on
-    # buildx 0.38 (GitHub's runner image, 2026-10-24) refuses to read a file
-    # outside the context unless the caller passes --allow=fs.read, which the
-    # reference never does: every compose case failed with "additional
-    # privileges requested". The Go CLI passes the entitlement itself. Off for
-    # the whole job, so both sides build the same way.
-    - run: echo "BUILDX_BAKE_ENTITLEMENTS_FS=0" >> "$GITHUB_ENV"
       shell: bash
     - run: go tool task reference
       shell: bash

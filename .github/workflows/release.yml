@@ -100,8 +100,6 @@ jobs:
       # Reuse the same runner prep as the go-cli.yml runtime job, or a tagged
       # release stalls on a default-driver runner.
       - run: go tool task ci:prepare-runner
-      # Bake's filesystem entitlement off, as .github/actions/setup-parity-runtime says why.
-      - run: echo "BUILDX_BAKE_ENTITLEMENTS_FS=0" >> "$GITHUB_ENV"
 
       - run: go tool task reference
       - run: go tool task test:e2e
