@@ -322,9 +322,16 @@ tasks:
       - go test ./internal/cli -run TestPublishParity -count=1 -timeout 10m -v
 
   ci:prepare-runner:
-    desc: "CI-ONLY: free disk + enable the containerd image store (uses sudo; not for local dev)"
+    desc: "CI-ONLY: free disk + enable the containerd image store + bake's fs entitlement off (uses sudo; not for local dev)"
     cmds:
       - go run ./cmd/devtool ci-prepare-runner
+      # The TS reference builds a compose service from a Dockerfile it writes under /tmp,
+      # outside the build context. Compose builds through bake, and bake on buildx 0.38
+      # (GitHub's runner image, 2026-10-24) refuses to read a file outside the context unless
+      # the caller passes --allow=fs.read, which the reference never does: every compose case
+      # failed with "additional privileges requested" while the Go CLI, which passes the
+      # entitlement itself, succeeded. Off for the whole job, so both sides build the same way.
+      - echo "BUILDX_BAKE_ENTITLEMENTS_FS=0" >> "${GITHUB_ENV:-/dev/null}"
 
   ci:daily-changes:
     desc: "Whether the daily lanes run (run= to $GITHUB_OUTPUT, or the terminal): always on a manual dispatch, else only when HEAD changed in the last day"
