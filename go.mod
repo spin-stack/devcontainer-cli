@@ -142,7 +142,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
-	github.com/spin-stack/go-tools v0.0.0-20261024182514-8cf54b031efe // indirect
+	github.com/spin-stack/go-tools v0.0.0-20261024185510-dfcf2c10f30b // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
