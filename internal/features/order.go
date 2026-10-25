@@ -293,12 +293,9 @@ func optionsCompareTo(a, b any) int {
 					return c
 				}
 			}
-			// TS treats a missing/undefined value as sorting after a present one.
-			if av == nil || bv == nil {
-				if c := undefinedCompare(av, bv); c != 0 {
-					return c
-				}
-			}
+			// TS also orders an undefined value after a present one, but a JSON
+			// option is never undefined: null, the nil here, is an object to
+			// TS, so like any other pair of differing types it orders nothing.
 		}
 		return 0
 	}
@@ -311,16 +308,6 @@ func boolCompare(a, b bool) int {
 		return 0
 	}
 	if a {
-		return 1
-	}
-	return -1
-}
-
-func undefinedCompare(a, b any) int {
-	if a == b {
-		return 0
-	}
-	if a == nil {
 		return 1
 	}
 	return -1
