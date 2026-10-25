@@ -117,3 +117,14 @@ func TestParseFloorsInvalid(t *testing.T) {
 		}
 	}
 }
+
+// TestPctOfAnEmptyPackage holds the guard a package without statements needs: its
+// coverage is 0, not the NaN of 0/0 that the report and the gate would print.
+func TestPctOfAnEmptyPackage(t *testing.T) {
+	if got := (PkgCov{Pkg: "p"}).Pct(); got != 0 {
+		t.Errorf("Pct of 0 statements = %v, want 0", got)
+	}
+	if got := (PkgCov{Pkg: "p", Covered: 1, Total: 1}).Pct(); got != 100 {
+		t.Errorf("Pct of 1/1 statements = %v, want 100", got)
+	}
+}
