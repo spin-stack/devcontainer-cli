@@ -1,0 +1,3 @@
+# Tests testquality reports that are kept on purpose, one <package>:<TestName> a line with why
+# (go tool testquality -allow). An entry that matches nothing fails, so the list only shrinks.
+github.com/devcontainers/cli/internal/exec:TestHelperProcess  # the child process OSRunner tests exec; it asserts nothing by design, the parent tests do

@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/devcontainers/cli/internal/devtools"
 )
@@ -41,6 +43,10 @@ func main() {
 		err = ciPrepareRunner()
 	case "docker-cache-export":
 		err = dockerCacheExport()
+	case "release-resolve":
+		err = releaseResolve()
+	case "metrics":
+		err = metrics(args)
 	default:
 		fmt.Fprintf(os.Stderr, "devtool: unknown command %q\n", cmd)
 		os.Exit(2)
@@ -157,11 +163,7 @@ func nowEpoch() (int, error) {
 		}
 		return n, nil
 	}
-	out, err := runOut("date", "+%s")
-	if err != nil {
-		return 0, fmt.Errorf("date: %w", err)
-	}
-	return strconv.Atoi(strings.TrimSpace(out))
+	return int(time.Now().Unix()), nil
 }
 
 // --- coverage --------------------------------------------------------------
@@ -385,4 +387,142 @@ func dirEmpty(dir string) (bool, error) {
 		return false, err
 	}
 	return len(entries) == 0, nil
+}
+
+// --- release ---------------------------------------------------------------
+
+// releaseResolve writes the version, tag and commit to release to $GITHUB_OUTPUT
+// (or stdout), and a line to the job summary. What only the workflow knows comes
+// in the environment: GITHUB_EVENT_NAME, VERSION_INPUT, GITHUB_REF_NAME, GITHUB_SHA.
+func releaseResolve() error {
+	in := devtools.ReleaseInput{
+		Event:        os.Getenv("GITHUB_EVENT_NAME"),
+		VersionInput: os.Getenv("VERSION_INPUT"),
+		RefName:      os.Getenv("GITHUB_REF_NAME"),
+		PushedSHA:    os.Getenv("GITHUB_SHA"),
+		Today:        time.Now().UTC().Format("20060102"),
+		TagExists: func(tag string) bool {
+			return exec.Command("git", "rev-parse", "-q", "--verify", "refs/tags/"+tag).Run() == nil
+		},
+	}
+	if in.Event == "" || in.Event == "workflow_dispatch" {
+		tags, err := runOut("git", "tag", "-l", "v"+in.Today+".*")
+		if err != nil {
+			return fmt.Errorf("list tags: %w", err)
+		}
+		in.TagsToday = len(strings.Fields(tags))
+		if in.HeadSHA, err = runOut("git", "rev-parse", "HEAD"); err != nil {
+			return fmt.Errorf("resolve HEAD: %w", err)
+		}
+	}
+	rel, err := devtools.ResolveRelease(in)
+	if err != nil {
+		return exitError{code: 1, msg: "::error::" + err.Error()}
+	}
+	if err := appendTo("GITHUB_OUTPUT", fmt.Sprintf("version=%s\ntag=%s\nsha=%s\n", rel.Version, rel.Tag, rel.SHA)); err != nil {
+		return err
+	}
+	return appendTo("GITHUB_STEP_SUMMARY", fmt.Sprintf("Releasing %s (version %s) from %s\n", rel.Tag, rel.Version, rel.SHA))
+}
+
+// appendTo appends s to the file the environment variable names, or writes it to
+// stdout outside a workflow.
+func appendTo(env, s string) error {
+	path := os.Getenv(env)
+	if path == "" {
+		_, err := fmt.Print(s)
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", env, err)
+	}
+	if _, err := f.WriteString(s); err != nil {
+		f.Close()
+		return fmt.Errorf("write %s: %w", env, err)
+	}
+	return f.Close()
+}
+
+// --- metrics ---------------------------------------------------------------
+
+// metrics writes artifacts/metrics.json: startup time of the binary against the
+// Node oracle (METRICS_RUNS runs, 30 by default) and the size of the binaries.
+// Every measurement is best effort: one that cannot be taken is null.
+//
+//	devtool metrics <version> <binary> <oracle.js> <out.json>
+func metrics(args []string) error {
+	if len(args) != 4 {
+		return fmt.Errorf("usage: devtool metrics <version> <binary> <oracle.js> <out.json>")
+	}
+	version, bin, oracle, out := args[0], args[1], args[2], args[3]
+	runs := 30
+	if v := os.Getenv("METRICS_RUNS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("METRICS_RUNS %q: %w", v, err)
+		}
+		runs = n
+	}
+	quiet := func(name string, args ...string) func() {
+		return func() { _ = exec.Command(name, args...).Run() }
+	}
+	fmt.Printf("metrics: timing tool = go, runs=%d\n", runs)
+	m := devtools.Metrics{
+		Version:     version,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		TimingTool:  "go",
+		Runs:        runs,
+	}
+	m.StartupMs.GoVersion = new(devtools.MeanMillis(runs, quiet(bin, "--version")))
+
+	// read-configuration against a minimal image-based workspace: variable
+	// substitution only, no Docker involved.
+	ws, err := os.MkdirTemp("", "devcontainer-metrics-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(ws)
+	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(cfg, []byte(`{"image":"mcr.microsoft.com/devcontainers/base:ubuntu"}`+"\n"), 0o644); err != nil {
+		return err
+	}
+	m.StartupMs.GoReadConfiguration = new(devtools.MeanMillis(runs, quiet(bin, "read-configuration", "--workspace-folder", ws)))
+
+	if _, err := os.Stat(oracle); err == nil {
+		if _, err := exec.LookPath("node"); err == nil {
+			m.StartupMs.NodeVersion = new(devtools.MeanMillis(runs, quiet("node", oracle, "--version")))
+		}
+	}
+	if m.StartupMs.NodeVersion == nil {
+		fmt.Printf("metrics: node oracle not found at %s (run 'task reference') — skipping Node A/B\n", oracle)
+	}
+
+	dist := filepath.Join(filepath.Dir(bin), "dist", filepath.Base(bin))
+	m.SizesBytes = devtools.SizesBytes{
+		LocalBinary:      devtools.FileSize(bin),
+		LinuxAmd64Binary: devtools.FileSize(dist + "-linux-amd64"),
+		LinuxAmd64Gzip:   devtools.GzipSize(dist + "-linux-amd64"),
+		LinuxArm64Binary: devtools.FileSize(dist + "-linux-arm64"),
+		LinuxArm64Gzip:   devtools.GzipSize(dist + "-linux-arm64"),
+	}
+	if m.SizesBytes.LinuxAmd64Binary == nil {
+		fmt.Println("metrics: dist binaries absent — run 'task build:cross' for release sizes")
+	}
+
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(out, append(data, '\n'), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("metrics: wrote %s\n%s\n", out, data)
+	return nil
 }

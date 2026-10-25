@@ -2,6 +2,8 @@ module github.com/devcontainers/cli
 
 go 1.27
 
+toolchain go1.27.3
+
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/iancoleman/orderedmap v0.3.0
@@ -12,6 +14,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
+	github.com/spin-stack/go-tools v0.0.0-20261025134518-0ee222410bc5
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/testcontainers/testcontainers-go v0.44.0
 	golang.org/x/crypto v0.58.0
@@ -142,7 +145,6 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
-	github.com/spin-stack/go-tools v0.0.0-20261024185510-dfcf2c10f30b // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
@@ -164,12 +166,16 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/telemetry v0.0.0-20261010193011-f71dc92da45e // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
+	golang.org/x/tools v0.52.0 // indirect
+	golang.org/x/vuln v1.9.0 // indirect
 	google.golang.org/api v0.293.0 // indirect
 	google.golang.org/genproto v0.0.0-20260724162435-b2f20204f0df // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260825221802-da73d73af1c5 // indirect
@@ -182,6 +188,14 @@ require (
 
 tool (
 	github.com/go-task/task/v3/cmd/task
+	github.com/spin-stack/go-tools/cmd/ctxlife
+	github.com/spin-stack/go-tools/cmd/deadgate
+	github.com/spin-stack/go-tools/cmd/mutate
+	github.com/spin-stack/go-tools/cmd/refs
 	github.com/spin-stack/go-tools/cmd/sfw
 	github.com/spin-stack/go-tools/cmd/taskgate
+	github.com/spin-stack/go-tools/cmd/testquality
+	github.com/spin-stack/go-tools/cmd/versions
+	github.com/spin-stack/go-tools/cmd/vulngate
+	golang.org/x/tools/cmd/deadcode
 )

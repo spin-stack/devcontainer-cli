@@ -1,0 +1,24 @@
+# Every input this repository pins, written once: `go tool versions check` says what is behind,
+# `go tool versions bump <name>` moves one, and internal/devtools/versions_gate_test.go fails on a
+# pin written anywhere else. GitHub Actions are pinned by commit in the workflows; Dependabot
+# moves those, as go.sum is Go's.
+
+- name: golangci-lint
+  kind: image
+  source: golangci/golangci-lint
+  version: v2.14.0
+  pin: sha256:ad862ba6b3798cbe0fd9fd7408d498fd74fbd2623a92406b2fd3898faf0bf98f
+  track: github-release https://github.com/golangci/golangci-lint
+  note: >-
+    task lint, with this repository's .golangci.yml. go-tools' version, so the spin-stack
+    repositories are measured by the same linter; the image's Go must be at least go.mod's.
+
+- name: distroless
+  kind: image
+  source: gcr.io/distroless/static
+  version: nonroot
+  pin: sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
+  track: digest
+  note: >-
+    The released image's base (Dockerfile's DISTROLESS_IMAGE, handed to GoReleaser by task
+    release:env). A bump is checked by task release --snapshot and task release:smoke.
