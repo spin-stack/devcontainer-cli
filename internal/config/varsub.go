@@ -34,12 +34,16 @@ type VariableResolver struct{}
 func NewVariableResolver() *VariableResolver { return &VariableResolver{} }
 
 func (r *VariableResolver) Resolve(ctx SubstitutionContext, phase SubstitutionPhase, value any) (any, error) {
-	if phase == PhaseHost && ctx.ContainerWorkspaceFolder != "" {
-		resolved, err := r.resolveString(ctx, phase, ctx.ContainerWorkspaceFolder)
-		if err != nil {
-			return nil, err
+	// TS substitute resolves the container workspace folder before the value
+	// that may name it. Only the host phase reads it (resolveHostTag).
+	if phase == PhaseHost {
+		if ctx.ContainerWorkspaceFolder != "" {
+			resolved, err := r.resolveString(ctx, phase, ctx.ContainerWorkspaceFolder)
+			if err != nil {
+				return nil, err
+			}
+			ctx.ContainerWorkspaceFolder = resolved
 		}
-		ctx.ContainerWorkspaceFolder = resolved
 	}
 	return r.resolveRecursive(ctx, phase, value)
 }

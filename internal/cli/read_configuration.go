@@ -258,7 +258,11 @@ func loadReadConfiguration(workspaceFolder, configPath, overridePath string, opt
 		// 0.88: read-configuration exits 1 silently (banner only) when no
 		// config is found — it does not print an error envelope. Parse/other
 		// errors still surface normally.
-		if _, ok := errors.AsType[*config.NotFoundError](err); ok {
+		// TS read-configuration exits 1 the same way on a config that is not a
+		// JSON object.
+		_, notFound := errors.AsType[*config.NotFoundError](err)
+		_, notObject := errors.AsType[*config.NotObjectError](err)
+		if notFound || notObject {
 			return nil, &coreerrors.ExitCodeError{Code: 1}
 		}
 		return nil, err
@@ -290,11 +294,6 @@ func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[st
 	}
 	for k, v := range result.Raw {
 		if _, known := cfgMap[k]; known {
-			continue
-		}
-		// TS moves a null devPort into customizations.vscode, which the loader
-		// does not; it is never printed at the top level.
-		if k == "devPort" && v == nil {
 			continue
 		}
 		cfgMap[k] = v
