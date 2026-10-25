@@ -230,10 +230,8 @@ func (l *logger) Stop(text string, startTimestamp int64, level ...Level) {
 }
 
 func (l *logger) Event(e Event) {
-	if len(l.secrets) > 0 && e.Text != "" {
-		for _, s := range l.secrets {
-			e.Text = strings.ReplaceAll(e.Text, s, "********")
-		}
+	for _, s := range l.secrets {
+		e.Text = strings.ReplaceAll(e.Text, s, "********")
 	}
 	l.handler.HandleEvent(e)
 }
