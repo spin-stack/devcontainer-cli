@@ -312,3 +312,32 @@ func TestMergeRecordsCommandOrigins(t *testing.T) {
 		t.Errorf("onCreate origins = %v", got)
 	}
 }
+
+// TS runs an array command without a shell, and its failure names the
+// arguments joined with spaces; a string command's names /bin/sh -c. The same
+// holds for an array among an object's parallel commands.
+func TestArrayCommandFailureNamesItsArguments(t *testing.T) {
+	failing := func() CommandExecutor {
+		exec := NewMockCommandExecutor(gomock.NewController(t))
+		exec.EXPECT().Exec(gomock.Cond(func(command string) bool { return strings.Contains(command, "fails") })).DoAndReturn(exitedOne)
+		return exec
+	}
+	array := []any{"/bin/bash", "-i", "-c", "python3 -m venv $HOME/.local && fails"}
+	for name, cmd := range map[string]any{
+		"single":   array,
+		"parallel": map[string]any{"setup": array},
+	} {
+		err := executeCommand(failing(), log.Null, PhasePostStart, cmd, "")
+		ce, ok := errors.AsType[*CommandError](err)
+		if !ok {
+			t.Fatalf("%s: err = %v, want a *CommandError", name, err)
+		}
+		if want := "Command failed: /bin/bash -i -c python3 -m venv $HOME/.local && fails"; ce.Error() != want {
+			t.Errorf("%s: message = %q, want %q", name, ce.Error(), want)
+		}
+	}
+	err := executeCommand(failing(), log.Null, PhasePostStart, "echo fails", "")
+	if ce, ok := errors.AsType[*CommandError](err); !ok || ce.Error() != "Command failed: /bin/sh -c echo fails" {
+		t.Errorf("string command: err = %v", err)
+	}
+}
