@@ -47,7 +47,7 @@ func MeanMillis(runs int, run func()) float64 {
 	for range runs {
 		run()
 	}
-	return float64(time.Since(start).Microseconds()) / 1000 / float64(runs)
+	return float64(time.Since(start)) / float64(time.Millisecond) / float64(runs)
 }
 
 // FileSize is the size of path, or nil when it cannot be read.
