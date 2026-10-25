@@ -351,7 +351,7 @@ func (r *dockerfileResolver) replace(baseEnv map[string]string, str string, s *d
 		b.WriteString(str[last:m[0]])
 		last = m[1]
 		value := r.findValue(baseEnv, str[m[2]:m[3]], s, before)
-		varExp := m[4] // mutate-exempt: m[4] and m[5] are both -1 exactly when the :-word/:+word group is unmatched
+		varExp := m[4]    // mutate-exempt: m[4] and m[5] are both -1 exactly when the :-word/:+word group is unmatched
 		if varExp != -1 { // ${var:-word} / ${var:+word}
 			option, word := str[m[6]], str[m[8]:m[9]] // the option is one character, - or +
 			isSet := value != ""

@@ -86,4 +86,3 @@ func TestPackageTemplateOptionalPathsShape(t *testing.T) {
 		t.Errorf("collection lacks %s:\n%s", want, got)
 	}
 }
-
