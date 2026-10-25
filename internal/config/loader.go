@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -28,7 +29,7 @@ func (e *NotFoundError) Error() string {
 // LoadResult contains a loaded and substituted devcontainer configuration.
 type LoadResult struct {
 	Config          *DevContainer
-	Raw             map[string]interface{} // pre-substitution
+	Raw             map[string]any // pre-substitution
 	WorkspaceConfig *WorkspaceConfig
 	// HostSub is the host-side substitution context used for the config; reuse it
 	// so Feature metadata (mounts/containerEnv) resolves ${localEnv:…} the same way.
@@ -131,7 +132,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	// so an orchestrator can supply a partial override without restating the whole
 	// devcontainer.json. When there is no readable base, the override stands alone
 	// (identical to the TS/replace behavior).
-	var raw map[string]interface{}
+	var raw map[string]any
 	if configPath != "" {
 		if baseData, berr := os.ReadFile(configPath); berr == nil {
 			if perr := jsonc.Unmarshal(baseData, &raw); perr != nil {
@@ -144,7 +145,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		if oerr != nil {
 			return nil, fmt.Errorf("read override config %s: %w", overrideConfigPath, oerr)
 		}
-		var overrideRaw map[string]interface{}
+		var overrideRaw map[string]any
 		if perr := jsonc.Unmarshal(overrideData, &overrideRaw); perr != nil {
 			return nil, fmt.Errorf("parse override config %s: %w", overrideConfigPath, perr)
 		}
@@ -199,7 +200,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	if err != nil {
 		return nil, fmt.Errorf("apply host substitutions: %w", err)
 	}
-	if m, ok := substituted.(map[string]interface{}); ok {
+	if m, ok := substituted.(map[string]any); ok {
 		raw = m
 	}
 
@@ -235,21 +236,19 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 // are merged recursively; scalars and arrays in the override replace the base.
 // A nil base returns the override (and vice-versa), so it composes cleanly when
 // only one side is present.
-func deepMergeConfig(base, override map[string]interface{}) map[string]interface{} {
+func deepMergeConfig(base, override map[string]any) map[string]any {
 	if base == nil {
 		return override
 	}
 	if override == nil {
 		return base
 	}
-	out := make(map[string]interface{}, len(base))
-	for k, v := range base {
-		out[k] = v
-	}
+	out := make(map[string]any, len(base))
+	maps.Copy(out, base)
 	for k, ov := range override {
 		if bv, ok := out[k]; ok {
-			if bm, bok := bv.(map[string]interface{}); bok {
-				if om, ook := ov.(map[string]interface{}); ook {
+			if bm, bok := bv.(map[string]any); bok {
+				if om, ook := ov.(map[string]any); ook {
 					out[k] = deepMergeConfig(bm, om)
 					continue
 				}
@@ -290,10 +289,10 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 	if pfs.IsFile(envFilePath) {
 		data, err := os.ReadFile(envFilePath)
 		if err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
+			for line := range strings.SplitSeq(string(data), "\n") {
 				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "COMPOSE_FILE=") {
-					value := strings.TrimPrefix(line, "COMPOSE_FILE=")
+				if after, ok := strings.CutPrefix(line, "COMPOSE_FILE="); ok {
+					value := after
 					value = strings.TrimSpace(value)
 					if value != "" {
 						sep := string(os.PathListSeparator)
@@ -502,7 +501,7 @@ func substituteHostString(workspace *Workspace, s string) string {
 // parseGitdir extracts the target of a `gitdir: <path>` line from a `.git`
 // gitlink file. No regexp, matching the rest of the package.
 func parseGitdir(content string) (string, bool) {
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if rest, found := strings.CutPrefix(line, "gitdir:"); found {
 			return strings.TrimSpace(rest), true
@@ -561,14 +560,14 @@ func currentPlatform() string {
 func envFromOS() map[string]string {
 	env := make(map[string]string)
 	for _, e := range os.Environ() {
-		if i := strings.IndexByte(e, '='); i >= 0 {
-			env[e[:i]] = e[i+1:]
+		if before, after, ok := strings.Cut(e, "="); ok {
+			env[before] = after
 		}
 	}
 	return env
 }
 
-func remarshal(raw map[string]interface{}, target *DevContainer) error {
+func remarshal(raw map[string]any, target *DevContainer) error {
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return err

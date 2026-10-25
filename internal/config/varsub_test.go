@@ -10,14 +10,12 @@ import (
 func TestVariableResolverBeforeContainerPhases(t *testing.T) {
 	resolver := NewVariableResolver()
 	ctx := SubstitutionContext{
-		HostSubContext: HostSubContext{
-			Platform:             "linux",
-			LocalWorkspaceFolder: "/work/project",
-			Env:                  map[string]string{"HOME": "/home/test"},
-		},
-		IDLabels: map[string]string{"devcontainer.local_folder": "/work/project"},
+		Platform:             "linux",
+		LocalWorkspaceFolder: "/work/project",
+		Env:                  map[string]string{"HOME": "/home/test"},
+		IDLabels:             map[string]string{"devcontainer.local_folder": "/work/project"},
 	}
-	input := map[string]interface{}{
+	input := map[string]any{
 		"workspace": "${localWorkspaceFolder}",
 		"id":        "${devcontainerId}",
 		"later":     "${containerEnv:PATH}",
@@ -26,7 +24,7 @@ func TestVariableResolverBeforeContainerPhases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := resolved.(map[string]interface{})
+	got := resolved.(map[string]any)
 	if got["workspace"] != "/work/project" {
 		t.Errorf("workspace = %q", got["workspace"])
 	}
@@ -40,9 +38,8 @@ func TestVariableResolverBeforeContainerPhases(t *testing.T) {
 
 func TestVariableResolverEnvironmentErrorIncludesConfig(t *testing.T) {
 	resolver := NewVariableResolver()
-	_, err := resolver.Resolve(SubstitutionContext{HostSubContext: HostSubContext{
-		ConfigFilePath: "/work/.devcontainer/devcontainer.json",
-	}}, PhaseHost, "${localEnv}")
+	_, err := resolver.Resolve(SubstitutionContext{
+		ConfigFilePath: "/work/.devcontainer/devcontainer.json"}, PhaseHost, "${localEnv}")
 	if err == nil {
 		t.Fatal("expected missing environment variable name to fail")
 	}
@@ -86,8 +83,8 @@ func TestVariableResolverHostPhase(t *testing.T) {
 	tests := []struct {
 		name  string
 		ctx   HostSubContext
-		input interface{}
-		want  interface{}
+		input any
+		want  any
 	}{
 		// localEnv substitution
 		{"localEnv HOME", localEnvCtx, "${localEnv:HOME}", "/home/user"},
@@ -120,19 +117,19 @@ func TestVariableResolverHostPhase(t *testing.T) {
 		{
 			"recursive map and slice",
 			recursiveCtx,
-			map[string]interface{}{
+			map[string]any{
 				"workspaceFolder": "${localWorkspaceFolder}",
-				"env": map[string]interface{}{
+				"env": map[string]any{
 					"HOME": "${localEnv:HOME}",
 				},
-				"ports": []interface{}{"${localEnv:HOME}:8080"},
+				"ports": []any{"${localEnv:HOME}:8080"},
 			},
-			map[string]interface{}{
+			map[string]any{
 				"workspaceFolder": "/home/user/project",
-				"env": map[string]interface{}{
+				"env": map[string]any{
 					"HOME": "/home/user",
 				},
-				"ports": []interface{}{"/home/user:8080"},
+				"ports": []any{"/home/user:8080"},
 			},
 		},
 	}
@@ -249,8 +246,8 @@ func TestVariableResolverContainerPhase(t *testing.T) {
 
 	for _, tt := range tests {
 		got, err := NewVariableResolver().AfterContainer(SubstitutionContext{
-			HostSubContext: HostSubContext{Platform: "linux"},
-			ContainerEnv:   containerEnv,
+			Platform:     "linux",
+			ContainerEnv: containerEnv,
 		}, tt.input)
 		if err != nil {
 			t.Fatal(err)

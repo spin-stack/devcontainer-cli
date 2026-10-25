@@ -90,7 +90,7 @@ func RunHooks(
 
 	phases := []struct {
 		phase    Phase
-		commands []interface{}
+		commands []any
 	}{
 		{PhaseOnCreate, merged.OnCreateCommands},
 		{PhaseUpdateContent, merged.UpdateContentCommands},
@@ -163,8 +163,8 @@ func isPostCreatePhase(p Phase) bool {
 // executeCommand runs a single lifecycle command entry. If the command is a
 // map (object syntax), entries are executed in parallel matching TS behavior
 // (Promise.allSettled). All commands run to completion; errors are collected.
-func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cmd interface{}) error {
-	m, isMap := cmd.(map[string]interface{})
+func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cmd any) error {
+	m, isMap := cmd.(map[string]any)
 	if !isMap {
 		cmdStr := commandToString(cmd)
 		if cmdStr == "" {
@@ -217,11 +217,11 @@ func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cm
 }
 
 // commandToString converts a lifecycle command value to a shell string.
-func commandToString(cmd interface{}) string {
+func commandToString(cmd any) string {
 	switch v := cmd.(type) {
 	case string:
 		return v
-	case []interface{}:
+	case []any:
 		// Array form is argv: execute the arguments directly without shell
 		// interpretation (no re-tokenization, no variable expansion). Since the
 		// executor runs through /bin/sh -c, shell-quote each argument to preserve
@@ -231,7 +231,7 @@ func commandToString(cmd interface{}) string {
 			parts[i] = shellQuote(fmt.Sprintf("%v", p))
 		}
 		return strings.Join(parts, " ")
-	case map[string]interface{}:
+	case map[string]any:
 		// Maps are handled by executeCommand for parallel execution.
 		// This case only fires if commandToString is called recursively
 		// from within a map value.

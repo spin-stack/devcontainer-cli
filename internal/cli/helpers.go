@@ -27,13 +27,13 @@ func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON st
 		return nil, fmt.Errorf("parse additional-features: %w", err)
 	}
 
-	var additional map[string]interface{}
+	var additional map[string]any
 	if err := json.Unmarshal(standardJSON, &additional); err != nil {
 		return nil, fmt.Errorf("parse additional-features: %w", err)
 	}
 
 	if cfg.Features == nil {
-		cfg.Features = make(map[string]interface{})
+		cfg.Features = make(map[string]any)
 	}
 
 	additionalOnly := make(map[string]bool)
@@ -53,16 +53,16 @@ func appPortPublishArgs(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
 	}
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil
 	}
-	var items []interface{}
+	var items []any
 	switch t := v.(type) {
-	case []interface{}:
+	case []any:
 		items = t
 	default:
-		items = []interface{}{t}
+		items = []any{t}
 	}
 	var args []string
 	for _, item := range items {

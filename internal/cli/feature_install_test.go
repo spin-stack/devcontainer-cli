@@ -15,7 +15,7 @@ func TestFetchFeatureSets(t *testing.T) {
 	tests := []struct {
 		name    string
 		setup   func(t *testing.T, baseDir string)
-		entries map[string]interface{}
+		entries map[string]any
 		check   func(t *testing.T, result *fetchFeatureResult, err error)
 	}{
 		{
@@ -43,7 +43,7 @@ func TestFetchFeatureSets(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			entries: map[string]interface{}{"./local-feature": map[string]interface{}{}},
+			entries: map[string]any{"./local-feature": map[string]any{}},
 			check: func(t *testing.T, result *fetchFeatureResult, err error) {
 				if err != nil {
 					t.Fatal(err)
@@ -73,11 +73,11 @@ func TestFetchFeatureSets(t *testing.T) {
 		{
 			name: "resolves transitive dependsOn (with options and staging)",
 			setup: func(t *testing.T, baseDir string) {
-				writeLocalFeature(t, baseDir, "feature-a", map[string]interface{}{"./feature-b": map[string]interface{}{"channel": "beta"}})
-				writeLocalFeature(t, baseDir, "feature-b", map[string]interface{}{"./feature-c": true})
+				writeLocalFeature(t, baseDir, "feature-a", map[string]any{"./feature-b": map[string]any{"channel": "beta"}})
+				writeLocalFeature(t, baseDir, "feature-b", map[string]any{"./feature-c": true})
 				writeLocalFeature(t, baseDir, "feature-c", nil)
 			},
-			entries: map[string]interface{}{"./feature-a": map[string]interface{}{}},
+			entries: map[string]any{"./feature-a": map[string]any{}},
 			check: func(t *testing.T, result *fetchFeatureResult, err error) {
 				if err != nil {
 					t.Fatal(err)
@@ -98,11 +98,11 @@ func TestFetchFeatureSets(t *testing.T) {
 		{
 			name: "deduplicates shared dependency",
 			setup: func(t *testing.T, baseDir string) {
-				writeLocalFeature(t, baseDir, "feature-a", map[string]interface{}{"./shared": true})
-				writeLocalFeature(t, baseDir, "feature-b", map[string]interface{}{"./shared": true})
+				writeLocalFeature(t, baseDir, "feature-a", map[string]any{"./shared": true})
+				writeLocalFeature(t, baseDir, "feature-b", map[string]any{"./shared": true})
 				writeLocalFeature(t, baseDir, "shared", nil)
 			},
-			entries: map[string]interface{}{"./feature-a": true, "./feature-b": true},
+			entries: map[string]any{"./feature-a": true, "./feature-b": true},
 			check: func(t *testing.T, result *fetchFeatureResult, err error) {
 				if err != nil {
 					t.Fatal(err)
@@ -118,10 +118,10 @@ func TestFetchFeatureSets(t *testing.T) {
 		{
 			name: "reports dependsOn cycle",
 			setup: func(t *testing.T, baseDir string) {
-				writeLocalFeature(t, baseDir, "feature-a", map[string]interface{}{"./feature-b": true})
-				writeLocalFeature(t, baseDir, "feature-b", map[string]interface{}{"./feature-a": true})
+				writeLocalFeature(t, baseDir, "feature-a", map[string]any{"./feature-b": true})
+				writeLocalFeature(t, baseDir, "feature-b", map[string]any{"./feature-a": true})
 			},
-			entries: map[string]interface{}{"./feature-a": true},
+			entries: map[string]any{"./feature-a": true},
 			check: func(t *testing.T, result *fetchFeatureResult, err error) {
 				if err == nil || !strings.Contains(err.Error(), "circular dependency") {
 					t.Fatalf("error = %v, want circular dependency", err)
@@ -143,13 +143,13 @@ func TestFetchFeatureSets(t *testing.T) {
 	}
 }
 
-func writeLocalFeature(t *testing.T, baseDir, name string, dependsOn map[string]interface{}) {
+func writeLocalFeature(t *testing.T, baseDir, name string, dependsOn map[string]any) {
 	t.Helper()
 	dir := filepath.Join(baseDir, name)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	metadata := map[string]interface{}{"id": name, "version": "1.0.0"}
+	metadata := map[string]any{"id": name, "version": "1.0.0"}
 	if dependsOn != nil {
 		metadata["dependsOn"] = dependsOn
 	}
@@ -170,8 +170,8 @@ func TestFeatureMetadataEntry_SkipPersistCustomizations(t *testing.T) {
 		SourceInfo: &features.LocalSource{UserID: "./localFeatureA"},
 		Features: []features.Feature{{
 			ID:                "./localFeatureA",
-			Init:              boolPtr(true),
-			Customizations:    map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"extensionA"}}},
+			Init:              new(true),
+			Customizations:    map[string]any{"vscode": map[string]any{"extensions": []any{"extensionA"}}},
 			PostCreateCommand: "five",
 		}},
 	}
@@ -204,6 +204,7 @@ func TestFeatureMetadataEntry_UsesOCIUserID(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func boolPtr(v bool) *bool {
-	return &v
+	return new(v)
 }

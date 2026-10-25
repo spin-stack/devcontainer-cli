@@ -142,8 +142,8 @@ func TestMergeConfiguration(t *testing.T) {
 			// Each entry's customizations[key] is collected into an array, matching TS,
 			// so no feature's settings/extensions are clobbered.
 			entries: []Entry{
-				{Customizations: map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"a"}}}},
-				{Customizations: map[string]interface{}{"vscode": map[string]interface{}{"extensions": []interface{}{"b"}}}},
+				{Customizations: map[string]any{"vscode": map[string]any{"extensions": []any{"a"}}}},
+				{Customizations: map[string]any{"vscode": map[string]any{"extensions": []any{"b"}}}},
 			},
 			check: func(t *testing.T, m *MergedConfig) {
 				vscode := m.Customizations["vscode"]

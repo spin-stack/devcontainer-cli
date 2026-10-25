@@ -117,7 +117,7 @@ func TestPublishCollectionPartialFailure(t *testing.T) {
 	}
 
 	// stdout carries the result JSON keyed by the published feature id.
-	var result map[string]interface{}
+	var result map[string]any
 	if jerr := json.Unmarshal(out.out.Bytes(), &result); jerr != nil {
 		t.Fatalf("stdout is not valid JSON: %v (%q)", jerr, out.out.String())
 	}

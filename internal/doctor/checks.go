@@ -203,7 +203,7 @@ func statfsFree(path string) (uint64, error) {
 
 // firstLine returns the first non-empty trimmed line of s.
 func firstLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if t := strings.TrimSpace(line); t != "" {
 			return t
 		}

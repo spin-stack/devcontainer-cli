@@ -162,19 +162,19 @@ func TestClient(t *testing.T) {
 // TestDoRedirectChain follows a multi-hop redirect chain end to end and confirms
 // every hop was visited and the final body is returned.
 func TestDoRedirectChain(t *testing.T) {
-	var hops int32
+	var hops atomic.Int32
 	mux := http.NewServeMux()
 	// /a -> /b -> /c -> final body
 	mux.HandleFunc("/a", func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hops, 1)
+		hops.Add(1)
 		http.Redirect(w, r, "/b", http.StatusFound)
 	})
 	mux.HandleFunc("/b", func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hops, 1)
+		hops.Add(1)
 		http.Redirect(w, r, "/c", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("/c", func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hops, 1)
+		hops.Add(1)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("arrived"))
 	})
@@ -192,7 +192,7 @@ func TestDoRedirectChain(t *testing.T) {
 	if string(resp.Body) != "arrived" {
 		t.Errorf("body = %q, want %q", string(resp.Body), "arrived")
 	}
-	if got := atomic.LoadInt32(&hops); got != 3 {
+	if got := hops.Load(); got != 3 {
 		t.Errorf("visited %d hops, want 3 (full chain followed)", got)
 	}
 }

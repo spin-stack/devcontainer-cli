@@ -37,7 +37,8 @@ func TestParseMountSpec_BareRO(t *testing.T) {
 	}
 }
 
-func boolPtr(b bool) *bool { return &b }
+//go:fix inline
+func boolPtr(b bool) *bool { return new(b) }
 
 // TestCreateContainerArgs_Table asserts the exact `docker create` argument
 // slice for discriminating inputs. Ordering is load-bearing: id-labels first,
@@ -100,7 +101,7 @@ func TestCreateContainerArgs_Table(t *testing.T) {
 					nil, nil,
 					[]string{"SYS_PTRACE", "NET_ADMIN"},
 					[]string{"seccomp=unconfined"},
-					true, boolPtr(true), nil)
+					true, new(true), nil)
 			},
 			want: []string{"create",
 				"--cap-add", "SYS_PTRACE", "--cap-add", "NET_ADMIN",
@@ -113,7 +114,7 @@ func TestCreateContainerArgs_Table(t *testing.T) {
 		{
 			name: "InitFalsePointerOmitsInit",
 			call: func() []string {
-				return CreateContainerArgs("img", nil, nil, nil, "", nil, nil, nil, nil, false, boolPtr(false), nil)
+				return CreateContainerArgs("img", nil, nil, nil, "", nil, nil, nil, nil, false, new(false), nil)
 			},
 			want: []string{"create", "img"},
 		},

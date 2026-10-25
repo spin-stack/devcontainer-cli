@@ -34,7 +34,7 @@ type VariableResolver struct{}
 
 func NewVariableResolver() *VariableResolver { return &VariableResolver{} }
 
-func (r *VariableResolver) Resolve(ctx SubstitutionContext, phase SubstitutionPhase, value interface{}) (interface{}, error) {
+func (r *VariableResolver) Resolve(ctx SubstitutionContext, phase SubstitutionPhase, value any) (any, error) {
 	if phase == PhaseHost && ctx.ContainerWorkspaceFolder != "" {
 		resolved, err := r.resolveString(ctx, phase, ctx.ContainerWorkspaceFolder)
 		if err != nil {
@@ -46,7 +46,7 @@ func (r *VariableResolver) Resolve(ctx SubstitutionContext, phase SubstitutionPh
 }
 
 // BeforeContainer always applies both pre-container phases in canonical order.
-func (r *VariableResolver) BeforeContainer(ctx SubstitutionContext, value interface{}) (interface{}, error) {
+func (r *VariableResolver) BeforeContainer(ctx SubstitutionContext, value any) (any, error) {
 	value, err := r.Resolve(ctx, PhaseHost, value)
 	if err != nil {
 		return nil, err
@@ -54,29 +54,29 @@ func (r *VariableResolver) BeforeContainer(ctx SubstitutionContext, value interf
 	return r.Resolve(ctx, PhaseIdentity, value)
 }
 
-func (r *VariableResolver) AfterContainer(ctx SubstitutionContext, value interface{}) (interface{}, error) {
+func (r *VariableResolver) AfterContainer(ctx SubstitutionContext, value any) (any, error) {
 	return r.Resolve(ctx, PhaseContainer, value)
 }
 
-func (r *VariableResolver) BeforeContainerInto(ctx SubstitutionContext, target interface{}) error {
+func (r *VariableResolver) BeforeContainerInto(ctx SubstitutionContext, target any) error {
 	if err := r.ResolveInto(ctx, PhaseHost, target); err != nil {
 		return err
 	}
 	return r.ResolveInto(ctx, PhaseIdentity, target)
 }
 
-func (r *VariableResolver) AfterContainerInto(ctx SubstitutionContext, target interface{}) error {
+func (r *VariableResolver) AfterContainerInto(ctx SubstitutionContext, target any) error {
 	return r.ResolveInto(ctx, PhaseContainer, target)
 }
 
 // ResolveInto applies a phase to any JSON-serializable configuration value and
 // unmarshals the result back into target. target must be a non-nil pointer.
-func (r *VariableResolver) ResolveInto(ctx SubstitutionContext, phase SubstitutionPhase, target interface{}) error {
+func (r *VariableResolver) ResolveInto(ctx SubstitutionContext, phase SubstitutionPhase, target any) error {
 	data, err := json.Marshal(target)
 	if err != nil {
 		return fmt.Errorf("marshal substitution target: %w", err)
 	}
-	var value interface{}
+	var value any
 	if err := json.Unmarshal(data, &value); err != nil {
 		return fmt.Errorf("decode substitution target: %w", err)
 	}
@@ -94,12 +94,12 @@ func (r *VariableResolver) ResolveInto(ctx SubstitutionContext, phase Substituti
 	return nil
 }
 
-func (r *VariableResolver) resolveRecursive(ctx SubstitutionContext, phase SubstitutionPhase, value interface{}) (interface{}, error) {
+func (r *VariableResolver) resolveRecursive(ctx SubstitutionContext, phase SubstitutionPhase, value any) (any, error) {
 	switch v := value.(type) {
 	case string:
 		return r.resolveString(ctx, phase, v)
-	case []interface{}:
-		result := make([]interface{}, len(v))
+	case []any:
+		result := make([]any, len(v))
 		for i, item := range v {
 			resolved, err := r.resolveRecursive(ctx, phase, item)
 			if err != nil {
@@ -108,8 +108,8 @@ func (r *VariableResolver) resolveRecursive(ctx SubstitutionContext, phase Subst
 			result[i] = resolved
 		}
 		return result, nil
-	case map[string]interface{}:
-		result := make(map[string]interface{}, len(v))
+	case map[string]any:
+		result := make(map[string]any, len(v))
 		for key, item := range v {
 			resolved, err := r.resolveRecursive(ctx, phase, item)
 			if err != nil {

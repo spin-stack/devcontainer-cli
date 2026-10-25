@@ -191,8 +191,8 @@ func TestInShardPartitions(t *testing.T) {
 	const cases = 189
 	for _, total := range []int{1, 2, 3, 4, 7} {
 		claimed := make([]int, cases)
-		for shard := 0; shard < total; shard++ {
-			for i := 0; i < cases; i++ {
+		for shard := range total {
+			for i := range cases {
 				if inShard(i, shard, total) {
 					claimed[i]++
 				}
@@ -208,7 +208,7 @@ func TestInShardPartitions(t *testing.T) {
 
 // TestInShardNoShardingRunsEverything proves total<=1 disables sharding.
 func TestInShardNoShardingRunsEverything(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if !inShard(i, 0, 1) {
 			t.Errorf("inShard(%d,0,1) = false, want every case to run when unsharded", i)
 		}

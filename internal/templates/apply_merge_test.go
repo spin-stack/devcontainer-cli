@@ -54,7 +54,7 @@ func TestMergeFeatures_PreservesJSONC(t *testing.T) {
 	os.WriteFile(cfgPath, []byte(original), 0644)
 
 	feats := []TemplateFeatureOption{
-		{ID: "ghcr.io/devcontainers/features/node:1", Options: map[string]interface{}{"version": "20"}},
+		{ID: "ghcr.io/devcontainers/features/node:1", Options: map[string]any{"version": "20"}},
 		{ID: "ghcr.io/devcontainers/features/git:1"},
 	}
 	if err := mergeFeatures(pfs.OSFS{}, dir, feats, log.Null); err != nil {
@@ -101,7 +101,7 @@ func TestMergeFeatures_SkipsExisting(t *testing.T) {
 `), 0644)
 
 	feats := []TemplateFeatureOption{
-		{ID: "ghcr.io/devcontainers/features/node:1", Options: map[string]interface{}{"version": "20"}},
+		{ID: "ghcr.io/devcontainers/features/node:1", Options: map[string]any{"version": "20"}},
 	}
 	if err := mergeFeatures(pfs.OSFS{}, dir, feats, log.Null); err != nil {
 		t.Fatal(err)

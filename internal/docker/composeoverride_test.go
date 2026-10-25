@@ -7,13 +7,13 @@ import (
 )
 
 // composeService extracts services[name] from a parsed compose override.
-func composeService(t *testing.T, parsed map[string]interface{}, name string) map[string]interface{} {
+func composeService(t *testing.T, parsed map[string]any, name string) map[string]any {
 	t.Helper()
-	services, ok := parsed["services"].(map[string]interface{})
+	services, ok := parsed["services"].(map[string]any)
 	if !ok {
 		t.Fatal("missing services")
 	}
-	svc, ok := services[name].(map[string]interface{})
+	svc, ok := services[name].(map[string]any)
 	if !ok {
 		t.Fatalf("missing service %q", name)
 	}
@@ -24,7 +24,7 @@ func TestComposeOverride(t *testing.T) {
 	tests := []struct {
 		name  string
 		build func(o *ComposeOverride)
-		check func(t *testing.T, parsed map[string]interface{})
+		check func(t *testing.T, parsed map[string]any)
 	}{
 		{
 			name: "image, privileged and capAdd",
@@ -34,7 +34,7 @@ func TestComposeOverride(t *testing.T) {
 				svc.SetPrivileged(true)
 				svc.CapAdd = []string{"SYS_PTRACE"}
 			},
-			check: func(t *testing.T, parsed map[string]interface{}) {
+			check: func(t *testing.T, parsed map[string]any) {
 				app := composeService(t, parsed, "app")
 				if app["image"] != "myimage:latest" {
 					t.Errorf("image = %v", app["image"])
@@ -52,8 +52,8 @@ func TestComposeOverride(t *testing.T) {
 				svc.AddEnv("DOLLAR", "value with $dollar")
 				svc.AddEnv("NEWLINE", "line1\nline2")
 			},
-			check: func(t *testing.T, parsed map[string]interface{}) {
-				env := composeService(t, parsed, "app")["environment"].([]interface{})
+			check: func(t *testing.T, parsed map[string]any) {
+				env := composeService(t, parsed, "app")["environment"].([]any)
 				want := []string{"SIMPLE=hello", "DOLLAR=value with $$dollar", `NEWLINE=line1\nline2`}
 				for i, w := range want {
 					if env[i] != w {
@@ -68,8 +68,8 @@ func TestComposeOverride(t *testing.T) {
 				o.Service("app").AddVolume("mydata:/data")
 				o.AddVolume("mydata")
 			},
-			check: func(t *testing.T, parsed map[string]interface{}) {
-				volumes, ok := parsed["volumes"].(map[string]interface{})
+			check: func(t *testing.T, parsed map[string]any) {
+				volumes, ok := parsed["volumes"].(map[string]any)
 				if !ok {
 					t.Fatal("missing top-level volumes")
 				}
@@ -87,8 +87,8 @@ func TestComposeOverride(t *testing.T) {
 					Args:       map[string]string{"VARIANT": "18"},
 				}
 			},
-			check: func(t *testing.T, parsed map[string]interface{}) {
-				build := composeService(t, parsed, "app")["build"].(map[string]interface{})
+			check: func(t *testing.T, parsed map[string]any) {
+				build := composeService(t, parsed, "app")["build"].(map[string]any)
 				if build["dockerfile"] != "/path/to/Dockerfile" {
 					t.Errorf("dockerfile = %v", build["dockerfile"])
 				}
@@ -105,8 +105,8 @@ func TestComposeOverride(t *testing.T) {
 				svc.Entrypoint = []string{"/bin/sh", "-c", script, "-"}
 				svc.Command = []string{}
 			},
-			check: func(t *testing.T, parsed map[string]interface{}) {
-				ep := composeService(t, parsed, "app")["entrypoint"].([]interface{})
+			check: func(t *testing.T, parsed map[string]any) {
+				ep := composeService(t, parsed, "app")["entrypoint"].([]any)
 				if ep[0] != "/bin/sh" {
 					t.Errorf("entrypoint[0] = %v", ep[0])
 				}
@@ -125,7 +125,7 @@ func TestComposeOverride(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var parsed map[string]interface{}
+			var parsed map[string]any
 			if err := json.Unmarshal(data, &parsed); err != nil {
 				t.Fatal("invalid JSON:", err)
 			}

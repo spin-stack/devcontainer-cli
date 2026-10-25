@@ -11,33 +11,33 @@ type Set struct {
 
 // Feature represents a single feature within a Set.
 type Feature struct {
-	ID                   string                 `json:"id"`
-	Version              string                 `json:"version,omitempty"`
-	Name                 string                 `json:"name,omitempty"`
-	Description          string                 `json:"description,omitempty"`
-	DocumentationURL     string                 `json:"documentationURL,omitempty"`
-	Options              map[string]interface{} `json:"options,omitempty"`
-	DependsOn            map[string]interface{} `json:"dependsOn,omitempty"`
-	InstallsAfter        []string               `json:"installsAfter,omitempty"`
-	LegacyIds            []string               `json:"legacyIds,omitempty"`
-	Included             bool                   `json:"included"`
-	CachePath            string                 `json:"cachePath,omitempty"`
-	ConsecutiveId        string                 `json:"consecutiveId,omitempty"`
-	Value                interface{}            `json:"value"` // normalized main value
-	UserOptions          map[string]interface{} `json:"-"`     // original user option values from config
-	ContainerEnv         map[string]string      `json:"containerEnv,omitempty"`
-	Mounts               []interface{}          `json:"mounts,omitempty"`
-	Init                 *bool                  `json:"init,omitempty"`
-	Privileged           *bool                  `json:"privileged,omitempty"`
-	CapAdd               []string               `json:"capAdd,omitempty"`
-	SecurityOpt          []string               `json:"securityOpt,omitempty"`
-	Entrypoint           string                 `json:"entrypoint,omitempty"`
-	OnCreateCommand      interface{}            `json:"onCreateCommand,omitempty"`
-	UpdateContentCommand interface{}            `json:"updateContentCommand,omitempty"`
-	PostCreateCommand    interface{}            `json:"postCreateCommand,omitempty"`
-	PostStartCommand     interface{}            `json:"postStartCommand,omitempty"`
-	PostAttachCommand    interface{}            `json:"postAttachCommand,omitempty"`
-	Customizations       map[string]interface{} `json:"customizations,omitempty"`
+	ID                   string            `json:"id"`
+	Version              string            `json:"version,omitempty"`
+	Name                 string            `json:"name,omitempty"`
+	Description          string            `json:"description,omitempty"`
+	DocumentationURL     string            `json:"documentationURL,omitempty"`
+	Options              map[string]any    `json:"options,omitempty"`
+	DependsOn            map[string]any    `json:"dependsOn,omitempty"`
+	InstallsAfter        []string          `json:"installsAfter,omitempty"`
+	LegacyIds            []string          `json:"legacyIds,omitempty"`
+	Included             bool              `json:"included"`
+	CachePath            string            `json:"cachePath,omitempty"`
+	ConsecutiveId        string            `json:"consecutiveId,omitempty"`
+	Value                any               `json:"value"` // normalized main value
+	UserOptions          map[string]any    `json:"-"`     // original user option values from config
+	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
+	Mounts               []any             `json:"mounts,omitempty"`
+	Init                 *bool             `json:"init,omitempty"`
+	Privileged           *bool             `json:"privileged,omitempty"`
+	CapAdd               []string          `json:"capAdd,omitempty"`
+	SecurityOpt          []string          `json:"securityOpt,omitempty"`
+	Entrypoint           string            `json:"entrypoint,omitempty"`
+	OnCreateCommand      any               `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand any               `json:"updateContentCommand,omitempty"`
+	PostCreateCommand    any               `json:"postCreateCommand,omitempty"`
+	PostStartCommand     any               `json:"postStartCommand,omitempty"`
+	PostAttachCommand    any               `json:"postAttachCommand,omitempty"`
+	Customizations       map[string]any    `json:"customizations,omitempty"`
 }
 
 // SourceInfo describes where a feature comes from.
@@ -48,12 +48,12 @@ type SourceInfo interface {
 
 // OCISource is a feature from an OCI registry.
 type OCISource struct {
-	Type                        string      `json:"type"`
-	ManifestDigest              string      `json:"manifestDigest,omitempty"`
-	UserID                      string      `json:"userFeatureId"`
-	UserFeatureIdWithoutVersion string      `json:"userFeatureIdWithoutVersion,omitempty"`
-	FeatureRef                  interface{} `json:"featureRef,omitempty"`
-	Manifest                    interface{} `json:"manifest,omitempty"`
+	Type                        string `json:"type"`
+	ManifestDigest              string `json:"manifestDigest,omitempty"`
+	UserID                      string `json:"userFeatureId"`
+	UserFeatureIdWithoutVersion string `json:"userFeatureIdWithoutVersion,omitempty"`
+	FeatureRef                  any    `json:"featureRef,omitempty"`
+	Manifest                    any    `json:"manifest,omitempty"`
 	// Internal fields not serialized to JSON (used for dependency resolution)
 	Registry  string `json:"-"`
 	Namespace string `json:"-"`
@@ -92,12 +92,12 @@ type Config struct {
 // DevContainerFeature is a user's feature reference from devcontainer.json.
 type DevContainerFeature struct {
 	UserFeatureID string
-	Options       interface{} // bool | string | map[string]interface{}
+	Options       any // bool | string | map[string]interface{}
 }
 
 // UserFeaturesToArray converts the features map from devcontainer.json
 // into a slice of DevContainerFeature.
-func UserFeaturesToArray(features map[string]interface{}) []DevContainerFeature {
+func UserFeaturesToArray(features map[string]any) []DevContainerFeature {
 	if features == nil {
 		return nil
 	}

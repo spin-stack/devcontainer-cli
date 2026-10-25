@@ -52,10 +52,9 @@ func TestExecInContainer(t *testing.T) {
 			if execID != "exec1" {
 				t.Errorf("execID = %q", execID)
 			}
-			return mobyclient.ExecAttachResult{HijackedResponse: mobyclient.HijackedResponse{
+			return mobyclient.ExecAttachResult{
 				Conn:   nopConn{},
-				Reader: framedExecStream(t, "hello\n", "oops\n"),
-			}}, nil
+				Reader: framedExecStream(t, "hello\n", "oops\n")}, nil
 		},
 		execInspectFn: func(_ context.Context, _ string) (mobyclient.ExecInspectResult, error) {
 			return mobyclient.ExecInspectResult{ExitCode: 3}, nil

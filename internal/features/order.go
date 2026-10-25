@@ -2,6 +2,7 @@ package features
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 type FNode struct {
 	Type             string // "user-provided", "override", "resolved"
 	UserFeatureID    string
-	Options          interface{}
+	Options          any
 	Set              *Set
 	DependsOn        []*FNode
 	InstallsAfter    []*FNode
@@ -123,8 +124,8 @@ func ComputeInstallationOrder(
 // --- Override priority ---
 
 func applyOverridePriority(logger log.Logger, nodes []*FNode, overrideOrder []string) {
-	for i := len(overrideOrder) - 1; i >= 0; i-- {
-		overrideID := overrideOrder[i]
+	for i, overrideID := range slices.Backward(overrideOrder) {
+
 		priority := len(overrideOrder) - i
 
 		for _, node := range nodes {
@@ -298,7 +299,7 @@ func compareNodes(a, b *FNode) int {
 // map[string]interface{}), porting the TS optionsCompareTo. It underpins the
 // resource+options dedup identity so two references to the same Feature with
 // different options are treated as distinct.
-func optionsCompareTo(a, b interface{}) int {
+func optionsCompareTo(a, b any) int {
 	as, aStr := a.(string)
 	bs, bStr := b.(string)
 	if aStr && bStr {
@@ -311,8 +312,8 @@ func optionsCompareTo(a, b interface{}) int {
 		return boolCompare(ab, bb)
 	}
 
-	am, aMap := a.(map[string]interface{})
-	bm, bMap := b.(map[string]interface{})
+	am, aMap := a.(map[string]any)
+	bm, bMap := b.(map[string]any)
 	if aMap && bMap {
 		if len(am) != len(bm) {
 			return len(am) - len(bm)
@@ -370,7 +371,7 @@ func boolCompare(a, b bool) int {
 	return -1
 }
 
-func undefinedCompare(a, b interface{}) int {
+func undefinedCompare(a, b any) int {
 	if a == b {
 		return 0
 	}
@@ -381,7 +382,7 @@ func undefinedCompare(a, b interface{}) int {
 }
 
 // typeName mirrors the JS `typeof` used by optionsCompareTo's final fallback.
-func typeName(v interface{}) string {
+func typeName(v any) string {
 	switch v.(type) {
 	case string:
 		return "string"

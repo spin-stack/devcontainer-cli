@@ -175,20 +175,20 @@ func newSetUpCmd() *cobra.Command {
 			}
 
 			// Build result with containerEnv substitution
-			result := map[string]interface{}{"outcome": "success"}
+			result := map[string]any{"outcome": "success"}
 
 			if includeConfig {
 				if cfg != nil {
 					// Substitute containerEnv in config
 					cfgJSON, _ := json.Marshal(cfg)
-					var cfgGeneric interface{}
+					var cfgGeneric any
 					json.Unmarshal(cfgJSON, &cfgGeneric)
 					substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
 					if subErr != nil {
 						return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
 					}
 					// Clean null values and internal fields
-					if subMap, ok := substituted.(map[string]interface{}); ok {
+					if subMap, ok := substituted.(map[string]any); ok {
 						for k, v := range subMap {
 							if v == nil {
 								delete(subMap, k)
@@ -196,7 +196,7 @@ func newSetUpCmd() *cobra.Command {
 						}
 						// Convert configFilePath to URI format (matches TS)
 						if cfp, ok := subMap["configFilePath"].(string); ok && cfp != "" {
-							subMap["configFilePath"] = map[string]interface{}{
+							subMap["configFilePath"] = map[string]any{
 								"$mid":   1,
 								"fsPath": cfp,
 								"path":   cfp,
@@ -214,19 +214,19 @@ func newSetUpCmd() *cobra.Command {
 					}
 				} else {
 					// No config file → empty object (TS behavior)
-					result["configuration"] = map[string]interface{}{}
+					result["configuration"] = map[string]any{}
 				}
 			}
 
 			if includeMerged {
 				// Copy configFilePath URI to mergedConfiguration (matches TS)
-				if cfgResult, ok := result["configuration"].(map[string]interface{}); ok {
+				if cfgResult, ok := result["configuration"].(map[string]any); ok {
 					if cfpURI, ok := cfgResult["configFilePath"]; ok {
 						merged.ConfigFilePath = cfpURI
 					}
 				}
 				mergedJSON, _ := json.Marshal(merged)
-				var mergedGeneric interface{}
+				var mergedGeneric any
 				json.Unmarshal(mergedJSON, &mergedGeneric)
 				substituted, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
 				if subErr != nil {

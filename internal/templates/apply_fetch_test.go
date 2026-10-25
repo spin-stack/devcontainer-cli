@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -345,12 +346,7 @@ func TestFetchAndApply_MergeFeaturesWriteError(t *testing.T) {
 }
 
 func contains(xs []string, x string) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, x)
 }
 
 // TestFetchAndApply_FetchSideErrors covers cross-layer error propagation on the

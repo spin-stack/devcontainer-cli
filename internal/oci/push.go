@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -25,10 +26,8 @@ import (
 //     new version is the highest within their range, so a re-publish of an older
 //     version never moves latest/major/major.minor backwards.
 func SemanticTags(version string, publishedTags []string) (tags []string, skip bool, err error) {
-	for _, t := range publishedTags {
-		if t == version {
-			return nil, true, nil
-		}
+	if slices.Contains(publishedTags, version) {
+		return nil, true, nil
 	}
 	v, err := semver.StrictNewVersion(version)
 	if err != nil {

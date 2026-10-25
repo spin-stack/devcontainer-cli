@@ -149,8 +149,8 @@ func TestStripVersionFromFeatureID(t *testing.T) {
 }
 
 func TestUserFeaturesToArray(t *testing.T) {
-	features := map[string]interface{}{
-		"ghcr.io/devcontainers/features/go:1":   map[string]interface{}{"version": "1.21"},
+	features := map[string]any{
+		"ghcr.io/devcontainers/features/go:1":   map[string]any{"version": "1.21"},
 		"ghcr.io/devcontainers/features/node:1": true,
 	}
 	arr := UserFeaturesToArray(features)

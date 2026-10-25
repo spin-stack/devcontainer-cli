@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	dockermount "github.com/moby/moby/api/types/mount"
@@ -490,7 +491,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		}
 	}
 
-	result := map[string]interface{}{
+	result := map[string]any{
 		"outcome":               "success",
 		"containerId":           containerID,
 		"remoteUser":            remoteUser,
@@ -506,21 +507,21 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		containerEnv := map[string]string{}
 		if inspectResp.Config != nil {
 			for _, e := range inspectResp.Config.Env {
-				if i := strings.IndexByte(e, '='); i >= 0 {
-					containerEnv[e[:i]] = e[i+1:]
+				if before, after, ok := strings.Cut(e, "="); ok {
+					containerEnv[before] = after
 				}
 			}
 		}
 
 		if opts.includeConfig {
 			cfgJSON, _ := json.Marshal(cfg)
-			var cfgGeneric interface{}
+			var cfgGeneric any
 			json.Unmarshal(cfgJSON, &cfgGeneric)
 			substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
 			if subErr != nil {
 				return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
 			}
-			if subMap, ok := substituted.(map[string]interface{}); ok {
+			if subMap, ok := substituted.(map[string]any); ok {
 				for k, v := range subMap {
 					if v == nil {
 						delete(subMap, k)
@@ -531,7 +532,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 					if opts.configPath != "" || opts.overrideConfig != "" {
 						scheme = "file"
 					}
-					subMap["configFilePath"] = map[string]interface{}{
+					subMap["configFilePath"] = map[string]any{
 						"$mid":   1,
 						"path":   cfp,
 						"scheme": scheme,
@@ -567,7 +568,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			// image is spread from the config into mergedConfiguration (TS); it is
 			// not part of the metadata entries.
 			merged.Image = cfg.Image
-			if cfgResult, ok := result["configuration"].(map[string]interface{}); ok {
+			if cfgResult, ok := result["configuration"].(map[string]any); ok {
 				if cfpURI, ok := cfgResult["configFilePath"]; ok {
 					merged.ConfigFilePath = cfpURI
 				}
@@ -575,7 +576,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 			// Substitute containerEnv into merged config
 			mergedJSON, _ := json.Marshal(merged)
-			var mergedGeneric interface{}
+			var mergedGeneric any
 			json.Unmarshal(mergedJSON, &mergedGeneric)
 			mergedSub, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
 			if subErr != nil {
@@ -583,8 +584,8 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			}
 			// Carry over config-only properties spread into mergedConfiguration by
 			// the TS CLI that the typed MergedConfig does not model.
-			if mm, ok := mergedSub.(map[string]interface{}); ok {
-				if cfgResult, ok := result["configuration"].(map[string]interface{}); ok {
+			if mm, ok := mergedSub.(map[string]any); ok {
+				if cfgResult, ok := result["configuration"].(map[string]any); ok {
 					for _, k := range mergedPassthroughKeys {
 						if v, ok := cfgResult[k]; ok {
 							mm[k] = v
@@ -602,8 +603,8 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 func idLabelsMap(labels []string) map[string]string {
 	result := make(map[string]string, len(labels))
 	for _, label := range labels {
-		if i := strings.IndexByte(label, '='); i >= 0 {
-			result[label[:i]] = label[i+1:]
+		if before, after, ok := strings.Cut(label, "="); ok {
+			result[before] = after
 		}
 	}
 	return result
@@ -645,7 +646,7 @@ func (r *upRunner) finishUp(ctx context.Context, containerID string, cfg *config
 		remoteWorkspaceFolder = loadResult.WorkspaceConfig.WorkspaceFolder
 	}
 
-	result := map[string]interface{}{
+	result := map[string]any{
 		"outcome":               "success",
 		"containerId":           containerID,
 		"remoteUser":            remoteUser,
@@ -1023,8 +1024,8 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	}
 	idLabelMap := map[string]string{}
 	for _, label := range idLabels {
-		if i := strings.IndexByte(label, '='); i >= 0 {
-			idLabelMap[label[:i]] = label[i+1:]
+		if before, after, ok := strings.Cut(label, "="); ok {
+			idLabelMap[before] = after
 		}
 	}
 	devcontainerID := config.ComputeDevContainerID(idLabelMap)
@@ -1120,10 +1121,10 @@ func resolveComposeProjectName(ctx context.Context, cfg *config.DevContainer, en
 	// 2. .env file (already handled by config.DockerComposeFilePaths, but check here too)
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	if data, err := os.ReadFile(filepath.Join(configDir, ".env")); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "COMPOSE_PROJECT_NAME=") {
-				val := strings.TrimSpace(strings.TrimPrefix(line, "COMPOSE_PROJECT_NAME="))
+			if after, ok := strings.CutPrefix(line, "COMPOSE_PROJECT_NAME="); ok {
+				val := strings.TrimSpace(after)
 				if val != "" {
 					return docker.ToProjectName(val, newNames)
 				}
@@ -1139,8 +1140,8 @@ func resolveComposeProjectName(ctx context.Context, cfg *config.DevContainer, en
 			}
 			// "devcontainer" might be the default from docker compose config.
 			// Check if it's explicitly in any compose file.
-			for i := len(composeFiles) - 1; i >= 0; i-- {
-				raw, readErr := os.ReadFile(composeFiles[i])
+			for _, composeFile := range slices.Backward(composeFiles) {
+				raw, readErr := os.ReadFile(composeFile)
 				if readErr == nil && strings.Contains(string(raw), "name:") {
 					return docker.ToProjectName(name, newNames)
 				}
@@ -1187,20 +1188,20 @@ type composeServiceBuild struct {
 	Args       map[string]string
 }
 
-func parseComposeServiceBuild(composeConfig map[string]interface{}, service string) composeServiceBuild {
+func parseComposeServiceBuild(composeConfig map[string]any, service string) composeServiceBuild {
 	var out composeServiceBuild
-	services, ok := composeConfig["services"].(map[string]interface{})
+	services, ok := composeConfig["services"].(map[string]any)
 	if !ok {
 		return out
 	}
-	svc, ok := services[service].(map[string]interface{})
+	svc, ok := services[service].(map[string]any)
 	if !ok {
 		return out
 	}
 	if img, ok := svc["image"].(string); ok {
 		out.Image = img
 	}
-	build, ok := svc["build"].(map[string]interface{})
+	build, ok := svc["build"].(map[string]any)
 	if !ok {
 		return out
 	}
@@ -1214,7 +1215,7 @@ func parseComposeServiceBuild(composeConfig map[string]interface{}, service stri
 	if tgt, ok := build["target"].(string); ok {
 		out.Target = tgt
 	}
-	if args, ok := build["args"].(map[string]interface{}); ok {
+	if args, ok := build["args"].(map[string]any); ok {
 		out.Args = make(map[string]string, len(args))
 		for k, v := range args {
 			out.Args[k] = fmt.Sprintf("%v", v)
@@ -1487,8 +1488,8 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 
 		idLabelMap := map[string]string{}
 		for _, label := range idLabels {
-			if i := strings.IndexByte(label, '='); i >= 0 {
-				idLabelMap[label[:i]] = label[i+1:]
+			if before, after, ok := strings.Cut(label, "="); ok {
+				idLabelMap[before] = after
 			}
 		}
 		devcontainerID := config.ComputeDevContainerID(idLabelMap)
@@ -1583,8 +1584,8 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 			if len(merged.Mounts) > 0 {
 				idLabelMap := map[string]string{}
 				for _, l := range idLabels {
-					if i := strings.IndexByte(l, '='); i >= 0 {
-						idLabelMap[l[:i]] = l[i+1:]
+					if before, after, ok := strings.Cut(l, "="); ok {
+						idLabelMap[before] = after
 					}
 				}
 				devcontainerID := config.ComputeDevContainerID(idLabelMap)
@@ -1651,13 +1652,7 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 	var services []string
 	if len(cfg.RunServices) > 0 {
 		services = append(services, cfg.RunServices...)
-		hasService := false
-		for _, s := range services {
-			if s == cfg.Service {
-				hasService = true
-				break
-			}
-		}
+		hasService := slices.Contains(services, cfg.Service)
 		if !hasService {
 			services = append(services, cfg.Service)
 		}
@@ -1817,8 +1812,7 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 	})
 	if hookErr != nil {
 		phase := "postCreateCommand"
-		var he *lifecycle.HookError
-		if errors.As(hookErr, &he) {
+		if he, ok := errors.AsType[*lifecycle.HookError](hookErr); ok {
 			phase = string(he.Phase)
 		}
 		return &coreerrors.ContainerError{

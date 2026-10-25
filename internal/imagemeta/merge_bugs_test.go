@@ -13,13 +13,13 @@ import (
 // REPLACE the earlier one (TS mergeMounts de-dupes by target, keeping last).
 func TestMerge_MountsDedupByTarget(t *testing.T) {
 	m := MergeConfiguration([]Entry{
-		{Mounts: []interface{}{map[string]interface{}{"source": "vol-a", "target": "/data", "type": "volume"}}},
-		{Mounts: []interface{}{map[string]interface{}{"source": "vol-b", "target": "/data", "type": "volume"}}},
+		{Mounts: []any{map[string]any{"source": "vol-a", "target": "/data", "type": "volume"}}},
+		{Mounts: []any{map[string]any{"source": "vol-b", "target": "/data", "type": "volume"}}},
 	})
 	if len(m.Mounts) != 1 {
 		t.Fatalf("want 1 mount after target de-dup, got %d: %v", len(m.Mounts), m.Mounts)
 	}
-	if src := m.Mounts[0].(map[string]interface{})["source"]; src != "vol-b" {
+	if src := m.Mounts[0].(map[string]any)["source"]; src != "vol-b" {
 		t.Errorf("kept the wrong mount: source=%v, want vol-b (last wins)", src)
 	}
 }
@@ -40,26 +40,26 @@ func TestMerge_EntrypointsNoDedup(t *testing.T) {
 // N and "localhost:N" as the same port.
 func TestMerge_ForwardPortsDedup(t *testing.T) {
 	m := MergeConfiguration([]Entry{
-		{ForwardPorts: []interface{}{float64(3000)}},
-		{ForwardPorts: []interface{}{float64(3000), float64(8080)}},
+		{ForwardPorts: []any{float64(3000)}},
+		{ForwardPorts: []any{float64(3000), float64(8080)}},
 	})
-	want := []interface{}{float64(3000), float64(8080)}
+	want := []any{float64(3000), float64(8080)}
 	if !reflect.DeepEqual(m.ForwardPorts, want) {
 		t.Errorf("forwardPorts = %v, want %v", m.ForwardPorts, want)
 	}
 
 	// number 3000 and string "localhost:3000" are the same port -> one entry (a number).
 	m2 := MergeConfiguration([]Entry{
-		{ForwardPorts: []interface{}{float64(3000)}},
-		{ForwardPorts: []interface{}{"localhost:3000"}},
+		{ForwardPorts: []any{float64(3000)}},
+		{ForwardPorts: []any{"localhost:3000"}},
 	})
-	if !reflect.DeepEqual(m2.ForwardPorts, []interface{}{float64(3000)}) {
+	if !reflect.DeepEqual(m2.ForwardPorts, []any{float64(3000)}) {
 		t.Errorf("forwardPorts = %v, want [3000]", m2.ForwardPorts)
 	}
 
 	// a host:port string is not a plain port and stays a string.
-	m3 := MergeConfiguration([]Entry{{ForwardPorts: []interface{}{"db:5432", "db:5432"}}})
-	if !reflect.DeepEqual(m3.ForwardPorts, []interface{}{"db:5432"}) {
+	m3 := MergeConfiguration([]Entry{{ForwardPorts: []any{"db:5432", "db:5432"}}})
+	if !reflect.DeepEqual(m3.ForwardPorts, []any{"db:5432"}) {
 		t.Errorf("forwardPorts = %v, want [db:5432]", m3.ForwardPorts)
 	}
 }
@@ -68,11 +68,11 @@ func TestMerge_ForwardPortsDedup(t *testing.T) {
 // another must both survive, with memory normalized to bytes (TS per-field max).
 func TestMerge_HostRequirementsPerFieldMax(t *testing.T) {
 	m := MergeConfiguration([]Entry{
-		{HostRequirements: map[string]interface{}{"cpus": float64(4)}},
-		{HostRequirements: map[string]interface{}{"memory": "8gb"}},
-		{HostRequirements: map[string]interface{}{"cpus": float64(2), "memory": "4gb"}},
+		{HostRequirements: map[string]any{"cpus": float64(4)}},
+		{HostRequirements: map[string]any{"memory": "8gb"}},
+		{HostRequirements: map[string]any{"cpus": float64(2), "memory": "4gb"}},
 	})
-	hr, ok := m.HostRequirements.(map[string]interface{})
+	hr, ok := m.HostRequirements.(map[string]any)
 	if !ok {
 		t.Fatalf("hostRequirements = %v (%T), want a map", m.HostRequirements, m.HostRequirements)
 	}

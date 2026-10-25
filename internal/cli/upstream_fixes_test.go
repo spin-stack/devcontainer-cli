@@ -34,7 +34,7 @@ func TestMetadataMounts_ReadonlyObject(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("want 1 mount entry, got %d", len(entries))
 	}
-	m, ok := entries[0].(map[string]interface{})
+	m, ok := entries[0].(map[string]any)
 	if !ok {
 		t.Fatalf("mount entry is %T, want map", entries[0])
 	}
@@ -70,7 +70,7 @@ func TestMetadataMounts_ReadonlyOmittedByDefault(t *testing.T) {
 			mountOrString(t, `{"type":"bind","source":"/local","target":"/remote"}`),
 		},
 	}
-	m := metadataMounts(cfg)[0].(map[string]interface{})
+	m := metadataMounts(cfg)[0].(map[string]any)
 	if _, present := m["readonly"]; present {
 		t.Errorf("#881 readonly must be omitted when unset: %v", m)
 	}
@@ -124,7 +124,7 @@ func TestBuildPositionalPath(t *testing.T) {
 // must resolve in an object mount's target, not only its source (the string form
 // already substitutes the whole spec).
 func TestMountFromMetadata_DevcontainerIdInTarget(t *testing.T) {
-	m, err := mountFromMetadata(map[string]interface{}{
+	m, err := mountFromMetadata(map[string]any{
 		"type":   "volume",
 		"source": "cache-${devcontainerId}",
 		"target": "/cache/${devcontainerId}",

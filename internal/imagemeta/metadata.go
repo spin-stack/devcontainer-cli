@@ -13,33 +13,33 @@ const MetadataLabel = "devcontainer.metadata"
 // Entry represents one metadata entry (from config, feature, or base image).
 // Matches the TS ImageMetadataEntry.
 type Entry struct {
-	ID                   string                 `json:"id,omitempty"`
-	Init                 *bool                  `json:"init,omitempty"`
-	Privileged           *bool                  `json:"privileged,omitempty"`
-	CapAdd               []string               `json:"capAdd,omitempty"`
-	SecurityOpt          []string               `json:"securityOpt,omitempty"`
-	Mounts               []interface{}          `json:"mounts,omitempty"`
-	RunArgs              []string               `json:"runArgs,omitempty"`
-	ContainerEnv         map[string]string      `json:"containerEnv,omitempty"`
-	ContainerUser        string                 `json:"containerUser,omitempty"`
-	RemoteEnv            map[string]*string     `json:"remoteEnv,omitempty"`
-	RemoteUser           string                 `json:"remoteUser,omitempty"`
-	UpdateRemoteUserUID  *bool                  `json:"updateRemoteUserUID,omitempty"`
-	UserEnvProbe         string                 `json:"userEnvProbe,omitempty"`
-	OverrideCommand      *bool                  `json:"overrideCommand,omitempty"`
-	ForwardPorts         []interface{}          `json:"forwardPorts,omitempty"`
-	PortsAttributes      map[string]interface{} `json:"portsAttributes,omitempty"`
-	OtherPortsAttributes interface{}            `json:"otherPortsAttributes,omitempty"`
-	OnCreateCommand      interface{}            `json:"onCreateCommand,omitempty"`
-	UpdateContentCommand interface{}            `json:"updateContentCommand,omitempty"`
-	PostCreateCommand    interface{}            `json:"postCreateCommand,omitempty"`
-	PostStartCommand     interface{}            `json:"postStartCommand,omitempty"`
-	PostAttachCommand    interface{}            `json:"postAttachCommand,omitempty"`
-	WaitFor              string                 `json:"waitFor,omitempty"`
-	ShutdownAction       string                 `json:"shutdownAction,omitempty"`
-	HostRequirements     interface{}            `json:"hostRequirements,omitempty"`
-	Customizations       map[string]interface{} `json:"customizations,omitempty"`
-	Entrypoint           string                 `json:"entrypoint,omitempty"`
+	ID                   string             `json:"id,omitempty"`
+	Init                 *bool              `json:"init,omitempty"`
+	Privileged           *bool              `json:"privileged,omitempty"`
+	CapAdd               []string           `json:"capAdd,omitempty"`
+	SecurityOpt          []string           `json:"securityOpt,omitempty"`
+	Mounts               []any              `json:"mounts,omitempty"`
+	RunArgs              []string           `json:"runArgs,omitempty"`
+	ContainerEnv         map[string]string  `json:"containerEnv,omitempty"`
+	ContainerUser        string             `json:"containerUser,omitempty"`
+	RemoteEnv            map[string]*string `json:"remoteEnv,omitempty"`
+	RemoteUser           string             `json:"remoteUser,omitempty"`
+	UpdateRemoteUserUID  *bool              `json:"updateRemoteUserUID,omitempty"`
+	UserEnvProbe         string             `json:"userEnvProbe,omitempty"`
+	OverrideCommand      *bool              `json:"overrideCommand,omitempty"`
+	ForwardPorts         []any              `json:"forwardPorts,omitempty"`
+	PortsAttributes      map[string]any     `json:"portsAttributes,omitempty"`
+	OtherPortsAttributes any                `json:"otherPortsAttributes,omitempty"`
+	OnCreateCommand      any                `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand any                `json:"updateContentCommand,omitempty"`
+	PostCreateCommand    any                `json:"postCreateCommand,omitempty"`
+	PostStartCommand     any                `json:"postStartCommand,omitempty"`
+	PostAttachCommand    any                `json:"postAttachCommand,omitempty"`
+	WaitFor              string             `json:"waitFor,omitempty"`
+	ShutdownAction       string             `json:"shutdownAction,omitempty"`
+	HostRequirements     any                `json:"hostRequirements,omitempty"`
+	Customizations       map[string]any     `json:"customizations,omitempty"`
+	Entrypoint           string             `json:"entrypoint,omitempty"`
 }
 
 // ReadMetadataFromLabels extracts metadata entries from Docker image/container labels.

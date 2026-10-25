@@ -38,23 +38,21 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 
 	ctx := t.Context()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "registry:3",
-			ExposedPorts: []string{"5000/tcp"},
-			Env: map[string]string{
-				"REGISTRY_AUTH":                "htpasswd",
-				"REGISTRY_AUTH_HTPASSWD_REALM": "Registry Realm",
-				"REGISTRY_AUTH_HTPASSWD_PATH":  "/auth/htpasswd",
-			},
-			Files: []testcontainers.ContainerFile{{
-				Reader:            strings.NewReader(htpasswd),
-				ContainerFilePath: "/auth/htpasswd",
-				FileMode:          0o444,
-			}},
-			WaitingFor: wait.ForHTTP("/v2/").WithPort("5000/tcp").
-				WithStatusCodeMatcher(func(status int) bool { return status == 401 }).
-				WithStartupTimeout(60 * time.Second),
+		Image:        "registry:3",
+		ExposedPorts: []string{"5000/tcp"},
+		Env: map[string]string{
+			"REGISTRY_AUTH":                "htpasswd",
+			"REGISTRY_AUTH_HTPASSWD_REALM": "Registry Realm",
+			"REGISTRY_AUTH_HTPASSWD_PATH":  "/auth/htpasswd",
 		},
+		Files: []testcontainers.ContainerFile{{
+			Reader:            strings.NewReader(htpasswd),
+			ContainerFilePath: "/auth/htpasswd",
+			FileMode:          0o444,
+		}},
+		WaitingFor: wait.ForHTTP("/v2/").WithPort("5000/tcp").
+			WithStatusCodeMatcher(func(status int) bool { return status == 401 }).
+			WithStartupTimeout(60 * time.Second),
 		Started: true,
 	})
 	if err != nil {

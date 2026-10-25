@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -52,10 +53,8 @@ func validateTerminalImplications(columns, rows int) error {
 
 // validateEnum checks that a flag value is one of the allowed choices.
 func validateEnum(flagName, value string, choices []string) error {
-	for _, c := range choices {
-		if value == c {
-			return nil
-		}
+	if slices.Contains(choices, value) {
+		return nil
 	}
 	return fmt.Errorf("Invalid value %q for --%s. Choose from: %s", value, flagName, strings.Join(choices, ", "))
 }

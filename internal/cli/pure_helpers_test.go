@@ -297,10 +297,10 @@ func TestEncloseStringInBox(t *testing.T) {
 
 func TestWriteSuccessJSON(t *testing.T) {
 	out := &captureOutput{}
-	if err := writeSuccessJSON(out, map[string]interface{}{"outcome": "success", "n": 2}); err != nil {
+	if err := writeSuccessJSON(out, map[string]any{"outcome": "success", "n": 2}); err != nil {
 		t.Fatal(err)
 	}
-	var got map[string]interface{}
+	var got map[string]any
 	if err := json.Unmarshal(out.out.Bytes(), &got); err != nil {
 		t.Fatalf("stdout not JSON: %v (%q)", err, out.out.String())
 	}
@@ -311,7 +311,7 @@ func TestWriteSuccessJSON(t *testing.T) {
 
 func TestAddFeatureOption(t *testing.T) {
 	// Existing options are preserved and the key is set to true.
-	got := addFeatureOption(map[string]interface{}{"version": "1"}, "gradle")
+	got := addFeatureOption(map[string]any{"version": "1"}, "gradle")
 	if got["version"] != "1" || got["gradle"] != true {
 		t.Errorf("addFeatureOption merge wrong: %v", got)
 	}
@@ -386,7 +386,7 @@ func TestOrderedFeatureKeys_AppendsMissingSorted(t *testing.T) {
 
 	// The map has one key NOT present in the file ("z"); it must be appended,
 	// and the never-dropped invariant must hold.
-	feats := map[string]interface{}{"a": struct{}{}, "b": struct{}{}, "z": struct{}{}}
+	feats := map[string]any{"a": struct{}{}, "b": struct{}{}, "z": struct{}{}}
 	got := orderedFeatureKeys(cfg, feats)
 	if len(got) != 3 {
 		t.Fatalf("want 3 keys, got %v", got)

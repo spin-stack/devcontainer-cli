@@ -39,30 +39,30 @@ func interopEntries() []imagemeta.Entry {
 	return []imagemeta.Entry{
 		{
 			ID:                "ghcr.io/devcontainers/features/node:1",
-			Mounts:            []interface{}{"source=nvm,target=/usr/local/share/nvm,type=volume"},
-			ForwardPorts:      []interface{}{float64(3000)},
+			Mounts:            []any{"source=nvm,target=/usr/local/share/nvm,type=volume"},
+			ForwardPorts:      []any{float64(3000)},
 			ContainerUser:     "node",
 			Init:              &yes,
 			OnCreateCommand:   "echo feature-oncreate",
 			PostCreateCommand: "npm ci",
-			Customizations: map[string]interface{}{
-				"vscode": map[string]interface{}{
-					"extensions": []interface{}{"dbaeumer.vscode-eslint"},
+			Customizations: map[string]any{
+				"vscode": map[string]any{
+					"extensions": []any{"dbaeumer.vscode-eslint"},
 				},
 			},
 		},
 		{
 			// Config-level entry (no id), highest priority for scalars.
-			Mounts:            []interface{}{"source=cfg,target=/cfg,type=volume"},
-			ForwardPorts:      []interface{}{float64(8080)},
+			Mounts:            []any{"source=cfg,target=/cfg,type=volume"},
+			ForwardPorts:      []any{float64(8080)},
 			RemoteUser:        "node",
 			ContainerUser:     "node",
 			WaitFor:           "postCreateCommand",
 			PostCreateCommand: "echo config-postcreate",
 			PostAttachCommand: "echo attached",
-			Customizations: map[string]interface{}{
-				"vscode": map[string]interface{}{
-					"settings": map[string]interface{}{"editor.formatOnSave": true},
+			Customizations: map[string]any{
+				"vscode": map[string]any{
+					"settings": map[string]any{"editor.formatOnSave": true},
 				},
 			},
 		},
@@ -75,7 +75,7 @@ func interopEntries() []imagemeta.Entry {
 // parsed structure.
 func jsonNormEqual(t *testing.T, a, b []byte) bool {
 	t.Helper()
-	var av, bv interface{}
+	var av, bv any
 	if err := json.Unmarshal(a, &av); err != nil {
 		t.Fatalf("unmarshal a: %v (%s)", err, a)
 	}
@@ -102,7 +102,7 @@ func TestMetadataInteropWhitespaceInvariant(t *testing.T) {
 	// (extra whitespace) and, via a round-trip through interface{}, arbitrary key
 	// order. json.MarshalIndent produces bytes that differ from goLabel yet must
 	// parse identically.
-	var parsed interface{}
+	var parsed any
 	if err := json.Unmarshal([]byte(goLabel), &parsed); err != nil {
 		t.Fatalf("parse go label: %v", err)
 	}

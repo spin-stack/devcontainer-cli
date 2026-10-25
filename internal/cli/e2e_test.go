@@ -100,11 +100,11 @@ func TestE2E_BuildUpExec_Dockerfile(t *testing.T) {
 func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
 	fixtures := []struct {
 		name    string
-		checkFn func(t *testing.T, cfg map[string]interface{})
+		checkFn func(t *testing.T, cfg map[string]any)
 	}{
 		{
 			"image",
-			func(t *testing.T, cfg map[string]interface{}) {
+			func(t *testing.T, cfg map[string]any) {
 				if cfg["image"] != "ubuntu:latest" {
 					t.Errorf("image = %v", cfg["image"])
 				}
@@ -112,8 +112,8 @@ func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
 		},
 		{
 			"dockerfile-without-features",
-			func(t *testing.T, cfg map[string]interface{}) {
-				build, ok := cfg["build"].(map[string]interface{})
+			func(t *testing.T, cfg map[string]any) {
+				build, ok := cfg["build"].(map[string]any)
 				if !ok {
 					t.Fatal("expected build property")
 				}
@@ -124,7 +124,7 @@ func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
 		},
 		{
 			"compose-image-without-features",
-			func(t *testing.T, cfg map[string]interface{}) {
+			func(t *testing.T, cfg map[string]any) {
 				if cfg["service"] != "app" {
 					t.Errorf("service = %v", cfg["service"])
 				}
@@ -141,7 +141,7 @@ func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
 
 			out := runCLI(t, "read-configuration", "--workspace-folder", fixture)
 			result := parseJSON(t, out)
-			cfg, ok := result["configuration"].(map[string]interface{})
+			cfg, ok := result["configuration"].(map[string]any)
 			if !ok {
 				t.Fatal("no configuration in output")
 			}
@@ -171,9 +171,9 @@ func runCLI(t *testing.T, args ...string) string {
 	return strings.TrimSpace(buf.String())
 }
 
-func parseJSON(t *testing.T, s string) map[string]interface{} {
+func parseJSON(t *testing.T, s string) map[string]any {
 	t.Helper()
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(s), &result); err != nil {
 		t.Fatalf("invalid JSON: %v\nOutput: %s", err, s)
 	}

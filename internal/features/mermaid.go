@@ -73,9 +73,9 @@ func generateMermaidNode(node *FNode) string {
 func mermaidNodeHash(node *FNode) string {
 	options := node.Options
 	if options == nil {
-		options = map[string]interface{}{}
+		options = map[string]any{}
 	}
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"type":             node.Type,
 		"userFeatureId":    node.UserFeatureID,
 		"options":          options,

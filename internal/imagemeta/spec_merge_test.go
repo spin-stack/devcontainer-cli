@@ -1,9 +1,14 @@
 package imagemeta
 
+import "slices"
+
 import "testing"
 
-func specBool(b bool) *bool    { return &b }
-func specStr(s string) *string { return &s }
+//go:fix inline
+func specBool(b bool) *bool { return new(b) }
+
+//go:fix inline
+func specStr(s string) *string { return new(s) }
 
 // TestSpecMetadataMergeRules locks the dev container specification's normative
 // metadata merge rules (containers.dev/implementors/spec, "Merge logic"):
@@ -13,21 +18,21 @@ func specStr(s string) *string { return &s }
 func TestSpecMetadataMergeRules(t *testing.T) {
 	// A feature entry (earlier) and the devcontainer.json entry (last).
 	feature := Entry{
-		Init:            specBool(true),
-		Privileged:      specBool(false),
+		Init:            new(true),
+		Privileged:      new(false),
 		RemoteUser:      "node",
 		WaitFor:         "onCreateCommand",
 		CapAdd:          []string{"SYS_PTRACE"},
-		RemoteEnv:       map[string]*string{"FOO": specStr("from-feature")},
+		RemoteEnv:       map[string]*string{"FOO": new("from-feature")},
 		OnCreateCommand: "feature-oncreate",
 	}
 	devcontainer := Entry{
-		Init:            specBool(false), // spec: booleans are OR — must NOT override the feature's true
-		Privileged:      specBool(true),
+		Init:            new(false), // spec: booleans are OR — must NOT override the feature's true
+		Privileged:      new(true),
 		RemoteUser:      "vscode", // spec: scalars — last (devcontainer.json) wins
 		WaitFor:         "postCreateCommand",
 		CapAdd:          []string{"SYS_ADMIN", "SYS_PTRACE"}, // spec: arrays — union, no duplicates
-		RemoteEnv:       map[string]*string{"FOO": specStr("from-config"), "BAR": specStr("c")},
+		RemoteEnv:       map[string]*string{"FOO": new("from-config"), "BAR": new("c")},
 		OnCreateCommand: "config-oncreate",
 	}
 
@@ -70,10 +75,5 @@ func TestSpecMetadataMergeRules(t *testing.T) {
 }
 
 func contains(xs []string, want string) bool {
-	for _, x := range xs {
-		if x == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, want)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -239,9 +240,7 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		if probeErr == nil {
 			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser)
 			probeServer.Close()
-			for k, v := range probedEnv {
-				resolvedRemoteEnv[k] = v
-			}
+			maps.Copy(resolvedRemoteEnv, probedEnv)
 		}
 	}
 

@@ -239,7 +239,7 @@ func (c *Client) DetectActiveBuilder(ctx context.Context) *BuilderInfo {
 		return &BuilderInfo{}
 	}
 	info := &BuilderInfo{}
-	for _, line := range strings.Split(string(res.Stdout), "\n") {
+	for line := range strings.SplitSeq(string(res.Stdout), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "Name:") && info.Name == "" {
 			info.Name = strings.TrimSpace(strings.TrimPrefix(line, "Name:"))
@@ -265,7 +265,7 @@ func (c *Client) FindDockerDriverBuilder(ctx context.Context) string {
 	// Parse output: each builder starts at column 0 with NAME, followed by DRIVER
 	// Prefer builder matching the current context, fall back to any docker driver builder
 	fallback := ""
-	for _, line := range strings.Split(string(res.Stdout), "\n") {
+	for line := range strings.SplitSeq(string(res.Stdout), "\n") {
 		if line == "" || strings.HasPrefix(line, "NAME") {
 			continue
 		}

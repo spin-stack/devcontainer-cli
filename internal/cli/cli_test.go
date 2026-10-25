@@ -61,15 +61,15 @@ func TestReadConfigurationFixtures(t *testing.T) {
 	tests := []struct {
 		name    string
 		fixture string
-		check   func(t *testing.T, cfg map[string]interface{})
+		check   func(t *testing.T, cfg map[string]any)
 	}{
-		{"image", "image", func(t *testing.T, cfg map[string]interface{}) {
+		{"image", "image", func(t *testing.T, cfg map[string]any) {
 			if cfg["image"] != "ubuntu:latest" {
 				t.Errorf("image = %v, want 'ubuntu:latest'", cfg["image"])
 			}
 		}},
-		{"dockerfile", "dockerfile-without-features", func(t *testing.T, cfg map[string]interface{}) {
-			build, ok := cfg["build"].(map[string]interface{})
+		{"dockerfile", "dockerfile-without-features", func(t *testing.T, cfg map[string]any) {
+			build, ok := cfg["build"].(map[string]any)
 			if !ok {
 				t.Fatal("expected 'build' in Dockerfile config")
 			}
@@ -77,7 +77,7 @@ func TestReadConfigurationFixtures(t *testing.T) {
 				t.Errorf("dockerfile = %v", build["dockerfile"])
 			}
 		}},
-		{"compose", "compose-image-without-features", func(t *testing.T, cfg map[string]interface{}) {
+		{"compose", "compose-image-without-features", func(t *testing.T, cfg map[string]any) {
 			if cfg["service"] != "app" {
 				t.Errorf("service = %v, want 'app'", cfg["service"])
 			}
@@ -87,7 +87,7 @@ func TestReadConfigurationFixtures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := readConfigurationResult(t, tt.fixture)
-			cfg, ok := result["configuration"].(map[string]interface{})
+			cfg, ok := result["configuration"].(map[string]any)
 			if !ok {
 				t.Fatal("missing/invalid 'configuration' in output")
 			}
@@ -146,7 +146,7 @@ func TestReadConfiguration_AllFixtures(t *testing.T) {
 			continue
 		}
 
-		var result map[string]interface{}
+		var result map[string]any
 		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Errorf("FAIL %s: invalid JSON: %v", entry.Name(), err)
 			continue
@@ -164,9 +164,9 @@ func TestReadConfiguration_AllFixtures(t *testing.T) {
 }
 
 func TestComposeServiceConfig(t *testing.T) {
-	cfg := map[string]interface{}{
-		"services": map[string]interface{}{
-			"app": map[string]interface{}{
+	cfg := map[string]any{
+		"services": map[string]any{
+			"app": map[string]any{
 				"image": "example/app:latest",
 			},
 		},
@@ -202,7 +202,7 @@ func TestConfigToMetadataEntry_IncludesMountsAndUIDSetting(t *testing.T) {
 	if entry.Mounts[0] != "type=volume,target=/data" {
 		t.Fatalf("mounts[0] = %v", entry.Mounts[0])
 	}
-	second, ok := entry.Mounts[1].(map[string]interface{})
+	second, ok := entry.Mounts[1].(map[string]any)
 	if !ok {
 		t.Fatalf("mounts[1] type = %T", entry.Mounts[1])
 	}

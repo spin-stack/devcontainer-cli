@@ -25,11 +25,11 @@ func TestSpecLifecycleOrder(t *testing.T) {
 	// RunHooks runs the in-container phases in exactly that order. Each phase has
 	// a single command; the recording executor captures the execution sequence.
 	merged := &imagemeta.MergedConfig{
-		OnCreateCommands:      []interface{}{"cmd-onCreate"},
-		UpdateContentCommands: []interface{}{"cmd-updateContent"},
-		PostCreateCommands:    []interface{}{"cmd-postCreate"},
-		PostStartCommands:     []interface{}{"cmd-postStart"},
-		PostAttachCommands:    []interface{}{"cmd-postAttach"},
+		OnCreateCommands:      []any{"cmd-onCreate"},
+		UpdateContentCommands: []any{"cmd-updateContent"},
+		PostCreateCommands:    []any{"cmd-postCreate"},
+		PostStartCommands:     []any{"cmd-postStart"},
+		PostAttachCommands:    []any{"cmd-postAttach"},
 	}
 	exec := &mockExecutor{}
 	if err := RunHooks(log.Null, exec, merged, RunOptions{}); err != nil {
@@ -48,9 +48,9 @@ func TestSpecLifecycleOrder(t *testing.T) {
 func TestSpecWaitForGatesExecution(t *testing.T) {
 	merged := &imagemeta.MergedConfig{
 		WaitFor:               "updateContentCommand",
-		OnCreateCommands:      []interface{}{"cmd-onCreate"},
-		UpdateContentCommands: []interface{}{"cmd-updateContent"},
-		PostCreateCommands:    []interface{}{"cmd-postCreate"},
+		OnCreateCommands:      []any{"cmd-onCreate"},
+		UpdateContentCommands: []any{"cmd-updateContent"},
+		PostCreateCommands:    []any{"cmd-postCreate"},
 	}
 	exec := &mockExecutor{}
 	if err := RunHooks(log.Null, exec, merged, RunOptions{SkipNonBlocking: true}); err != nil {

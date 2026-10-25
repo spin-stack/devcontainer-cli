@@ -12,42 +12,42 @@ type DevContainer struct {
 	ConfigFilePath string `json:"configFilePath,omitempty"`
 
 	// --- Common properties (all variants) ---
-	Name                        string                 `json:"name,omitempty"`
-	ForwardPorts                []PortOrString         `json:"forwardPorts,omitempty"`
-	AppPort                     json.RawMessage        `json:"appPort,omitempty"` // number | string | (number|string)[]
-	PortsAttributes             map[string]PortAttrs   `json:"portsAttributes,omitempty"`
-	OtherPortsAttributes        *PortAttrs             `json:"otherPortsAttributes,omitempty"`
-	RunArgs                     []string               `json:"runArgs,omitempty"`
-	ShutdownAction              string                 `json:"shutdownAction,omitempty"`
-	OverrideCommand             *bool                  `json:"overrideCommand,omitempty"`
-	InitializeCommand           LifecycleCommand       `json:"initializeCommand,omitempty"`
-	OnCreateCommand             LifecycleCommand       `json:"onCreateCommand,omitempty"`
-	UpdateContentCommand        LifecycleCommand       `json:"updateContentCommand,omitempty"`
-	PostCreateCommand           LifecycleCommand       `json:"postCreateCommand,omitempty"`
-	PostStartCommand            LifecycleCommand       `json:"postStartCommand,omitempty"`
-	PostAttachCommand           LifecycleCommand       `json:"postAttachCommand,omitempty"`
-	WaitFor                     string                 `json:"waitFor,omitempty"`
-	WorkspaceFolder             string                 `json:"workspaceFolder,omitempty"`
-	WorkspaceMount              string                 `json:"workspaceMount,omitempty"`
-	Mounts                      []MountOrString        `json:"mounts,omitempty"`
-	ContainerEnv                map[string]string      `json:"containerEnv,omitempty"`
-	ContainerUser               string                 `json:"containerUser,omitempty"`
-	Init                        *bool                  `json:"init,omitempty"`
-	Privileged                  *bool                  `json:"privileged,omitempty"`
-	CapAdd                      []string               `json:"capAdd,omitempty"`
-	SecurityOpt                 []string               `json:"securityOpt,omitempty"`
-	RemoteEnv                   map[string]*string     `json:"remoteEnv,omitempty"`
-	RemoteUser                  string                 `json:"remoteUser,omitempty"`
-	UpdateRemoteUserUID         *bool                  `json:"updateRemoteUserUID,omitempty"`
-	UserEnvProbe                string                 `json:"userEnvProbe,omitempty"`
-	Features                    map[string]interface{} `json:"features,omitempty"`
-	OverrideFeatureInstallOrder []string               `json:"overrideFeatureInstallOrder,omitempty"`
-	HostRequirements            *HostRequirements      `json:"hostRequirements,omitempty"`
-	Customizations              map[string]interface{} `json:"customizations,omitempty"`
+	Name                        string               `json:"name,omitempty"`
+	ForwardPorts                []PortOrString       `json:"forwardPorts,omitempty"`
+	AppPort                     json.RawMessage      `json:"appPort,omitempty"` // number | string | (number|string)[]
+	PortsAttributes             map[string]PortAttrs `json:"portsAttributes,omitempty"`
+	OtherPortsAttributes        *PortAttrs           `json:"otherPortsAttributes,omitempty"`
+	RunArgs                     []string             `json:"runArgs,omitempty"`
+	ShutdownAction              string               `json:"shutdownAction,omitempty"`
+	OverrideCommand             *bool                `json:"overrideCommand,omitempty"`
+	InitializeCommand           LifecycleCommand     `json:"initializeCommand"`
+	OnCreateCommand             LifecycleCommand     `json:"onCreateCommand"`
+	UpdateContentCommand        LifecycleCommand     `json:"updateContentCommand"`
+	PostCreateCommand           LifecycleCommand     `json:"postCreateCommand"`
+	PostStartCommand            LifecycleCommand     `json:"postStartCommand"`
+	PostAttachCommand           LifecycleCommand     `json:"postAttachCommand"`
+	WaitFor                     string               `json:"waitFor,omitempty"`
+	WorkspaceFolder             string               `json:"workspaceFolder,omitempty"`
+	WorkspaceMount              string               `json:"workspaceMount,omitempty"`
+	Mounts                      []MountOrString      `json:"mounts,omitempty"`
+	ContainerEnv                map[string]string    `json:"containerEnv,omitempty"`
+	ContainerUser               string               `json:"containerUser,omitempty"`
+	Init                        *bool                `json:"init,omitempty"`
+	Privileged                  *bool                `json:"privileged,omitempty"`
+	CapAdd                      []string             `json:"capAdd,omitempty"`
+	SecurityOpt                 []string             `json:"securityOpt,omitempty"`
+	RemoteEnv                   map[string]*string   `json:"remoteEnv,omitempty"`
+	RemoteUser                  string               `json:"remoteUser,omitempty"`
+	UpdateRemoteUserUID         *bool                `json:"updateRemoteUserUID,omitempty"`
+	UserEnvProbe                string               `json:"userEnvProbe,omitempty"`
+	Features                    map[string]any       `json:"features,omitempty"`
+	OverrideFeatureInstallOrder []string             `json:"overrideFeatureInstallOrder,omitempty"`
+	HostRequirements            *HostRequirements    `json:"hostRequirements,omitempty"`
+	Customizations              map[string]any       `json:"customizations,omitempty"`
 	// Secrets is the spec's "recommended secrets" metadata (env-var key ->
 	// {description, documentationUrl}). The CLI does not act on it; kept as an
 	// open map so it round-trips losslessly through read-configuration/metadata.
-	Secrets map[string]interface{} `json:"secrets,omitempty"`
+	Secrets map[string]any `json:"secrets,omitempty"`
 
 	// --- Image variant ---
 	Image string `json:"image,omitempty"`
@@ -63,9 +63,9 @@ type DevContainer struct {
 	RunServices       []string        `json:"runServices,omitempty"`
 
 	// --- Deprecated / VS Code specific (migrated by UpdateFromOldProperties) ---
-	Extensions []string    `json:"extensions,omitempty"`
-	Settings   interface{} `json:"settings,omitempty"`
-	DevPort    *int        `json:"devPort,omitempty"`
+	Extensions []string `json:"extensions,omitempty"`
+	Settings   any      `json:"settings,omitempty"`
+	DevPort    *int     `json:"devPort,omitempty"`
 }
 
 // Build represents the "build" property in devcontainer.json.
@@ -155,7 +155,7 @@ func (c *DevContainer) BuildContext() string {
 // LifecycleCommand can be string, []string, or map[string]interface{}.
 // This matches the TS type: string | string[] | Record<string, string | string[]>.
 type LifecycleCommand struct {
-	raw interface{} // string, []interface{}, or map[string]interface{}
+	raw any // string, []interface{}, or map[string]interface{}
 }
 
 func (c *LifecycleCommand) UnmarshalJSON(data []byte) error {
@@ -182,7 +182,7 @@ func (c *LifecycleCommand) AsString() (string, bool) {
 
 // AsStringSlice returns the command as []string, or nil.
 func (c *LifecycleCommand) AsStringSlice() ([]string, bool) {
-	arr, ok := c.raw.([]interface{})
+	arr, ok := c.raw.([]any)
 	if !ok {
 		return nil, false
 	}
@@ -198,19 +198,19 @@ func (c *LifecycleCommand) AsStringSlice() ([]string, bool) {
 }
 
 // AsMap returns the command as a map (for parallel commands), or nil.
-func (c *LifecycleCommand) AsMap() (map[string]interface{}, bool) {
-	m, ok := c.raw.(map[string]interface{})
+func (c *LifecycleCommand) AsMap() (map[string]any, bool) {
+	m, ok := c.raw.(map[string]any)
 	return m, ok
 }
 
 // Raw returns the underlying value.
-func (c *LifecycleCommand) Raw() interface{} {
+func (c *LifecycleCommand) Raw() any {
 	return c.raw
 }
 
 // PortOrString represents a port that can be number or string (e.g., "8080:80").
 type PortOrString struct {
-	raw interface{} // float64 (JSON number) or string
+	raw any // float64 (JSON number) or string
 }
 
 func (p *PortOrString) UnmarshalJSON(data []byte) error {
@@ -223,7 +223,7 @@ func (p PortOrString) MarshalJSON() ([]byte, error) {
 
 // MountOrString represents either a Mount object or a string mount spec.
 type MountOrString struct {
-	raw interface{} // string or map → Mount
+	raw any // string or map → Mount
 }
 
 func (m *MountOrString) UnmarshalJSON(data []byte) error {
@@ -298,15 +298,15 @@ func UpdateFromOldProperties(c *DevContainer) {
 	}
 
 	if c.Customizations == nil {
-		c.Customizations = make(map[string]interface{})
+		c.Customizations = make(map[string]any)
 	}
-	vscodeRaw, _ := c.Customizations["vscode"].(map[string]interface{})
+	vscodeRaw, _ := c.Customizations["vscode"].(map[string]any)
 	if vscodeRaw == nil {
-		vscodeRaw = make(map[string]interface{})
+		vscodeRaw = make(map[string]any)
 	}
 
 	if len(c.Extensions) > 0 {
-		existing, _ := vscodeRaw["extensions"].([]interface{})
+		existing, _ := vscodeRaw["extensions"].([]any)
 		for _, ext := range c.Extensions {
 			existing = append(existing, ext)
 		}
@@ -315,8 +315,8 @@ func UpdateFromOldProperties(c *DevContainer) {
 	}
 
 	if c.Settings != nil {
-		if existingSettings, ok := vscodeRaw["settings"].(map[string]interface{}); ok {
-			if newSettings, ok := c.Settings.(map[string]interface{}); ok {
+		if existingSettings, ok := vscodeRaw["settings"].(map[string]any); ok {
+			if newSettings, ok := c.Settings.(map[string]any); ok {
 				for k, v := range newSettings {
 					if _, exists := existingSettings[k]; !exists {
 						existingSettings[k] = v

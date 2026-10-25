@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -39,12 +40,7 @@ func healthyDocker(args []string) ([]byte, []byte, int, error) {
 }
 
 func has(args []string, want string) bool {
-	for _, a := range args {
-		if a == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(args, want)
 }
 
 func bigDisk(string) (uint64, error) { return 100 << 30, nil }

@@ -36,12 +36,10 @@ func TestPublishParity(t *testing.T) {
 
 	ctx := t.Context()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "registry:3",
-			ExposedPorts: []string{"5000/tcp"},
-			WaitingFor:   wait.ForHTTP("/v2/").WithPort("5000/tcp").WithStartupTimeout(60 * time.Second),
-		},
-		Started: true,
+		Image:        "registry:3",
+		ExposedPorts: []string{"5000/tcp"},
+		WaitingFor:   wait.ForHTTP("/v2/").WithPort("5000/tcp").WithStartupTimeout(60 * time.Second),
+		Started:      true,
 	})
 	if err != nil {
 		t.Skipf("could not start registry container: %v", err)
@@ -69,7 +67,6 @@ func TestPublishParity(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			tsNamespace := "tsns/" + tc.name
 			goNamespace := "gons/" + tc.name

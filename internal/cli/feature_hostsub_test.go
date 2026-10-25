@@ -18,7 +18,7 @@ func TestSubstituteFeatureHostVars(t *testing.T) {
 	sets := []*features.Set{{
 		Features: []features.Feature{{
 			ContainerEnv: map[string]string{"CACHE": "${localEnv:HOME}/.cache", "WS": "${localWorkspaceFolder}/x"},
-			Mounts:       []interface{}{"source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind"},
+			Mounts:       []any{"source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind"},
 		}},
 	}}
 

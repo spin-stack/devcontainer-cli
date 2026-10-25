@@ -93,8 +93,7 @@ func IsNotFound(err error) bool {
 	if errors.Is(err, errdef.ErrNotFound) {
 		return true
 	}
-	var respErr *errcode.ErrorResponse
-	if errors.As(err, &respErr) {
+	if respErr, ok := errors.AsType[*errcode.ErrorResponse](err); ok {
 		return respErr.StatusCode == http.StatusNotFound
 	}
 	return false

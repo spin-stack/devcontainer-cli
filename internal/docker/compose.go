@@ -91,7 +91,7 @@ func (c *ComposeClient) run(ctx context.Context, stream bool, args ...string) (*
 }
 
 // Config runs `docker compose config` and returns parsed YAML.
-func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFile string) (map[string]interface{}, error) {
+func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFile string) (map[string]any, error) {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	args = append(args, "config", "--format", "json")
 
@@ -103,7 +103,7 @@ func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFi
 		return nil, fmt.Errorf("compose config failed (exit %d): %s", res.ExitCode, string(res.Stderr))
 	}
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(res.Stdout, &config); err != nil {
 		return nil, fmt.Errorf("parse compose config: %w", err)
 	}
