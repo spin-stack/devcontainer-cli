@@ -885,6 +885,30 @@
         "ref=x,type=registry,mode=inline"
       ],
       "result": false
+    },
+    {
+      "name": "continued FROM line",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM \\\n    alpine:3.20 AS base\n",
+        "dev"
+      ],
+      "divergence": "docs/DIVERGENCES.md: a FROM line continued with a backslash keeps its stage name (TS writes \" AS <name>\" after the backslash, which no builder accepts)",
+      "result": {
+        "lastStageName": "dev",
+        "modifiedDockerfile": "FROM \\ AS dev\n    alpine:3.20 AS base\n"
+      }
+    },
+    {
+      "name": "escape directive",
+      "fn": "findBaseImage",
+      "args": [
+        "# escape=`\nARG x\nFROM reg`$x/img\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "reg`/img"
     }
   ]
 }

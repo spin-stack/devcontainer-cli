@@ -20,6 +20,13 @@ touches a compared surface, reflected in the parity matrix.
   `stop`/`down` (pause, or stop+remove, a workspace's container — Compose-aware; the
   upstream CLI leaves teardown to the editor), and the automatic credential bridge that
   hands the CLI's resolved auth to `docker build`.
+- **A final `FROM` line continued with a backslash keeps its stage name.** TS
+  `ensureDockerfileHasFinalStageName` reads only the physical line, so for
+  `FROM \` followed by `alpine AS base` it writes `FROM \ AS dev`, a Dockerfile
+  no builder accepts. This CLI asks BuildKit for that stage's name and leaves the
+  Dockerfile as it is (`TestEnsureFinalStageNameReadsAContinuedFrom`,
+  `internal/docker/testdata/ts-oracle/dockerfile.json`). Every other FROM line is
+  handled exactly as TS handles it.
 - **`--override-config` deep-merges** the override onto the base config, whereas TS
   replaces the config wholesale (`readDocument(overrideConfigFile ?? configFile)`). With
   no readable base, the override stands alone — identical to TS. This lets an orchestrator
