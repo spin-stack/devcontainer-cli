@@ -113,7 +113,8 @@ func newExecCmd() *cobra.Command {
 // mutate-lane: TestParityMatrix (exec.workspace-image-success,
 // exec.workspace-compose-success, exec.container-config-success,
 // exec.container-metadata-success, exec.workspace-image-json-raw-output-success,
-// exec.workspace-image-nonzero-exit, exec.container-not-found).
+// exec.workspace-image-nonzero-exit, exec.container-not-found,
+// exec.config-remote-user-probe-success).
 func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return err
@@ -196,13 +197,14 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if loadResult != nil {
 		cfg = loadResult.Config
 	}
-	// The environment is probed as the image metadata's user (else the
-	// container's, else root); the configuration's remoteUser applies after.
-	remoteUser := cmp.Or(merged.RemoteUser, containerCfg.User, "root")
+	// The user is the merged configuration's remoteUser - the configuration's,
+	// else the image metadata's - else the container's, else root; the
+	// environment is probed as that user (TS createContainerProperties with
+	// mergedConfig.remoteUser).
+	remoteUser := execRemoteUser(cmp.Or(merged.RemoteUser, containerCfg.User, "root"), cfg)
 
 	// 7-8. Probe the user environment, then merge and substitute it.
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, execProbeStrategy(opts.defaultUserEnvProbe, cfg), "")
-	remoteUser = execRemoteUser(remoteUser, cfg)
 	resolvedRemoteEnv, err := execRemoteEnv(probed, merged.RemoteEnv, cfg, containerEnv)
 	if err != nil {
 		return err
@@ -255,13 +257,13 @@ func containerRunning(state *container.State) bool {
 	return state != nil && state.Running
 }
 
-// execRemoteUser is the user exec runs as: the configuration's remoteUser,
-// else the user the environment was probed as.
-func execRemoteUser(probeUser string, cfg *config.DevContainer) string {
+// execRemoteUser is the user exec probes the environment as and runs as: the
+// configuration's remoteUser, else metadataUser.
+func execRemoteUser(metadataUser string, cfg *config.DevContainer) string {
 	if cfg != nil && cfg.RemoteUser != "" {
 		return cfg.RemoteUser
 	}
-	return probeUser
+	return metadataUser
 }
 
 // execProbeStrategy is the configuration's userEnvProbe, else the flag's.
