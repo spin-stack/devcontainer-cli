@@ -48,10 +48,14 @@ func NewTransport() *http.Transport {
 			// looking like "the proxy is ignored". Surface it instead of swallowing.
 			fmt.Fprintf(os.Stderr, "warning: could not load CA certs from %s: %v\n", caFile, err)
 		} else if pool != nil {
-			if transport.TLSClientConfig == nil {
-				transport.TLSClientConfig = &tls.Config{}
+			// The clone carries the HTTP/2 ALPN settings unless HTTP/2 is
+			// disabled (GODEBUG=http2client=0), when it has no TLS config at all.
+			tlsConfig := &tls.Config{}
+			if transport.TLSClientConfig != nil {
+				tlsConfig = transport.TLSClientConfig.Clone()
 			}
-			transport.TLSClientConfig.RootCAs = pool
+			tlsConfig.RootCAs = pool
+			transport.TLSClientConfig = tlsConfig
 		}
 	}
 
