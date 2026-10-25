@@ -71,6 +71,11 @@ func NewRootCommand() *cobra.Command {
 // Execute runs the CLI. The command tree is driven by a context that is
 // cancelled on SIGINT/SIGTERM so an in-flight `up`/`build` can unwind cleanly
 // on Ctrl-C instead of being killed mid-operation.
+//
+// Its exit status is held by the parity lane, which runs the built binary:
+// mutate-lane: TestParityMatrix (exec.workspace-image-nonzero-exit passes an
+// ExitCodeError's code through as 7, exec.container-not-found prints the error
+// and exits 1, and every success case exits 0).
 func Execute() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

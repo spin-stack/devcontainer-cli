@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"os/exec"
@@ -104,6 +105,15 @@ func newExecCmd() *cobra.Command {
 	return cmd
 }
 
+// runExec runs a command in a running dev container through `docker exec`.
+// What it decides is in the helpers below; this is their wiring to the
+// configuration, the engine and the docker CLI, which the parity lane runs with
+// the built binary against real containers:
+//
+// mutate-lane: TestParityMatrix (exec.workspace-image-success,
+// exec.workspace-compose-success, exec.container-config-success,
+// exec.container-metadata-success, exec.workspace-image-json-raw-output-success,
+// exec.workspace-image-nonzero-exit, exec.container-not-found).
 func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return err
@@ -112,7 +122,7 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		return err
 	}
 	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
-	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
+	if execDefaultsToCwd(opts) {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
 	if err := validateEnums(
@@ -141,16 +151,11 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	// 1. If workspace-folder provided without container-id, validate config exists early
 	var loadResult *config.LoadResult
 	if opts.workspaceFolder != "" {
-		ws := resolvePath(opts.workspaceFolder)
-		cp := opts.configPath
-		if cp != "" && !filepath.IsAbs(cp) {
-			cwd, _ := os.Getwd()
-			cp = filepath.Join(cwd, cp)
-		}
+		cwd, _ := os.Getwd()
 		var loadErr error
-		loadResult, loadErr = config.LoadDevContainerConfig(ws, cp, "")
-		if loadErr != nil && opts.containerID == "" {
-			return loadErr
+		loadResult, loadErr = config.LoadDevContainerConfig(resolvePath(opts.workspaceFolder), execConfigPath(opts.configPath, cwd), "")
+		if err := execConfigError(loadErr, opts.containerID); err != nil {
+			return err
 		}
 	}
 
@@ -179,139 +184,173 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if err != nil {
 		return fmt.Errorf("Dev container not found.")
 	}
-	if inspect.State == nil || !inspect.State.Running {
+	if !containerRunning(inspect.State) {
 		return fmt.Errorf("Dev container is not running.")
 	}
+	containerCfg := cmp.Or(inspect.Config, &container.Config{})
 
-	if inspect.Config == nil {
-		inspect.Config = &container.Config{}
-	}
-
-	// 4. Get containerEnv from running container
-	containerEnv := config.EnvMap(inspect.Config.Env)
-
-	// 5. Determine remoteUser: container default → metadata → config
-	remoteUser := cmp.Or(inspect.Config.User, "root")
-
-	// 6. Read image metadata from container labels
-	entries := imagemeta.ReadMetadataFromLabels(inspect.Config.Labels, logger)
-	merged := imagemeta.MergeConfiguration(entries)
-
-	// Use remoteUser from metadata (overrides container default)
-	if merged.RemoteUser != "" {
-		remoteUser = merged.RemoteUser
-	}
-
-	// 7. Probe user environment, then merge: probed → metadata → config → CLI (highest priority)
-	probeStrategy := lifecycle.UserEnvProbeStrategy(opts.defaultUserEnvProbe)
-	if loadResult != nil && loadResult.Config.UserEnvProbe != "" {
-		probeStrategy = lifecycle.UserEnvProbeStrategy(loadResult.Config.UserEnvProbe)
-	}
-
-	resolvedRemoteEnv := map[string]string{}
-
-	// Probed env (lowest priority)
-	maps.Copy(resolvedRemoteEnv, lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, ""))
-
-	// From merged metadata
-	for k, v := range merged.RemoteEnv {
-		if v != nil {
-			resolvedRemoteEnv[k] = *v
-		}
-	}
-
-	// From config (overrides metadata)
+	// 4-6. The container's env, and its image metadata from the labels.
+	containerEnv := config.EnvMap(containerCfg.Env)
+	merged := imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(containerCfg.Labels, logger))
+	var cfg *config.DevContainer
 	if loadResult != nil {
-		cfg := loadResult.Config
-		if cfg.RemoteUser != "" {
-			remoteUser = cfg.RemoteUser
-		}
-		for k, v := range cfg.RemoteEnv {
-			if v != nil {
-				resolvedRemoteEnv[k] = *v
-			}
-		}
+		cfg = loadResult.Config
+	}
+	// The environment is probed as the image metadata's user (else the
+	// container's, else root); the configuration's remoteUser applies after.
+	remoteUser := cmp.Or(merged.RemoteUser, containerCfg.User, "root")
+
+	// 7-8. Probe the user environment, then merge and substitute it.
+	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, execProbeStrategy(opts.defaultUserEnvProbe, cfg), "")
+	remoteUser = execRemoteUser(remoteUser, cfg)
+	resolvedRemoteEnv, err := execRemoteEnv(probed, merged.RemoteEnv, cfg, containerEnv)
+	if err != nil {
+		return err
 	}
 
-	// 8. Substitute ${containerEnv:X} in resolved remoteEnv
-	for k, v := range resolvedRemoteEnv {
-		substituted, err := resolveContainerVariables(containerEnv, v)
-		if err != nil {
-			return fmt.Errorf("resolve container variables: %w", err)
-		}
-		if s, ok := substituted.(string); ok {
-			resolvedRemoteEnv[k] = s
-		}
+	// 9-11. Build the docker exec args.
+	remoteWorkspace := ""
+	if loadResult != nil && loadResult.WorkspaceConfig != nil {
+		remoteWorkspace = loadResult.WorkspaceConfig.WorkspaceFolder
 	}
-
-	// 9. Build docker exec args
-	dockerArgs := []string{"exec"}
-
 	// Only allocate a TTY for a real interactive terminal. Forcing `-t` for
 	// --log-format json with a piped stdin (exactly how the VS Code extension
 	// invokes exec) makes docker fail with "cannot attach stdin to a
 	// TTY-enabled container". The TS CLI only uses a PTY when isTTY is true.
 	isTTY := isTerminalWriter(os.Stdin) && isTerminalWriter(os.Stdout)
-	if isTTY {
-		dockerArgs = append(dockerArgs, "-it")
-	} else {
-		dockerArgs = append(dockerArgs, "-i")
-	}
+	dockerArgs := execDockerArgs(isTTY, remoteUser, remoteWorkspace, resolvedRemoteEnv, opts.remoteEnvs, containerID, cmdArgs)
 
-	if remoteUser != "" {
-		dockerArgs = append(dockerArgs, "-u", remoteUser)
-	}
-
-	// Run in the container's workspace folder (remoteCwd), matching the TS CLI
-	// (containerProperties.remoteWorkspaceFolder). Without this, commands run in
-	// the image WORKDIR instead of the workspace.
-	if loadResult != nil && loadResult.WorkspaceConfig != nil && loadResult.WorkspaceConfig.WorkspaceFolder != "" {
-		dockerArgs = append(dockerArgs, "-w", loadResult.WorkspaceConfig.WorkspaceFolder)
-	}
-
-	// 10. Add resolved remoteEnv as -e flags (config+metadata, substituted)
-	for k, v := range resolvedRemoteEnv {
-		dockerArgs = append(dockerArgs, "-e", fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// 11. Add CLI --remote-env flags (these override everything)
-	for _, re := range opts.remoteEnvs {
-		dockerArgs = append(dockerArgs, "-e", re)
-	}
-
-	dockerArgs = append(dockerArgs, containerID)
-	dockerArgs = append(dockerArgs, cmdArgs...)
-
-	dockerPath := opts.dockerPath
-	if dockerPath == "" {
-		dockerPath = "docker"
-	}
-
-	execCmd := exec.Command(dockerPath, dockerArgs...)
+	execCmd := exec.Command(cmp.Or(opts.dockerPath, "docker"), dockerArgs...)
 	execCmd.Stdin = os.Stdin
-	if opts.logFormat == "json" {
-		// In JSON mode the command's output is emitted as `raw` log events on the
-		// log stream (not written to stdout), matching the TS CLI so the JSON
-		// consumer (e.g. the VS Code extension) gets a clean event stream and an
-		// empty stdout. Both the command's stdout and stderr become raw events.
-		rw := &rawLogWriter{logger: logger}
-		execCmd.Stdout = rw
-		execCmd.Stderr = rw
-	} else {
-		// Text/interactive mode: pass through directly. docker exec -it inherits
-		// the terminal when the CLI itself runs under a TTY.
-		execCmd.Stdout = os.Stdout
-		execCmd.Stderr = os.Stderr
-	}
+	execCmd.Stdout, execCmd.Stderr = execOutput(opts.logFormat, logger)
+	return execRunError(execCmd.Run())
+}
 
-	err = execCmd.Run()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return &coreerrors.ExitCodeError{Code: execExitCode(exitErr), Err: err}
-		}
-		return &coreerrors.ExitCodeError{Code: 1, Err: err}
+// execDefaultsToCwd reports whether exec has nothing to find the container by,
+// so the current directory is the workspace folder.
+func execDefaultsToCwd(opts *execOpts) bool {
+	return opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == ""
+}
+
+// execConfigPath resolves --config against the current directory.
+func execConfigPath(configPath, cwd string) string {
+	if configPath != "" && !filepath.IsAbs(configPath) {
+		return filepath.Join(cwd, configPath)
+	}
+	return configPath
+}
+
+// execConfigError is the configuration error that stops exec: with
+// --container-id the container is known, and a configuration that does not
+// load only loses its settings.
+func execConfigError(loadErr error, containerID string) error {
+	if loadErr != nil && containerID == "" {
+		return loadErr
 	}
 	return nil
+}
+
+// containerRunning reports whether an inspected container is running.
+func containerRunning(state *container.State) bool {
+	return state != nil && state.Running
+}
+
+// execRemoteUser is the user exec runs as: the configuration's remoteUser,
+// else the user the environment was probed as.
+func execRemoteUser(probeUser string, cfg *config.DevContainer) string {
+	if cfg != nil && cfg.RemoteUser != "" {
+		return cfg.RemoteUser
+	}
+	return probeUser
+}
+
+// execProbeStrategy is the configuration's userEnvProbe, else the flag's.
+func execProbeStrategy(flag string, cfg *config.DevContainer) lifecycle.UserEnvProbeStrategy {
+	if cfg != nil && cfg.UserEnvProbe != "" {
+		return lifecycle.UserEnvProbeStrategy(cfg.UserEnvProbe)
+	}
+	return lifecycle.UserEnvProbeStrategy(flag)
+}
+
+// execRemoteEnv merges the remote environment, each layer over the one before:
+// the probed user environment, the image metadata's remoteEnv, the
+// configuration's; a null value leaves the layer below. ${containerEnv:X} is
+// then substituted from the container's environment.
+func execRemoteEnv(probed map[string]string, metadata map[string]*string, cfg *config.DevContainer, containerEnv map[string]string) (map[string]string, error) {
+	resolved := map[string]string{}
+	maps.Copy(resolved, probed)
+	layers := []map[string]*string{metadata}
+	if cfg != nil {
+		layers = append(layers, cfg.RemoteEnv)
+	}
+	for _, layer := range layers {
+		for k, v := range layer {
+			if v != nil {
+				resolved[k] = *v
+			}
+		}
+	}
+	for k, v := range resolved {
+		substituted, err := resolveContainerVariables(containerEnv, v)
+		if err != nil {
+			return nil, fmt.Errorf("resolve container variables: %w", err)
+		}
+		if s, ok := substituted.(string); ok {
+			resolved[k] = s
+		}
+	}
+	return resolved, nil
+}
+
+// execDockerArgs is the `docker exec` command line: interactive, with a TTY
+// when exec runs in one, as the remote user, in the container's workspace
+// folder (remoteCwd, as TS containerProperties.remoteWorkspaceFolder) when
+// known, with the resolved remote environment and then the --remote-env flags,
+// which docker applies last so they win.
+func execDockerArgs(tty bool, remoteUser, remoteWorkspace string, remoteEnv map[string]string, cliEnvs []string, containerID string, cmdArgs []string) []string {
+	args := []string{"exec", "-i"}
+	if tty {
+		args[1] = "-it"
+	}
+	if remoteUser != "" {
+		args = append(args, "-u", remoteUser)
+	}
+	if remoteWorkspace != "" {
+		args = append(args, "-w", remoteWorkspace)
+	}
+	for k, v := range remoteEnv {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+	}
+	for _, re := range cliEnvs {
+		args = append(args, "-e", re)
+	}
+	args = append(args, containerID)
+	return append(args, cmdArgs...)
+}
+
+// execOutput is where the command's output goes. In JSON mode it is emitted as
+// `raw` log events on the log stream (not written to stdout), matching the TS
+// CLI so the JSON consumer (e.g. the VS Code extension) gets a clean event
+// stream and an empty stdout; both streams become raw events. Otherwise it
+// passes through: docker exec -it inherits the terminal when the CLI runs in one.
+func execOutput(logFormat string, logger log.Logger) (stdout, stderr io.Writer) {
+	if logFormat == "json" {
+		rw := &rawLogWriter{logger: logger}
+		return rw, rw
+	}
+	return os.Stdout, os.Stderr
+}
+
+// execRunError is exec's result for how `docker exec` ended: its exit code (a
+// signal as 128+N), or 1 when it could not run.
+func execRunError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return &coreerrors.ExitCodeError{Code: execExitCode(exitErr), Err: err}
+	}
+	return &coreerrors.ExitCodeError{Code: 1, Err: err}
 }
 
 // execExitCode derives the process exit code for the 128+N contract.
