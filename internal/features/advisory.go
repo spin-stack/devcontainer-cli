@@ -1,6 +1,7 @@
 package features
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -241,31 +242,43 @@ func sanitizeManifest(data []byte) *ControlManifest {
 		return nil
 	}
 
+	// TS sanitizeControlManifest keeps each entry whose fields are strings,
+	// empty or not, whatever its siblings or its other fields are.
 	m := emptyManifest()
-
-	if d, ok := raw["disallowedFeatures"]; ok {
-		var features []DisallowedFeature
-		if json.Unmarshal(d, &features) == nil {
-			for _, f := range features {
-				if f.FeatureIDPrefix != "" {
-					m.DisallowedFeatures = append(m.DisallowedFeatures, f)
-				}
-			}
-		}
+	for _, elem := range manifestEntries(raw["disallowedFeatures"], "featureIdPrefix") {
+		var f DisallowedFeature
+		_ = json.Unmarshal(elem, &f) // a mistyped documentationURL is left empty
+		m.DisallowedFeatures = append(m.DisallowedFeatures, f)
 	}
-
-	if a, ok := raw["featureAdvisories"]; ok {
-		var advisories []Advisory
-		if json.Unmarshal(a, &advisories) == nil {
-			for _, adv := range advisories {
-				if adv.FeatureID != "" && adv.IntroducedInVersion != "" && adv.FixedInVersion != "" && adv.Description != "" {
-					m.FeatureAdvisories = append(m.FeatureAdvisories, adv)
-				}
-			}
-		}
+	for _, elem := range manifestEntries(raw["featureAdvisories"], "featureId", "introducedInVersion", "fixedInVersion", "description") {
+		var adv Advisory
+		_ = json.Unmarshal(elem, &adv) // a mistyped documentationURL is left empty
+		m.FeatureAdvisories = append(m.FeatureAdvisories, adv)
 	}
-
 	return m
+}
+
+// manifestEntries returns the objects of the JSON array list in which every
+// one of fields is a string, TS `typeof f[field] === 'string'`; none when
+// list is not an array.
+func manifestEntries(list json.RawMessage, fields ...string) []json.RawMessage {
+	var elems []json.RawMessage
+	_ = json.Unmarshal(list, &elems) // not an array: no entries, as TS Array.isArray
+	var kept []json.RawMessage
+	for _, elem := range elems {
+		var obj map[string]json.RawMessage
+		_ = json.Unmarshal(elem, &obj) // not an object: no fields
+		if !slices.ContainsFunc(fields, func(field string) bool { return !isJSONString(obj[field]) }) {
+			kept = append(kept, elem)
+		}
+	}
+	return kept
+}
+
+// isJSONString reports whether value, an object field as encoding/json
+// decodes it (without the whitespace around it), is a JSON string.
+func isJSONString(value json.RawMessage) bool {
+	return bytes.HasPrefix(value, []byte(`"`))
 }
 
 func emptyManifest() *ControlManifest {
