@@ -137,9 +137,10 @@ func TestComputeDevContainerIDIsPaddedTo52Digits(t *testing.T) {
 	}
 }
 
-// Only a letter followed by a colon is a drive (node path.win32.basename).
+// Only a letter followed by a colon is a drive (node path.win32.basename):
+// '{' lowercases past 'z', so `{:foo` keeps its colon.
 func TestWinBasenameDrive(t *testing.T) {
-	for in, want := range map[string]string{`C:foo`: "foo", `c:\a\b\`: "b", `1:foo`: "1:foo", `C:`: ""} {
+	for in, want := range map[string]string{`C:foo`: "foo", `c:\a\b\`: "b", `1:foo`: "1:foo", `C:`: "", `{:foo`: "{:foo", "@:foo": "@:foo"} {
 		if got := winBasename(in); got != want {
 			t.Errorf("winBasename(%q) = %q, want %q", in, got, want)
 		}

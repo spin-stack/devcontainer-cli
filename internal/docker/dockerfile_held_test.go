@@ -50,3 +50,12 @@ func TestStageLabelsReadsTheNamedStage(t *testing.T) {
 		t.Errorf("StageLabels(\"\")[k] = %q, want final", got)
 	}
 }
+
+// BuildKit joins a FROM continued onto the next line before the FROM-line
+// expression reads its label, so the stage keeps its name.
+func TestExtractDockerfileLabelsAContinuedFrom(t *testing.T) {
+	df := ExtractDockerfile("FROM alpine \\\n    AS base\nRUN true\n")
+	if len(df.Stages) != 1 || df.Stages[0].From.Label != "base" || df.StagesByLabel["base"] == nil {
+		t.Errorf("stages = %+v, want one labelled base", df.Stages)
+	}
+}
