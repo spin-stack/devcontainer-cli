@@ -27,7 +27,7 @@ type credential struct {
 func getCredential(env map[string]string, registry string, logger log.Logger) *credential {
 	// 1. DEVCONTAINERS_OCI_AUTH env var
 	if ociAuth := env["DEVCONTAINERS_OCI_AUTH"]; ociAuth != "" {
-		for _, entry := range strings.Split(ociAuth, ",") {
+		for entry := range strings.SplitSeq(ociAuth, ",") {
 			parts := strings.SplitN(entry, "|", 3)
 			if len(parts) == 3 && parts[0] == registry {
 				logger.Write(fmt.Sprintf("[httpOci] Using match from DEVCONTAINERS_OCI_AUTH for registry %q", registry), log.LevelTrace)

@@ -297,7 +297,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 		}))
 	}
 
-	return writeSuccessJSON(out, map[string]interface{}{
+	return writeSuccessJSON(out, map[string]any{
 		"outcome": "success",
 		"result":  "done",
 	})

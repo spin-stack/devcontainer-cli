@@ -207,7 +207,7 @@ func TestStringOrStrings_Array(t *testing.T) {
 func TestUpdateFromOldProperties(t *testing.T) {
 	c := &DevContainer{
 		Extensions: []string{"ms-python.python"},
-		DevPort:    intPtr(3000),
+		DevPort:    new(3000),
 	}
 	UpdateFromOldProperties(c)
 
@@ -218,11 +218,11 @@ func TestUpdateFromOldProperties(t *testing.T) {
 		t.Error("devPort should be cleared")
 	}
 
-	vscode, ok := c.Customizations["vscode"].(map[string]interface{})
+	vscode, ok := c.Customizations["vscode"].(map[string]any)
 	if !ok {
 		t.Fatal("expected vscode customizations")
 	}
-	exts, ok := vscode["extensions"].([]interface{})
+	exts, ok := vscode["extensions"].([]any)
 	if !ok || len(exts) != 1 || exts[0] != "ms-python.python" {
 		t.Errorf("extensions = %v", vscode["extensions"])
 	}
@@ -269,7 +269,8 @@ func TestParseFixture_WithJSONC(t *testing.T) {
 	}
 }
 
-func intPtr(i int) *int { return &i }
+//go:fix inline
+func intPtr(i int) *int { return new(i) }
 
 // TestPortAttrsSpecFields locks all five spec-defined portsAttributes properties
 // (label, protocol, onAutoForward, requireLocalPort, elevateIfNeeded) through a

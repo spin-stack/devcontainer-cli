@@ -115,7 +115,7 @@ func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvPr
 func mergePaths(shellPath, containerPath string, rootUser bool) string {
 	result := strings.Split(shellPath, ":")
 	insertAt := 0
-	for _, entry := range strings.Split(containerPath, ":") {
+	for entry := range strings.SplitSeq(containerPath, ":") {
 		idx := -1
 		for i, e := range result {
 			if e == entry {

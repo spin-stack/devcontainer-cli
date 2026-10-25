@@ -313,7 +313,7 @@ func runScenarioTests(logger log.Logger, collectionFolder, featureTestDir, featu
 		}
 
 		// Parse scenario config and update feature paths
-		var config map[string]interface{}
+		var config map[string]any
 		if err := json.Unmarshal(scenarioConfig, &config); err != nil {
 			results = append(results, testResult{Name: scenarioName, Status: testError, Detail: err.Error()})
 			os.RemoveAll(tmpDir)
@@ -321,8 +321,8 @@ func runScenarioTests(logger log.Logger, collectionFolder, featureTestDir, featu
 		}
 
 		// Copy feature sources for any local features
-		if feats, ok := config["features"].(map[string]interface{}); ok {
-			updated := make(map[string]interface{})
+		if feats, ok := config["features"].(map[string]any); ok {
+			updated := make(map[string]any)
 			for fid, fval := range feats {
 				if !strings.Contains(fid, "/") {
 					// Local feature reference
@@ -421,7 +421,7 @@ func upTestContainer(workspaceFolder string, quiet bool, globalArgs []string) (s
 		return "", fmt.Errorf("devcontainer up failed: %w", err)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(out, &result); err != nil {
 		return "", fmt.Errorf("parse up output: %w", err)
 	}

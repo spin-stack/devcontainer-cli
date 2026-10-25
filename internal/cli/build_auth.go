@@ -77,9 +77,9 @@ func registryCacheRef(spec string) string {
 	if spec == "" || !strings.Contains(spec, "=") {
 		return spec
 	}
-	for _, part := range strings.Split(spec, ",") {
-		if strings.HasPrefix(part, "ref=") {
-			return strings.TrimPrefix(part, "ref=")
+	for part := range strings.SplitSeq(spec, ",") {
+		if after, ok := strings.CutPrefix(part, "ref="); ok {
+			return after
 		}
 	}
 	return ""
@@ -90,8 +90,8 @@ func environMap() map[string]string {
 	env := os.Environ()
 	m := make(map[string]string, len(env))
 	for _, kv := range env {
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			m[kv[:i]] = kv[i+1:]
+		if before, after, ok := strings.Cut(kv, "="); ok {
+			m[before] = after
 		}
 	}
 	return m

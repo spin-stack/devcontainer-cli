@@ -14,7 +14,7 @@ type stubFeature struct {
 	id            string // canonical feature id (currentId)
 	digest        string
 	legacyIds     []string
-	dependsOn     map[string]interface{}
+	dependsOn     map[string]any
 	installsAfter []string
 }
 
@@ -74,7 +74,7 @@ func splitResource(resource string) (registry, namespace, id string) {
 func userFeats(ids ...string) []DevContainerFeature {
 	out := make([]DevContainerFeature, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, DevContainerFeature{UserFeatureID: id, Options: map[string]interface{}{}})
+		out = append(out, DevContainerFeature{UserFeatureID: id, Options: map[string]any{}})
 	}
 	return out
 }
@@ -90,8 +90,8 @@ func orderIDs(t *testing.T, graph []*FNode, override []string) []string {
 
 func TestBuildDependencyGraph_TransitiveDependsOn(t *testing.T) {
 	registry := map[string]stubFeature{
-		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]interface{}{"ghcr.io/ns/b:1": map[string]interface{}{}}},
-		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", dependsOn: map[string]interface{}{"ghcr.io/ns/c:1": map[string]interface{}{}}},
+		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]any{"ghcr.io/ns/b:1": map[string]any{}}},
+		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", dependsOn: map[string]any{"ghcr.io/ns/c:1": map[string]any{}}},
 		"ghcr.io/ns/c": {id: "c", digest: "sha256:c"},
 	}
 	graph, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), userFeats("ghcr.io/ns/a:1"), nil, nil)
@@ -109,12 +109,12 @@ func TestBuildDependencyGraph_TransitiveDependsOn(t *testing.T) {
 
 func TestBuildDependencyGraph_DiamondDedup(t *testing.T) {
 	registry := map[string]stubFeature{
-		"ghcr.io/ns/d": {id: "d", digest: "sha256:d", dependsOn: map[string]interface{}{
-			"ghcr.io/ns/b:1": map[string]interface{}{},
-			"ghcr.io/ns/c:1": map[string]interface{}{},
+		"ghcr.io/ns/d": {id: "d", digest: "sha256:d", dependsOn: map[string]any{
+			"ghcr.io/ns/b:1": map[string]any{},
+			"ghcr.io/ns/c:1": map[string]any{},
 		}},
-		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", dependsOn: map[string]interface{}{"ghcr.io/ns/a:1": map[string]interface{}{}}},
-		"ghcr.io/ns/c": {id: "c", digest: "sha256:c", dependsOn: map[string]interface{}{"ghcr.io/ns/a:1": map[string]interface{}{}}},
+		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", dependsOn: map[string]any{"ghcr.io/ns/a:1": map[string]any{}}},
+		"ghcr.io/ns/c": {id: "c", digest: "sha256:c", dependsOn: map[string]any{"ghcr.io/ns/a:1": map[string]any{}}},
 		"ghcr.io/ns/a": {id: "a", digest: "sha256:a"},
 	}
 	graph, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), userFeats("ghcr.io/ns/d:1"), nil, nil)
@@ -136,8 +136,8 @@ func TestBuildDependencyGraph_DedupByOptions(t *testing.T) {
 		"ghcr.io/ns/a": {id: "a", digest: "sha256:a"},
 	}
 	uf := []DevContainerFeature{
-		{UserFeatureID: "ghcr.io/ns/a:1", Options: map[string]interface{}{"x": "1"}},
-		{UserFeatureID: "ghcr.io/ns/a:1", Options: map[string]interface{}{"x": "2"}},
+		{UserFeatureID: "ghcr.io/ns/a:1", Options: map[string]any{"x": "1"}},
+		{UserFeatureID: "ghcr.io/ns/a:1", Options: map[string]any{"x": "2"}},
 	}
 	graph, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), uf, nil, nil)
 	if err != nil {
@@ -201,8 +201,8 @@ func TestBuildDependencyGraph_SoftDepAliasMatch(t *testing.T) {
 
 func TestBuildDependencyGraph_Cycle(t *testing.T) {
 	registry := map[string]stubFeature{
-		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]interface{}{"ghcr.io/ns/b:1": map[string]interface{}{}}},
-		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", dependsOn: map[string]interface{}{"ghcr.io/ns/a:1": map[string]interface{}{}}},
+		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]any{"ghcr.io/ns/b:1": map[string]any{}}},
+		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", dependsOn: map[string]any{"ghcr.io/ns/a:1": map[string]any{}}},
 	}
 	graph, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), userFeats("ghcr.io/ns/a:1"), nil, nil)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestBuildDependencyGraph_Cycle(t *testing.T) {
 
 func TestBuildDependencyGraph_UnprocessableAborts(t *testing.T) {
 	registry := map[string]stubFeature{
-		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]interface{}{"ghcr.io/ns/missing:1": map[string]interface{}{}}},
+		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]any{"ghcr.io/ns/missing:1": map[string]any{}}},
 	}
 	_, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), userFeats("ghcr.io/ns/a:1"), nil, nil)
 	if err == nil {
@@ -270,7 +270,7 @@ func TestBuildDependencyGraph_OverrideInvalidAborts(t *testing.T) {
 
 func TestGenerateMermaidDiagram(t *testing.T) {
 	registry := map[string]stubFeature{
-		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]interface{}{"ghcr.io/ns/b:1": map[string]interface{}{}}},
+		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", dependsOn: map[string]any{"ghcr.io/ns/b:1": map[string]any{}}},
 		"ghcr.io/ns/b": {id: "b", digest: "sha256:b"},
 	}
 	graph, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), userFeats("ghcr.io/ns/a:1"), nil, nil)

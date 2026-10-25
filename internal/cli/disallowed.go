@@ -50,8 +50,7 @@ func enforceDisallowedFeatures(ctx context.Context, cfg *config.DevContainer, lo
 	if err == nil {
 		return nil
 	}
-	var dfe *features.DisallowedFeatureError
-	if errors.As(err, &dfe) {
+	if dfe, ok := errors.AsType[*features.DisallowedFeatureError](err); ok {
 		desc := fmt.Sprintf("Cannot use the '%s' Feature since it was reported to be problematic. Please remove this Feature from your configuration and rebuild any dev container using it before continuing.", dfe.FeatureID)
 		if dfe.DocumentationURL != "" {
 			desc += fmt.Sprintf(" See %s to learn more.", dfe.DocumentationURL)

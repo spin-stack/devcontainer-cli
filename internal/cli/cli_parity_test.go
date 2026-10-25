@@ -28,7 +28,7 @@ func TestBuildCommand_HelpOutput(t *testing.T) {
 
 // readConfigurationResult runs `read-configuration` against a fixture and returns
 // the parsed JSON output (skipping when the fixture is absent).
-func readConfigurationResult(t *testing.T, fixtureName string) map[string]interface{} {
+func readConfigurationResult(t *testing.T, fixtureName string) map[string]any {
 	t.Helper()
 	fixtureDir := filepath.Join("..", "..", "src", "test", "configs", fixtureName)
 	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
@@ -49,7 +49,7 @@ func readConfigurationResult(t *testing.T, fixtureName string) map[string]interf
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &result); err != nil {
 		t.Fatalf("invalid JSON for %s: %v", fixtureName, err)
 	}
@@ -59,19 +59,19 @@ func readConfigurationResult(t *testing.T, fixtureName string) map[string]interf
 func TestReadConfiguration(t *testing.T) {
 	// A compose config must expose its service; a Dockerfile config must expose
 	// dockerFile or build (and a build target when the fixture has one).
-	composeService := func(service string) func(*testing.T, map[string]interface{}) {
-		return func(t *testing.T, result map[string]interface{}) {
-			cfg, _ := result["configuration"].(map[string]interface{})
+	composeService := func(service string) func(*testing.T, map[string]any) {
+		return func(t *testing.T, result map[string]any) {
+			cfg, _ := result["configuration"].(map[string]any)
 			if cfg["service"] != service {
 				t.Errorf("service = %v, want %q", cfg["service"], service)
 			}
 		}
 	}
-	dockerfile := func(hasTarget bool) func(*testing.T, map[string]interface{}) {
-		return func(t *testing.T, result map[string]interface{}) {
-			cfg, _ := result["configuration"].(map[string]interface{})
+	dockerfile := func(hasTarget bool) func(*testing.T, map[string]any) {
+		return func(t *testing.T, result map[string]any) {
+			cfg, _ := result["configuration"].(map[string]any)
 			_, hasDockerFile := cfg["dockerFile"]
-			build, hasBuild := cfg["build"].(map[string]interface{})
+			build, hasBuild := cfg["build"].(map[string]any)
 			if !hasDockerFile && !hasBuild {
 				t.Error("expected dockerFile or build property")
 			}
@@ -86,18 +86,18 @@ func TestReadConfiguration(t *testing.T) {
 	tests := []struct {
 		name    string
 		fixture string
-		check   func(t *testing.T, result map[string]interface{})
+		check   func(t *testing.T, result map[string]any)
 	}{
-		{"with features", "image-with-features", func(t *testing.T, result map[string]interface{}) {
-			cfg, _ := result["configuration"].(map[string]interface{})
-			features, _ := cfg["features"].(map[string]interface{})
+		{"with features", "image-with-features", func(t *testing.T, result map[string]any) {
+			cfg, _ := result["configuration"].(map[string]any)
+			features, _ := cfg["features"].(map[string]any)
 			if len(features) == 0 {
 				t.Error("expected features in configuration")
 			}
 		}},
-		{"variable substitution", "image", func(t *testing.T, result map[string]interface{}) {
-			cfg, _ := result["configuration"].(map[string]interface{})
-			remoteEnv, _ := cfg["remoteEnv"].(map[string]interface{})
+		{"variable substitution", "image", func(t *testing.T, result map[string]any) {
+			cfg, _ := result["configuration"].(map[string]any)
+			remoteEnv, _ := cfg["remoteEnv"].(map[string]any)
 			localPath, ok := remoteEnv["LOCAL_PATH"]
 			if !ok {
 				t.Skip("LOCAL_PATH not in remoteEnv")

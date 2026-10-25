@@ -66,10 +66,10 @@ func TestOracle_DeduplicateMounts(t *testing.T) {
 	if s, ok := merged.Mounts[0].(string); !ok || s != "source=source2,target=target2,type=volume" {
 		t.Errorf("mounts[0] = %v, want the source2 string mount", merged.Mounts[0])
 	}
-	if m, ok := merged.Mounts[1].(map[string]interface{}); !ok || m["source"] != "source4" {
+	if m, ok := merged.Mounts[1].(map[string]any); !ok || m["source"] != "source4" {
 		t.Errorf("mounts[1] = %v, want the source4 object", merged.Mounts[1])
 	}
-	if m, ok := merged.Mounts[2].(map[string]interface{}); !ok || m["source"] != "source5" {
+	if m, ok := merged.Mounts[2].(map[string]any); !ok || m["source"] != "source5" {
 		t.Errorf("mounts[2] = %v, want the source5 object", merged.Mounts[2])
 	}
 }
@@ -84,11 +84,11 @@ func TestOracle_MergeGPURequirements(t *testing.T) {
 		{ "hostRequirements": { "gpu": { "memory": "8gb" } } }
 	]`))
 
-	hr, ok := merged.HostRequirements.(map[string]interface{})
+	hr, ok := merged.HostRequirements.(map[string]any)
 	if !ok {
 		t.Fatalf("hostRequirements = %v (%T), want a map", merged.HostRequirements, merged.HostRequirements)
 	}
-	gpu, ok := hr["gpu"].(map[string]interface{})
+	gpu, ok := hr["gpu"].(map[string]any)
 	if !ok {
 		t.Fatalf("gpu = %v (%T), want a map", hr["gpu"], hr["gpu"])
 	}

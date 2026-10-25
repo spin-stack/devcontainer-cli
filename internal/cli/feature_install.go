@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,7 +80,7 @@ type fetchFeatureResult struct {
 
 // fetchFeatureSets fetches features and returns them in install order. reg is the
 // registry seam; pass nil for the default OCI client.
-func fetchFeatureSets(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
+func fetchFeatureSets(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
 	return fetchFeatureSetsWithOrder(ctx, logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
 }
 
@@ -89,7 +90,7 @@ func fetchFeatureSets(ctx context.Context, logger log.Logger, reg oci.Registry, 
 // order. Each returned Set's content is staged under the returned TmpDir
 // at _dev_container_feature_<installOrderIndex>, matching the generated
 // Dockerfile's COPY paths.
-func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]interface{}, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
@@ -158,7 +159,7 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.R
 // and staging fields the caller controls. OCI features build their Feature
 // separately (they omit lifecycle commands here and merge annotation metadata
 // afterwards), so this helper covers only the two identical local/tarball paths.
-func featureFromMetadata(m features.Feature, id string, opts interface{}, cachePath string) features.Feature {
+func featureFromMetadata(m features.Feature, id string, opts any, cachePath string) features.Feature {
 	return features.Feature{
 		ID:                   id,
 		Version:              m.Version,
@@ -496,7 +497,7 @@ func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) e
 				if err != nil {
 					return fmt.Errorf("resolve Feature %s mounts: %w", f.ID, err)
 				}
-				if m, ok := resolved.([]interface{}); ok {
+				if m, ok := resolved.([]any); ok {
 					f.Mounts = m
 				}
 			}
@@ -511,7 +512,7 @@ func extendImageWithFeatures(
 	dockerClient *docker.Client,
 	engine *docker.EngineClient,
 	baseImage string,
-	featuresCfg map[string]interface{},
+	featuresCfg map[string]any,
 	useBuildx bool,
 	imageNames []string,
 	fbOpts *FeatureBuildOptions,
@@ -825,8 +826,8 @@ func extractTarGz(archivePath, destDir string) error {
 }
 
 // extractUserOptions pulls out the user-provided options from the feature value.
-func extractUserOptions(v interface{}) map[string]interface{} {
-	if m, ok := v.(map[string]interface{}); ok {
+func extractUserOptions(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
 		return m
 	}
 	return nil
@@ -912,12 +913,10 @@ func isPlainHTTPURL(u string) bool {
 
 // addFeatureOption returns the feature options with key=true added, preserving
 // any existing options. Used to fold gradle/maven/jupyterlab into java/python.
-func addFeatureOption(opts interface{}, key string) map[string]interface{} {
-	m := map[string]interface{}{}
-	if existing, ok := opts.(map[string]interface{}); ok {
-		for k, v := range existing {
-			m[k] = v
-		}
+func addFeatureOption(opts any, key string) map[string]any {
+	m := map[string]any{}
+	if existing, ok := opts.(map[string]any); ok {
+		maps.Copy(m, existing)
 	}
 	m[key] = true
 	return m

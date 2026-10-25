@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -122,9 +123,9 @@ func highestSatisfyingTag(versions []*semver.Version, tag string) string {
 	if err != nil {
 		return ""
 	}
-	for i := len(versions) - 1; i >= 0; i-- {
-		if constraint.Check(versions[i]) {
-			return versions[i].Original()
+	for _, version := range slices.Backward(versions) {
+		if constraint.Check(version) {
+			return version.Original()
 		}
 	}
 	return ""
@@ -236,7 +237,7 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	}
 
 	if opts.outputFormat == "json" {
-		payload := map[string]interface{}{"features": result}
+		payload := map[string]any{"features": result}
 		data, _ := json.MarshalIndent(payload, "", "  ")
 		fmt.Fprintln(out.Stdout(), string(data))
 	} else {
@@ -276,7 +277,7 @@ func dashIfEmpty(s string) string {
 // devcontainer.json (Go maps are unordered, so the raw file is re-read). Any key
 // present in features but not recovered from the file is appended sorted, so the
 // caller never silently drops a feature.
-func orderedFeatureKeys(configFilePath string, features map[string]interface{}) []string {
+func orderedFeatureKeys(configFilePath string, features map[string]any) []string {
 	ordered, _ := featureKeyOrderFromFile(configFilePath)
 
 	seen := make(map[string]bool, len(ordered))

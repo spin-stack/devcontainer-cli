@@ -486,10 +486,7 @@ func TestParsePlatform(t *testing.T) {
 // client methods. WithAPIVersion pins the version so no /_ping negotiation runs.
 func newMockEngine(t *testing.T, doer func(*http.Request) (*http.Response, error)) *EngineClient {
 	t.Helper()
-	cli, err := mobyclient.NewClientWithOpts(
-		mobyclient.WithHTTPClient(&http.Client{Transport: roundTripFunc(doer)}),
-		mobyclient.WithAPIVersion("1.51"),
-	)
+	cli, err := mobyclient.New(mobyclient.WithHTTPClient(&http.Client{Transport: roundTripFunc(doer)}), mobyclient.WithAPIVersion("1.51"))
 	if err != nil {
 		t.Fatalf("mock client: %v", err)
 	}

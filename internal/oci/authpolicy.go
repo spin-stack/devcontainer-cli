@@ -349,7 +349,7 @@ func bearerRealm(challenge string) string {
 	if !found || !strings.EqualFold(scheme, "Bearer") {
 		return ""
 	}
-	for _, part := range strings.Split(params, ",") {
+	for part := range strings.SplitSeq(params, ",") {
 		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
 		if !ok || !strings.EqualFold(strings.TrimSpace(key), "realm") {
 			continue

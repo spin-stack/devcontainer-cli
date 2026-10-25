@@ -2,6 +2,8 @@ package imagemeta
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -9,37 +11,37 @@ import (
 // MergedConfig holds the result of merging devcontainer.json config with
 // image metadata entries. Lifecycle hooks are accumulated as arrays.
 type MergedConfig struct {
-	ConfigFilePath interface{} `json:"configFilePath,omitempty"`
+	ConfigFilePath any `json:"configFilePath,omitempty"`
 	// Image is part of the mergedConfiguration output (spread from the config in
 	// TS), but NOT part of the devcontainer.metadata label entry — it is set by the
 	// caller from the config, not derived from metadata entries.
-	Image                 string                   `json:"image,omitempty"`
-	RemoteUser            string                   `json:"remoteUser,omitempty"`
-	ContainerUser         string                   `json:"containerUser,omitempty"`
-	UserEnvProbe          string                   `json:"userEnvProbe,omitempty"`
-	OverrideCommand       *bool                    `json:"overrideCommand,omitempty"`
-	Init                  *bool                    `json:"init"`
-	Privileged            *bool                    `json:"privileged"`
-	WaitFor               string                   `json:"waitFor,omitempty"`
-	ShutdownAction        string                   `json:"shutdownAction,omitempty"`
-	HostRequirements      interface{}              `json:"hostRequirements,omitempty"`
-	UpdateRemoteUserUID   *bool                    `json:"updateRemoteUserUID,omitempty"`
-	CapAdd                []string                 `json:"capAdd,omitempty"`
-	SecurityOpt           []string                 `json:"securityOpt,omitempty"`
-	PortsAttributes       map[string]interface{}   `json:"portsAttributes"`
-	OtherPortsAttributes  interface{}              `json:"otherPortsAttributes,omitempty"`
-	ForwardPorts          []interface{}            `json:"forwardPorts,omitempty"`
-	RunArgs               []string                 `json:"runArgs,omitempty"`
-	ContainerEnv          map[string]string        `json:"containerEnv"`
-	RemoteEnv             map[string]*string       `json:"remoteEnv"`
-	Customizations        map[string][]interface{} `json:"customizations,omitempty"`
-	Mounts                []interface{}            `json:"mounts,omitempty"`
-	Entrypoints           []string                 `json:"entrypoints,omitempty"`
-	OnCreateCommands      []interface{}            `json:"onCreateCommands"`
-	UpdateContentCommands []interface{}            `json:"updateContentCommands"`
-	PostCreateCommands    []interface{}            `json:"postCreateCommands"`
-	PostStartCommands     []interface{}            `json:"postStartCommands"`
-	PostAttachCommands    []interface{}            `json:"postAttachCommands"`
+	Image                 string             `json:"image,omitempty"`
+	RemoteUser            string             `json:"remoteUser,omitempty"`
+	ContainerUser         string             `json:"containerUser,omitempty"`
+	UserEnvProbe          string             `json:"userEnvProbe,omitempty"`
+	OverrideCommand       *bool              `json:"overrideCommand,omitempty"`
+	Init                  *bool              `json:"init"`
+	Privileged            *bool              `json:"privileged"`
+	WaitFor               string             `json:"waitFor,omitempty"`
+	ShutdownAction        string             `json:"shutdownAction,omitempty"`
+	HostRequirements      any                `json:"hostRequirements,omitempty"`
+	UpdateRemoteUserUID   *bool              `json:"updateRemoteUserUID,omitempty"`
+	CapAdd                []string           `json:"capAdd,omitempty"`
+	SecurityOpt           []string           `json:"securityOpt,omitempty"`
+	PortsAttributes       map[string]any     `json:"portsAttributes"`
+	OtherPortsAttributes  any                `json:"otherPortsAttributes,omitempty"`
+	ForwardPorts          []any              `json:"forwardPorts,omitempty"`
+	RunArgs               []string           `json:"runArgs,omitempty"`
+	ContainerEnv          map[string]string  `json:"containerEnv"`
+	RemoteEnv             map[string]*string `json:"remoteEnv"`
+	Customizations        map[string][]any   `json:"customizations,omitempty"`
+	Mounts                []any              `json:"mounts,omitempty"`
+	Entrypoints           []string           `json:"entrypoints,omitempty"`
+	OnCreateCommands      []any              `json:"onCreateCommands"`
+	UpdateContentCommands []any              `json:"updateContentCommands"`
+	PostCreateCommands    []any              `json:"postCreateCommands"`
+	PostStartCommands     []any              `json:"postStartCommands"`
+	PostAttachCommands    []any              `json:"postAttachCommands"`
 }
 
 // MergeConfiguration merges image metadata entries with the devcontainer config.
@@ -49,13 +51,13 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 	m := &MergedConfig{
 		ContainerEnv:          make(map[string]string),
 		RemoteEnv:             make(map[string]*string),
-		PortsAttributes:       make(map[string]interface{}),
-		Customizations:        make(map[string][]interface{}),
-		OnCreateCommands:      []interface{}{},
-		UpdateContentCommands: []interface{}{},
-		PostCreateCommands:    []interface{}{},
-		PostStartCommands:     []interface{}{},
-		PostAttachCommands:    []interface{}{},
+		PortsAttributes:       make(map[string]any),
+		Customizations:        make(map[string][]any),
+		OnCreateCommands:      []any{},
+		UpdateContentCommands: []any{},
+		PostCreateCommands:    []any{},
+		PostStartCommands:     []any{},
+		PostAttachCommands:    []any{},
 	}
 
 	// Process entries in order. For lifecycle hooks, iterate all.
@@ -94,12 +96,8 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		m.Mounts = append(m.Mounts, e.Mounts...)
 
 		// Maps — merge (later wins)
-		for k, v := range e.ContainerEnv {
-			m.ContainerEnv[k] = v
-		}
-		for k, v := range e.RemoteEnv {
-			m.RemoteEnv[k] = v
-		}
+		maps.Copy(m.ContainerEnv, e.ContainerEnv)
+		maps.Copy(m.RemoteEnv, e.RemoteEnv)
 		// customizations are grouped by key into arrays (one entry per metadata
 		// entry that sets that key), matching TS. This preserves every feature's
 		// extensions/settings instead of last-wins-clobbering them.
@@ -107,9 +105,7 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 			m.Customizations[k] = append(m.Customizations[k], v)
 		}
 		// portsAttributes — later entries override matching keys (Object.assign).
-		for k, v := range e.PortsAttributes {
-			m.PortsAttributes[k] = v
-		}
+		maps.Copy(m.PortsAttributes, e.PortsAttributes)
 	}
 
 	// init/privileged are OR across all entries (true if any entry requests it),
@@ -128,8 +124,8 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 	m.Privileged = &privilegedVal
 
 	// Scalars — last non-empty wins (iterate in reverse)
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := entries[i]
+	for _, e := range slices.Backward(entries) {
+
 		if m.RemoteUser == "" && e.RemoteUser != "" {
 			m.RemoteUser = e.RemoteUser
 		}
@@ -174,20 +170,20 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 
 // isNonEmptyCommand reports whether a lifecycle command is "truthy" the way TS
 // treats it: a nil or empty-string command is skipped; arrays/objects are kept.
-func isNonEmptyCommand(cmd interface{}) bool {
+func isNonEmptyCommand(cmd any) bool {
 	return cmd != nil && cmd != ""
 }
 
 // mountTarget returns the container-side target of a mount (object or string
 // spec), used as the de-dup key. A string with no target= key is its own key so
 // distinct strings never collide.
-func mountTarget(mnt interface{}) string {
+func mountTarget(mnt any) string {
 	switch v := mnt.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		t, _ := v["target"].(string)
 		return t
 	case string:
-		for _, part := range strings.Split(v, ",") {
+		for part := range strings.SplitSeq(v, ",") {
 			k, val, ok := strings.Cut(part, "=")
 			if !ok {
 				continue
@@ -202,7 +198,7 @@ func mountTarget(mnt interface{}) string {
 	return ""
 }
 
-func dedupeMountsByTarget(mounts []interface{}) []interface{} {
+func dedupeMountsByTarget(mounts []any) []any {
 	if len(mounts) == 0 {
 		return mounts
 	}
@@ -210,7 +206,7 @@ func dedupeMountsByTarget(mounts []interface{}) []interface{} {
 	for i, mnt := range mounts {
 		lastIdx[mountTarget(mnt)] = i
 	}
-	out := make([]interface{}, 0, len(mounts))
+	out := make([]any, 0, len(mounts))
 	for i, mnt := range mounts {
 		if lastIdx[mountTarget(mnt)] == i {
 			out = append(out, mnt)
@@ -221,7 +217,7 @@ func dedupeMountsByTarget(mounts []interface{}) []interface{} {
 
 // forwardPortNumber returns (N, true) for a numeric port (number or numeric
 // string is NOT treated as a number by TS — only actual JSON numbers are).
-func forwardPortNumber(p interface{}) (int, bool) {
+func forwardPortNumber(p any) (int, bool) {
 	switch v := p.(type) {
 	case float64:
 		return int(v), true
@@ -233,7 +229,7 @@ func forwardPortNumber(p interface{}) (int, bool) {
 	return 0, false
 }
 
-func dedupeForwardPorts(ports []interface{}) []interface{} {
+func dedupeForwardPorts(ports []any) []any {
 	if len(ports) == 0 {
 		return ports
 	}
@@ -253,7 +249,7 @@ func dedupeForwardPorts(ports []interface{}) []interface{} {
 	}
 	// Denormalize: a "localhost:N" key becomes the number N; anything else stays a
 	// string — matching TS's final .map(port => /localhost:\d+/.test ? parseInt : port).
-	out := make([]interface{}, 0, len(keys))
+	out := make([]any, 0, len(keys))
 	for _, k := range keys {
 		if n, ok := localhostPort(k); ok {
 			out = append(out, float64(n))
@@ -312,7 +308,7 @@ func parseBytes(s string) int64 {
 	return n * unit
 }
 
-func hrFloat(v interface{}) float64 {
+func hrFloat(v any) float64 {
 	switch n := v.(type) {
 	case float64:
 		return n
@@ -324,7 +320,7 @@ func hrFloat(v interface{}) float64 {
 	return 0
 }
 
-func hrString(v interface{}) string {
+func hrString(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
@@ -334,12 +330,12 @@ func hrString(v interface{}) string {
 // mergeHostRequirements takes the per-field max of cpus/memory/storage and merges
 // gpu across all entries, matching TS mergeHostRequirements. Returns nil when no
 // entry sets any requirement.
-func mergeHostRequirements(entries []Entry) interface{} {
+func mergeHostRequirements(entries []Entry) any {
 	var cpus float64
 	var memory, storage int64
-	var gpu interface{}
+	var gpu any
 	for _, e := range entries {
-		hr, ok := e.HostRequirements.(map[string]interface{})
+		hr, ok := e.HostRequirements.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -357,7 +353,7 @@ func mergeHostRequirements(entries []Entry) interface{} {
 	if cpus == 0 && memory == 0 && storage == 0 && gpu == nil {
 		return nil
 	}
-	res := map[string]interface{}{"cpus": cpus}
+	res := map[string]any{"cpus": cpus}
 	if memory != 0 {
 		res["memory"] = strconv.FormatInt(memory, 10)
 	}
@@ -373,7 +369,7 @@ func mergeHostRequirements(entries []Entry) interface{} {
 // mergeGPURequirements ports TS mergeGpuRequirements: undefined/false yields the
 // other; two "optional" stay "optional"; otherwise take the per-field max of the
 // object forms (a non-object contributes {}).
-func mergeGPURequirements(a, b interface{}) interface{} {
+func mergeGPURequirements(a, b any) any {
 	if a == nil || a == false {
 		return b
 	}
@@ -383,8 +379,8 @@ func mergeGPURequirements(a, b interface{}) interface{} {
 	if a == "optional" && b == "optional" {
 		return "optional"
 	}
-	ao, _ := a.(map[string]interface{})
-	bo, _ := b.(map[string]interface{})
+	ao, _ := a.(map[string]any)
+	bo, _ := b.(map[string]any)
 	cores := hrFloat(ao["cores"])
 	if c := hrFloat(bo["cores"]); c > cores {
 		cores = c
@@ -393,7 +389,7 @@ func mergeGPURequirements(a, b interface{}) interface{} {
 	if m := parseBytes(hrString(bo["memory"])); m > mem {
 		mem = m
 	}
-	res := map[string]interface{}{}
+	res := map[string]any{}
 	if cores != 0 {
 		res["cores"] = cores
 	}

@@ -149,8 +149,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			// 0.88: read-configuration exits 1 silently (banner only) when no
 			// config is found — it does not print an error envelope. Parse/other
 			// errors still surface normally.
-			var notFound *config.NotFoundError
-			if errors.As(loadErr, &notFound) {
+			if _, ok := errors.AsType[*config.NotFoundError](loadErr); ok {
 				return &coreerrors.ExitCodeError{Code: 1}
 			}
 			return loadErr
@@ -166,7 +165,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	// Build config map for output
-	var cfgMap map[string]interface{}
+	var cfgMap map[string]any
 	if result != nil {
 		cfgJSON, _ := json.Marshal(result.Config)
 		json.Unmarshal(cfgJSON, &cfgMap)
@@ -193,7 +192,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			if opts.containerID != "" || opts.configPath != "" || opts.overrideConfig != "" {
 				scheme = "file"
 			}
-			cfgMap["configFilePath"] = map[string]interface{}{
+			cfgMap["configFilePath"] = map[string]any{
 				"$mid":   1,
 				"fsPath": cfp,
 				"path":   cfp,
@@ -203,7 +202,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			delete(cfgMap, "configFilePath")
 		}
 	} else {
-		cfgMap = map[string]interface{}{} // No config → empty object
+		cfgMap = map[string]any{} // No config → empty object
 	}
 
 	// Find container for containerEnv substitution
@@ -236,13 +235,13 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			if subErr != nil {
 				return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
 			}
-			if subMap, ok := substituted.(map[string]interface{}); ok {
+			if subMap, ok := substituted.(map[string]any); ok {
 				cfgMap = subMap
 			}
 		}
 	}
 
-	output := map[string]interface{}{
+	output := map[string]any{
 		"configuration": cfgMap,
 	}
 
@@ -258,9 +257,9 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if result != nil && result.WorkspaceConfig != nil {
 		if workspaceFolder == "" && opts.containerID != "" {
 			// container-id without workspace-folder: emit empty workspace (matches TS)
-			output["workspace"] = map[string]interface{}{}
+			output["workspace"] = map[string]any{}
 		} else {
-			ws := map[string]interface{}{
+			ws := map[string]any{
 				"workspaceFolder": result.WorkspaceConfig.WorkspaceFolder,
 			}
 			if result.WorkspaceConfig.WorkspaceMount != "" {
@@ -277,7 +276,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		featResult, featErr := fetchFeatureSets(ctx, lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
 		if featErr == nil && featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
-			output["featuresConfiguration"] = map[string]interface{}{
+			output["featuresConfiguration"] = map[string]any{
 				"featureSets": featResult.FeatureSets,
 				"dstFolder":   featResult.TmpDir,
 			}
@@ -344,7 +343,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			if insErr == nil && inspect.Config != nil {
 				cEnv := envSliceToMap(inspect.Config.Env)
 				mergedJSON, _ := json.Marshal(merged)
-				var mergedGeneric interface{}
+				var mergedGeneric any
 				json.Unmarshal(mergedJSON, &mergedGeneric)
 				substituted, subErr := resolveContainerVariables(cEnv, mergedGeneric)
 				if subErr != nil {
@@ -359,7 +358,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		// properties that the typed MergedConfig does not model (features, build,
 		// service, workspaceFolder, …) must be carried over.
 		mergedJSON, _ := json.Marshal(merged)
-		var mergedMap map[string]interface{}
+		var mergedMap map[string]any
 		if json.Unmarshal(mergedJSON, &mergedMap) == nil {
 			for _, k := range mergedPassthroughKeys {
 				if v, ok := cfgMap[k]; ok {
@@ -417,14 +416,14 @@ func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta
 	// (pickConfigProperties in TS). Omitting them made the devcontainer.metadata
 	// label lossy vs the TS CLI.
 	if len(cfg.ForwardPorts) > 0 {
-		fp := make([]interface{}, len(cfg.ForwardPorts))
+		fp := make([]any, len(cfg.ForwardPorts))
 		for i, p := range cfg.ForwardPorts {
 			fp[i] = p
 		}
 		entry.ForwardPorts = fp
 	}
 	if len(cfg.PortsAttributes) > 0 {
-		pa := make(map[string]interface{}, len(cfg.PortsAttributes))
+		pa := make(map[string]any, len(cfg.PortsAttributes))
 		for k, v := range cfg.PortsAttributes {
 			pa[k] = v
 		}

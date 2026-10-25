@@ -8,19 +8,19 @@ import (
 )
 
 func TestDeepMergeConfig(t *testing.T) {
-	base := map[string]interface{}{
+	base := map[string]any{
 		"image":      "ubuntu",
 		"remoteUser": "vscode",
-		"runArgs":    []interface{}{"--a"},
-		"customizations": map[string]interface{}{
-			"vscode": map[string]interface{}{"extensions": []interface{}{"x"}},
+		"runArgs":    []any{"--a"},
+		"customizations": map[string]any{
+			"vscode": map[string]any{"extensions": []any{"x"}},
 		},
 	}
-	override := map[string]interface{}{
+	override := map[string]any{
 		"remoteUser": "root",
-		"runArgs":    []interface{}{"--b"}, // arrays replace, not append
-		"customizations": map[string]interface{}{
-			"vscode": map[string]interface{}{"settings": map[string]interface{}{"k": "v"}},
+		"runArgs":    []any{"--b"}, // arrays replace, not append
+		"customizations": map[string]any{
+			"vscode": map[string]any{"settings": map[string]any{"k": "v"}},
 		},
 	}
 	got := deepMergeConfig(base, override)
@@ -31,21 +31,21 @@ func TestDeepMergeConfig(t *testing.T) {
 	if got["remoteUser"] != "root" {
 		t.Errorf("scalar override failed: remoteUser=%v", got["remoteUser"])
 	}
-	if !reflect.DeepEqual(got["runArgs"], []interface{}{"--b"}) {
+	if !reflect.DeepEqual(got["runArgs"], []any{"--b"}) {
 		t.Errorf("array should be replaced, got %v", got["runArgs"])
 	}
 	// Nested object merged: extensions (base) preserved AND settings (override) added.
-	vscode := got["customizations"].(map[string]interface{})["vscode"].(map[string]interface{})
-	if !reflect.DeepEqual(vscode["extensions"], []interface{}{"x"}) {
+	vscode := got["customizations"].(map[string]any)["vscode"].(map[string]any)
+	if !reflect.DeepEqual(vscode["extensions"], []any{"x"}) {
 		t.Errorf("nested base key lost: extensions=%v", vscode["extensions"])
 	}
-	if vscode["settings"].(map[string]interface{})["k"] != "v" {
+	if vscode["settings"].(map[string]any)["k"] != "v" {
 		t.Errorf("nested override key missing: settings=%v", vscode["settings"])
 	}
 }
 
 func TestDeepMergeConfigNilHandling(t *testing.T) {
-	m := map[string]interface{}{"a": 1}
+	m := map[string]any{"a": 1}
 	if got := deepMergeConfig(nil, m); !reflect.DeepEqual(got, m) {
 		t.Errorf("nil base should return override, got %v", got)
 	}

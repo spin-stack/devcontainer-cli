@@ -45,10 +45,10 @@ func TestSpecCompliance(t *testing.T) {
 	}
 
 	schemaProps := schemaPropertyNames(t)
-	structTags := structJSONTags(reflect.TypeOf(DevContainer{}))
+	structTags := structJSONTags(reflect.TypeFor[DevContainer]())
 	// MountOrString wraps its value in an interface, so reflection can't reach
 	// the Mount struct through it — seed it explicitly.
-	for name := range structJSONTags(reflect.TypeOf(Mount{})) {
+	for name := range structJSONTags(reflect.TypeFor[Mount]()) {
 		structTags[name] = true
 	}
 
@@ -75,16 +75,16 @@ func schemaPropertyNames(t *testing.T) map[string]bool {
 	if err != nil {
 		t.Fatalf("read vendored schema: %v (run `task spec:schema-update`)", err)
 	}
-	var root interface{}
+	var root any
 	if err := json.Unmarshal(data, &root); err != nil {
 		t.Fatalf("parse schema: %v", err)
 	}
 	out := map[string]bool{}
-	var walk func(node interface{})
-	walk = func(node interface{}) {
+	var walk func(node any)
+	walk = func(node any) {
 		switch n := node.(type) {
-		case map[string]interface{}:
-			if props, ok := n["properties"].(map[string]interface{}); ok {
+		case map[string]any:
+			if props, ok := n["properties"].(map[string]any); ok {
 				for k := range props {
 					out[k] = true
 				}
@@ -92,7 +92,7 @@ func schemaPropertyNames(t *testing.T) map[string]bool {
 			for _, v := range n {
 				walk(v)
 			}
-		case []interface{}:
+		case []any:
 			for _, v := range n {
 				walk(v)
 			}
@@ -109,7 +109,7 @@ func structJSONTags(t reflect.Type) map[string]bool {
 	seen := map[reflect.Type]bool{}
 	var visit func(t reflect.Type)
 	visit = func(t reflect.Type) {
-		for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 			t = t.Elem()
 		}
 		if t.Kind() == reflect.Map {
@@ -120,9 +120,9 @@ func structJSONTags(t reflect.Type) map[string]bool {
 			return
 		}
 		seen[t] = true
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if name := strings.Split(f.Tag.Get("json"), ",")[0]; name != "" && name != "-" {
+		for f := range t.Fields() {
+			f := f
+			if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name != "" && name != "-" {
 				out[name] = true
 			}
 			visit(f.Type)

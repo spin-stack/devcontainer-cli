@@ -90,7 +90,7 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 	id := resolveWorkspaceContainer(ctx, engine, opts)
 	if id == "" {
 		// Nothing to do — already gone. Not an error (idempotent).
-		return writeSuccessJSON(out, map[string]interface{}{"outcome": "success", "result": "no-container-found"})
+		return writeSuccessJSON(out, map[string]any{"outcome": "success", "result": "no-container-found"})
 	}
 
 	// Compose services carry the project label; operate on the whole project so
@@ -125,7 +125,7 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 		return writeErrorResult(out, fmt.Sprintf("%s: %v", action, err))
 	}
 
-	return writeSuccessJSON(out, map[string]interface{}{
+	return writeSuccessJSON(out, map[string]any{
 		"outcome":     "success",
 		"containerId": id,
 		"result":      action,

@@ -11,7 +11,7 @@ func makeOCINode(id, registry, namespace, featureID string, deps ...*FNode) *FNo
 	return &FNode{
 		Type:          "user-provided",
 		UserFeatureID: id,
-		Options:       map[string]interface{}{},
+		Options:       map[string]any{},
 		Set: &Set{
 			SourceInfo: &OCISource{
 				Registry:  registry,

@@ -22,7 +22,7 @@ func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []str
 	for _, r := range roots {
 		userFeatures = append(userFeatures, features.DevContainerFeature{
 			UserFeatureID: r,
-			Options:       map[string]interface{}{},
+			Options:       map[string]any{},
 		})
 	}
 	graph, err := features.BuildDependencyGraph(logger, newMetadataProcessFeature(client, logger, "", nil), userFeatures, nil, nil)

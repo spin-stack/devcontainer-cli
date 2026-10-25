@@ -471,16 +471,16 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 		return fmt.Errorf("read collection metadata: %w", err)
 	}
 
-	var collMeta map[string]interface{}
+	var collMeta map[string]any
 	json.Unmarshal(collData, &collMeta)
 
 	// Get items from collection
 	itemsKey := fmt.Sprintf("%ss", collectionType)
-	items, _ := collMeta[itemsKey].([]interface{})
+	items, _ := collMeta[itemsKey].([]any)
 
 	ociClient := reg
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	failures := 0
 
 	// publishOne pushes an item under the forward-only semantic tags derived from
@@ -522,7 +522,7 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	}
 
 	for _, item := range items {
-		meta, ok := item.(map[string]interface{})
+		meta, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -545,7 +545,7 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 
 		// Republish under legacyIds (aliases), matching TS behavior.
 		if collectionType == "feature" {
-			if legacyIds, ok := meta["legacyIds"].([]interface{}); ok {
+			if legacyIds, ok := meta["legacyIds"].([]any); ok {
 				for _, lid := range legacyIds {
 					legacyID, ok := lid.(string)
 					if !ok || legacyID == "" {
@@ -654,7 +654,7 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 			logger.Write(fmt.Sprintf("Failed to parse %s: %v", jsonPath, stripErr), log.LevelError)
 			continue
 		}
-		var meta map[string]interface{}
+		var meta map[string]any
 		if err := json.Unmarshal(std, &meta); err != nil {
 			logger.Write(fmt.Sprintf("Failed to parse %s: %v", jsonPath, err), log.LevelError)
 			continue
@@ -723,12 +723,12 @@ func renderDocsTemplate(template string, values map[string]string) string {
 // generateOptionsMarkdown renders the options table with columns and row order
 // matching TS: "| Options Id | Description | Type | Default Value |" in the JSON's
 // insertion order. Returns "" only when the metadata has no "options" key.
-func generateOptionsMarkdown(std []byte, meta map[string]interface{}) string {
+func generateOptionsMarkdown(std []byte, meta map[string]any) string {
 	optsVal, hasOptions := meta["options"]
 	if !hasOptions {
 		return ""
 	}
-	optsMap, _ := optsVal.(map[string]interface{})
+	optsMap, _ := optsVal.(map[string]any)
 
 	var optionsRaw json.RawMessage
 	var top map[string]json.RawMessage
@@ -738,7 +738,7 @@ func generateOptionsMarkdown(std []byte, meta map[string]interface{}) string {
 
 	var rows []string
 	for _, k := range orderedObjectKeys(optionsRaw) {
-		ov, _ := optsMap[k].(map[string]interface{})
+		ov, _ := optsMap[k].(map[string]any)
 		desc := jsTruthyString(ov["description"], "-")
 		typ := jsTruthyString(ov["type"], "-")
 		rows = append(rows, fmt.Sprintf("| %s | %s | %s | %s |", k, desc, typ, defaultCell(ov)))
@@ -746,10 +746,10 @@ func generateOptionsMarkdown(std []byte, meta map[string]interface{}) string {
 	return "## Options\n\n| Options Id | Description | Type | Default Value |\n|-----|-----|-----|-----|\n" + strings.Join(rows, "\n")
 }
 
-func generateCustomizationsMarkdown(meta map[string]interface{}) string {
-	cust, _ := meta["customizations"].(map[string]interface{})
-	vscode, _ := cust["vscode"].(map[string]interface{})
-	exts, _ := vscode["extensions"].([]interface{})
+func generateCustomizationsMarkdown(meta map[string]any) string {
+	cust, _ := meta["customizations"].(map[string]any)
+	vscode, _ := cust["vscode"].(map[string]any)
+	exts, _ := vscode["extensions"].([]any)
 	if len(exts) == 0 {
 		return ""
 	}
@@ -762,9 +762,9 @@ func generateCustomizationsMarkdown(meta map[string]interface{}) string {
 	return "\n## Customizations\n\n### VS Code Extensions\n\n" + strings.Join(lines, "\n") + "\n"
 }
 
-func generateDocsHeader(meta map[string]interface{}) string {
+func generateDocsHeader(meta map[string]any) string {
 	deprecated, _ := meta["deprecated"].(bool)
-	legacy, _ := meta["legacyIds"].([]interface{})
+	legacy, _ := meta["legacyIds"].([]any)
 	if !deprecated && len(legacy) == 0 {
 		return ""
 	}
@@ -797,7 +797,7 @@ func hasNonEmptyString(m *orderedmap.OrderedMap, key string) bool {
 
 // jsTruthyString mirrors JS `value || fallback` for string cells: an empty or
 // non-string value falls back.
-func jsTruthyString(v interface{}, fallback string) string {
+func jsTruthyString(v any, fallback string) string {
 	if s, ok := v.(string); ok && s != "" {
 		return s
 	}
@@ -807,7 +807,7 @@ func jsTruthyString(v interface{}, fallback string) string {
 // defaultCell mirrors TS `val.default !== ” ? val.default : '-'`: an empty string
 // becomes "-", an absent default renders "undefined", everything else prints as JS
 // would interpolate it.
-func defaultCell(ov map[string]interface{}) string {
+func defaultCell(ov map[string]any) string {
 	d, ok := ov["default"]
 	if !ok {
 		return "undefined"
@@ -957,7 +957,7 @@ func createTarArchive(archivePath, sourceDir string) error {
 	return nil
 }
 
-func mustJSON(v interface{}) []byte {
+func mustJSON(v any) []byte {
 	data, _ := json.Marshal(v)
 	return data
 }

@@ -77,8 +77,8 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			}
 
 			type installEntry struct {
-				ID      string      `json:"id"`
-				Options interface{} `json:"options"`
+				ID      string `json:"id"`
+				Options any    `json:"options"`
 			}
 
 			var entries []installEntry
@@ -88,7 +88,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				if ociSrc, ok := src.(*features.OCISource); ok {
 					id = fmt.Sprintf("%s/%s/%s@%s", ociSrc.Registry, ociSrc.Namespace, ociSrc.ID, fs.ComputedDigest)
 				}
-				var opts interface{}
+				var opts any
 				if len(fs.Features) > 0 {
 					opts = fs.Features[0].Value
 				}
@@ -99,7 +99,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			// install-order JSON.
 			fmt.Fprintln(out.Stdout(), features.GenerateMermaidDiagram(graph))
 
-			data, _ := json.MarshalIndent(map[string]interface{}{"installOrder": entries}, "", "  ")
+			data, _ := json.MarshalIndent(map[string]any{"installOrder": entries}, "", "  ")
 			fmt.Fprintln(out.Stdout(), string(data))
 			return nil
 		},

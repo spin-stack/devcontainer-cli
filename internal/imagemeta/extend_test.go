@@ -249,16 +249,16 @@ func TestGenerateFeatureBuildEnvVars(t *testing.T) {
 func TestGenerateFeatureBuildEnvVars_MapValueNormalizesToTrue(t *testing.T) {
 	feat := features.Feature{
 		ID: "hello",
-		Value: map[string]interface{}{
+		Value: map[string]any{
 			"greeting": "howdy",
 		},
-		Options: map[string]interface{}{
-			"greeting": map[string]interface{}{
+		Options: map[string]any{
+			"greeting": map[string]any{
 				"type":    "string",
 				"default": "hello",
 			},
 		},
-		UserOptions: map[string]interface{}{
+		UserOptions: map[string]any{
 			"greeting": "howdy",
 		},
 	}

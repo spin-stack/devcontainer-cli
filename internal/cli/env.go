@@ -7,10 +7,10 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-func resolveContainerVariables(containerEnv map[string]string, value interface{}) (interface{}, error) {
+func resolveContainerVariables(containerEnv map[string]string, value any) (any, error) {
 	return config.NewVariableResolver().AfterContainer(config.SubstitutionContext{
-		HostSubContext: config.HostSubContext{Platform: "linux"},
-		ContainerEnv:   containerEnv,
+		Platform:     "linux",
+		ContainerEnv: containerEnv,
 	}, value)
 }
 
@@ -18,8 +18,8 @@ func resolveContainerVariables(containerEnv map[string]string, value interface{}
 func osEnvMap() map[string]string {
 	env := make(map[string]string)
 	for _, e := range os.Environ() {
-		if i := strings.IndexByte(e, '='); i >= 0 {
-			env[e[:i]] = e[i+1:]
+		if before, after, ok := strings.Cut(e, "="); ok {
+			env[before] = after
 		}
 	}
 	return env
@@ -29,8 +29,8 @@ func osEnvMap() map[string]string {
 func envSliceToMap(envs []string) map[string]string {
 	m := make(map[string]string)
 	for _, e := range envs {
-		if i := strings.IndexByte(e, '='); i >= 0 {
-			m[e[:i]] = e[i+1:]
+		if before, after, ok := strings.Cut(e, "="); ok {
+			m[before] = after
 		}
 	}
 	return m

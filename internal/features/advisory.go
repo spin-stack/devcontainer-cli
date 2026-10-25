@@ -189,7 +189,7 @@ func findDisallowedFeatureEntry(manifest *ControlManifest, featureID string) *Di
 // EnsureNoDisallowedFeatures checks config + additional features against the
 // control-manifest blocklist and returns a *DisallowedFeatureError for the first
 // disallowed one (nil if all are allowed).
-func EnsureNoDisallowedFeatures(manifest *ControlManifest, features map[string]interface{}, additionalFeatures map[string]interface{}) error {
+func EnsureNoDisallowedFeatures(manifest *ControlManifest, features map[string]any, additionalFeatures map[string]any) error {
 	if len(manifest.DisallowedFeatures) == 0 {
 		return nil
 	}

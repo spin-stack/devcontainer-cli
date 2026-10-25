@@ -70,7 +70,7 @@ func TestEnsureNoDisallowedFeatures(t *testing.T) {
 			manifest := &ControlManifest{DisallowedFeatures: []DisallowedFeature{
 				{FeatureIDPrefix: tt.prefix, DocumentationURL: tt.docURL},
 			}}
-			err := EnsureNoDisallowedFeatures(manifest, map[string]interface{}{tt.featureID: true}, nil)
+			err := EnsureNoDisallowedFeatures(manifest, map[string]any{tt.featureID: true}, nil)
 
 			if (err != nil) != tt.wantBlocked {
 				t.Fatalf("blocked=%v, want %v (err=%v)", err != nil, tt.wantBlocked, err)

@@ -135,7 +135,7 @@ func resolveDependencyGraph(
 				dep := &FNode{
 					Type:          "resolved",
 					UserFeatureID: iaID,
-					Options:       map[string]interface{}{},
+					Options:       map[string]any{},
 					DependsOn:     []*FNode{},
 					InstallsAfter: []*FNode{},
 				}
@@ -180,7 +180,7 @@ func applyOverrideFeatureInstallOrder(
 		override := &FNode{
 			Type:          "override",
 			UserFeatureID: overrideID,
-			Options:       map[string]interface{}{},
+			Options:       map[string]any{},
 			RoundPriority: roundPriority,
 			DependsOn:     []*FNode{},
 			InstallsAfter: []*FNode{},

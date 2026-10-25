@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,12 +29,7 @@ func (s *stringOrSlice) UnmarshalYAML(n *yaml.Node) error {
 }
 
 func (s stringOrSlice) contains(v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, v)
 }
 
 type wfJob struct {

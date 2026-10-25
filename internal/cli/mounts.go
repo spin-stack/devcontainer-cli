@@ -11,19 +11,19 @@ import (
 	dockermount "github.com/moby/moby/api/types/mount"
 )
 
-func metadataMounts(cfg *config.DevContainer) []interface{} {
+func metadataMounts(cfg *config.DevContainer) []any {
 	if len(cfg.Mounts) == 0 {
 		return nil
 	}
 
-	mounts := make([]interface{}, 0, len(cfg.Mounts))
+	mounts := make([]any, 0, len(cfg.Mounts))
 	for _, mountValue := range cfg.Mounts {
 		if spec, ok := mountValue.AsString(); ok && spec != "" {
 			mounts = append(mounts, spec)
 			continue
 		}
 		if mountObj, ok := mountValue.AsMount(); ok {
-			serialized := map[string]interface{}{}
+			serialized := map[string]any{}
 			if mountObj.Type != "" {
 				serialized["type"] = mountObj.Type
 			}
@@ -49,7 +49,7 @@ func metadataMounts(cfg *config.DevContainer) []interface{} {
 	return mounts
 }
 
-func mountsFromMetadata(entries []interface{}, devcontainerID string) ([]dockermount.Mount, error) {
+func mountsFromMetadata(entries []any, devcontainerID string) ([]dockermount.Mount, error) {
 	mounts := make([]dockermount.Mount, 0, len(entries))
 	for _, entry := range entries {
 		mountSpec, err := mountFromMetadata(entry, devcontainerID)
@@ -63,12 +63,12 @@ func mountsFromMetadata(entries []interface{}, devcontainerID string) ([]dockerm
 
 // composeServiceImage returns the `image:` of a service from parsed
 // `docker compose config` output, or "" if not set (e.g. a build-only service).
-func composeServiceImage(composeConfig map[string]interface{}, service string) string {
-	services, ok := composeConfig["services"].(map[string]interface{})
+func composeServiceImage(composeConfig map[string]any, service string) string {
+	services, ok := composeConfig["services"].(map[string]any)
 	if !ok {
 		return ""
 	}
-	svc, ok := services[service].(map[string]interface{})
+	svc, ok := services[service].(map[string]any)
 	if !ok {
 		return ""
 	}
@@ -76,7 +76,7 @@ func composeServiceImage(composeConfig map[string]interface{}, service string) s
 	return image
 }
 
-func composeVolumeSpecsFromMetadata(entries []interface{}, devcontainerID string) ([]string, []string, error) {
+func composeVolumeSpecsFromMetadata(entries []any, devcontainerID string) ([]string, []string, error) {
 	specs := make([]string, 0, len(entries))
 	namedVolumes := []string{}
 	for _, entry := range entries {
@@ -101,7 +101,7 @@ func composeVolumeSpecsFromMetadata(entries []interface{}, devcontainerID string
 	return specs, namedVolumes, nil
 }
 
-func mountFromMetadata(entry interface{}, devcontainerID string) (dockermount.Mount, error) {
+func mountFromMetadata(entry any, devcontainerID string) (dockermount.Mount, error) {
 	resolve := func(value string) (string, error) {
 		resolved, err := config.NewVariableResolver().Resolve(config.SubstitutionContext{
 			DevContainerID: devcontainerID,
@@ -122,7 +122,7 @@ func mountFromMetadata(entry interface{}, devcontainerID string) (dockermount.Mo
 			return dockermount.Mount{}, err
 		}
 		return docker.ParseMountSpec(spec)
-	case map[string]interface{}:
+	case map[string]any:
 		target, _ := raw["target"].(string)
 		// ${devcontainerId} must resolve in target too, not only source — the
 		// string form substitutes the whole spec, so the object form has to match

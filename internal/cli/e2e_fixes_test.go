@@ -141,7 +141,7 @@ func TestE2E_ComposeBuildLabel(t *testing.T) {
 
 	buildOut := runCLI(t, "build", "--workspace-folder", ws, "--label", "e2e.compose.label=applied")
 	assertOutcome(t, buildOut, "success")
-	names, _ := parseJSON(t, buildOut)["imageName"].([]interface{})
+	names, _ := parseJSON(t, buildOut)["imageName"].([]any)
 	if len(names) == 0 {
 		t.Fatal("no imageName in build output")
 	}

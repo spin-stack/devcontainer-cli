@@ -244,7 +244,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		}))
 	}
 
-	return writeSuccessJSON(out, map[string]interface{}{
+	return writeSuccessJSON(out, map[string]any{
 		"outcome":            "success",
 		"imageName":          imageNameResult,
 		"ociAuthDiagnostics": ociAuthDiagnostics(ctx),
@@ -704,7 +704,7 @@ func buildOptionsFromConfig(cfg *config.DevContainer) []string {
 	return cfg.Build.Options
 }
 
-func writeSuccessJSON(out Output, data map[string]interface{}) error {
+func writeSuccessJSON(out Output, data map[string]any) error {
 	b, _ := json.Marshal(data)
 	fmt.Fprintln(out.Stdout(), string(b))
 	return nil
@@ -865,12 +865,12 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 	return []string{imageName}, nil
 }
 
-func composeServiceConfig(composeConfig map[string]interface{}, service string) map[string]interface{} {
-	services, ok := composeConfig["services"].(map[string]interface{})
+func composeServiceConfig(composeConfig map[string]any, service string) map[string]any {
+	services, ok := composeConfig["services"].(map[string]any)
 	if !ok {
 		return nil
 	}
-	svc, ok := services[service].(map[string]interface{})
+	svc, ok := services[service].(map[string]any)
 	if !ok {
 		return nil
 	}

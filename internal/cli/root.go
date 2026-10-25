@@ -77,8 +77,7 @@ func Execute() {
 
 	root := NewRootCommand()
 	if err := root.ExecuteContext(ctx); err != nil {
-		var exitErr *coreerrors.ExitCodeError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*coreerrors.ExitCodeError](err); ok {
 			os.Exit(exitErr.Code)
 		}
 		fmt.Fprintln(os.Stderr, err)

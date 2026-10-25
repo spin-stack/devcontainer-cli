@@ -69,7 +69,7 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 
 	client := newOCIClient(ctx, logger)
 
-	jsonOutput := make(map[string]interface{})
+	jsonOutput := make(map[string]any)
 
 	// Manifest
 	if mode == "manifest" || mode == "verbose" {

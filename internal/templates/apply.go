@@ -4,6 +4,7 @@ package templates
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,8 +101,8 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		"NOTES.md":                   true,
 	}
 	for _, p := range selected.OmitPaths {
-		if strings.HasSuffix(p, "/*") {
-			omitDirs[strings.TrimSuffix(p, "/*")+"/"] = true
+		if before, ok := strings.CutSuffix(p, "/*"); ok {
+			omitDirs[before+"/"] = true
 		} else {
 			omitFiles[p] = true
 		}
@@ -215,19 +216,19 @@ func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFe
 	// Build a JSON Patch and apply it via hujson so the edit preserves the
 	// original formatting and comments (JSONC), matching the TS CLI which uses a
 	// text-preserving jsonc edit instead of a reformatting re-serialize.
-	var ops []map[string]interface{}
+	var ops []map[string]any
 	if !hasFeatures {
-		ops = append(ops, map[string]interface{}{"op": "add", "path": "/features", "value": map[string]interface{}{}})
+		ops = append(ops, map[string]any{"op": "add", "path": "/features", "value": map[string]any{}})
 	}
 	for _, f := range featureOpts {
 		if existing[f.ID] {
 			continue
 		}
-		var value interface{} = "latest"
+		var value any = "latest"
 		if len(f.Options) > 0 {
 			value = f.Options
 		}
-		ops = append(ops, map[string]interface{}{
+		ops = append(ops, map[string]any{
 			"op":    "add",
 			"path":  "/features/" + escapeJSONPointer(f.ID),
 			"value": value,
@@ -262,9 +263,7 @@ func escapeJSONPointer(s string) string {
 // option defaults are supported.
 func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]string, logger log.Logger) map[string]string {
 	merged := make(map[string]string, len(userOptions))
-	for k, v := range userOptions {
-		merged[k] = v
-	}
+	maps.Copy(merged, userOptions)
 
 	metaPath := filepath.Join(extractDir, "devcontainer-template.json")
 	data, err := fsys.ReadFile(metaPath)
@@ -283,7 +282,7 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 		if _, ok := merged[key]; ok {
 			continue
 		}
-		def, ok := raw.(map[string]interface{})
+		def, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}

@@ -37,8 +37,8 @@ func secretValuesFromFile(path string) []string {
 	}
 	values := make([]string, 0, len(envs))
 	for _, e := range envs {
-		if i := strings.IndexByte(e, '='); i >= 0 {
-			values = append(values, e[i+1:])
+		if _, after, ok := strings.Cut(e, "="); ok {
+			values = append(values, after)
 		}
 	}
 	return values

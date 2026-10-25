@@ -10,7 +10,7 @@ import (
 // ParseMountSpec parses a --mount flag value (e.g., "type=bind,source=/a,target=/b").
 func ParseMountSpec(spec string) (mount.Mount, error) {
 	m := mount.Mount{}
-	for _, part := range strings.Split(spec, ",") {
+	for part := range strings.SplitSeq(spec, ",") {
 		k, v, ok := strings.Cut(part, "=")
 		if !ok {
 			// Bare boolean flags (e.g. "readonly"/"ro" with no =value).

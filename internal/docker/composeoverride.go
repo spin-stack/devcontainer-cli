@@ -10,7 +10,7 @@ import (
 // Serialized as JSON, which Docker Compose v2 reads natively.
 type ComposeOverride struct {
 	Services map[string]*ServiceOverride `json:"services"`
-	Volumes  map[string]interface{}      `json:"volumes,omitempty"`
+	Volumes  map[string]any              `json:"volumes,omitempty"`
 }
 
 // ServiceOverride represents overrides for a single compose service.
@@ -58,7 +58,7 @@ func (o *ComposeOverride) Service(name string) *ServiceOverride {
 // AddVolume declares a named volume at the top level.
 func (o *ComposeOverride) AddVolume(name string) {
 	if o.Volumes == nil {
-		o.Volumes = make(map[string]interface{})
+		o.Volumes = make(map[string]any)
 	}
 	o.Volumes[name] = struct{}{}
 }

@@ -23,10 +23,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -267,7 +269,6 @@ func TestParityMatrix(t *testing.T) {
 	selected := 0
 
 	for _, tc := range matrix.InitialCases {
-		tc := tc
 		if !matchesFilter(tc) {
 			continue
 		}
@@ -585,7 +586,7 @@ func runParitySetup(ctx context.Context, repoRoot, setupCmd string, env map[stri
 	}
 
 	setupEnv := map[string]string{}
-	for _, line := range strings.Split(stdout, "\n") {
+	for line := range strings.SplitSeq(stdout, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -714,10 +715,10 @@ func normalizeOutputOpts(raw string, scrubHashes, keepNulls bool) string {
 	return normalizeStringOpts(raw, scrubHashes)
 }
 
-func normalizeValueOpts(v interface{}, scrubHashes, keepNulls bool) interface{} {
+func normalizeValueOpts(v any, scrubHashes, keepNulls bool) any {
 	switch val := v.(type) {
-	case map[string]interface{}:
-		result := make(map[string]interface{})
+	case map[string]any:
+		result := make(map[string]any)
 		for k, v := range val {
 			if v == nil {
 				if keepNulls {
@@ -734,8 +735,8 @@ func normalizeValueOpts(v interface{}, scrubHashes, keepNulls bool) interface{} 
 			result[k] = normalizeValueOpts(v, scrubHashes, keepNulls)
 		}
 		return sortedMap(result)
-	case []interface{}:
-		out := make([]interface{}, len(val))
+	case []any:
+		out := make([]any, len(val))
 		for i, item := range val {
 			out[i] = normalizeValueOpts(item, scrubHashes, keepNulls)
 		}
@@ -750,7 +751,7 @@ func normalizeValueOpts(v interface{}, scrubHashes, keepNulls bool) interface{} 
 	}
 }
 
-func normalizeEmbeddedJSONOpts(raw string, scrubHashes, keepNulls bool) interface{} {
+func normalizeEmbeddedJSONOpts(raw string, scrubHashes, keepNulls bool) any {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
@@ -761,7 +762,7 @@ func normalizeEmbeddedJSONOpts(raw string, scrubHashes, keepNulls bool) interfac
 	return normalizeStringOpts(raw, scrubHashes)
 }
 
-func parseEmbeddedJSON(raw string) (interface{}, bool) {
+func parseEmbeddedJSON(raw string) (any, bool) {
 	t := strings.TrimSpace(raw)
 	// Only treat a string as an embedded JSON *document* when it is an object or
 	// array. Parsing bare scalars ("123", "true", "1.0") would coerce a string
@@ -775,10 +776,10 @@ func parseEmbeddedJSON(raw string) (interface{}, bool) {
 
 // decodeJSONNumber parses JSON with UseNumber so large/precise numbers survive
 // the round-trip instead of being coerced through float64.
-func decodeJSONNumber(raw string) (interface{}, bool) {
+func decodeJSONNumber(raw string) (any, bool) {
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
-	var parsed interface{}
+	var parsed any
 	if dec.Decode(&parsed) == nil {
 		return parsed, true
 	}
@@ -786,14 +787,14 @@ func decodeJSONNumber(raw string) (interface{}, bool) {
 }
 
 // sortedMap returns a json.RawMessage with sorted keys.
-func sortedMap(m map[string]interface{}) map[string]interface{} {
+func sortedMap(m map[string]any) map[string]any {
 	// json.Marshal already sorts keys in Go 1.12+
 	return m
 }
 
 func normalizeTextOpts(raw string, scrubHashes bool) string {
 	var lines []string
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimRight(line, "\r")
 
 		// Strip noise lines
@@ -834,7 +835,7 @@ func extractErrorReason(stdout, stderr string) string {
 	text := stderr
 
 	// Try JSON stdout for error outcome
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	jsonStdout := strings.TrimSpace(stdout)
 	if candidate := extractJSONCandidate(jsonStdout); candidate != "" {
 		jsonStdout = candidate
@@ -891,8 +892,8 @@ func extractErrorReason(stdout, stderr string) string {
 	// trace). This lets a TS "Error: X" + trace line up with a Go "X" message,
 	// and a banner-only silent-exit line up with Go's empty stderr.
 	lines := strings.Split(strings.TrimSpace(text), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
+	for _, line := range slices.Backward(lines) {
+		line := strings.TrimSpace(line)
 		if line == "" || isBannerLine(line) || isStackFrame(line) {
 			continue
 		}
@@ -1013,7 +1014,7 @@ func extractCLIResultEnv(stdout string) map[string]string {
 		return nil
 	}
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal([]byte(candidate), &payload); err != nil {
 		return nil
 	}
@@ -1030,7 +1031,7 @@ func extractCLIResultEnv(stdout string) map[string]string {
 		if imageName != "" {
 			env["IMAGE_NAME"] = imageName
 		}
-	case []interface{}:
+	case []any:
 		var names []string
 		for i, item := range imageName {
 			name, ok := item.(string)
@@ -1110,12 +1111,8 @@ func sanitizeEnvValue(value string) string {
 
 func mergeEnv(base, extra map[string]string) map[string]string {
 	out := map[string]string{}
-	for k, v := range base {
-		out[k] = v
-	}
-	for k, v := range extra {
-		out[k] = v
-	}
+	maps.Copy(out, base)
+	maps.Copy(out, extra)
 	return out
 }
 
@@ -1222,7 +1219,7 @@ func selected(value, filter string) bool {
 	if filter == "" || filter == "all" {
 		return true
 	}
-	for _, f := range strings.Split(filter, ",") {
+	for f := range strings.SplitSeq(filter, ",") {
 		if strings.TrimSpace(f) == value {
 			return true
 		}

@@ -306,7 +306,7 @@ func generateFeatureBuildEnvVars(feat features.Feature, containerUser, remoteUse
 		sort.Strings(optionNames)
 		for _, optName := range optionNames {
 			optDef := feat.Options[optName]
-			optMap, ok := optDef.(map[string]interface{})
+			optMap, ok := optDef.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -355,8 +355,8 @@ func generatePersistentContainerEnvVars(feat features.Feature) []string {
 	return envs
 }
 
-func normalizeFeatureValue(v interface{}) interface{} {
-	if _, ok := v.(map[string]interface{}); ok {
+func normalizeFeatureValue(v any) any {
+	if _, ok := v.(map[string]any); ok {
 		return true
 	}
 	return v
