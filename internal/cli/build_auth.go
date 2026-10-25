@@ -54,11 +54,10 @@ func registryHostFromImageRef(ref string) string {
 	if ref == "" {
 		return ""
 	}
-	i := strings.IndexByte(ref, '/')
-	if i < 0 {
+	first, _, found := strings.Cut(ref, "/")
+	if !found {
 		return ""
 	}
-	first := ref[:i]
 	if first == "localhost" || strings.ContainsAny(first, ".:") {
 		return first
 	}

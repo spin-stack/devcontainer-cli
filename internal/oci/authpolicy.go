@@ -150,10 +150,11 @@ func normalizeHTTPSAuthority(authority string) (string, error) {
 	if err != nil || parsed.Host == "" {
 		return "", invalid
 	}
-	if parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", invalid
-	}
-	if parsed.Host != authority && !strings.EqualFold(parsed.Host, authority) {
+	// url.Parse keeps the host as written, so userinfo, a path, a query or a
+	// fragment leaves Host short of the authority: TS normalizeHttpsAuthority's
+	// username/pathname/search/hash checks (httpOCIRegistry.ts) all reject
+	// through this one comparison.
+	if parsed.Host != authority {
 		return "", invalid
 	}
 	return strings.ToLower(parsed.Host), nil
@@ -256,8 +257,8 @@ func (t *authPolicyTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	tokenRequest := t.isTokenEndpoint(req.URL)
 
 	resp, err := t.base.RoundTrip(req)
-	if err != nil || resp == nil {
-		return resp, err
+	if err != nil {
+		return nil, err
 	}
 
 	if tokenRequest {
