@@ -27,6 +27,13 @@ touches a compared surface, reflected in the parity matrix.
   Dockerfile as it is (`TestEnsureFinalStageNameReadsAContinuedFrom`,
   `internal/docker/testdata/ts-oracle/dockerfile.json`). Every other FROM line is
   handled exactly as TS handles it.
+- **Compose builds may read the Features Dockerfile outside the build context.** Compose
+  builds through bake, and bake on buildx 0.38 and later refuses to read a file outside the
+  context unless the caller passes `--allow=fs.read`, which `docker compose build` cannot.
+  The reference writes the Features Dockerfile under its cache folder and fails there with
+  "additional privileges requested". This CLI starts its `docker compose` processes with
+  `BUILDX_BAKE_ENTITLEMENTS_FS=0` unless the variable is already set
+  (`TestWithBakeFSEntitlement`, `TestE2E_ComposeBuildLabel`).
 - **`--override-config` deep-merges** the override onto the base config, whereas TS
   replaces the config wholesale (`readDocument(overrideConfigFile ?? configFile)`). With
   no readable base, the override stands alone — identical to TS. This lets an orchestrator
