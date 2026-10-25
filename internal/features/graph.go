@@ -208,10 +208,9 @@ func applyOverrideFeatureInstallOrder(
 // aliasesFor returns [<id>, <...legacyIds>] for a feature, the alias set used for
 // legacyId-aware soft-dependency and override matching.
 func aliasesFor(feat Feature) []string {
-	aliases := make([]string, 0, 1+len(feat.LegacyIds))
+	aliases := []string{}
 	if feat.ID != "" {
 		aliases = append(aliases, feat.ID)
 	}
-	aliases = append(aliases, feat.LegacyIds...)
-	return aliases
+	return append(aliases, feat.LegacyIds...)
 }
