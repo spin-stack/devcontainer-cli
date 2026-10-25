@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -246,23 +247,20 @@ func dedupeForwardPorts(ports []any) []any {
 	// string — matching TS's final .map(port => /localhost:\d+/.test ? parseInt : port).
 	var out []any // nil without ports, as the merge leaves ForwardPorts then
 	for _, k := range keys {
-		if n, ok := localhostPort(k); ok {
-			out = append(out, float64(n))
-		} else {
-			out = append(out, k)
-		}
+		out = append(out, denormalizePort(k))
 	}
 	return out
 }
 
-// localhostPort parses a "localhost:<n>" key (all-digit port) back to its number.
-func localhostPort(s string) (int, bool) {
-	rest, ok := strings.CutPrefix(s, "localhost:")
-	if !ok || !allDigits(rest) {
-		return 0, false
+// denormalizePort turns a "localhost:<digits>" key back into the port number
+// and returns any other key as the string it is.
+func denormalizePort(key string) any {
+	if rest, ok := strings.CutPrefix(key, "localhost:"); ok && allDigits(rest) {
+		if n, err := strconv.Atoi(rest); err == nil {
+			return float64(n)
+		}
 	}
-	n, err := strconv.Atoi(rest)
-	return n, err == nil
+	return key
 }
 
 func allDigits(s string) bool {
@@ -277,30 +275,43 @@ func allDigits(s string) bool {
 	return true
 }
 
-// parseBytes mirrors the TS parseBytes: "8gb" -> 8589934592, unrecognized -> 0.
-// The grammar is <digits> with an optional [tgmk]b suffix.
-func parseBytes(s string) int64 {
-	unit := int64(1)
-	if len(s) >= 2 && s[len(s)-1] == 'b' {
-		switch s[len(s)-2] {
-		case 't':
-			unit, s = 1<<40, s[:len(s)-2]
-		case 'g':
-			unit, s = 1<<30, s[:len(s)-2]
-		case 'm':
-			unit, s = 1<<20, s[:len(s)-2]
-		case 'k':
-			unit, s = 1<<10, s[:len(s)-2]
+// byteUnits are the [tgmk]b suffixes of the TS parseBytes grammar and the
+// number of bytes each multiplies by.
+var byteUnits = []struct {
+	suffix string
+	size   float64
+}{{"tb", 1 << 40}, {"gb", 1 << 30}, {"mb", 1 << 20}, {"kb", 1 << 10}}
+
+// parseBytes mirrors the TS parseBytes, /^(\d+)([tgmk]b)?$/ times the unit:
+// "8gb" -> 8589934592, unrecognized -> 0. The count is a JS number, a float64,
+// so a count too large for an int64 stays as large as TS makes it.
+func parseBytes(s string) float64 {
+	unit := 1.0
+	for _, u := range byteUnits {
+		if rest, ok := strings.CutSuffix(s, u.suffix); ok {
+			s, unit = rest, u.size
+			break
 		}
 	}
 	if !allDigits(s) {
 		return 0
 	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0
-	}
+	// Digits always parse; a count past the float64 range is +Inf with
+	// ErrRange, which is what TS parseInt makes of it too.
+	n, _ := strconv.ParseFloat(s, 64) // mutate-exempt: every bitSize but 32 is 64
 	return n * unit
+}
+
+// jsNumberString is `${n}` for a byte count parseBytes returned, as JS
+// Number.prototype.toString writes it.
+func jsNumberString(n float64) string {
+	if n > math.MaxFloat64 {
+		return "Infinity"
+	}
+	// encoding/json writes a finite float64 as JS does: decimal digits below
+	// 1e21, exponent notation from there on; only Inf and NaN fail.
+	data, _ := json.Marshal(n)
+	return string(data)
 }
 
 func hrFloat(v any) float64 {
@@ -332,7 +343,7 @@ func mergeHostRequirements(entries []Entry) any {
 		return map[string]any{"cpus": nil, "memory": "-Infinity", "storage": "-Infinity"}
 	}
 	var cpus float64
-	var memory, storage int64
+	var memory, storage float64
 	var gpu any
 	for _, e := range entries {
 		hr, ok := e.HostRequirements.(map[string]any)
@@ -355,10 +366,10 @@ func mergeHostRequirements(entries []Entry) any {
 	}
 	res := map[string]any{"cpus": cpus}
 	if memory != 0 {
-		res["memory"] = strconv.FormatInt(memory, 10)
+		res["memory"] = jsNumberString(memory)
 	}
 	if storage != 0 {
-		res["storage"] = strconv.FormatInt(storage, 10)
+		res["storage"] = jsNumberString(storage)
 	}
 	if gpu != nil {
 		res["gpu"] = gpu
@@ -394,7 +405,7 @@ func mergeGPURequirements(a, b any) any {
 		res["cores"] = cores
 	}
 	if mem != 0 {
-		res["memory"] = strconv.FormatInt(mem, 10)
+		res["memory"] = jsNumberString(mem)
 	}
 	return res
 }

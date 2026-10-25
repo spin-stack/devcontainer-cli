@@ -505,12 +505,16 @@ chmod +x ./install.sh
 // safeID converts a string to a safe environment variable name.
 // Matches TS getSafeId().
 func safeID(s string) string {
-	// Non-word chars (ASCII, matching RE2 \w) become "_"...
+	// Non-word chars (ASCII, matching RE2 \w) become "_"; the JS regex works
+	// on UTF-16 code units, so a rune outside the BMP, a surrogate pair, is two.
 	var b strings.Builder
 	for _, r := range s {
-		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+		switch {
+		case r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'):
 			b.WriteRune(r)
-		} else {
+		case r > 0xFFFF:
+			b.WriteString("__")
+		default:
 			b.WriteByte('_')
 		}
 	}
