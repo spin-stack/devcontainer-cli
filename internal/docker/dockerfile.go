@@ -196,12 +196,22 @@ var (
 // returned only when a name was added; otherwise modifiedContent is empty. A
 // Dockerfile without a FROM line, or whose last FROM line does not parse, is
 // TS's error.
+//
+// One deliberate divergence (docs/DIVERGENCES.md): when the last FROM line is
+// continued with a backslash, TS writes " AS <defaultName>" after the
+// backslash, which no builder accepts; this reads the stage's name with
+// BuildKit instead when it has one.
 func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string, err error) {
 	lines := findFromLines.FindAllStringIndex(content, -1)
 	if len(lines) == 0 {
 		return "", "", errors.New("Error parsing Dockerfile: Dockerfile contains no FROM instructions")
 	}
 	lineStart, lineEnd := lines[len(lines)-1][0], lines[len(lines)-1][1]
+	if strings.HasSuffix(strings.TrimRight(content[lineStart:lineEnd], " \t"), `\`) {
+		if name := finalStageName(content); name != "" {
+			return name, "", nil
+		}
+	}
 	m := fromLineLabel.FindStringSubmatchIndex(content[lineStart:lineEnd])
 	if m == nil {
 		return "", "", errors.New("Error parsing Dockerfile: failed to parse final FROM line")
@@ -211,4 +221,18 @@ func EnsureFinalStageName(content, defaultName string) (stageName string, modifi
 	}
 	pos := lineStart + m[1]
 	return defaultName, content[:pos] + " AS " + defaultName + content[pos:], nil
+}
+
+// finalStageName is the name BuildKit reads for the last stage, "" when it has
+// none or the Dockerfile does not parse.
+func finalStageName(content string) string {
+	res, err := parser.Parse(strings.NewReader(content))
+	if err != nil {
+		return ""
+	}
+	stages, _, err := instructions.Parse(res.AST, nil)
+	if err != nil || len(stages) == 0 {
+		return ""
+	}
+	return stages[len(stages)-1].Name
 }

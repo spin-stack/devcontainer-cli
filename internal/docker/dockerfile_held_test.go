@@ -4,6 +4,24 @@ import (
 	"testing"
 )
 
+// A FROM continued onto the next line is one instruction: BuildKit's parser
+// joins it, so the stage name on the continuation line is found and the
+// Dockerfile is left alone. The TS regex (dockerfileUtils.ts
+// ensureDockerfileHasFinalStageName) reads only the physical "FROM \" line
+// and writes " AS dev" after the backslash; EnsureFinalStageName asks BuildKit
+// for exactly this case (docs/DIVERGENCES.md).
+func TestEnsureFinalStageNameReadsAContinuedFrom(t *testing.T) {
+	for _, tc := range []struct{ content, want string }{
+		{"FROM \\\n    alpine:3.20 AS base\n", "base"},
+		{"FROM alpine AS build\nRUN true\nFROM \\\n    build AS final\n", "final"},
+	} {
+		name, modified, err := EnsureFinalStageName(tc.content, "dev")
+		if err != nil || name != tc.want || modified != "" {
+			t.Errorf("EnsureFinalStageName(%q) = (%q, %q, %v), want (%q, \"\", nil)", tc.content, name, modified, err, tc.want)
+		}
+	}
+}
+
 // When BuildKit rejects the file (a trailing comment after the image), the
 // label goes right after the image of the last FROM, at the same byte offset
 // TS computes from the match index (dockerfileUtils.ts: `dockerfile.slice(0,
