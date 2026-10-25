@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -14,6 +15,10 @@ type DotfilesConfig struct {
 	TargetPath     string // default: ~/dotfiles
 }
 
+// localRepository is TS installDotfiles' test for a repository that is a path,
+// absolute or relative, and so is not GitHub shorthand.
+var localRepository = regexp.MustCompile(`^\.{0,2}/`)
+
 // InstallDotfiles clones and runs a dotfiles repository in the container.
 func InstallDotfiles(logger log.Logger, executor CommandExecutor, config DotfilesConfig) error {
 	if config.Repository == "" {
@@ -21,8 +26,9 @@ func InstallDotfiles(logger log.Logger, executor CommandExecutor, config Dotfile
 	}
 
 	repo := config.Repository
-	// Auto-prefix GitHub shorthand
-	if !strings.Contains(repo, ":") && !strings.HasPrefix(repo, "./") && !strings.HasPrefix(repo, "../") {
+	// Auto-prefix GitHub shorthand: a repository with no colon that is not a
+	// path (TS: `repository.indexOf(':') === -1 && !/^\.{0,2}\//.test(repository)`).
+	if !strings.Contains(repo, ":") && !localRepository.MatchString(repo) {
 		repo = "https://github.com/" + repo + ".git"
 	}
 
