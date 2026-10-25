@@ -58,6 +58,15 @@ touches a compared surface, reflected in the parity matrix.
   reads only the first pair and takes `B`. Variable expansion, stage lookup and the final
   stage name otherwise follow the reference (recorded in
   `internal/{docker,cli}/testdata/ts-oracle/dockerfile.json`).
+- **The `devcontainer.metadata` label writes object values with their keys sorted.** The
+  label is TS's `JSON.stringify` of the entries: each entry's properties in TS's pick
+  order (`pickFeatureProperties` for a Feature, `pickConfigProperties` for the
+  configuration) and `&`, `<`, `>` unescaped, as in TS. Within a property's object value
+  (a mount object, `customizations`, `portsAttributes`, …) the keys are sorted, because a
+  decoded Go map keeps no order, where TS keeps the order they were written in; an entry
+  given in another order (a base image's label written by another tool) is likewise
+  rewritten in pick order. The parsed metadata is the same; only the label's bytes differ
+  (`internal/imagemeta/testdata/ts-oracle/imagemeta.json` records both cases).
 
 ## Firm decisions & scope
 

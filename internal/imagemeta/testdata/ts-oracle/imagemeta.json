@@ -1360,11 +1360,47 @@
           }
         ]
       ],
-      "divergence": "unresolved: TS writes a Feature entry's keys in pickFeatureProperties order (id, lifecycle hooks, init, ...) and a config entry's in pickConfigProperties order; Go writes Entry's field order (internal/imagemeta/metadata.go, not changed here)",
+      "divergence": "docs/DIVERGENCES.md: the label writes an entry's object values (here a mount) with their keys sorted, a Go map keeping no order",
       "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"id\\\":\\\"ghcr.io/devcontainers/features/node:1\\\",\\\"onCreateCommand\\\":\\\"a\\\",\\\"init\\\":true,\\\"privileged\\\":false,\\\"capAdd\\\":[\\\"SYS_PTRACE\\\"],\\\"securityOpt\\\":[\\\"seccomp=unconfined\\\"],\\\"entrypoint\\\":\\\"/e.sh\\\",\\\"mounts\\\":[{\\\"type\\\":\\\"volume\\\",\\\"source\\\":\\\"v\\\",\\\"target\\\":\\\"/v\\\"}],\\\"customizations\\\":{\\\"vscode\\\":{\\\"extensions\\\":[\\\"x\\\"]}}} \\\n]\""
     },
     {
-      "name": "config entry in pick order",
+      "name": "feature entry in pick order, nested keys sorted",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "id": "ghcr.io/devcontainers/features/node:1",
+            "onCreateCommand": "a",
+            "init": true,
+            "privileged": false,
+            "capAdd": [
+              "SYS_PTRACE"
+            ],
+            "securityOpt": [
+              "seccomp=unconfined"
+            ],
+            "entrypoint": "/e.sh",
+            "mounts": [
+              {
+                "source": "v",
+                "target": "/v",
+                "type": "volume"
+              }
+            ],
+            "customizations": {
+              "vscode": {
+                "extensions": [
+                  "x"
+                ]
+              }
+            }
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"id\\\":\\\"ghcr.io/devcontainers/features/node:1\\\",\\\"onCreateCommand\\\":\\\"a\\\",\\\"init\\\":true,\\\"privileged\\\":false,\\\"capAdd\\\":[\\\"SYS_PTRACE\\\"],\\\"securityOpt\\\":[\\\"seccomp=unconfined\\\"],\\\"entrypoint\\\":\\\"/e.sh\\\",\\\"mounts\\\":[{\\\"source\\\":\\\"v\\\",\\\"target\\\":\\\"/v\\\",\\\"type\\\":\\\"volume\\\"}],\\\"customizations\\\":{\\\"vscode\\\":{\\\"extensions\\\":[\\\"x\\\"]}}} \\\n]\""
+    },
+    {
+      "name": "config entry out of pick order",
       "fn": "getDevcontainerMetadataLabel",
       "args": [
         [
@@ -1414,8 +1450,61 @@
           }
         ]
       ],
-      "divergence": "unresolved: TS writes a Feature entry's keys in pickFeatureProperties order (id, lifecycle hooks, init, ...) and a config entry's in pickConfigProperties order; Go writes Entry's field order (internal/imagemeta/metadata.go, not changed here)",
+      "divergence": "docs/DIVERGENCES.md: the label writes an entry's properties in TS's pick order, not in the order of the object given (an Entry keeps none)",
       "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"postCreateCommand\\\":\\\"p\\\",\\\"waitFor\\\":\\\"onCreateCommand\\\",\\\"customizations\\\":{\\\"vscode\\\":{}},\\\"mounts\\\":[\\\"type=bind,src=/a,dst=/b\\\"],\\\"containerEnv\\\":{\\\"A\\\":\\\"1\\\"},\\\"containerUser\\\":\\\"c\\\",\\\"init\\\":true,\\\"privileged\\\":true,\\\"remoteUser\\\":\\\"r\\\",\\\"remoteEnv\\\":{\\\"B\\\":\\\"2\\\"},\\\"overrideCommand\\\":false,\\\"portsAttributes\\\":{\\\"3000\\\":{\\\"label\\\":\\\"x\\\"}},\\\"otherPortsAttributes\\\":{\\\"onAutoForward\\\":\\\"ignore\\\"},\\\"forwardPorts\\\":[3000],\\\"shutdownAction\\\":\\\"none\\\",\\\"updateRemoteUserUID\\\":true,\\\"hostRequirements\\\":{\\\"cpus\\\":2},\\\"userEnvProbe\\\":\\\"none\\\",\\\"capAdd\\\":[\\\"NET_ADMIN\\\"],\\\"securityOpt\\\":[\\\"label=disable\\\"]} \\\n]\""
+    },
+    {
+      "name": "config entry in pick order",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "postCreateCommand": "p",
+            "waitFor": "onCreateCommand",
+            "customizations": {
+              "vscode": {}
+            },
+            "mounts": [
+              "type=bind,src=/a,dst=/b"
+            ],
+            "containerEnv": {
+              "A": "1"
+            },
+            "containerUser": "c",
+            "init": true,
+            "privileged": true,
+            "capAdd": [
+              "NET_ADMIN"
+            ],
+            "securityOpt": [
+              "label=disable"
+            ],
+            "remoteUser": "r",
+            "userEnvProbe": "none",
+            "remoteEnv": {
+              "B": "2"
+            },
+            "overrideCommand": false,
+            "portsAttributes": {
+              "3000": {
+                "label": "x"
+              }
+            },
+            "otherPortsAttributes": {
+              "onAutoForward": "ignore"
+            },
+            "forwardPorts": [
+              3000
+            ],
+            "shutdownAction": "none",
+            "updateRemoteUserUID": true,
+            "hostRequirements": {
+              "cpus": 2
+            }
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"postCreateCommand\\\":\\\"p\\\",\\\"waitFor\\\":\\\"onCreateCommand\\\",\\\"customizations\\\":{\\\"vscode\\\":{}},\\\"mounts\\\":[\\\"type=bind,src=/a,dst=/b\\\"],\\\"containerEnv\\\":{\\\"A\\\":\\\"1\\\"},\\\"containerUser\\\":\\\"c\\\",\\\"init\\\":true,\\\"privileged\\\":true,\\\"capAdd\\\":[\\\"NET_ADMIN\\\"],\\\"securityOpt\\\":[\\\"label=disable\\\"],\\\"remoteUser\\\":\\\"r\\\",\\\"userEnvProbe\\\":\\\"none\\\",\\\"remoteEnv\\\":{\\\"B\\\":\\\"2\\\"},\\\"overrideCommand\\\":false,\\\"portsAttributes\\\":{\\\"3000\\\":{\\\"label\\\":\\\"x\\\"}},\\\"otherPortsAttributes\\\":{\\\"onAutoForward\\\":\\\"ignore\\\"},\\\"forwardPorts\\\":[3000],\\\"shutdownAction\\\":\\\"none\\\",\\\"updateRemoteUserUID\\\":true,\\\"hostRequirements\\\":{\\\"cpus\\\":2}} \\\n]\""
     },
     {
       "name": "getEntPasswd 'root'",
