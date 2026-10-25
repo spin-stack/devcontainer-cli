@@ -35,7 +35,7 @@ func checkDockerDaemon(ctx context.Context, env *Env) Result {
 		r.Remediation = "Start Docker (e.g. `sudo systemctl start docker`) and ensure your user can access it."
 		return r
 	}
-	r.Status = StatusOK
+	r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 	r.Summary = fmt.Sprintf("Docker daemon reachable (server %s)", strings.TrimSpace(string(stdout)))
 	return r
 }
@@ -51,7 +51,7 @@ func checkBuildx(ctx context.Context, env *Env) Result {
 		r.Remediation = "Install the Docker buildx plugin: https://github.com/docker/buildx#installing"
 		return r
 	}
-	r.Status = StatusOK
+	r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 	r.Summary = firstLine(string(stdout))
 	return r
 }
@@ -64,25 +64,19 @@ func checkBuildx(ctx context.Context, env *Env) Result {
 func checkCacheExport(ctx context.Context, env *Env) Result {
 	r := Result{Name: "build-cache-export", Fixable: true}
 
-	dir, err := os.MkdirTemp(env.ProbeDir, "devcontainer-doctor-*")
+	dir, err := writeProbeContext(env.ProbeDir)
 	if err != nil {
 		r.Status = StatusWarn
-		r.Summary = "could not create probe context: " + err.Error()
+		r.Summary = err.Error()
 		return r
 	}
 	defer os.RemoveAll(dir)
-
-	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(probeDockerfile), 0o644); err != nil {
-		r.Status = StatusWarn
-		r.Summary = "could not write probe context: " + err.Error()
-		return r
-	}
 
 	dest := filepath.Join(dir, "cache")
 	_, stderr, code, err := env.runner().Run(ctx, nil, env.dockerPath(),
 		"buildx", "build", "--cache-to", "type=local,dest="+dest, dir)
 	if err == nil && code == 0 {
-		r.Status = StatusOK
+		r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 		r.Summary = "builder can export build cache"
 		return r
 	}
@@ -98,6 +92,21 @@ func checkCacheExport(ctx context.Context, env *Env) Result {
 	return r
 }
 
+// writeProbeContext creates the cache-export probe's build context under base:
+// a fresh temp directory holding probeDockerfile. On failure nothing is left
+// behind and the error says which step failed.
+func writeProbeContext(base string) (string, error) {
+	dir, err := os.MkdirTemp(base, "devcontainer-doctor-*")
+	if err != nil {
+		return "", fmt.Errorf("could not create probe context: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(probeDockerfile), 0o644); err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("could not write probe context: %w", err)
+	}
+	return dir, nil
+}
+
 // checkComposeV2 verifies the Compose v2 plugin. Only Compose-based dev
 // containers need it, so its absence is a warn.
 func checkComposeV2(ctx context.Context, env *Env) Result {
@@ -109,7 +118,7 @@ func checkComposeV2(ctx context.Context, env *Env) Result {
 		r.Remediation = "Install the Docker Compose v2 plugin (only needed for Compose-based dev containers)."
 		return r
 	}
-	r.Status = StatusOK
+	r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 	r.Summary = "docker compose v" + firstLine(string(stdout))
 	return r
 }
@@ -138,7 +147,7 @@ func checkDiskSpace(ctx context.Context, env *Env) Result {
 		r.Remediation = "Free up space or run `docker system prune` to reclaim unused images/containers."
 		return r
 	}
-	r.Status = StatusOK
+	r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 	r.Summary = fmt.Sprintf("%s free on %s", humanBytes(avail), path)
 	return r
 }
@@ -157,12 +166,12 @@ func checkSELinux(_ context.Context, env *Env) Result {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// No selinuxfs → SELinux not enabled on this host.
-		r.Status = StatusOK
+		r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 		r.Summary = "SELinux not enabled"
 		return r
 	}
 	if strings.TrimSpace(string(data)) != "1" {
-		r.Status = StatusOK
+		r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 		r.Summary = "SELinux not enforcing"
 		return r
 	}
