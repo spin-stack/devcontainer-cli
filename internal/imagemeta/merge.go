@@ -204,14 +204,11 @@ func mountTarget(mnt any) string {
 }
 
 func dedupeMountsByTarget(mounts []any) []any {
-	if len(mounts) == 0 {
-		return mounts
-	}
 	lastIdx := make(map[string]int, len(mounts))
 	for i, mnt := range mounts {
 		lastIdx[mountTarget(mnt)] = i
 	}
-	out := make([]any, 0, len(mounts))
+	var out []any // nil without mounts, as the merge leaves Mounts then
 	for i, mnt := range mounts {
 		if lastIdx[mountTarget(mnt)] == i {
 			out = append(out, mnt)
@@ -220,33 +217,26 @@ func dedupeMountsByTarget(mounts []any) []any {
 	return out
 }
 
-// forwardPortNumber returns (N, true) for a numeric port (number or numeric
-// string is NOT treated as a number by TS — only actual JSON numbers are).
-func forwardPortNumber(p any) (int, bool) {
+// forwardPortKey returns the de-dup key of a forwarded port: "localhost:N" for
+// a numeric port N (a numeric string is NOT treated as a number by TS — only
+// actual JSON numbers are), the port itself as a string otherwise.
+func forwardPortKey(p any) string {
 	switch v := p.(type) {
 	case float64:
-		return int(v), true
+		return fmt.Sprintf("localhost:%d", int(v))
 	case int:
-		return v, true
+		return fmt.Sprintf("localhost:%d", v)
 	case int64:
-		return int(v), true
+		return fmt.Sprintf("localhost:%d", v)
 	}
-	return 0, false
+	return fmt.Sprintf("%v", p)
 }
 
 func dedupeForwardPorts(ports []any) []any {
-	if len(ports) == 0 {
-		return ports
-	}
 	seen := make(map[string]bool, len(ports))
 	var keys []string
 	for _, p := range ports {
-		key := ""
-		if n, ok := forwardPortNumber(p); ok {
-			key = fmt.Sprintf("localhost:%d", n)
-		} else {
-			key = fmt.Sprintf("%v", p)
-		}
+		key := forwardPortKey(p)
 		if !seen[key] {
 			seen[key] = true
 			keys = append(keys, key)
@@ -254,7 +244,7 @@ func dedupeForwardPorts(ports []any) []any {
 	}
 	// Denormalize: a "localhost:N" key becomes the number N; anything else stays a
 	// string — matching TS's final .map(port => /localhost:\d+/.test ? parseInt : port).
-	out := make([]any, 0, len(keys))
+	var out []any // nil without ports, as the merge leaves ForwardPorts then
 	for _, k := range keys {
 		if n, ok := localhostPort(k); ok {
 			out = append(out, float64(n))
