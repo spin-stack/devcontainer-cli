@@ -380,7 +380,7 @@ func writeJS(b *bytes.Buffer, v any, indent string) {
 	case string:
 		writeJSString(b, t)
 	case float64:
-		b.WriteString(strconv.FormatFloat(t, 'f', -1, 64))
+		b.WriteString(strconv.FormatFloat(t, 'f', -1, 64)) // mutate-exempt: any negative precision is the shortest representation
 	case int:
 		b.WriteString(strconv.Itoa(t))
 	case bool:

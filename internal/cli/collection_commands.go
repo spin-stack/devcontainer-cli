@@ -296,7 +296,7 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	logger := log.New(log.Options{
 		Level:  log.ParseLevel(logLevelStr),
 		Format: "text",
-		Writer: os.Stderr,
+		Writer: out.Stderr(),
 	})
 
 	// Package first. A failed MkdirTemp would otherwise leave tmpDir="" and scatter
@@ -559,7 +559,7 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 
 		version := "latest"
 		if v, _ := meta["version"].(string); v != "" {
-			version = strings.SplitN(v, ".", 2)[0]
+			version, _, _ = strings.Cut(v, ".")
 		}
 
 		notes := ""
@@ -697,7 +697,7 @@ func defaultCell(ov map[string]any) string {
 	case bool:
 		return strconv.FormatBool(x)
 	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64)
+		return strconv.FormatFloat(x, 'f', -1, 64) // mutate-exempt: any negative precision is the shortest representation
 	case nil:
 		return "null"
 	default:
