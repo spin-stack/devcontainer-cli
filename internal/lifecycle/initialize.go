@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -44,7 +43,7 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 			return err
 		}
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", resolved), log.LevelInfo)
-		return runHostExec(ctx, []string{"/bin/sh", "-c", resolved}, workspaceFolder)
+		return runHostExec(ctx, logger, []string{"/bin/sh", "-c", resolved}, workspaceFolder)
 	}
 
 	// Array form
@@ -57,7 +56,7 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 			arr[i] = resolved
 		}
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", strings.Join(arr, " ")), log.LevelInfo)
-		return runHostExec(ctx, arr, workspaceFolder)
+		return runHostExec(ctx, logger, arr, workspaceFolder)
 	}
 
 	// Object form (parallel commands)
@@ -80,7 +79,7 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 					return
 				}
 				logger.Write(fmt.Sprintf("  [%s] %s", name, resolved), log.LevelInfo)
-				if err := runHostExec(ctx, []string{"/bin/sh", "-c", resolved}, workspaceFolder); err != nil {
+				if err := runHostExec(ctx, logger, []string{"/bin/sh", "-c", resolved}, workspaceFolder); err != nil {
 					errs[i] = fmt.Errorf("%s: %w", name, err)
 				}
 			})
@@ -97,10 +96,22 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 	return nil
 }
 
-func runHostExec(ctx context.Context, args []string, workDir string) error {
+// runHostExec runs args in workDir and streams the command's stdout and stderr
+// into the log, as TS runInitializeCommand does (runCommand writes each chunk
+// with output.raw at info level): the CLI's stdout is left to its JSON result.
+func runHostExec(ctx context.Context, logger log.Logger, args []string, workDir string) error {
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = workDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	out := rawLog{logger}
+	cmd.Stdout = out
+	cmd.Stderr = out
 	return cmd.Run()
+}
+
+// rawLog writes what it is given into a log as raw text at info level.
+type rawLog struct{ logger log.Logger }
+
+func (w rawLog) Write(p []byte) (int, error) {
+	w.logger.Raw(string(p), log.LevelInfo)
+	return len(p), nil
 }
