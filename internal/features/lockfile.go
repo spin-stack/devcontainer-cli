@@ -1,9 +1,11 @@
 package features
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -108,7 +110,7 @@ type WriteOptions struct {
 func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) error {
 	path := LockfilePath(configPath)
 
-	newData, err := json.MarshalIndent(lockfile, "", "  ")
+	newData, err := stringifyJSON(lockfile)
 	if err != nil {
 		return err
 	}
@@ -124,18 +126,23 @@ func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) err
 		return nil
 	}
 
+	// TS compares the old lockfile through JSON.parse -> JSON.stringify, so a
+	// cosmetic difference is no change, and one that does not parse always is.
+	oldNormalized, parsed := normalizeJSON(oldData)
+	unchanged := parsed && oldNormalized == string(newData)
+
 	if opts.Frozen {
 		if errors.Is(readErr, os.ErrNotExist) {
 			return fmt.Errorf("lockfile does not exist")
 		}
-		if string(oldData) != string(newData) {
+		if !unchanged {
 			return fmt.Errorf("lockfile does not match")
 		}
 		return nil
 	}
 
-	if readErr == nil && string(oldData) == string(newData) {
-		return nil // no change
+	if unchanged {
+		return nil
 	}
 
 	return os.WriteFile(path, newData, 0644)
@@ -151,4 +158,74 @@ func LockfilePath(configPath string) string {
 		return filepath.Join(dir, ".devcontainer-lock.json")
 	}
 	return filepath.Join(dir, "devcontainer-lock.json")
+}
+
+// stringifyJSON is TS JSON.stringify(v, null, 2) + "\n": two-space indent,
+// no HTML escaping, a trailing newline.
+func stringifyJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// normalizeJSON is TS JSON.stringify(JSON.parse(data), null, 2) + "\n" for a
+// lockfile: keys stay in their order, strings are re-escaped, numbers are
+// written as a float64 is (as JS writes them) and whitespace is re-indented. It reports false when data is not exactly one JSON value.
+func normalizeJSON(data []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var out bytes.Buffer
+	if err := normalizeValue(dec, &out, "\n"); err != nil {
+		return "", false
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return "", false
+	}
+	out.WriteByte('\n')
+	return out.String(), true
+}
+
+// normalizeValue writes the next value of dec to out as JSON.stringify(v,
+// null, 2) does at the depth whose line break and indent is newline.
+func normalizeValue(dec *json.Decoder, out *bytes.Buffer, newline string) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		data, err := stringifyJSON(tok)
+		out.Write(bytes.TrimSuffix(data, []byte("\n")))
+		return err
+	}
+	out.WriteByte(byte(delim))
+	inner := newline + "  "
+	n := 0
+	for ; dec.More(); n++ {
+		if n > 0 {
+			out.WriteByte(',')
+		}
+		out.WriteString(inner)
+		if delim == '{' {
+			if err := normalizeValue(dec, out, inner); err != nil {
+				return err
+			}
+			out.WriteString(": ")
+		}
+		if err := normalizeValue(dec, out, inner); err != nil {
+			return err
+		}
+	}
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	if n > 0 {
+		out.WriteString(newline)
+	}
+	out.WriteByte(byte(delim) + 2) // '{'+2 is '}', '['+2 is ']'
+	return nil
 }
