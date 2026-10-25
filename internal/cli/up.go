@@ -1365,5 +1365,8 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		ConfigPath:                  cfg.ConfigFilePath,
 		LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 		HostSub:                     &loadResult.HostSub,
+		// TS getFeaturesBuildOptions writes the config's containerEnv into the
+		// Features image as ENV lines (#{containerEnvMetadata}).
+		ContainerEnv: cfg.ContainerEnv,
 	}
 }
