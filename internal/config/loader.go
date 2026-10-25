@@ -2,7 +2,9 @@
 package config
 
 import (
+	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -14,6 +16,40 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/pfs"
 )
+
+// NotObjectError is a configuration file that parses to something other than a
+// JSON object (null, an array, a scalar), which TS readDevContainerConfigFile
+// rejects with this message.
+type NotObjectError struct {
+	Path string
+}
+
+func (e *NotObjectError) Error() string {
+	return fmt.Sprintf("Dev container config (%s) must contain a JSON object literal.", e.Path)
+}
+
+// wrapParseError names the file a parse error came from; a NotObjectError
+// already names it, in TS's words, and is returned as it is.
+func wrapParseError(what, path string, err error) error {
+	if _, ok := errors.AsType[*NotObjectError](err); ok {
+		return err
+	}
+	return fmt.Errorf("%s %s: %w", what, path, err)
+}
+
+// parseConfigObject parses a devcontainer.json document, which must be a JSON
+// object; path is what a NotObjectError names.
+func parseConfigObject(data []byte, path string) (map[string]any, error) {
+	var v any
+	if err := jsonc.Unmarshal(data, &v); err != nil {
+		return nil, err
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, &NotObjectError{Path: path}
+	}
+	return m, nil
+}
 
 // NotFoundError is returned when no devcontainer.json can be discovered.
 // It is distinguished from parse/other errors so callers (e.g. read-configuration)
@@ -138,12 +174,19 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	// so an orchestrator can supply a partial override without restating the whole
 	// devcontainer.json. When there is no readable base, the override stands alone
 	// (identical to the TS/replace behavior).
+	// The message names the --config file even when an override is read, as TS's
+	// does (uriToFsPath(configFile)).
+	objectPath := cmp.Or(configPath, overrideConfigPath)
 	var raw map[string]any
 	if configPath != "" {
-		if baseData, berr := os.ReadFile(configPath); berr == nil {
-			if perr := jsonc.Unmarshal(baseData, &raw); perr != nil {
-				return nil, fmt.Errorf("parse config %s: %w", configPath, perr)
+		baseData, err := os.ReadFile(configPath)
+		switch {
+		case err == nil:
+			if raw, err = parseConfigObject(baseData, objectPath); err != nil {
+				return nil, wrapParseError("parse config", configPath, err)
 			}
+		case overrideConfigPath == "":
+			return nil, fmt.Errorf("read config %s: %w", configPath, err)
 		}
 	}
 	if overrideConfigPath != "" {
@@ -151,25 +194,11 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		if oerr != nil {
 			return nil, fmt.Errorf("read override config %s: %w", overrideConfigPath, oerr)
 		}
-		var overrideRaw map[string]any
-		if perr := jsonc.Unmarshal(overrideData, &overrideRaw); perr != nil {
-			return nil, fmt.Errorf("parse override config %s: %w", overrideConfigPath, perr)
+		overrideRaw, perr := parseConfigObject(overrideData, objectPath)
+		if perr != nil {
+			return nil, wrapParseError("parse override config", overrideConfigPath, perr)
 		}
 		raw = deepMergeConfig(raw, overrideRaw)
-	}
-	if raw == nil {
-		// No override and the base could not be read: surface the base read error.
-		readPath := configPath
-		if overrideConfigPath != "" {
-			readPath = overrideConfigPath
-		}
-		data, err := os.ReadFile(readPath)
-		if err != nil {
-			return nil, fmt.Errorf("read config %s: %w", readPath, err)
-		}
-		if err := jsonc.Unmarshal(data, &raw); err != nil {
-			return nil, fmt.Errorf("parse config %s: %w", readPath, err)
-		}
 	}
 
 	// TS moves the deprecated properties before anything reads the config, so the
