@@ -222,7 +222,7 @@ func TestParityMatrix(t *testing.T) {
 		}
 	})
 
-	cliTS := envOr("CLI_TS", "node "+filepath.Join(repoRoot, "reference", "devcontainer.js"))
+	cliTS := envOr("CLI_TS", defaultParityTSCLI(repoRoot))
 	cliGO := envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer"))
 	defaultTimeout := 60 * time.Second
 	// Runtime lane default; overridable via PARITY_RUNTIME_TIMEOUT (e.g. "10m")
@@ -1066,7 +1066,7 @@ func parityEnv(caseID, side, repoRoot string, isolateCompose bool) map[string]st
 		// no container → "Dev container not found"). Mirror the cliGO/cliTS defaults
 		// (lines above) so setup and the measured command always agree.
 		"PARITY_CLI_GO": envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer")),
-		"PARITY_CLI_TS": envOr("CLI_TS", "node "+filepath.Join(repoRoot, "reference", "devcontainer.js")),
+		"PARITY_CLI_TS": envOr("CLI_TS", defaultParityTSCLI(repoRoot)),
 		// Newer BuildKit attaches provenance/SBOM attestations by default, wrapping
 		// the feature-content image in an attestation manifest list. That breaks the
 		// TS CLI's `COPY --from=dev_containers_feature_content_source ...` feature
@@ -1145,6 +1145,20 @@ func findRepoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// defaultParityTSCLI is the oracle's command line: the node on this process's
+// PATH, by its absolute path, running reference/devcontainer.js. The cases run
+// through `/bin/sh -lc`, and a login shell rebuilds PATH from the system
+// profile: on a runner whose setup-node node is not the system one (the docker8
+// fleet's image has node 22 in /usr/local/bin) a bare `node` would then load the
+// reference's native node-pty, built for the setup-node version, and fail.
+func defaultParityTSCLI(repoRoot string) string {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		node = "node"
+	}
+	return node + " " + filepath.Join(repoRoot, "reference", "devcontainer.js")
 }
 
 func envOr(key, fallback string) string {
