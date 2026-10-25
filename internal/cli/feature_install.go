@@ -128,7 +128,7 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresC
 	// (annotation-first, blob-fallback for OCI). Each call stages content in its
 	// own directory; the final install-order index dictates the real directory
 	// name, applied later by realignFeatureDirs.
-	stageIdx := 0
+	var stageIdx int
 	nextStageDir := func() string {
 		dir := filepath.Join(dstFolder, fmt.Sprintf("%s%d", featureStagePrefix, stageIdx))
 		stageIdx++
@@ -224,6 +224,7 @@ func processInstallFeature(
 
 	if srcType == features.SourceLegacyShorthand {
 		name := id
+		// mutate-exempt: idx > 1 differs only for a colon at index 1, which leaves a one-character name, and no legacy Feature has one: both bounds reject the id with the same error
 		if idx := strings.LastIndex(id, ":"); idx > 0 {
 			name = id[:idx]
 		}
@@ -336,8 +337,8 @@ func processInstallFeature(
 		// Pin to the digest recorded in the lockfile (reproducible resolution),
 		// matching the TS CLI which fetches the manifest by the lockfile integrity.
 		if lockfile != nil {
-			if entry, ok := lockfile.Features[id]; ok && entry.Integrity != "" {
-				if pinned, perr := oci.ParseRef(ref.Resource + "@" + entry.Integrity); perr == nil {
+			if integrity := lockfile.Features[id].Integrity; integrity != "" {
+				if pinned, perr := oci.ParseRef(ref.Resource + "@" + integrity); perr == nil {
 					ref = pinned
 				}
 			}
@@ -404,6 +405,7 @@ func processInstallFeature(
 		}
 
 		userIDNoVer := featureIDWithoutVersion(id)
+		owner, _, _ := strings.Cut(ref.Namespace, "/")
 
 		set := &features.Set{
 			SourceInfo: &features.OCISource{
@@ -414,7 +416,7 @@ func processInstallFeature(
 				UserFeatureIdWithoutVersion: userIDNoVer,
 				FeatureRef: map[string]string{
 					"id": ref.ID, "namespace": ref.Namespace,
-					"owner":    strings.SplitN(ref.Namespace, "/", 2)[0],
+					"owner":    owner,
 					"path":     ref.Namespace + "/" + ref.ID,
 					"registry": ref.Registry,
 					"scheme":   ref.Scheme(),
@@ -585,7 +587,8 @@ func engineAtLeast23(ctx context.Context, engine *docker.EngineClient) bool {
 	if err != nil {
 		return false
 	}
-	major, _ := strconv.Atoi(strings.SplitN(ver.Version, ".", 2)[0])
+	majorText, _, _ := strings.Cut(ver.Version, ".")
+	major, _ := strconv.Atoi(majorText)
 	return major >= 23
 }
 
@@ -804,10 +807,7 @@ func extendImageWithFeatures(
 
 	logger.Write(string(buildResult.Stderr), log.LevelInfo)
 
-	if len(imageNames) > 0 {
-		return imageNames, nil
-	}
-	return []string{outputName}, nil
+	return tags, nil
 }
 
 // findContainerUsers is TS findContainerUsers: the last containerUser of the
