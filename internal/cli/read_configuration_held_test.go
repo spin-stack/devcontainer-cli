@@ -437,10 +437,10 @@ func TestReadConfigurationCommandWithoutConfigExitsOne(t *testing.T) {
 func TestReadConfigurationCommandContainerIDWithoutWorkspace(t *testing.T) {
 	// --container-id alone loads no configuration; a container that cannot be
 	// inspected fails the command with no result, as TS's inspectContainer throws.
-	out, err := runReadConfigurationCmd(t, "--container-id", "devcontainer-cli-test-no-such-container")
+	_, err := runReadConfigurationCmd(t, "--container-id", "devcontainer-cli-test-no-such-container")
 	wantExitCode(t, err, 1)
-	if out != nil {
-		t.Errorf("result = %v, want none", out)
+	if !strings.Contains(err.Error(), "inspect container devcontainer-cli-test-no-such-container") {
+		t.Errorf("err = %v, want the inspect failure (no configuration is loaded)", err)
 	}
 }
 

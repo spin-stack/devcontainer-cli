@@ -144,8 +144,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	containerID := readConfigurationContainerID(ctx, engine, opts, workspaceFolder, result)
 	containerCfg, inspectErr := inspectContainerConfig(ctx, engine, containerID)
 	if inspectErr != nil {
-		lgr.Write(inspectErr.Error(), log.LevelError)
-		return &coreerrors.ExitCodeError{Code: 1, Err: inspectErr}
+		return readConfigurationFailure(lgr, inspectErr)
 	}
 	cfgMap, subErr := substituteContainerEnv(containerCfg, cfgMap)
 	if subErr != nil {
@@ -178,8 +177,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		if featErr != nil {
 			// TS readConfiguration writes the error to the log and exits 1 with no
 			// result; a Feature that cannot be resolved is not an empty one.
-			lgr.Write(featErr.Error(), log.LevelError)
-			return &coreerrors.ExitCodeError{Code: 1, Err: featErr}
+			return readConfigurationFailure(lgr, featErr)
 		}
 		if featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
@@ -204,8 +202,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			// featuresConfiguration above, as in TS.
 			buildInfo, biErr := readConfigurationImageBuildInfo(ctx, lgr, engine, opts.dockerPath, result)
 			if biErr != nil {
-				lgr.Write(biErr.Error(), log.LevelError)
-				return &coreerrors.ExitCodeError{Code: 1, Err: biErr}
+				return readConfigurationFailure(lgr, biErr)
 			}
 			base = append(base, buildInfo.Metadata...)
 		}
@@ -217,8 +214,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		}
 		entries, entriesErr := readConfigurationMetadata(append(base, featureEntries...), featureEntries, containerCfg, result, opts.idLabels, workspaceFolder, lgr)
 		if entriesErr != nil {
-			lgr.Write(entriesErr.Error(), log.LevelError)
-			return &coreerrors.ExitCodeError{Code: 1, Err: entriesErr}
+			return readConfigurationFailure(lgr, entriesErr)
 		}
 		merged, mergeErr := mergedConfigurationOutput(entries, containerCfg, cfgMap)
 		if mergeErr != nil {
@@ -238,6 +234,14 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 
 	fmt.Fprintln(out.Stdout(), string(data))
 	return nil
+}
+
+// readConfigurationFailure is how read-configuration fails, as TS
+// readConfiguration does: the error is logged and the command exits 1 with no
+// result.
+func readConfigurationFailure(lgr log.Logger, err error) error {
+	lgr.Write(err.Error(), log.LevelError)
+	return &coreerrors.ExitCodeError{Code: 1, Err: err}
 }
 
 // readConfigurationPaths resolves --workspace-folder, --config and
