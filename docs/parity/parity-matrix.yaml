@@ -867,6 +867,19 @@ initial_cases:
     current_status: match
     notes: "A --container-id that cannot be inspected fails read-configuration: TS findContainerAndIdLabels runs inspectContainer, whose `docker inspect` failure throws, so the command exits 1 with nothing on stdout. Go used to ignore the inspect failure and print the configuration."
 
+  - id: exec.config-remote-user-probe-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; IMG=parity-exec-user-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/img $WORKSPACE/.devcontainer; printf 'FROM debian:latest\\nRUN useradd --create-home foo\\n' > $WORKSPACE/img/Dockerfile; docker build -q -t $IMG $WORKSPACE/img >/dev/null; printf '{\\042image\\042:\\042%s\\042}' $IMG > $WORKSPACE/.devcontainer/devcontainer.json; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then ${PARITY_CLI_TS} up --workspace-folder $WORKSPACE --skip-post-create --update-remote-user-uid-default never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null; else ${PARITY_CLI_GO} up --workspace-folder $WORKSPACE --skip-post-create --update-remote-user-uid-default never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null; fi; printf '{\\042image\\042:\\042%s\\042,\\042remoteUser\\042:\\042foo\\042}' $IMG > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "exec --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} sh -c 'printf %s:%s:%s \"$HOME\" \"$(id -un)\" \"$PATH\"'"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; docker rmi -f parity-exec-user-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "The container is created without a remoteUser and the config then names foo. exec probes the user environment as the merged configuration's remoteUser (devContainersSpecCLI.ts exec: getImageMetadataFromContainer adds the config's remoteUser, createContainerProperties(..., mergedConfig.remoteUser)), so the probed HOME and PATH are foo's. Go probed as the container's metadata user (root here) and only ran the command as foo, passing root's HOME=/root and PATH."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade
