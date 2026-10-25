@@ -483,8 +483,19 @@ func makeWorkspaceAccessible(dir string) {
 	})
 }
 
+// execTestInContainer runs a test script in the test container with this
+// binary's `exec`, and reports whether it passed.
+//
+// mutate-lane: TestParityMatrix (features.test-single-scenario-success passes
+// only when the scenario script's success reaches the exit code through it).
 func execTestInContainer(containerId, testScript, workspaceFolder string) bool {
 	self, _ := os.Executable()
+	return testScriptCommand(self, containerId, testScript, workspaceFolder).Run() == nil
+}
+
+// testScriptCommand is the `<self> exec` that sources the test library and a
+// test script in the container, with the script's output on this process's.
+func testScriptCommand(self, containerId, testScript, workspaceFolder string) *exec.Cmd {
 	// The workspace is mounted at /workspaces/<name>; the test lib and scripts live
 	// there, so cd into it (not its parent) before sourcing them.
 	containerWs := "/workspaces/" + filepath.Base(workspaceFolder)
@@ -492,7 +503,7 @@ func execTestInContainer(containerId, testScript, workspaceFolder string) bool {
 		fmt.Sprintf("cd %s && source dev-container-features-test-lib && source %s && reportResults", containerWs, testScript))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run() == nil
+	return cmd
 }
 
 func cleanupTestContainers(logger log.Logger) {

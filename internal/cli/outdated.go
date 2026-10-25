@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -437,11 +436,9 @@ func newUpgradeCmd() *cobra.Command {
 
 			cfg := loadResult.Config
 
-			// Read existing lockfile
+			// The lockfile sits next to the configuration, whose path a loaded
+			// configuration always carries.
 			lockfilePath := cfg.ConfigFilePath
-			if lockfilePath == "" {
-				lockfilePath = filepath.Join(ws, "devcontainer.json")
-			}
 
 			// Generate new lockfile from current features config
 			// This is a simplified version — the full implementation
