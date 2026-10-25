@@ -257,10 +257,8 @@ func ComputeDevContainerID(idLabels map[string]string) string {
 	// Convert hash to BigInt, then to base32 string, padded to 52 chars
 	n := new(big.Int).SetBytes(hash[:])
 	str := n.Text(32)
-	if len(str) < 52 {
-		str = strings.Repeat("0", 52-len(str)) + str
-	}
-	return str
+	// A 256-bit hash has at most 52 base-32 digits.
+	return strings.Repeat("0", 52-len(str)) + str
 }
 
 func normalizeEnvKeys(env map[string]string) map[string]string {
