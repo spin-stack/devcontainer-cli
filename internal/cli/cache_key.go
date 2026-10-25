@@ -54,7 +54,9 @@ func computeCacheKey(result *config.LoadResult, env map[string]string) (string, 
 		}
 	}
 
-	if lock, ok, _ := features.ReadLockfile(cfg.ConfigFilePath); ok && lock != nil {
+	// ReadLockfile's bool reports an empty marker file, which pins nothing; a
+	// lockfile with content comes back as a non-nil lock.
+	if lock, _, _ := features.ReadLockfile(cfg.ConfigFilePath); lock != nil {
 		if lockJSON, lerr := json.Marshal(lock); lerr == nil {
 			in.Lockfile = lockJSON
 		}
