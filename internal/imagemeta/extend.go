@@ -309,9 +309,8 @@ func ParseFeatureFileInfo(data []byte) (FeatureFileInfo, error) {
 		return info, err
 	}
 	info.Deprecated, info.CurrentID = raw.Deprecated, raw.CurrentID
-	if len(raw.Options) == 0 || string(raw.Options) == "null" {
-		return info, nil
-	}
+	// Absent options leave nothing to decode (an error) and null or any other
+	// non-object value is not a '{': either way there are no option keys.
 	dec := json.NewDecoder(strings.NewReader(string(raw.Options)))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return info, nil
@@ -406,7 +405,7 @@ func jsString(v any) string {
 	case bool:
 		return strconv.FormatBool(x)
 	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64)
+		return strconv.FormatFloat(x, 'f', -1, 64) // mutate-exempt: every negative precision means the shortest representation, so -1 and -2 format alike
 	case json.Number:
 		return x.String()
 	case int:
