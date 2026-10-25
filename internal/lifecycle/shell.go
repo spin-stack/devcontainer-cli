@@ -82,9 +82,16 @@ type ShellExecutor struct {
 type CommandError struct {
 	Command  string
 	ExitCode int
+	// Argv is the array form's arguments, nil for a string command. TS runs an
+	// array without a shell and its error names the arguments joined with
+	// spaces (runRemoteCommand's "Command failed: ${cmd.join(' ')}").
+	Argv []string
 }
 
 func (e *CommandError) Error() string {
+	if e.Argv != nil {
+		return "Command failed: " + strings.Join(e.Argv, " ")
+	}
 	return fmt.Sprintf("Command failed: /bin/sh -c %s", e.Command)
 }
 

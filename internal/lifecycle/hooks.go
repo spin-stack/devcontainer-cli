@@ -189,7 +189,7 @@ func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cm
 		}
 		logger.Write(fmt.Sprintf("Running the %s from %s...", phase, from), log.LevelInfo)
 		if err := executor.Exec(cmdStr); err != nil {
-			he := &HookError{Phase: phase, Origin: origin, Err: err}
+			he := &HookError{Phase: phase, Origin: origin, Err: withArgv(err, cmd)}
 			logFailure(logger, he)
 			return he
 		}
@@ -207,7 +207,7 @@ func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cm
 		}
 		wg.Go(func() {
 			// TS prints a parallel command's header with its output once it succeeded.
-			if errs[i] = executor.Exec(cmdStr); errs[i] == nil {
+			if errs[i] = withArgv(executor.Exec(cmdStr), m[name]); errs[i] == nil {
 				logger.Write(fmt.Sprintf("Running %s of %s from %s...", name, phase, from), log.LevelInfo)
 			}
 		})
@@ -221,6 +221,19 @@ func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cm
 		}
 	}
 	return nil
+}
+
+// withArgv records an array command's arguments on its *CommandError, so the
+// error names them as TS does; err is returned as it is otherwise.
+func withArgv(err error, cmd any) error {
+	args, isArray := cmd.([]any)
+	if ce, ok := errors.AsType[*CommandError](err); ok && isArray {
+		ce.Argv = make([]string, len(args))
+		for i, a := range args {
+			ce.Argv[i] = fmt.Sprintf("%v", a)
+		}
+	}
+	return err
 }
 
 // logFailure writes TS's line for a command that exited non-zero.

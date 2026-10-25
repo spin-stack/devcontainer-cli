@@ -40,7 +40,6 @@ var differentialRuntimeKnown = map[string]map[string]string{
 		"image-with-features":               "the image label leaves out the configuration's entry",
 		"image-with-git-feature":            "the image label leaves out the configuration's entry",
 		"image-with-local-feature":          "the error description wraps the legacy Feature error; TS uses the error as it is",
-		"poetry-example":                    "an array lifecycle command's failure shows the sh -c form; TS joins the array with spaces",
 		"updateUID":                         "a container from a Dockerfile gets a container label repeating the image label; TS adds none",
 		"updateUIDOnly":                     "a container from a Dockerfile gets a container label repeating the image label; TS adds none",
 		"updateUIDamd64":                    "a container from a Dockerfile gets a container label repeating the image label; TS adds none",
