@@ -191,10 +191,10 @@ func nodesEqual(a, b *FNode) bool {
 
 // compareNodes compares two nodes for sorting.
 // Returns 0 if equal, <0 if a sorts before b, >0 if after.
+//
+// Both nodes have a Set: nodesEqual checks it first, and
+// ComputeInstallationOrder before it sorts a round.
 func compareNodes(a, b *FNode) int {
-	if a.Set == nil || b.Set == nil {
-		return strings.Compare(a.UserFeatureID, b.UserFeatureID)
-	}
 	aSrc := a.Set.SourceInfo
 	bSrc := b.Set.SourceInfo
 	if aSrc == nil || bSrc == nil {
@@ -308,9 +308,9 @@ func boolCompare(a, b bool) int {
 		return 0
 	}
 	if a {
-		return 1
+		return 1 // mutate-exempt: compareNodes' callers read only the sign
 	}
-	return -1
+	return -1 // mutate-exempt: compareNodes' callers read only the sign
 }
 
 // typeName mirrors the JS `typeof` used by optionsCompareTo's final fallback.

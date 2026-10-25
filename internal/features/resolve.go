@@ -93,14 +93,7 @@ func ResolveID(id string, skipAutoMapping bool) (string, bool) {
 
 	// GitHub shorthand: namespace/feature → ghcr.io/namespace/feature
 	if srcType == SourceGitHubShorthand {
-		// Strip version for resolution
-		name := id
-		version := ""
-		if idx := strings.LastIndex(id, ":"); idx > 0 {
-			name = id[:idx]
-			version = id[idx:]
-		}
-		return "ghcr.io/" + name + version, true
+		return "ghcr.io/" + id, true
 	}
 
 	if srcType != SourceLegacyShorthand {
