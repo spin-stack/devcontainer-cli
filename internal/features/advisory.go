@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,7 +73,9 @@ func GetControlManifest(ctx context.Context, cacheFolder string, client *http.Cl
 				return m
 			}
 		}
-		return emptyManifest()
+		// TS updateControlManifest caches the empty manifest, so the fetch is
+		// not retried for five minutes.
+		body = []byte("{\n  \"disallowedFeatures\": [],\n  \"featureAdvisories\": []\n}")
 	}
 
 	// Write to cache atomically
@@ -81,7 +84,7 @@ func GetControlManifest(ctx context.Context, cacheFolder string, client *http.Cl
 	// sees a partial manifest.
 	if tmp, err := os.CreateTemp(filepath.Dir(cachePath), controlManifestFile+"-*"); err == nil {
 		_, werr := tmp.Write(body)
-		if cerr := tmp.Close(); werr == nil && cerr == nil {
+		if errors.Join(werr, tmp.Close()) == nil {
 			os.Rename(tmp.Name(), cachePath)
 		} else {
 			os.Remove(tmp.Name())
@@ -129,7 +132,7 @@ func FeatureAdvisories(manifest *ControlManifest, featureSets []*Set, warn func(
 		fs = append(fs, feature{src.Registry + "/" + src.Namespace + "/" + src.ID, set.Features[0].Version})
 	}
 	slices.SortStableFunc(fs, func(a, b feature) int { return strings.Compare(a.id, b.id) })
-	if len(fs) == 0 || manifest == nil || len(manifest.FeatureAdvisories) == 0 {
+	if len(manifest.FeatureAdvisories) == 0 {
 		return nil
 	}
 	byID := make(map[string][]Advisory)
