@@ -77,10 +77,6 @@ type PushResult struct {
 // handles auth (pull,push scope negotiation), blob-existence checks and retries.
 func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*PushResult, error) {
 	c.log.Write(fmt.Sprintf("Pushing %s to %s (tags: %s)...", ref.ID, ref.Resource, strings.Join(tags, ", ")), log.LevelInfo)
-	if collectionType == "" {
-		collectionType = "feature"
-	}
-
 	repo, err := c.repository(ref)
 	if err != nil {
 		return nil, err
