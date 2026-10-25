@@ -24,6 +24,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/httpx"
 	"github.com/devcontainers/cli/internal/imagemeta"
@@ -229,7 +230,7 @@ func processInstallFeature(
 			name = id[:idx]
 		}
 		if !features.IsKnownLegacyFeature(name) {
-			return nil, fmt.Errorf(msgLegacyFeature, id)
+			return nil, &coreerrors.ContainerError{Description: fmt.Sprintf(msgLegacyFeature, id)}
 		}
 		// gradle/maven/jupyterlab folded into java/python with an option
 		// (installGradle, ...) — matching the TS deprecatedFeaturesIntoOptions.

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -173,5 +175,41 @@ func TestComposeBuildStreamsButConfigDoesNot(t *testing.T) {
 	}
 	if !strings.Contains(buildProgress.String(), "#1 building") {
 		t.Errorf("compose build did not stream to progress: %q", buildProgress.String())
+	}
+}
+
+// compose config reads every profile's services from the YAML output, as TS
+// readDockerComposeConfig does, with JSON's value types; a mapping with a
+// non-string key and an empty document still parse.
+func TestComposeConfigReadsEveryProfileFromYAML(t *testing.T) {
+	fr := &fakeRunner{stdout: []byte("name: proj\nservices:\n  app:\n    image: debian\n    ports:\n      - target: 80\n    sysctls:\n      1: x\n")}
+	c := &ComposeClient{Command: []string{"docker", "compose"}, Log: log.Null, Runner: fr}
+	cfg, err := c.Config(t.Context(), []string{"/ws/a.yml"}, "/ws/.env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := cfg["services"].(map[string]any)["app"].(map[string]any)
+	if app["image"] != "debian" || app["ports"].([]any)[0].(map[string]any)["target"] != float64(80) || app["sysctls"].(map[string]any)["1"] != "x" {
+		t.Errorf("config = %v", cfg)
+	}
+	fr.stdout = nil
+	if cfg, err := c.Config(t.Context(), []string{"/ws/a.yml"}, ""); err != nil || len(cfg) != 0 {
+		t.Errorf("empty output: config = %v, err = %v", cfg, err)
+	}
+}
+
+// A failing compose config is TS's ContainerError: its description says the
+// Compose configuration could not be retrieved, its message names the command.
+func TestComposeConfigFailureIsTheReferenceContainerError(t *testing.T) {
+	fr := &fakeRunner{stderr: []byte("project name must not be empty"), code: 1}
+	c := &ComposeClient{Command: []string{"docker", "compose"}, Log: log.Null, Runner: fr}
+	_, err := c.Config(t.Context(), []string{"/ws/a.yml"}, "")
+	out := coreerrors.ToErrorOutput(fmt.Errorf("wrapped: %w", err))
+	if out.Description != "An error occurred retrieving the Docker Compose configuration." || out.Message != "Command failed: docker compose -f /ws/a.yml --profile * config" {
+		t.Errorf("error = %+v", out)
+	}
+	fr.code, fr.stdout = 0, []byte("services: [")
+	if _, err := c.Config(t.Context(), []string{"/ws/a.yml"}, ""); err == nil || !strings.Contains(coreerrors.ToErrorOutput(err).Message, "parse compose config") {
+		t.Errorf("malformed output: err = %v", err)
 	}
 }

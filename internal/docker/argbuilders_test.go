@@ -301,7 +301,7 @@ func TestComposeConfig_ArgsAndParse(t *testing.T) {
 	want := []string{"compose",
 		"-f", "c.yml",
 		"--env-file", ".env",
-		"config", "--format", "json",
+		"--profile", "*", "config",
 	}
 	if !reflect.DeepEqual(rr.last().args, want) {
 		t.Errorf("config args =\n  %v\nwant\n  %v", rr.last().args, want)
