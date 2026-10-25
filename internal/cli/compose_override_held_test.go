@@ -8,15 +8,17 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
-// TS parseMount keeps every key=value pair; the boolean ones are true only for
-// the spellings TS accepts.
+// TS parseMount keeps every key=value pair. external is a JavaScript string, so
+// any value, "false" included, makes the volume external
+// (testdata/ts-oracle/compose.json); readonly is true only for the spellings TS
+// accepts.
 func TestParseComposeMountStringBooleans(t *testing.T) {
 	tests := []struct {
 		spec string
 		want composeMount
 	}{
 		{"type=volume,source=v,target=/v,external=true", composeMount{Type: "volume", Source: "v", Target: "/v", External: true}},
-		{"type=volume,source=v,target=/v,external=false", composeMount{Type: "volume", Source: "v", Target: "/v"}},
+		{"type=volume,source=v,target=/v,external=false", composeMount{Type: "volume", Source: "v", Target: "/v", External: true}},
 		{"source=/h,destination=/c,ro", composeMount{Source: "/h", Target: "/c", ReadOnly: true}},
 		{"source=/h,target=/c,readonly=true", composeMount{Source: "/h", Target: "/c", ReadOnly: true}},
 		{"source=/h,target=/c,ro=1", composeMount{Source: "/h", Target: "/c", ReadOnly: true}},

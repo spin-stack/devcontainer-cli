@@ -34,7 +34,6 @@ type MergedConfig struct {
 	PortsAttributes      map[string]any     `json:"portsAttributes"`
 	OtherPortsAttributes any                `json:"otherPortsAttributes,omitempty"`
 	ForwardPorts         []any              `json:"forwardPorts,omitempty"`
-	RunArgs              []string           `json:"runArgs,omitempty"`
 	ContainerEnv         map[string]string  `json:"containerEnv"`
 	RemoteEnv            map[string]*string `json:"remoteEnv"`
 	Customizations       map[string][]any   `json:"customizations,omitempty"`
@@ -149,9 +148,6 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		}
 		if m.OtherPortsAttributes == nil && e.OtherPortsAttributes != nil {
 			m.OtherPortsAttributes = e.OtherPortsAttributes
-		}
-		if len(m.RunArgs) == 0 && len(e.RunArgs) > 0 {
-			m.RunArgs = append([]string{}, e.RunArgs...)
 		}
 		if m.OverrideCommand == nil && e.OverrideCommand != nil {
 			m.OverrideCommand = e.OverrideCommand

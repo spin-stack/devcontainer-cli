@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -35,18 +34,6 @@ func TestVariableResolverBeforeContainerPhases(t *testing.T) {
 	}
 }
 
-func TestVariableResolverEnvironmentErrorIncludesConfig(t *testing.T) {
-	resolver := NewVariableResolver()
-	_, err := resolver.Resolve(SubstitutionContext{
-		ConfigFilePath: "/work/.devcontainer/devcontainer.json"}, PhaseHost, "${localEnv}")
-	if err == nil {
-		t.Fatal("expected missing environment variable name to fail")
-	}
-	if !strings.Contains(err.Error(), "devcontainer.json") {
-		t.Errorf("error does not identify config file: %v", err)
-	}
-}
-
 func TestVariableResolverResolveInto(t *testing.T) {
 	type value struct {
 		Env map[string]string `json:"env"`
@@ -58,131 +45,6 @@ func TestVariableResolverResolveInto(t *testing.T) {
 	}
 	if target.Env["ID"] != "prefix-abc123" {
 		t.Errorf("typed target was not resolved: %#v", target)
-	}
-}
-
-func TestVariableResolverHostPhase(t *testing.T) {
-	localEnvCtx := HostSubContext{
-		Platform: "linux",
-		Env:      map[string]string{"HOME": "/home/user", "USER": "test"},
-	}
-	workspaceCtx := HostSubContext{
-		Platform:                 "linux",
-		LocalWorkspaceFolder:     "/home/user/project",
-		ContainerWorkspaceFolder: "/workspaces/project",
-		Env:                      map[string]string{},
-	}
-	emptyCtx := HostSubContext{Platform: "linux", Env: map[string]string{}}
-	recursiveCtx := HostSubContext{
-		Platform:             "linux",
-		LocalWorkspaceFolder: "/home/user/project",
-		Env:                  map[string]string{"HOME": "/home/user"},
-	}
-
-	tests := []struct {
-		name  string
-		ctx   HostSubContext
-		input any
-		want  any
-	}{
-		// localEnv substitution
-		{"localEnv HOME", localEnvCtx, "${localEnv:HOME}", "/home/user"},
-		{"env alias", localEnvCtx, "${env:HOME}", "/home/user"},
-		{"localEnv with suffix", localEnvCtx, "${localEnv:HOME}/project", "/home/user/project"},
-		{"localEnv missing", localEnvCtx, "${localEnv:MISSING}", ""},
-		{"localEnv missing with fallback", localEnvCtx, "${localEnv:MISSING:fallback}", "fallback"},
-		// A default value may itself contain colons (URLs, image:tag, host:port) —
-		// only the first colon separates the var name from its default (#1213).
-		{"localEnv fallback with colons", localEnvCtx, "${localEnv:MISSING:my.registry.io:5000/img:tag}", "my.registry.io:5000/img:tag"},
-		{"localEnv present ignores colon fallback", localEnvCtx, "${localEnv:HOME:a:b:c}", "/home/user"},
-		{"no vars", localEnvCtx, "no vars here", "no vars here"},
-		{"multiple localEnv", localEnvCtx, "${localEnv:USER}@${localEnv:HOME}", "test@/home/user"},
-
-		// workspace folder substitution
-		{"localWorkspaceFolder", workspaceCtx, "${localWorkspaceFolder}", "/home/user/project"},
-		{"localWorkspaceFolderBasename", workspaceCtx, "${localWorkspaceFolderBasename}", "project"},
-		{"containerWorkspaceFolder", workspaceCtx, "${containerWorkspaceFolder}", "/workspaces/project"},
-		{"containerWorkspaceFolderBasename", workspaceCtx, "${containerWorkspaceFolderBasename}", "project"},
-
-		// unknown variables pass through unchanged
-		{"unknown variable", emptyCtx, "${unknownVar}", "${unknownVar}"},
-
-		// non-string values pass through unchanged
-		{"number passthrough", emptyCtx, 42.0, 42.0},
-		{"bool passthrough", emptyCtx, true, true},
-		{"nil passthrough", emptyCtx, nil, nil},
-
-		// recursive substitution into nested maps and slices
-		{
-			"recursive map and slice",
-			recursiveCtx,
-			map[string]any{
-				"workspaceFolder": "${localWorkspaceFolder}",
-				"env": map[string]any{
-					"HOME": "${localEnv:HOME}",
-				},
-				"ports": []any{"${localEnv:HOME}:8080"},
-			},
-			map[string]any{
-				"workspaceFolder": "/home/user/project",
-				"env": map[string]any{
-					"HOME": "/home/user",
-				},
-				"ports": []any{"/home/user:8080"},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewVariableResolver().Resolve(SubstitutionContext{HostSubContext: tt.ctx}, PhaseHost, tt.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("host Resolve(%v) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestVariableResolverIdentityPhase(t *testing.T) {
-	labels := map[string]string{
-		"devcontainer.local_folder": "/home/user/project",
-	}
-	id := ComputeDevContainerID(labels)
-	if id == "" {
-		t.Fatal("expected non-empty id")
-	}
-	if len(id) != 52 {
-		t.Errorf("id length = %d, want 52", len(id))
-	}
-
-	// Deterministic
-	id2 := ComputeDevContainerID(labels)
-	if id != id2 {
-		t.Errorf("id not deterministic: %q != %q", id, id2)
-	}
-
-	// Substitute into value
-	result, err := NewVariableResolver().Resolve(SubstitutionContext{IDLabels: labels}, PhaseIdentity, "${devcontainerId}")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result != id {
-		t.Errorf("substitution = %q, want %q", result, id)
-	}
-}
-
-func TestComputeDevContainerIDSortedKeys(t *testing.T) {
-	labels1 := map[string]string{"a": "1", "b": "2"}
-	labels2 := map[string]string{"b": "2", "a": "1"}
-
-	id1 := ComputeDevContainerID(labels1)
-	id2 := ComputeDevContainerID(labels2)
-
-	if id1 != id2 {
-		t.Errorf("key order should not matter: %q != %q", id1, id2)
 	}
 }
 
@@ -222,38 +84,6 @@ func TestSubstituteTemplateOptions(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("template Resolve() = %q, want %q", got, want)
-	}
-}
-
-func TestVariableResolverContainerPhase(t *testing.T) {
-	containerEnv := map[string]string{
-		"PATH":  "/usr/bin:/usr/local/bin",
-		"SHELL": "/bin/bash",
-	}
-
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"${containerEnv:PATH}", "/usr/bin:/usr/local/bin"},
-		{"${containerEnv:SHELL}", "/bin/bash"},
-		{"${containerEnv:MISSING}", ""},
-		{"no vars", "no vars"},
-		// Non-container vars should pass through
-		{"${localEnv:HOME}", "${localEnv:HOME}"},
-	}
-
-	for _, tt := range tests {
-		got, err := NewVariableResolver().AfterContainer(SubstitutionContext{
-			Platform:     "linux",
-			ContainerEnv: containerEnv,
-		}, tt.input)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != tt.want {
-			t.Errorf("container Resolve(%q) = %q, want %q", tt.input, got, tt.want)
-		}
 	}
 }
 

@@ -223,21 +223,6 @@ func TestInspectImageInRegistryDockerHub(t *testing.T) {
 	}
 }
 
-func TestQualifyImageName(t *testing.T) {
-	for in, want := range map[string]string{
-		"node":                                   "docker.io/library/node",
-		"node:18":                                "docker.io/library/node:18",
-		"docker.io/node":                         "docker.io/library/node",
-		"user/img:1":                             "docker.io/user/img:1",
-		"mcr.microsoft.com/devcontainers/base:1": "mcr.microsoft.com/devcontainers/base:1",
-		"localhost:5000/img":                     "docker.io/localhost:5000/img",
-	} {
-		if got := QualifyImageName(in); got != want {
-			t.Errorf("QualifyImageName(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestInspectImageInRegistryUnparsableName(t *testing.T) {
 	_, err := testImageClient().InspectImageInRegistry(context.Background(), "Bad Name", ocispec.Platform{OS: "linux", Architecture: "amd64"})
 	if err == nil || err.Error() != "Could not parse image name 'Bad Name'" {

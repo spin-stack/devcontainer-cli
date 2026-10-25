@@ -1,0 +1,1073 @@
+{
+  "comment": "variableSubstitution.ts substitute, beforeContainerSubstitute, containerSubstitute and devcontainerIdForLabels (through ${devcontainerId}), ported in varsub.go (Resolve with PhaseHost, PhaseIdentity, PhaseContainer; ComputeDevContainerID).",
+  "cases": [
+    {
+      "name": "two labels",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "foo": "bar",
+          "parity.test": "devid"
+        }
+      ],
+      "result": "0eqk35tddobe0171rebd7mvh8npbq2f49ctp543uiimslnjgumv5"
+    },
+    {
+      "name": "local_folder and config_file",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "devcontainer.local_folder": "/w",
+          "devcontainer.config_file": "/w/.devcontainer.json"
+        }
+      ],
+      "result": "0c27kmi3t5h3anj4psh9usfultojkmt45hfb3mf98sm13ug01diu"
+    },
+    {
+      "name": "single label",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "a": "1"
+        }
+      ],
+      "result": "16num3pb40viagoiti6uqh0t0ccbfgqcavs6inmu8b922mhgo2b0"
+    },
+    {
+      "name": "ts: a=b",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "a": "b"
+        }
+      ],
+      "result": "1mqafr5h2iu6dhh3k1m4vtnuhml2uiec4s7bntt1v0f25ao63i1n"
+    },
+    {
+      "name": "ts: two labels",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "a": "b",
+          "c": "d"
+        }
+      ],
+      "result": "1e2sfmkjt1sga649hgk0s5f3u6nlqhlv9al481r91s7gkeo32p3o"
+    },
+    {
+      "name": "ts: unsorted labels",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "c": "d",
+          "a": "b"
+        }
+      ],
+      "result": "1e2sfmkjt1sga649hgk0s5f3u6nlqhlv9al481r91s7gkeo32p3o"
+    },
+    {
+      "name": "empty",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {}
+      ],
+      "result": "0h0jduhlbcr7h88kdb8muvk697kkvd7s47v7fq1h1g30uoealvsa"
+    },
+    {
+      "name": "HTML characters",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "devcontainer.local_folder": "/home/me/a&b <c>"
+        }
+      ],
+      "result": "06ilodbvfsb63itnb0brs4scnijm066eg4pjk1lrr98h1j9181r9"
+    },
+    {
+      "name": "quotes and backslashes",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "k": "C:\\Users\\me\\\"q\""
+        }
+      ],
+      "result": "1rvqfcgbnscs3ese18e25juciac2cs25jbc9bl4vfresrsgqj31q"
+    },
+    {
+      "name": "control characters",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "k": "tab\tnl\ncr\rbs\bff\fnul\u0000esc\u001b"
+        }
+      ],
+      "result": "1fj8klj379vnjkefd2j3qabtqmear9tfp8qavtg8d99oh0bn9sir"
+    },
+    {
+      "name": "line and paragraph separators",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "k": "a\u2028b\u2029c"
+        }
+      ],
+      "result": "1jog83ncrnadnokl6cu3petc00uf821vkk2ousopop6i0glah7rn"
+    },
+    {
+      "name": "unicode keys sorted by UTF-16",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "": "1",
+          "😀": "2",
+          "é": "3",
+          "z": "4"
+        }
+      ],
+      "result": "1g2hhjejhkapd890kq688ohq023bss46ghsj7qq1rntns9ftod2n"
+    },
+    {
+      "name": "unicode values",
+      "fn": "devcontainerIdForLabels",
+      "args": [
+        {
+          "devcontainer.local_folder": "/home/usuário/projeto ✓"
+        }
+      ],
+      "result": "1m61do3vis1sn18nsboulsb2oqnc0i3kkq5vo4q0i4coqc29nvea"
+    },
+    {
+      "name": "ts: environment variables",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {
+            "baz": "somevalue"
+          }
+        },
+        {
+          "foo": "bar${env:baz}bar"
+        }
+      ],
+      "result": {
+        "foo": "barsomevaluebar"
+      }
+    },
+    {
+      "name": "ts: localWorkspaceFolder",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {
+            "baz": "somevalue"
+          }
+        },
+        {
+          "foo": "bar${localWorkspaceFolder}bar"
+        }
+      ],
+      "result": {
+        "foo": "bar/foo/barbar"
+      }
+    },
+    {
+      "name": "ts: containerWorkspaceFolder",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {
+            "baz": "somevalue"
+          }
+        },
+        {
+          "foo": "bar${containerWorkspaceFolder}bar"
+        }
+      ],
+      "result": {
+        "foo": "bar/baz/bluebar"
+      }
+    },
+    {
+      "name": "ts: containerWorkspaceFolder from localWorkspaceFolderBasename",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/red",
+          "containerWorkspaceFolder": "/baz/${localWorkspaceFolderBasename}",
+          "configFile": "/foo/bar/baz.json",
+          "env": {
+            "baz": "somevalue"
+          }
+        },
+        {
+          "foo": "bar${containerWorkspaceFolder}bar"
+        }
+      ],
+      "result": {
+        "foo": "bar/baz/redbar"
+      }
+    },
+    {
+      "name": "ts: default when missing",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {}
+        },
+        {
+          "foo": "bar${localEnv:baz:default}bar"
+        }
+      ],
+      "result": {
+        "foo": "bardefaultbar"
+      }
+    },
+    {
+      "name": "ts: missing without default",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {}
+        },
+        {
+          "foo": "bar${localEnv:baz}bar"
+        }
+      ],
+      "result": {
+        "foo": "barbar"
+      }
+    },
+    {
+      "name": "ts: default ignored when present",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {
+            "baz": "somevalue"
+          }
+        },
+        {
+          "foo": "bar${localEnv:baz:default}bar"
+        }
+      ],
+      "result": {
+        "foo": "barsomevaluebar"
+      }
+    },
+    {
+      "name": "ts: default with colons",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/foo/bar",
+          "containerWorkspaceFolder": "/baz/blue",
+          "configFile": "/foo/bar/baz.json",
+          "env": {}
+        },
+        {
+          "foo": "bar${localEnv:baz:default:a:b:c}bar"
+        }
+      ],
+      "divergence": "docs/DIVERGENCES.md: a ${localEnv:VAR:default} / ${containerEnv:VAR:default} default keeps its colons (upstream devcontainers/cli#1213, newer than the pinned reference, which keeps only the text up to the next colon)",
+      "result": {
+        "foo": "bardefaultbar"
+      }
+    },
+    {
+      "name": "localEnv HOME",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:HOME}"
+      ],
+      "result": "/home/user"
+    },
+    {
+      "name": "env alias",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${env:HOME}"
+      ],
+      "result": "/home/user"
+    },
+    {
+      "name": "localEnv with suffix",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:HOME}/project"
+      ],
+      "result": "/home/user/project"
+    },
+    {
+      "name": "localEnv missing",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:MISSING}"
+      ],
+      "result": ""
+    },
+    {
+      "name": "localEnv missing with fallback",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:MISSING:fallback}"
+      ],
+      "result": "fallback"
+    },
+    {
+      "name": "localEnv fallback with colons",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:MISSING:my.registry.io:5000/img:tag}"
+      ],
+      "divergence": "docs/DIVERGENCES.md: a ${localEnv:VAR:default} / ${containerEnv:VAR:default} default keeps its colons (upstream devcontainers/cli#1213, newer than the pinned reference, which keeps only the text up to the next colon)",
+      "result": "my.registry.io"
+    },
+    {
+      "name": "localEnv present ignores colon fallback",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:HOME:a:b:c}"
+      ],
+      "result": "/home/user"
+    },
+    {
+      "name": "no variables",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "no vars here"
+      ],
+      "result": "no vars here"
+    },
+    {
+      "name": "two variables",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:USER}@${localEnv:HOME}"
+      ],
+      "result": "test@/home/user"
+    },
+    {
+      "name": "empty variable name",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:}"
+      ],
+      "result": ""
+    },
+    {
+      "name": "empty default",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:MISSING:}"
+      ],
+      "result": ""
+    },
+    {
+      "name": "empty value",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "E": ""
+          }
+        },
+        "${localEnv:E:fallback}"
+      ],
+      "result": ""
+    },
+    {
+      "name": "names are case-sensitive on linux",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:home}"
+      ],
+      "result": ""
+    },
+    {
+      "name": "localWorkspaceFolder",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/home/user/project",
+          "containerWorkspaceFolder": "/workspaces/project",
+          "env": {}
+        },
+        "${localWorkspaceFolder}"
+      ],
+      "result": "/home/user/project"
+    },
+    {
+      "name": "localWorkspaceFolderBasename",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/home/user/project",
+          "containerWorkspaceFolder": "/workspaces/project",
+          "env": {}
+        },
+        "${localWorkspaceFolderBasename}"
+      ],
+      "result": "project"
+    },
+    {
+      "name": "containerWorkspaceFolder",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/home/user/project",
+          "containerWorkspaceFolder": "/workspaces/project",
+          "env": {}
+        },
+        "${containerWorkspaceFolder}"
+      ],
+      "result": "/workspaces/project"
+    },
+    {
+      "name": "containerWorkspaceFolderBasename",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/home/user/project",
+          "containerWorkspaceFolder": "/workspaces/project",
+          "env": {}
+        },
+        "${containerWorkspaceFolderBasename}"
+      ],
+      "result": "project"
+    },
+    {
+      "name": "unset folders kept",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        "${localWorkspaceFolder}|${localWorkspaceFolderBasename}|${containerWorkspaceFolder}|${containerWorkspaceFolderBasename}"
+      ],
+      "result": "${localWorkspaceFolder}|${localWorkspaceFolderBasename}|${containerWorkspaceFolder}|${containerWorkspaceFolderBasename}"
+    },
+    {
+      "name": "trailing slash basename",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/home/user/project/",
+          "containerWorkspaceFolder": "/workspaces/x/",
+          "env": {}
+        },
+        "${localWorkspaceFolderBasename}|${containerWorkspaceFolderBasename}"
+      ],
+      "result": "project|x"
+    },
+    {
+      "name": "root basename",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/",
+          "containerWorkspaceFolder": "/",
+          "env": {}
+        },
+        "[${localWorkspaceFolderBasename}|${containerWorkspaceFolderBasename}]"
+      ],
+      "result": "[|]"
+    },
+    {
+      "name": "unknown variable",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        "${unknownVar}"
+      ],
+      "result": "${unknownVar}"
+    },
+    {
+      "name": "devcontainerId left for later",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        "${devcontainerId}"
+      ],
+      "result": "${devcontainerId}"
+    },
+    {
+      "name": "containerEnv left for later",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        "${containerEnv:PATH}"
+      ],
+      "result": "${containerEnv:PATH}"
+    },
+    {
+      "name": "number",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        42
+      ],
+      "result": 42
+    },
+    {
+      "name": "boolean",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        true
+      ],
+      "result": true
+    },
+    {
+      "name": "null",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        null
+      ],
+      "result": null
+    },
+    {
+      "name": "nested map and array",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "localWorkspaceFolder": "/home/user/project",
+          "env": {
+            "HOME": "/home/user"
+          }
+        },
+        {
+          "workspaceFolder": "${localWorkspaceFolder}",
+          "env": {
+            "HOME": "${localEnv:HOME}"
+          },
+          "ports": [
+            "${localEnv:HOME}:8080",
+            3000,
+            null,
+            false
+          ]
+        }
+      ],
+      "result": {
+        "workspaceFolder": "/home/user/project",
+        "env": {
+          "HOME": "/home/user"
+        },
+        "ports": [
+          "/home/user:8080",
+          3000,
+          null,
+          false
+        ]
+      }
+    },
+    {
+      "name": "unterminated",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "before ${localEnv:HOME"
+      ],
+      "result": "before ${localEnv:HOME"
+    },
+    {
+      "name": "nested braces",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "${localEnv:${localEnv:HOME}}"
+      ],
+      "result": "HOME}"
+    },
+    {
+      "name": "dollar escape is not special",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "HOME": "/home/user",
+            "USER": "test"
+          }
+        },
+        "$${localEnv:HOME}"
+      ],
+      "result": "$/home/user"
+    },
+    {
+      "name": "unicode",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {
+            "SALUDO": "¡hola ✓!"
+          }
+        },
+        "${localEnv:SALUDO}"
+      ],
+      "result": "¡hola ✓!"
+    },
+    {
+      "name": "missing variable name",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {},
+          "configFile": "/w/.devcontainer/devcontainer.json"
+        },
+        "${localEnv}"
+      ],
+      "error": "'${localEnv}' in devcontainer.json can not be resolved because no environment variable name is given."
+    },
+    {
+      "name": "missing env name",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "linux",
+          "env": {}
+        },
+        "x ${env} y"
+      ],
+      "error": "'${env}' can not be resolved because no environment variable name is given."
+    },
+    {
+      "name": "windows: case-insensitive names",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "win32",
+          "env": {
+            "Path": "C:\\bin"
+          }
+        },
+        "${localEnv:PATH}|${env:path}"
+      ],
+      "result": "C:\\bin|C:\\bin"
+    },
+    {
+      "name": "windows: basename",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "win32",
+          "localWorkspaceFolder": "C:\\Users\\me\\proj",
+          "containerWorkspaceFolder": "/workspaces/proj",
+          "env": {}
+        },
+        "${localWorkspaceFolderBasename}|${containerWorkspaceFolderBasename}"
+      ],
+      "result": "proj|proj"
+    },
+    {
+      "name": "windows: forward slashes",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "win32",
+          "localWorkspaceFolder": "C:/Users/me/proj",
+          "env": {}
+        },
+        "${localWorkspaceFolderBasename}"
+      ],
+      "result": "proj"
+    },
+    {
+      "name": "windows: drive root",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "win32",
+          "localWorkspaceFolder": "C:\\",
+          "env": {}
+        },
+        "[${localWorkspaceFolderBasename}]"
+      ],
+      "result": "[]"
+    },
+    {
+      "name": "windows: trailing separator",
+      "fn": "substitute",
+      "args": [
+        {
+          "platform": "win32",
+          "localWorkspaceFolder": "C:\\Users\\me\\proj\\",
+          "env": {}
+        },
+        "${localWorkspaceFolderBasename}"
+      ],
+      "result": "proj"
+    },
+    {
+      "name": "ts: devcontainerId",
+      "fn": "beforeContainerSubstitute",
+      "args": [
+        {
+          "a": "b"
+        },
+        {
+          "test": "${devcontainerId}"
+        }
+      ],
+      "result": {
+        "test": "1mqafr5h2iu6dhh3k1m4vtnuhml2uiec4s7bntt1v0f25ao63i1n"
+      }
+    },
+    {
+      "name": "devcontainerId twice",
+      "fn": "beforeContainerSubstitute",
+      "args": [
+        {
+          "devcontainer.local_folder": "/w"
+        },
+        "cache-${devcontainerId}/${devcontainerId}"
+      ],
+      "result": "cache-0ntkv7h0lfm4ou0de4rjg3vak3nbb5pk116v2bq1jj3hm6kho6n5/0ntkv7h0lfm4ou0de4rjg3vak3nbb5pk116v2bq1jj3hm6kho6n5"
+    },
+    {
+      "name": "unknown variables kept",
+      "fn": "beforeContainerSubstitute",
+      "args": [
+        {
+          "a": "b"
+        },
+        "${unknown}:${devcontainerId}:${localEnv:HOME}"
+      ],
+      "result": "${unknown}:1mqafr5h2iu6dhh3k1m4vtnuhml2uiec4s7bntt1v0f25ao63i1n:${localEnv:HOME}"
+    },
+    {
+      "name": "similar name kept",
+      "fn": "beforeContainerSubstitute",
+      "args": [
+        {
+          "a": "b"
+        },
+        "${devcontainerIdExtra}"
+      ],
+      "result": "${devcontainerIdExtra}"
+    },
+    {
+      "name": "no id labels",
+      "fn": "beforeContainerSubstitute",
+      "args": [
+        null,
+        "cache-${devcontainerId}"
+      ],
+      "result": "cache-${devcontainerId}"
+    },
+    {
+      "name": "nested",
+      "fn": "beforeContainerSubstitute",
+      "args": [
+        {
+          "a": "b"
+        },
+        {
+          "mounts": [
+            "source=v-${devcontainerId},target=/v"
+          ],
+          "n": 1
+        }
+      ],
+      "result": {
+        "mounts": [
+          "source=v-1mqafr5h2iu6dhh3k1m4vtnuhml2uiec4s7bntt1v0f25ao63i1n,target=/v"
+        ],
+        "n": 1
+      }
+    },
+    {
+      "name": "ts: default when missing",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        "/foo/bar/baz.json",
+        {},
+        {
+          "foo": "bar${containerEnv:baz:default}bar"
+        }
+      ],
+      "result": {
+        "foo": "bardefaultbar"
+      }
+    },
+    {
+      "name": "PATH",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${containerEnv:PATH}"
+      ],
+      "result": "/usr/bin:/usr/local/bin"
+    },
+    {
+      "name": "SHELL",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${containerEnv:SHELL}"
+      ],
+      "result": "/bin/bash"
+    },
+    {
+      "name": "missing",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${containerEnv:MISSING}"
+      ],
+      "result": ""
+    },
+    {
+      "name": "no variables",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "no vars"
+      ],
+      "result": "no vars"
+    },
+    {
+      "name": "localEnv left alone",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${localEnv:HOME}"
+      ],
+      "result": "${localEnv:HOME}"
+    },
+    {
+      "name": "default with colons",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${containerEnv:NOPE:a:b}"
+      ],
+      "divergence": "docs/DIVERGENCES.md: a ${localEnv:VAR:default} / ${containerEnv:VAR:default} default keeps its colons (upstream devcontainers/cli#1213, newer than the pinned reference, which keeps only the text up to the next colon)",
+      "result": "a"
+    },
+    {
+      "name": "missing variable name",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        "/w/.devcontainer.json",
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${containerEnv}"
+      ],
+      "error": "'${containerEnv}' in .devcontainer.json can not be resolved because no environment variable name is given."
+    },
+    {
+      "name": "missing variable name without config",
+      "fn": "containerSubstitute",
+      "args": [
+        "linux",
+        null,
+        {
+          "PATH": "/usr/bin:/usr/local/bin",
+          "SHELL": "/bin/bash"
+        },
+        "${containerEnv}"
+      ],
+      "error": "'${containerEnv}' can not be resolved because no environment variable name is given."
+    },
+    {
+      "name": "windows: case-insensitive",
+      "fn": "containerSubstitute",
+      "args": [
+        "win32",
+        null,
+        {
+          "Path": "x"
+        },
+        "${containerEnv:PATH}"
+      ],
+      "result": "x"
+    }
+  ]
+}

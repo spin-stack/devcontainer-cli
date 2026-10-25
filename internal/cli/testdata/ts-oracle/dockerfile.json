@@ -1,0 +1,1160 @@
+{
+  "comment": "dockerfileUtils.ts findBaseImage with platform ARGs, findUserStatement and supportsBuildContexts, ported in image_build_info.go (dockerfileResolver) and compose_up.go (dockerfileSupportsBuildContexts).",
+  "cases": [
+    {
+      "name": "automatic platform ARG",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM img-$TARGETARCH:${BUILDOS}\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img-arm64:linux"
+    },
+    {
+      "name": "declared platform ARG without default",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG TARGETPLATFORM\nFROM --platform=$BUILDPLATFORM img:${TARGETPLATFORM}\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img:linux/arm64"
+    },
+    {
+      "name": "declared platform ARG with default",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG TARGETARCH=riscv64\nFROM img:${TARGETARCH}\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img:riscv64"
+    },
+    {
+      "name": "build arg beats platform ARG",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG TARGETARCH\nFROM img:${TARGETARCH}\n",
+        {
+          "TARGETARCH": "s390x"
+        },
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img:s390x"
+    },
+    {
+      "name": "variant",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM img:${TARGETVARIANT:-none}\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm/v7",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm",
+          "TARGETVARIANT": "v7"
+        }
+      ],
+      "result": "img:v7"
+    },
+    {
+      "name": "empty variant",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM img:${TARGETVARIANT:-none}\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img:none"
+    },
+    {
+      "name": "var expression fallback",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG V\nFROM img:${V:-fallback}\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img:fallback"
+    },
+    {
+      "name": "stage chain",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM base:1 AS one\nFROM one AS two\nFROM other:2\n",
+        {},
+        "two",
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "base:1"
+    },
+    {
+      "name": "ts: simple USER",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM debian\nUSER user1\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user1"
+    },
+    {
+      "name": "ts: arg USER",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM debian\nARG IMAGE_USER=user2\nUSER $IMAGE_USER\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user2"
+    },
+    {
+      "name": "ts: arg USER overwritten",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM debian\nARG IMAGE_USER=user2\nUSER $IMAGE_USER\n",
+        {
+          "IMAGE_USER": "user3"
+        },
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user3"
+    },
+    {
+      "name": "ts: multistage",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM image1 as stage1\nUSER user1\nFROM stage3 as stage2\nFROM image3 as stage3\nUSER user3_1\nUSER user3_2\nFROM image4 as stage4\nUSER user4\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        "stage2"
+      ],
+      "result": "user3_2"
+    },
+    {
+      "name": "ts: ARG after ENV",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian\nENV USERNAME=user1\nARG USERNAME=user2\nUSER ${USERNAME}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user2"
+    },
+    {
+      "name": "ts: ARG after ENV in preceding stage",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian as one\nENV USERNAME=user1\nARG USERNAME=user2\n\nFROM one as two\nUSER ${USERNAME}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user1"
+    },
+    {
+      "name": "ts: ARG in preamble",
+      "fn": "findUserStatement",
+      "args": [
+        "\nARG USERNAME=user1\nFROM debian\nUSER ${USERNAME}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user1"
+    },
+    {
+      "name": "ts: unbound ARG after ENV",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian\nENV USERNAME=user1\nARG USERNAME\nUSER ${USERNAME}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user1"
+    },
+    {
+      "name": "ts: unbound",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian\nUSER ${USERNAME}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": null
+    },
+    {
+      "name": "ts: ENV after ARG",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian\nARG USERNAME=user1\nENV USERNAME=user2\nUSER ${USERNAME}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user2"
+    },
+    {
+      "name": "ts: ENV set from ARG",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian\nARG USERNAME1=user1\nENV USERNAME2=${USERNAME1}\nUSER ${USERNAME2}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user1"
+    },
+    {
+      "name": "ts: multiple variables",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM debian\nARG USERNAME1=user1\nENV USERNAME2=user2\nUSER A${USERNAME1}A${USERNAME2}A\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "Auser1Auser2A"
+    },
+    {
+      "name": "ts: ENV in base image",
+      "fn": "findUserStatement",
+      "args": [
+        "\nFROM mybase\nUSER ${USERNAME}\n",
+        {},
+        {
+          "USERNAME": "user1"
+        },
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "user1"
+    },
+    {
+      "name": "ts: lowercase instructions",
+      "fn": "findUserStatement",
+      "args": [
+        "from E\nenv A=B\narg C\nuser D\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "D"
+    },
+    {
+      "name": "ENV with spaces around equals",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM debian\nENV A = B\nUSER $A\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "divergence": "docs/DIVERGENCES.md: Dockerfile instructions are read with BuildKit's parser, which unquotes '...' values, reads every NAME=value of an ARG or ENV and takes 'ENV A = B' as A='= B', where TS extractDockerfile's regular expression does not",
+      "result": "B"
+    },
+    {
+      "name": "ENV without equals",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM debian\nENV A B\nUSER $A\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "B"
+    },
+    {
+      "name": "parent stage USER",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img AS base\nUSER app\nFROM base\nRUN true\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "app"
+    },
+    {
+      "name": "no USER",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nRUN true\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": null
+    },
+    {
+      "name": "uid and gid",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nUSER 1000:1000\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "1000:1000"
+    },
+    {
+      "name": "quoted USER",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nUSER \"app\"\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "\"app\""
+    },
+    {
+      "name": "quoted ARG default",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nARG U=\"dev\"\nUSER $U\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "dev"
+    },
+    {
+      "name": "build arg for stage ARG",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nARG U=dev\nUSER $U\n",
+        {
+          "U": "ci"
+        },
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "ci"
+    },
+    {
+      "name": "base env shadowed by ENV",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nENV U=mine\nUSER $U\n",
+        {},
+        {
+          "U": "image"
+        },
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "mine"
+    },
+    {
+      "name": "variable expression default",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nARG U\nUSER ${U:-vscode}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "vscode"
+    },
+    {
+      "name": "variable expression alternative",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nARG U=x\nUSER ${U:+node}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "node"
+    },
+    {
+      "name": "unknown target",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nUSER a\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        "nope"
+      ],
+      "result": null
+    },
+    {
+      "name": "cycle",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM s AS s\nRUN true\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        "s"
+      ],
+      "result": null
+    },
+    {
+      "name": "empty Dockerfile",
+      "fn": "findUserStatement",
+      "args": [
+        "",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": null
+    },
+    {
+      "name": "CRLF",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\r\nUSER app\r\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "app"
+    },
+    {
+      "name": "unicode user",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nUSER usuário\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "usuário"
+    },
+    {
+      "name": "platform ARG in USER",
+      "fn": "findUserStatement",
+      "args": [
+        "FROM img\nARG TARGETARCH\nUSER u-${TARGETARCH}\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "u-arm64"
+    },
+    {
+      "name": "global ARG not redeclared",
+      "fn": "findUserStatement",
+      "args": [
+        "ARG U=g\nFROM img\nUSER $U\n",
+        {},
+        {},
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        },
+        null
+      ],
+      "result": "g"
+    },
+    {
+      "name": "ts: no syntax directive",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: matching",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: matching with docker.io",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: unknown frontend",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=mycompany/myimage:1.4\nFROM debian"
+      ],
+      "result": "unknown"
+    },
+    {
+      "name": "ts: tag 0",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:0\n        FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: tag 1",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.2",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.2\n        FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: tag 1.2.3",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.2.3\n        FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: tag 1.4",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.4\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.4.5",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.4.5\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.5",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.5\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.5.0",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.5.0\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 2",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:2\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag ",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag latest",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:latest\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 0-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:0-labs\n        FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: tag 1-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.2-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.2-labs\n        FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: tag 1.2.3-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.2.3-labs\n        FROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "ts: tag 1.4-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.4-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.4.5-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.4.5-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.5-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.5-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 1.5.0-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:1.5.0-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag 2-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:2-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag -labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "ts: tag latest-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker.io/docker/dockerfile:latest-labs\n        FROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "no space after hash",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "#syntax=docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "spaces around equals",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax = docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "1.10",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile:1.10\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "1.3-labs",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile:1.3-labs\nFROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "digest-pinned",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile:1.7@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "uppercase frontend",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=DOCKER/DOCKERFILE:1.4\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "upstream frontend",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile-upstream:master\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "after a check directive",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# check=skip=all\n# syntax=docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": true
+    },
+    {
+      "name": "after a comment line",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# my image\n# syntax=docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "after a blank line",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "\n# syntax=docker/dockerfile:1.4\nFROM debian"
+      ],
+      "result": false
+    },
+    {
+      "name": "CRLF",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile:1.4\r\nFROM debian\r\n"
+      ],
+      "result": true
+    },
+    {
+      "name": "empty Dockerfile",
+      "fn": "supportsBuildContexts",
+      "args": [
+        ""
+      ],
+      "result": false
+    },
+    {
+      "name": "v-prefixed tag",
+      "fn": "supportsBuildContexts",
+      "args": [
+        "# syntax=docker/dockerfile:v1.4\nFROM debian"
+      ],
+      "result": true
+    }
+  ]
+}

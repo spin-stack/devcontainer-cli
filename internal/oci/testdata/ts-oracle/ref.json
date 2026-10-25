@@ -1,0 +1,971 @@
+{
+  "comment": "containerCollectionsOCI.ts getRef and getCollectionRef, utils.ts qualifyImageName; ported in ref.go (ParseRef, ParseCollectionRef, Ref.Scheme) and image_inspect.go (QualifyImageName). A null result is TS's undefined: the input failed validation.",
+  "cases": [
+    {
+      "name": "localhost/owner/features/test",
+      "fn": "getRef",
+      "args": [
+        "localhost/owner/features/test"
+      ],
+      "result": {
+        "scheme": "http",
+        "id": "test",
+        "owner": "owner",
+        "namespace": "owner/features",
+        "registry": "localhost",
+        "resource": "localhost/owner/features/test",
+        "path": "owner/features/test",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "localhost:5000/owner/features/test",
+      "fn": "getRef",
+      "args": [
+        "localhost:5000/owner/features/test"
+      ],
+      "result": {
+        "scheme": "http",
+        "id": "test",
+        "owner": "owner",
+        "namespace": "owner/features",
+        "registry": "localhost:5000",
+        "resource": "localhost:5000/owner/features/test",
+        "path": "owner/features/test",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "LOCALHOST:5000/owner/features/test",
+      "fn": "getRef",
+      "args": [
+        "LOCALHOST:5000/owner/features/test"
+      ],
+      "result": {
+        "scheme": "http",
+        "id": "test",
+        "owner": "owner",
+        "namespace": "owner/features",
+        "registry": "localhost:5000",
+        "resource": "localhost:5000/owner/features/test",
+        "path": "owner/features/test",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "127.0.0.1:5000/owner/features/test",
+      "fn": "getRef",
+      "args": [
+        "127.0.0.1:5000/owner/features/test"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "test",
+        "owner": "owner",
+        "namespace": "owner/features",
+        "registry": "127.0.0.1:5000",
+        "resource": "127.0.0.1:5000/owner/features/test",
+        "path": "owner/features/test",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "registry.example:5000/owner/features/test",
+      "fn": "getRef",
+      "args": [
+        "registry.example:5000/owner/features/test"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "test",
+        "owner": "owner",
+        "namespace": "owner/features",
+        "registry": "registry.example:5000",
+        "resource": "registry.example:5000/owner/features/test",
+        "path": "owner/features/test",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers/templates/docker-from-docker:latest",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/templates/docker-from-docker:latest"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io/my-org/my-features/my-feat@sha256:1234567890123456789012345678901234567890123456789012345678901234",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/my-org/my-features/my-feat@sha256:1234567890123456789012345678901234567890123456789012345678901234"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "my-feat",
+        "owner": "my-org",
+        "namespace": "my-org/my-features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/my-org/my-features/my-feat",
+        "path": "my-org/my-features/my-feat",
+        "version": "sha256:1234567890123456789012345678901234567890123456789012345678901234",
+        "digest": "sha256:1234567890123456789012345678901234567890123456789012345678901234"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers/templates/docker-from-docker",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/templates/docker-from-docker"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io/DeVContainERS/templates/Docker-FROM-Docker",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/DeVContainERS/templates/Docker-FROM-Docker"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "docker.io:8001/devcontainers/templates/docker-from-docker:1.3.4",
+      "fn": "getRef",
+      "args": [
+        "docker.io:8001/devcontainers/templates/docker-from-docker:1.3.4"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "docker.io:8001",
+        "resource": "docker.io:8001/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "1.3.4",
+        "tag": "1.3.4"
+      }
+    },
+    {
+      "name": "docker.io:8001/devcontainers/templates/docker-from-docker:latest",
+      "fn": "getRef",
+      "args": [
+        "docker.io:8001/devcontainers/templates/docker-from-docker:latest"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "docker.io:8001",
+        "resource": "docker.io:8001/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "docker.io:8001/devcontainers/templates/docker-from-docker",
+      "fn": "getRef",
+      "args": [
+        "docker.io:8001/devcontainers/templates/docker-from-docker"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "docker.io:8001",
+        "resource": "docker.io:8001/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "docker.io:8001/devcontainers/templates/docker-from-docker@sha256:4ef08c9c3b708f3c2faecc5a898b39736423dd639f09f2a9f8bf9b0b9252ef0a",
+      "fn": "getRef",
+      "args": [
+        "docker.io:8001/devcontainers/templates/docker-from-docker@sha256:4ef08c9c3b708f3c2faecc5a898b39736423dd639f09f2a9f8bf9b0b9252ef0a"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "docker-from-docker",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/templates",
+        "registry": "docker.io:8001",
+        "resource": "docker.io:8001/devcontainers/templates/docker-from-docker",
+        "path": "devcontainers/templates/docker-from-docker",
+        "version": "sha256:4ef08c9c3b708f3c2faecc5a898b39736423dd639f09f2a9f8bf9b0b9252ef0a",
+        "digest": "sha256:4ef08c9c3b708f3c2faecc5a898b39736423dd639f09f2a9f8bf9b0b9252ef0a"
+      }
+    },
+    {
+      "name": "docker.io:8001/a/b/c",
+      "fn": "getRef",
+      "args": [
+        "docker.io:8001/a/b/c"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "c",
+        "owner": "a",
+        "namespace": "a/b",
+        "registry": "docker.io:8001",
+        "resource": "docker.io:8001/a/b/c",
+        "path": "a/b/c",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers/templates/docker-from-docker:latest:latest",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/templates/docker-from-docker:latest:latest"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/devco%ntainers/templates/docker-from-docker:latest",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devco%ntainers/templates/docker-from-docker:latest"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/devcontainers/templates/docker-from@docker:latest",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/templates/docker-from@docker:latest"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/:latest",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/:latest"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/devcontainers//templates/docker-from-docker:latest",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers//templates/docker-from-docker:latest"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/devcontainers//templates/docker-from-docker@sha100:1234567890123456789012345678901234567890123456789012345678901234",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers//templates/docker-from-docker@sha100:1234567890123456789012345678901234567890123456789012345678901234"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/devcontainers//templates/docker-from-docker@1234567890123456789012345678901234567890123456789012345678901234",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers//templates/docker-from-docker@1234567890123456789012345678901234567890123456789012345678901234"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/codspace/features/ruby:1",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/codspace/features/ruby:1"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "ruby",
+        "owner": "codspace",
+        "namespace": "codspace/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/codspace/features/ruby",
+        "path": "codspace/features/ruby",
+        "version": "1",
+        "tag": "1"
+      }
+    },
+    {
+      "name": "ghcr.io/codspace/features/ruby:1.0.13",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/codspace/features/ruby:1.0.13"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "ruby",
+        "owner": "codspace",
+        "namespace": "codspace/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/codspace/features/ruby",
+        "path": "codspace/features/ruby",
+        "version": "1.0.13",
+        "tag": "1.0.13"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers/features/go:1.0.0",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/features/go:1.0.0"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "go",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers/features/go",
+        "path": "devcontainers/features/go",
+        "version": "1.0.0",
+        "tag": "1.0.0"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers/features/go@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/features/go@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "go",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers/features/go",
+        "path": "devcontainers/features/go",
+        "version": "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        "digest": "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers/features/go",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers/features/go"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "go",
+        "owner": "devcontainers",
+        "namespace": "devcontainers/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers/features/go",
+        "path": "devcontainers/features/go",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "localhost:5000/myns/myfeature:1.0",
+      "fn": "getRef",
+      "args": [
+        "localhost:5000/myns/myfeature:1.0"
+      ],
+      "result": {
+        "scheme": "http",
+        "id": "myfeature",
+        "owner": "myns",
+        "namespace": "myns",
+        "registry": "localhost:5000",
+        "resource": "localhost:5000/myns/myfeature",
+        "path": "myns/myfeature",
+        "version": "1.0",
+        "tag": "1.0"
+      }
+    },
+    {
+      "name": "ghcr.io/org/team/features/go:1.0",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/org/team/features/go:1.0"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "go",
+        "owner": "org",
+        "namespace": "org/team/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/org/team/features/go",
+        "path": "org/team/features/go",
+        "version": "1.0",
+        "tag": "1.0"
+      }
+    },
+    {
+      "name": "myregistry.example.com/ns/feature:2.0",
+      "fn": "getRef",
+      "args": [
+        "myregistry.example.com/ns/feature:2.0"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "feature",
+        "owner": "ns",
+        "namespace": "ns",
+        "registry": "myregistry.example.com",
+        "resource": "myregistry.example.com/ns/feature",
+        "path": "ns/feature",
+        "version": "2.0",
+        "tag": "2.0"
+      }
+    },
+    {
+      "name": ".invalid/path/feature:1",
+      "fn": "getRef",
+      "args": [
+        ".invalid/path/feature:1"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/tooShort",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/tooShort"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/ns/id/feat@md5:abc",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/ns/id/feat@md5:abc"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/devcontainers-contrib/features/node-asdf:0",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers-contrib/features/node-asdf:0"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "node-asdf",
+        "owner": "devcontainers-extra",
+        "namespace": "devcontainers-extra/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers-contrib/features/node-asdf",
+        "path": "devcontainers-extra/features/node-asdf",
+        "version": "0",
+        "tag": "0"
+      }
+    },
+    {
+      "name": "ghcr.io/devcontainers-contrib/features/node-asdf",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/devcontainers-contrib/features/node-asdf"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "node-asdf",
+        "owner": "devcontainers-extra",
+        "namespace": "devcontainers-extra/features",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/devcontainers-contrib/features/node-asdf",
+        "path": "devcontainers-extra/features/node-asdf",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io/x/y/z@sha256:",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z@sha256:"
+      ],
+      "divergence": "unresolved: TS logs a digest that fails validation and still returns the reference (containerCollectionsOCI.ts has no return there); ParseRef rejects it. Matching TS would weaken validation (AGENTS.md), so this needs a decision",
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/x/y/z",
+        "path": "x/y/z",
+        "version": "sha256:",
+        "digest": "sha256:"
+      }
+    },
+    {
+      "name": "ghcr.io/x/y/z@sha256:has:colon",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z@sha256:has:colon"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/x/y/z@sha256:-bad",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z@sha256:-bad"
+      ],
+      "divergence": "unresolved: TS logs a digest that fails validation and still returns the reference (containerCollectionsOCI.ts has no return there); ParseRef rejects it. Matching TS would weaken validation (AGENTS.md), so this needs a decision",
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/x/y/z",
+        "path": "x/y/z",
+        "version": "sha256:-bad",
+        "digest": "sha256:-bad"
+      }
+    },
+    {
+      "name": "ghcr.io/x/y/z:-bad",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z:-bad"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/x/y/z:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/x/y/z:",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z:"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/x/y/z",
+        "path": "x/y/z",
+        "version": "latest",
+        "tag": ""
+      }
+    },
+    {
+      "name": "ghcr.io/x/y/z:v1_2.3-rc",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z:v1_2.3-rc"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/x/y/z",
+        "path": "x/y/z",
+        "version": "v1_2.3-rc",
+        "tag": "v1_2.3-rc"
+      }
+    },
+    {
+      "name": "ghcr.io/x/y/Z:V1",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/Z:V1"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "ghcr.io",
+        "resource": "ghcr.io/x/y/z",
+        "path": "x/y/z",
+        "version": "v1",
+        "tag": "v1"
+      }
+    },
+    {
+      "name": "ghcr.io:443/x/y/z",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io:443/x/y/z"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "ghcr.io:443",
+        "resource": "ghcr.io:443/x/y/z",
+        "path": "x/y/z",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "[::1]:5000/x/y/z",
+      "fn": "getRef",
+      "args": [
+        "[::1]:5000/x/y/z"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "[::1]:5000",
+        "resource": "[::1]:5000/x/y/z",
+        "path": "x/y/z",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "localhost.localdomain/x/y/z",
+      "fn": "getRef",
+      "args": [
+        "localhost.localdomain/x/y/z"
+      ],
+      "result": {
+        "scheme": "https",
+        "id": "z",
+        "owner": "x",
+        "namespace": "x/y",
+        "registry": "localhost.localdomain",
+        "resource": "localhost.localdomain/x/y/z",
+        "path": "x/y/z",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "empty",
+      "fn": "getRef",
+      "args": [
+        ""
+      ],
+      "result": null
+    },
+    {
+      "name": "feature",
+      "fn": "getRef",
+      "args": [
+        "feature"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/x/ñ/z",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/ñ/z"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io/x/y/z:1@sha256:1234567890123456789012345678901234567890123456789012345678901234",
+      "fn": "getRef",
+      "args": [
+        "ghcr.io/x/y/z:1@sha256:1234567890123456789012345678901234567890123456789012345678901234"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io devcontainers/templates",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        "devcontainers/templates"
+      ],
+      "result": {
+        "scheme": "https",
+        "registry": "ghcr.io",
+        "path": "devcontainers/templates",
+        "resource": "ghcr.io/devcontainers/templates",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "GHCR.IO DEVCONTAINERS/TEMPLATES",
+      "fn": "getCollectionRef",
+      "args": [
+        "GHCR.IO",
+        "DEVCONTAINERS/TEMPLATES"
+      ],
+      "result": {
+        "scheme": "https",
+        "registry": "ghcr.io",
+        "path": "devcontainers/templates",
+        "resource": "ghcr.io/devcontainers/templates",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io:8001 devcontainers/templates",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io:8001",
+        "devcontainers/templates"
+      ],
+      "result": {
+        "scheme": "https",
+        "registry": "ghcr.io:8001",
+        "path": "devcontainers/templates",
+        "resource": "ghcr.io:8001/devcontainers/templates",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io devcont%ainers/templates",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        "devcont%ainers/templates"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io devcontainers//templates",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        "devcontainers//templates"
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io devcontainers/features",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        "devcontainers/features"
+      ],
+      "result": {
+        "scheme": "https",
+        "registry": "ghcr.io",
+        "path": "devcontainers/features",
+        "resource": "ghcr.io/devcontainers/features",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io INVALID PATH!!",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        "INVALID PATH!!"
+      ],
+      "result": null
+    },
+    {
+      "name": "localhost:5000 a/b",
+      "fn": "getCollectionRef",
+      "args": [
+        "localhost:5000",
+        "a/b"
+      ],
+      "result": {
+        "scheme": "http",
+        "registry": "localhost:5000",
+        "path": "a/b",
+        "resource": "localhost:5000/a/b",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "ghcr.io ",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        ""
+      ],
+      "result": null
+    },
+    {
+      "name": "ghcr.io single",
+      "fn": "getCollectionRef",
+      "args": [
+        "ghcr.io",
+        "single"
+      ],
+      "result": {
+        "scheme": "https",
+        "registry": "ghcr.io",
+        "path": "single",
+        "resource": "ghcr.io/single",
+        "version": "latest",
+        "tag": "latest"
+      }
+    },
+    {
+      "name": "qualify 'ubuntu'",
+      "fn": "qualifyImageName",
+      "args": [
+        "ubuntu"
+      ],
+      "result": "docker.io/library/ubuntu"
+    },
+    {
+      "name": "qualify 'docker.io/ubuntu'",
+      "fn": "qualifyImageName",
+      "args": [
+        "docker.io/ubuntu"
+      ],
+      "result": "docker.io/library/ubuntu"
+    },
+    {
+      "name": "qualify 'random/image'",
+      "fn": "qualifyImageName",
+      "args": [
+        "random/image"
+      ],
+      "result": "docker.io/random/image"
+    },
+    {
+      "name": "qualify 'foo/random/image'",
+      "fn": "qualifyImageName",
+      "args": [
+        "foo/random/image"
+      ],
+      "result": "foo/random/image"
+    },
+    {
+      "name": "qualify 'node'",
+      "fn": "qualifyImageName",
+      "args": [
+        "node"
+      ],
+      "result": "docker.io/library/node"
+    },
+    {
+      "name": "qualify 'node:18'",
+      "fn": "qualifyImageName",
+      "args": [
+        "node:18"
+      ],
+      "result": "docker.io/library/node:18"
+    },
+    {
+      "name": "qualify 'docker.io/node'",
+      "fn": "qualifyImageName",
+      "args": [
+        "docker.io/node"
+      ],
+      "result": "docker.io/library/node"
+    },
+    {
+      "name": "qualify 'user/img:1'",
+      "fn": "qualifyImageName",
+      "args": [
+        "user/img:1"
+      ],
+      "result": "docker.io/user/img:1"
+    },
+    {
+      "name": "qualify 'mcr.microsoft.com/devcontainers/base:1'",
+      "fn": "qualifyImageName",
+      "args": [
+        "mcr.microsoft.com/devcontainers/base:1"
+      ],
+      "result": "mcr.microsoft.com/devcontainers/base:1"
+    },
+    {
+      "name": "qualify 'localhost:5000/img'",
+      "fn": "qualifyImageName",
+      "args": [
+        "localhost:5000/img"
+      ],
+      "result": "docker.io/localhost:5000/img"
+    },
+    {
+      "name": "qualify ''",
+      "fn": "qualifyImageName",
+      "args": [
+        ""
+      ],
+      "result": "docker.io/library/"
+    },
+    {
+      "name": "qualify 'docker.io/library/ubuntu'",
+      "fn": "qualifyImageName",
+      "args": [
+        "docker.io/library/ubuntu"
+      ],
+      "result": "docker.io/library/ubuntu"
+    },
+    {
+      "name": "qualify 'ubuntu@sha256:1234567890123456789012345678901234567890123456789012345678901234'",
+      "fn": "qualifyImageName",
+      "args": [
+        "ubuntu@sha256:1234567890123456789012345678901234567890123456789012345678901234"
+      ],
+      "result": "docker.io/library/ubuntu@sha256:1234567890123456789012345678901234567890123456789012345678901234"
+    },
+    {
+      "name": "qualify 'a/b/c/d'",
+      "fn": "qualifyImageName",
+      "args": [
+        "a/b/c/d"
+      ],
+      "result": "a/b/c/d"
+    }
+  ]
+}

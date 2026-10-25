@@ -10,26 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 )
 
-func TestGetSafeID(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"go", "GO"},
-		{"node", "NODE"},
-		{"azure-cli", "AZURE_CLI"},
-		{"ghcr.io/devcontainers/features/go", "GHCR_IO_DEVCONTAINERS_FEATURES_GO"},
-		{"123feature", "_FEATURE"},
-		{"my_feature", "MY_FEATURE"},
-	}
-	for _, tt := range tests {
-		got := safeID(tt.input)
-		if got != tt.want {
-			t.Errorf("safeID(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 // tsFeaturesBuildCase is testdata/ts-features-build/<case>/input.json: the
 // arguments the TS functions were called with. The expected files next to it
 // were produced by the TS getContainerFeaturesBaseDockerFile, getFeatureLayers,

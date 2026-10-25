@@ -133,64 +133,6 @@ func TestEnsureNoDisallowedFeatures(t *testing.T) {
 	}
 }
 
-func TestParseVersion(t *testing.T) {
-	tests := []struct {
-		input string
-		want  []int
-	}{
-		{"1.2.3", []int{1, 2, 3}},
-		{"1.0", []int{1, 0}},
-		{"3", []int{3}},
-		{"abc", nil},
-		// TS commonUtils.parseVersion reads a leading quote and v, and stops at the
-		// first character that is not part of the version.
-		{"v1.2", []int{1, 2}},
-		{"'v2", []int{2}},
-		{"1.2.3-rc.1", []int{1, 2, 3}},
-		{"1.", []int{1}},
-		{"latest", nil},
-	}
-	for _, tt := range tests {
-		got := parseVersion(tt.input)
-		if tt.want == nil && got != nil {
-			t.Errorf("parseVersion(%q) = %v, want nil", tt.input, got)
-		}
-		if tt.want != nil {
-			if len(got) != len(tt.want) {
-				t.Errorf("parseVersion(%q) = %v, want %v", tt.input, got, tt.want)
-				continue
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("parseVersion(%q)[%d] = %d, want %d", tt.input, i, got[i], tt.want[i])
-				}
-			}
-		}
-	}
-}
-
-func TestIsEarlierVersion(t *testing.T) {
-	tests := []struct {
-		a, b []int
-		want bool
-	}{
-		{[]int{1, 0, 0}, []int{1, 2, 0}, true},
-		{[]int{1, 2, 0}, []int{1, 0, 0}, false},
-		{[]int{1, 2, 0}, []int{1, 2, 0}, false},
-		// A missing component is 0 (TS commonUtils.isEarlierVersion): 1 is not
-		// earlier than 1.0, and 1.9 is earlier than 2.
-		{[]int{1}, []int{1, 0}, false},
-		{[]int{1, 9}, []int{2}, true},
-		{[]int{2, 0}, []int{1, 9, 9}, false},
-	}
-	for _, tt := range tests {
-		got := isEarlierVersion(tt.a, tt.b)
-		if got != tt.want {
-			t.Errorf("isEarlierVersion(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.want)
-		}
-	}
-}
-
 // roundTripFunc answers requests in-process, so the control manifest fetch is
 // tested without the network.
 type roundTripFunc func(*http.Request) (*http.Response, error)

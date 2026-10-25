@@ -61,3 +61,12 @@ func TestMergeConfigurationTurnsOnlyLocalhostDigitsIntoPortNumbers(t *testing.T)
 		t.Errorf("forwardPorts = %s, want %s", data, want)
 	}
 }
+
+func mustEntries(t *testing.T, jsonArray string) []Entry {
+	t.Helper()
+	var entries []Entry
+	if err := json.Unmarshal([]byte(jsonArray), &entries); err != nil {
+		t.Fatalf("bad entries JSON: %v", err)
+	}
+	return entries
+}

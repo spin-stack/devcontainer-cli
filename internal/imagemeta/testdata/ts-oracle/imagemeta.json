@@ -1,0 +1,2221 @@
+{
+  "comment": "imageMetadata.ts mergeConfiguration (with an empty config) and getDevcontainerMetadataLabel, commonUtils.ts getEntPasswdShellCommand, containerFeaturesConfiguration.ts generateContainerEnvs, getFeatureValueObject and escapeQuotesForShell, containerFeatures.ts getSafeId; ported in merge.go and extend.go.",
+  "cases": [
+    {
+      "name": "ts: remoteEnv from features and devcontainer.json",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "remoteEnv": {
+              "ENV1": "feature1",
+              "ENV2": "feature1",
+              "ENV3": "feature1",
+              "ENV4": "feature1"
+            }
+          },
+          {
+            "remoteEnv": {
+              "ENV1": "feature2",
+              "ENV2": "feature2"
+            }
+          },
+          {
+            "remoteEnv": {
+              "ENV1": "devcontainer.json",
+              "ENV3": "devcontainer.json"
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {
+          "ENV1": "devcontainer.json",
+          "ENV2": "feature2",
+          "ENV3": "devcontainer.json",
+          "ENV4": "feature1"
+        },
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "ts: deduplicate mounts",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "mounts": [
+              "source=source1,dst=target1,type=volume",
+              "source=source2,target=target2,type=volume",
+              "source=source3,destination=target3,type=volume"
+            ]
+          },
+          {
+            "mounts": [
+              {
+                "source": "source4",
+                "target": "target1",
+                "type": "volume"
+              }
+            ]
+          },
+          {
+            "mounts": [
+              {
+                "source": "source5",
+                "target": "target3",
+                "type": "volume"
+              }
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "mounts": [
+          "source=source2,target=target2,type=volume",
+          {
+            "source": "source4",
+            "target": "target1",
+            "type": "volume"
+          },
+          {
+            "source": "source5",
+            "target": "target3",
+            "type": "volume"
+          }
+        ],
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "ts: gpu requirements",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "gpu": true
+            }
+          },
+          {
+            "hostRequirements": {
+              "gpu": {
+                "cores": 4
+              }
+            }
+          },
+          {
+            "hostRequirements": {
+              "gpu": {
+                "memory": "8gb"
+              }
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": 0,
+          "gpu": {
+            "cores": 4,
+            "memory": "8589934592"
+          }
+        }
+      }
+    },
+    {
+      "name": "scalars: last wins",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "remoteUser": "base-user",
+            "containerUser": "base-container",
+            "shutdownAction": "stopContainer"
+          },
+          {
+            "remoteUser": "feature-user"
+          },
+          {
+            "remoteUser": "config-user",
+            "userEnvProbe": "loginInteractiveShell"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteUser": "config-user",
+        "containerUser": "base-container",
+        "userEnvProbe": "loginInteractiveShell",
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "shutdownAction": "stopContainer"
+      }
+    },
+    {
+      "name": "lifecycle hooks concatenated",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "onCreateCommand": "echo base",
+            "postCreateCommand": "setup-base"
+          },
+          {
+            "onCreateCommand": "echo feature",
+            "postStartCommand": "start-feature"
+          },
+          {
+            "onCreateCommand": "echo config",
+            "postCreateCommand": "setup-config"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [
+          "echo base",
+          "echo feature",
+          "echo config"
+        ],
+        "updateContentCommands": [],
+        "postCreateCommands": [
+          "setup-base",
+          "setup-config"
+        ],
+        "postStartCommands": [
+          "start-feature"
+        ],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "lifecycle command shapes",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "id": "f",
+            "postCreateCommand": [
+              "echo",
+              "a b"
+            ]
+          },
+          {
+            "postCreateCommand": {
+              "one": "echo 1",
+              "two": [
+                "echo",
+                "2"
+              ]
+            }
+          },
+          {
+            "postAttachCommand": "x",
+            "updateContentCommand": "y"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [
+          "y"
+        ],
+        "postCreateCommands": [
+          [
+            "echo",
+            "a b"
+          ],
+          {
+            "one": "echo 1",
+            "two": [
+              "echo",
+              "2"
+            ]
+          }
+        ],
+        "postStartCommands": [],
+        "postAttachCommands": [
+          "x"
+        ],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "empty-string command skipped",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "onCreateCommand": ""
+          },
+          {
+            "onCreateCommand": "echo hi"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [
+          "echo hi"
+        ],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "capAdd and securityOpt union",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "capAdd": [
+              "SYS_PTRACE"
+            ]
+          },
+          {
+            "capAdd": [
+              "SYS_PTRACE",
+              "NET_ADMIN"
+            ]
+          },
+          {
+            "securityOpt": [
+              "seccomp=unconfined"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "capAdd": [
+          "SYS_PTRACE",
+          "NET_ADMIN"
+        ],
+        "securityOpt": [
+          "seccomp=unconfined"
+        ],
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "containerEnv merged",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "containerEnv": {
+              "A": "1",
+              "B": "2"
+            }
+          },
+          {
+            "containerEnv": {
+              "B": "overridden",
+              "C": "3"
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {
+          "A": "1",
+          "B": "overridden",
+          "C": "3"
+        },
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "init and privileged are OR",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "init": true,
+            "privileged": false
+          },
+          {
+            "init": false,
+            "privileged": true
+          }
+        ]
+      ],
+      "result": {
+        "init": true,
+        "privileged": true,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "init only",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "init": true
+          },
+          {
+            "privileged": false
+          }
+        ]
+      ],
+      "result": {
+        "init": true,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "customizations collected by key",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "customizations": {
+              "vscode": {
+                "extensions": [
+                  "a"
+                ]
+              }
+            }
+          },
+          {
+            "customizations": {
+              "vscode": {
+                "extensions": [
+                  "b"
+                ]
+              },
+              "codespaces": {
+                "x": 1
+              }
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "customizations": {
+          "vscode": [
+            {
+              "extensions": [
+                "a"
+              ]
+            },
+            {
+              "extensions": [
+                "b"
+              ]
+            }
+          ],
+          "codespaces": [
+            {
+              "x": 1
+            }
+          ]
+        },
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "mounts: last per target",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "mounts": [
+              {
+                "source": "vol-a",
+                "target": "/data",
+                "type": "volume"
+              }
+            ]
+          },
+          {
+            "mounts": [
+              {
+                "source": "vol-b",
+                "target": "/data",
+                "type": "volume"
+              }
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "mounts": [
+          {
+            "source": "vol-b",
+            "target": "/data",
+            "type": "volume"
+          }
+        ],
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "mounts: string and object, same target",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "mounts": [
+              {
+                "source": "a",
+                "target": "/t",
+                "type": "bind"
+              }
+            ]
+          },
+          {
+            "mounts": [
+              "type=bind,src=b,dst=/t"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "mounts": [
+          "type=bind,src=b,dst=/t"
+        ],
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "entrypoints not deduplicated",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "entrypoint": "/init.sh"
+          },
+          {
+            "entrypoint": "/init.sh"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "entrypoints": [
+          "/init.sh",
+          "/init.sh"
+        ],
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "forwardPorts dedup",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              3000
+            ]
+          },
+          {
+            "forwardPorts": [
+              3000,
+              8080
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          3000,
+          8080
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts number and localhost string",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              3000
+            ]
+          },
+          {
+            "forwardPorts": [
+              "localhost:3000"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          3000
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts host:port strings",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "db:5432",
+              "db:5432"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          "db:5432"
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts localhost string first",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "localhost:5000",
+              "5000",
+              5000,
+              "LOCALHOST:5000"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          5000,
+          "5000",
+          "LOCALHOST:5000"
+        ]
+      }
+    },
+    {
+      "name": "hostRequirements per-field max",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "cpus": 4
+            }
+          },
+          {
+            "hostRequirements": {
+              "memory": "8gb"
+            }
+          },
+          {
+            "hostRequirements": {
+              "cpus": 2,
+              "memory": "4gb"
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": 4,
+          "memory": "8589934592"
+        }
+      }
+    },
+    {
+      "name": "hostRequirements storage units",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "storage": "1tb",
+              "memory": "512mb"
+            }
+          },
+          {
+            "hostRequirements": {
+              "storage": "32gb",
+              "memory": "1024kb"
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": 0,
+          "memory": "536870912",
+          "storage": "1099511627776"
+        }
+      }
+    },
+    {
+      "name": "hostRequirements unparsable memory",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "memory": "8GB"
+            }
+          },
+          {
+            "hostRequirements": {
+              "memory": "2g"
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "gpu optional twice",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "gpu": "optional"
+            }
+          },
+          {
+            "hostRequirements": {
+              "gpu": "optional"
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": 0,
+          "gpu": "optional"
+        }
+      }
+    },
+    {
+      "name": "gpu optional and true",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "gpu": "optional"
+            }
+          },
+          {
+            "hostRequirements": {
+              "gpu": true
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": 0,
+          "gpu": {}
+        }
+      }
+    },
+    {
+      "name": "gpu false then object",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "hostRequirements": {
+              "gpu": false
+            }
+          },
+          {
+            "hostRequirements": {
+              "gpu": {
+                "cores": 2
+              }
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": 0,
+          "gpu": {
+            "cores": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "no hostRequirements",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "remoteUser": "x"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteUser": "x",
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "no entries",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        []
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "hostRequirements": {
+          "cpus": null,
+          "memory": "-Infinity",
+          "storage": "-Infinity"
+        }
+      }
+    },
+    {
+      "name": "overrideCommand and updateRemoteUserUID last boolean wins",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "overrideCommand": true,
+            "updateRemoteUserUID": false
+          },
+          {
+            "overrideCommand": false
+          },
+          {
+            "remoteUser": "u"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteUser": "u",
+        "remoteEnv": {},
+        "containerEnv": {},
+        "overrideCommand": false,
+        "portsAttributes": {},
+        "updateRemoteUserUID": false
+      }
+    },
+    {
+      "name": "portsAttributes and otherPortsAttributes",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "portsAttributes": {
+              "3000": {
+                "label": "a"
+              }
+            },
+            "otherPortsAttributes": {
+              "onAutoForward": "silent"
+            }
+          },
+          {
+            "portsAttributes": {
+              "3000": {
+                "label": "b"
+              },
+              "4000": {
+                "label": "c"
+              }
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {
+          "3000": {
+            "label": "b"
+          },
+          "4000": {
+            "label": "c"
+          }
+        },
+        "otherPortsAttributes": {
+          "onAutoForward": "silent"
+        }
+      }
+    },
+    {
+      "name": "waitFor last wins",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "waitFor": "onCreateCommand"
+          },
+          {
+            "waitFor": "postStartCommand"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "waitFor": "postStartCommand",
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "remoteEnv null value",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "remoteEnv": {
+              "A": "1",
+              "B": "2"
+            }
+          },
+          {
+            "remoteEnv": {
+              "A": null
+            }
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {
+          "A": null,
+          "B": "2"
+        },
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "feature ids",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "id": "ghcr.io/devcontainers/features/node:1",
+            "postCreateCommand": "n"
+          },
+          {
+            "postCreateCommand": "c"
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [
+          "n",
+          "c"
+        ],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "runArgs in an entry",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "runArgs": [
+              "--cap-add=SYS_ADMIN"
+            ]
+          },
+          {
+            "remoteUser": "u",
+            "runArgs": [
+              "-e",
+              "A=B"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteUser": "u",
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {}
+      }
+    },
+    {
+      "name": "ts: label for Dockerfile",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "id": "baseFeature"
+          },
+          {
+            "id": "ghcr.io/my-org/my-repo/someFeature:1"
+          },
+          {
+            "remoteUser": "testUser"
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"id\\\":\\\"baseFeature\\\"}, \\\n{\\\"id\\\":\\\"ghcr.io/my-org/my-repo/someFeature:1\\\"}, \\\n{\\\"remoteUser\\\":\\\"testUser\\\"} \\\n]\""
+    },
+    {
+      "name": "ts: single entry is an array",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "remoteUser": "testUser"
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"remoteUser\\\":\\\"testUser\\\"} \\\n]\""
+    },
+    {
+      "name": "no entries",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        []
+      ],
+      "result": ""
+    },
+    {
+      "name": "quotes, backslashes and dollars",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "containerEnv": {
+              "P": "a\"b\\c$HOME"
+            },
+            "remoteUser": "u"
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"containerEnv\\\":{\\\"P\\\":\\\"a\\\\\\\"b\\\\\\\\c\\$HOME\\\"},\\\"remoteUser\\\":\\\"u\\\"} \\\n]\""
+    },
+    {
+      "name": "shell operators",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "postCreateCommand": "npm i && echo <done> | tee x"
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"postCreateCommand\\\":\\\"npm i && echo <done> | tee x\\\"} \\\n]\""
+    },
+    {
+      "name": "unicode",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "remoteEnv": {
+              "SALUDO": "¡hola, señor! ✓"
+            }
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"remoteEnv\\\":{\\\"SALUDO\\\":\\\"¡hola, señor! ✓\\\"}} \\\n]\""
+    },
+    {
+      "name": "feature entry in pick order",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "id": "ghcr.io/devcontainers/features/node:1",
+            "onCreateCommand": "a",
+            "init": true,
+            "privileged": false,
+            "capAdd": [
+              "SYS_PTRACE"
+            ],
+            "securityOpt": [
+              "seccomp=unconfined"
+            ],
+            "entrypoint": "/e.sh",
+            "mounts": [
+              {
+                "type": "volume",
+                "source": "v",
+                "target": "/v"
+              }
+            ],
+            "customizations": {
+              "vscode": {
+                "extensions": [
+                  "x"
+                ]
+              }
+            }
+          }
+        ]
+      ],
+      "divergence": "unresolved: TS writes a Feature entry's keys in pickFeatureProperties order (id, lifecycle hooks, init, ...) and a config entry's in pickConfigProperties order; Go writes Entry's field order (internal/imagemeta/metadata.go, not changed here)",
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"id\\\":\\\"ghcr.io/devcontainers/features/node:1\\\",\\\"onCreateCommand\\\":\\\"a\\\",\\\"init\\\":true,\\\"privileged\\\":false,\\\"capAdd\\\":[\\\"SYS_PTRACE\\\"],\\\"securityOpt\\\":[\\\"seccomp=unconfined\\\"],\\\"entrypoint\\\":\\\"/e.sh\\\",\\\"mounts\\\":[{\\\"type\\\":\\\"volume\\\",\\\"source\\\":\\\"v\\\",\\\"target\\\":\\\"/v\\\"}],\\\"customizations\\\":{\\\"vscode\\\":{\\\"extensions\\\":[\\\"x\\\"]}}} \\\n]\""
+    },
+    {
+      "name": "config entry in pick order",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "postCreateCommand": "p",
+            "waitFor": "onCreateCommand",
+            "customizations": {
+              "vscode": {}
+            },
+            "mounts": [
+              "type=bind,src=/a,dst=/b"
+            ],
+            "containerEnv": {
+              "A": "1"
+            },
+            "containerUser": "c",
+            "init": true,
+            "privileged": true,
+            "remoteUser": "r",
+            "remoteEnv": {
+              "B": "2"
+            },
+            "overrideCommand": false,
+            "portsAttributes": {
+              "3000": {
+                "label": "x"
+              }
+            },
+            "otherPortsAttributes": {
+              "onAutoForward": "ignore"
+            },
+            "forwardPorts": [
+              3000
+            ],
+            "shutdownAction": "none",
+            "updateRemoteUserUID": true,
+            "hostRequirements": {
+              "cpus": 2
+            },
+            "userEnvProbe": "none",
+            "capAdd": [
+              "NET_ADMIN"
+            ],
+            "securityOpt": [
+              "label=disable"
+            ]
+          }
+        ]
+      ],
+      "divergence": "unresolved: TS writes a Feature entry's keys in pickFeatureProperties order (id, lifecycle hooks, init, ...) and a config entry's in pickConfigProperties order; Go writes Entry's field order (internal/imagemeta/metadata.go, not changed here)",
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"postCreateCommand\\\":\\\"p\\\",\\\"waitFor\\\":\\\"onCreateCommand\\\",\\\"customizations\\\":{\\\"vscode\\\":{}},\\\"mounts\\\":[\\\"type=bind,src=/a,dst=/b\\\"],\\\"containerEnv\\\":{\\\"A\\\":\\\"1\\\"},\\\"containerUser\\\":\\\"c\\\",\\\"init\\\":true,\\\"privileged\\\":true,\\\"remoteUser\\\":\\\"r\\\",\\\"remoteEnv\\\":{\\\"B\\\":\\\"2\\\"},\\\"overrideCommand\\\":false,\\\"portsAttributes\\\":{\\\"3000\\\":{\\\"label\\\":\\\"x\\\"}},\\\"otherPortsAttributes\\\":{\\\"onAutoForward\\\":\\\"ignore\\\"},\\\"forwardPorts\\\":[3000],\\\"shutdownAction\\\":\\\"none\\\",\\\"updateRemoteUserUID\\\":true,\\\"hostRequirements\\\":{\\\"cpus\\\":2},\\\"userEnvProbe\\\":\\\"none\\\",\\\"capAdd\\\":[\\\"NET_ADMIN\\\"],\\\"securityOpt\\\":[\\\"label=disable\\\"]} \\\n]\""
+    },
+    {
+      "name": "getEntPasswd 'root'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "root"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'root' || grep -E '^root|^[^:]*:[^:]*:root:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd 'node'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "node"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'node' || grep -E '^node|^[^:]*:[^:]*:node:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd '1000'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "1000"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd '1000' || grep -E '^1000|^[^:]*:[^:]*:1000:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd 'vscode'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "vscode"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'vscode' || grep -E '^vscode|^[^:]*:[^:]*:vscode:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd 'foo\\\\bar'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "foo\\bar"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'foo\\\\bar' || grep -E '^foo\\\\bar|^[^:]*:[^:]*:foo\\\\bar:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd \"o'brien\"",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "o'brien"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'o\\'brien' || grep -E '^o\\'brien|^[^:]*:[^:]*:o\\'brien:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd 'a.b'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "a.b"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'a.b' || grep -E '^a\\.b|^[^:]*:[^:]*:a\\.b:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd 'a+b*c?'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "a+b*c?"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'a+b*c?' || grep -E '^a\\+b\\*c\\?|^[^:]*:[^:]*:a\\+b\\*c\\?:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd '[x]'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "[x]"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd '[x]' || grep -E '^\\[x\\]|^[^:]*:[^:]*:\\[x\\]:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd '(g)|h'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "(g)|h"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd '(g)|h' || grep -E '^\\(g\\)\\|h|^[^:]*:[^:]*:\\(g\\)\\|h:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd '^$'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "^$"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd '^$' || grep -E '^\\^\\$|^[^:]*:[^:]*:\\^\\$:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd '{1,2}'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "{1,2}"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd '{1,2}' || grep -E '^\\{1,2\\}|^[^:]*:[^:]*:\\{1,2\\}:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd 'usuário'",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        "usuário"
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd 'usuário' || grep -E '^usuário|^[^:]*:[^:]*:usuário:' /etc/passwd || true)"
+    },
+    {
+      "name": "getEntPasswd ''",
+      "fn": "getEntPasswdShellCommand",
+      "args": [
+        ""
+      ],
+      "result": " (command -v getent >/dev/null 2>&1 && getent passwd '' || grep -E '^|^[^:]*:[^:]*::' /etc/passwd || true)"
+    },
+    {
+      "name": "undefined",
+      "fn": "generateContainerEnvs",
+      "args": [
+        null,
+        false
+      ],
+      "result": ""
+    },
+    {
+      "name": "empty",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {},
+        false
+      ],
+      "result": ""
+    },
+    {
+      "name": "quotes and backslashes",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "A": "say \"hi\"",
+          "B": "C:\\path"
+        },
+        false
+      ],
+      "result": "ENV A=\"say \\\"hi\\\"\"\nENV B=\"C:\\\\path\""
+    },
+    {
+      "name": "dollar not escaped",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "P": "$PATH:/x"
+        },
+        false
+      ],
+      "result": "ENV P=\"$PATH:/x\""
+    },
+    {
+      "name": "dollar escaped",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "P": "$PATH:/x",
+          "Q": "a\"$b\\"
+        },
+        true
+      ],
+      "result": "ENV P=\"\\$PATH:/x\"\nENV Q=\"a\\\"\\$b\\\\\""
+    },
+    {
+      "name": "sorted keys",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "A": "1",
+          "B": "2",
+          "C": "3"
+        },
+        true
+      ],
+      "result": "ENV A=\"1\"\nENV B=\"2\"\nENV C=\"3\""
+    },
+    {
+      "name": "insertion order",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "ZED": "1",
+          "ALPHA": "2"
+        },
+        true
+      ],
+      "divergence": "unresolved: TS keeps containerEnv's key order; the Go config carries containerEnv as a map, so generateContainerEnvs sorts the keys",
+      "result": "ENV ZED=\"1\"\nENV ALPHA=\"2\""
+    },
+    {
+      "name": "unicode and newline",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "N": "a\nb",
+          "U": "ñ✓"
+        },
+        false
+      ],
+      "result": "ENV N=\"a\nb\"\nENV U=\"ñ✓\""
+    },
+    {
+      "name": "object value",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": {
+            "install": false,
+            "extra-opt": 1.5
+          },
+          "options": {
+            "version": {
+              "type": "string",
+              "default": "lts"
+            },
+            "install": {
+              "type": "boolean",
+              "default": true
+            },
+            "noDef": {
+              "type": "string"
+            },
+            "list": {
+              "type": "string",
+              "default": null
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          "lts"
+        ],
+        [
+          "install",
+          false
+        ],
+        [
+          "list",
+          null
+        ],
+        [
+          "extra-opt",
+          1.5
+        ]
+      ]
+    },
+    {
+      "name": "string value with version option",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": "18",
+          "options": {
+            "version": {
+              "type": "string",
+              "default": "lts"
+            },
+            "install": {
+              "type": "boolean",
+              "default": true
+            },
+            "noDef": {
+              "type": "string"
+            },
+            "list": {
+              "type": "string",
+              "default": null
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          "18"
+        ],
+        [
+          "install",
+          true
+        ],
+        [
+          "list",
+          null
+        ]
+      ]
+    },
+    {
+      "name": "true with version option",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": true,
+          "options": {
+            "version": {
+              "type": "string",
+              "default": "lts"
+            },
+            "install": {
+              "type": "boolean",
+              "default": true
+            },
+            "noDef": {
+              "type": "string"
+            },
+            "list": {
+              "type": "string",
+              "default": null
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          true
+        ],
+        [
+          "install",
+          true
+        ],
+        [
+          "list",
+          null
+        ]
+      ]
+    },
+    {
+      "name": "string value without version option",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": "18",
+          "options": {
+            "a": {
+              "default": "x"
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "a",
+          "x"
+        ]
+      ]
+    },
+    {
+      "name": "false without version option",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": false,
+          "options": {
+            "a": {
+              "default": "x"
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "a",
+          "x"
+        ]
+      ]
+    },
+    {
+      "name": "null value",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": null,
+          "options": {
+            "version": {
+              "type": "string",
+              "default": "lts"
+            },
+            "install": {
+              "type": "boolean",
+              "default": true
+            },
+            "noDef": {
+              "type": "string"
+            },
+            "list": {
+              "type": "string",
+              "default": null
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          "lts"
+        ],
+        [
+          "install",
+          true
+        ],
+        [
+          "list",
+          null
+        ]
+      ]
+    },
+    {
+      "name": "no options",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": {
+            "a": 1
+          }
+        }
+      ],
+      "result": [
+        [
+          "a",
+          1
+        ]
+      ]
+    },
+    {
+      "name": "object value overrides defaults in option order",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": {
+            "version": "20",
+            "install": false
+          },
+          "options": {
+            "version": {
+              "type": "string",
+              "default": "lts"
+            },
+            "install": {
+              "type": "boolean",
+              "default": true
+            },
+            "noDef": {
+              "type": "string"
+            },
+            "list": {
+              "type": "string",
+              "default": null
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          "20"
+        ],
+        [
+          "install",
+          false
+        ],
+        [
+          "list",
+          null
+        ]
+      ]
+    },
+    {
+      "name": "user keys not in options, sorted",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": {
+            "alpha": 1,
+            "beta": 2
+          },
+          "options": {
+            "version": {
+              "default": "1"
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          "1"
+        ],
+        [
+          "alpha",
+          1
+        ],
+        [
+          "beta",
+          2
+        ]
+      ]
+    },
+    {
+      "name": "user keys not in options, unsorted",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": {
+            "zeta": 1,
+            "alpha": 2
+          },
+          "options": {
+            "version": {
+              "default": "1"
+            }
+          }
+        }
+      ],
+      "divergence": "unresolved: TS keeps the order of the user's option values; features.Feature.Value is a map, so featureValueObject sorts the keys the options do not declare",
+      "result": [
+        [
+          "version",
+          "1"
+        ],
+        [
+          "zeta",
+          1
+        ],
+        [
+          "alpha",
+          2
+        ]
+      ]
+    },
+    {
+      "name": "options in document order",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": {},
+          "options": {
+            "zeta": {
+              "default": "z"
+            },
+            "alpha": {
+              "default": "a"
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "zeta",
+          "z"
+        ],
+        [
+          "alpha",
+          "a"
+        ]
+      ]
+    },
+    {
+      "name": "version option without default",
+      "fn": "getFeatureValueObject",
+      "args": [
+        {
+          "id": "x",
+          "value": "1.2",
+          "options": {
+            "version": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "result": [
+        [
+          "version",
+          "1.2"
+        ]
+      ]
+    },
+    {
+      "name": "getSafeId 'option-name'",
+      "fn": "getSafeId",
+      "args": [
+        "option-name"
+      ],
+      "result": "OPTION_NAME"
+    },
+    {
+      "name": "getSafeId 'option1-name-with_dashes-'",
+      "fn": "getSafeId",
+      "args": [
+        "option1-name-with_dashes-"
+      ],
+      "result": "OPTION1_NAME_WITH_DASHES_"
+    },
+    {
+      "name": "getSafeId 'myOptionName'",
+      "fn": "getSafeId",
+      "args": [
+        "myOptionName"
+      ],
+      "result": "MYOPTIONNAME"
+    },
+    {
+      "name": "getSafeId '1name'",
+      "fn": "getSafeId",
+      "args": [
+        "1name"
+      ],
+      "result": "_NAME"
+    },
+    {
+      "name": "getSafeId '12345_option-name'",
+      "fn": "getSafeId",
+      "args": [
+        "12345_option-name"
+      ],
+      "result": "_OPTION_NAME"
+    },
+    {
+      "name": "getSafeId 'go'",
+      "fn": "getSafeId",
+      "args": [
+        "go"
+      ],
+      "result": "GO"
+    },
+    {
+      "name": "getSafeId 'node'",
+      "fn": "getSafeId",
+      "args": [
+        "node"
+      ],
+      "result": "NODE"
+    },
+    {
+      "name": "getSafeId 'azure-cli'",
+      "fn": "getSafeId",
+      "args": [
+        "azure-cli"
+      ],
+      "result": "AZURE_CLI"
+    },
+    {
+      "name": "getSafeId 'ghcr.io/devcontainers/features/go'",
+      "fn": "getSafeId",
+      "args": [
+        "ghcr.io/devcontainers/features/go"
+      ],
+      "result": "GHCR_IO_DEVCONTAINERS_FEATURES_GO"
+    },
+    {
+      "name": "getSafeId '123feature'",
+      "fn": "getSafeId",
+      "args": [
+        "123feature"
+      ],
+      "result": "_FEATURE"
+    },
+    {
+      "name": "getSafeId 'my_feature'",
+      "fn": "getSafeId",
+      "args": [
+        "my_feature"
+      ],
+      "result": "MY_FEATURE"
+    },
+    {
+      "name": "getSafeId ''",
+      "fn": "getSafeId",
+      "args": [
+        ""
+      ],
+      "result": ""
+    },
+    {
+      "name": "getSafeId '_'",
+      "fn": "getSafeId",
+      "args": [
+        "_"
+      ],
+      "result": "_"
+    },
+    {
+      "name": "getSafeId '__x'",
+      "fn": "getSafeId",
+      "args": [
+        "__x"
+      ],
+      "result": "_X"
+    },
+    {
+      "name": "getSafeId '9'",
+      "fn": "getSafeId",
+      "args": [
+        "9"
+      ],
+      "result": "_"
+    },
+    {
+      "name": "getSafeId 'a.b:c@d'",
+      "fn": "getSafeId",
+      "args": [
+        "a.b:c@d"
+      ],
+      "result": "A_B_C_D"
+    },
+    {
+      "name": "getSafeId 'ñandú'",
+      "fn": "getSafeId",
+      "args": [
+        "ñandú"
+      ],
+      "result": "_AND_"
+    },
+    {
+      "name": "getSafeId '___1abc'",
+      "fn": "getSafeId",
+      "args": [
+        "___1abc"
+      ],
+      "result": "_ABC"
+    },
+    {
+      "name": "getSafeId 'x y'",
+      "fn": "getSafeId",
+      "args": [
+        "x y"
+      ],
+      "result": "X_Y"
+    },
+    {
+      "name": "escapeQuotes ''",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        ""
+      ],
+      "result": ""
+    },
+    {
+      "name": "escapeQuotes 'plain'",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        "plain"
+      ],
+      "result": "plain"
+    },
+    {
+      "name": "escapeQuotes \"it's\"",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        "it's"
+      ],
+      "result": "it'\\''s"
+    },
+    {
+      "name": "escapeQuotes \"''\"",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        "''"
+      ],
+      "result": "'\\'''\\''"
+    },
+    {
+      "name": "escapeQuotes \"a'b'c\"",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        "a'b'c"
+      ],
+      "result": "a'\\''b'\\''c"
+    },
+    {
+      "name": "escapeQuotes \"\\\\'\"",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        "\\'"
+      ],
+      "result": "\\'\\''"
+    },
+    {
+      "name": "escapeQuotes \"multi\\nline 'q'\"",
+      "fn": "escapeQuotesForShell",
+      "args": [
+        "multi\nline 'q'"
+      ],
+      "result": "multi\nline '\\''q'\\''"
+    }
+  ]
+}

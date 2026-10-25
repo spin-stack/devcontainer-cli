@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -179,24 +177,6 @@ func TestComposeMountsFromMetadata(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("mount %d = %+v, want %+v", i, got[i], want[i])
 		}
-	}
-}
-
-func TestReadComposeVersionPrefix(t *testing.T) {
-	dir := t.TempDir()
-	withVersion := filepath.Join(dir, "a.yml")
-	if err := os.WriteFile(withVersion, []byte("# c\n  version: '3.8'\nservices: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	without := filepath.Join(dir, "b.yml")
-	if err := os.WriteFile(without, []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := readComposeVersionPrefix([]string{withVersion, without}); got != "version: '3.8'\n\n" {
-		t.Errorf("got %q", got)
-	}
-	if got, _ := readComposeVersionPrefix([]string{without}); got != "" {
-		t.Errorf("got %q", got)
 	}
 }
 

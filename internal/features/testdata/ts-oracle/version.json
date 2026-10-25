@@ -1,0 +1,356 @@
+{
+  "comment": "commonUtils.ts parseVersion and isEarlierVersion, ported in advisory.go.",
+  "cases": [
+    {
+      "fn": "parseVersion",
+      "args": [
+        "1.2.3"
+      ],
+      "result": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "1.0"
+      ],
+      "result": [
+        1,
+        0
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "3"
+      ],
+      "result": [
+        3
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "abc"
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "v1.2"
+      ],
+      "result": [
+        1,
+        2
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "'v2"
+      ],
+      "result": [
+        2
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "1.2.3-rc.1"
+      ],
+      "result": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "1."
+      ],
+      "result": [
+        1
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "latest"
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        ""
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "v"
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "'1.2'"
+      ],
+      "result": [
+        1,
+        2
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "\"1.2\""
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "V1.2"
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        " 1.2"
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "1..2"
+      ],
+      "result": [
+        1
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "01.02"
+      ],
+      "result": [
+        1,
+        2
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "2.8.0"
+      ],
+      "result": [
+        2,
+        8,
+        0
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "v2.29.1-desktop.1"
+      ],
+      "result": [
+        2,
+        29,
+        1
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "Docker Compose version v2.20.2"
+      ],
+      "result": null
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "1.2.3.4.5"
+      ],
+      "result": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "fn": "parseVersion",
+      "args": [
+        "١.٢"
+      ],
+      "result": null
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          0
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          1,
+          2,
+          0
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          1,
+          2,
+          0
+        ],
+        [
+          1,
+          2,
+          0
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          1,
+          9
+        ],
+        [
+          2
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          9,
+          9
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [],
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          2,
+          7,
+          9
+        ],
+        [
+          2,
+          8,
+          0
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          2,
+          8
+        ],
+        [
+          2,
+          8,
+          0
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isEarlierVersion",
+      "args": [
+        [
+          1,
+          0,
+          0,
+          1
+        ],
+        [
+          1
+        ]
+      ],
+      "result": false
+    }
+  ]
+}

@@ -107,6 +107,11 @@ func ParseRef(input string) (*Ref, error) {
 		return nil, fmt.Errorf("resource %q must have at least registry/namespace/id", resource)
 	}
 
+	// TS getRef: the devcontainers-contrib Features moved to devcontainers-extra;
+	// owner, namespace and path follow, the resource stays as written.
+	if parts[1] == "devcontainers-contrib" {
+		parts[1] = "devcontainers-extra"
+	}
 	registry := parts[0]
 	owner := parts[1]
 	id := parts[len(parts)-1]

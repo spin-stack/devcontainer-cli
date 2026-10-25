@@ -20,8 +20,11 @@ const (
 	composeFeaturesOverridePrefix = "docker-compose.devcontainer.containerFeatures"
 )
 
-// composeVersionLineRe is TS readVersionPrefix's /^\s*(version:.*)$/m.
-var composeVersionLineRe = regexp.MustCompile(`(?m)^\s*(version:.*)$`)
+// composeVersionLineRe is TS readVersionPrefix's /^\s*(version:.*)$/m with
+// JavaScript's semantics: a line also starts after \r, \u2028 or \u2029, \s
+// includes \v and the Unicode spaces, and . stops at any line terminator (a
+// CRLF file's version line has no trailing \r).
+var composeVersionLineRe = regexp.MustCompile(`(?m)(?:^|[\r\x{2028}\x{2029}])[\t\n\v\f\r \x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]*(version:[^\n\r\x{2028}\x{2029}]*)`)
 
 // readComposeVersionPrefix returns the first compose file's `version:` line
 // followed by a blank line, or "" (TS readVersionPrefix).
@@ -60,6 +63,16 @@ func composeVolumeSpec(m composeMount) string {
 	}
 	if m.ReadOnly {
 		volume += ":ro"
+	}
+	return volume
+}
+
+// composeTopLevelVolume is TS convertMountToVolumeTopLevelElement: a named
+// volume's entry under the override's top-level volumes.
+func composeTopLevelVolume(m composeMount) string {
+	volume := "\n  " + m.Source + ":"
+	if m.External {
+		volume += "\n    external: true"
 	}
 	return volume
 }
@@ -108,7 +121,9 @@ func composeMountsFromMetadata(entries []any, resolve func(string) (string, erro
 func parseComposeMountString(spec string) composeMount {
 	var m composeMount
 	for part := range strings.SplitSeq(spec, ",") {
+		// TS splits on every "=" and keeps the second piece only.
 		key, value, _ := strings.Cut(part, "=")
+		value, _, _ = strings.Cut(value, "=")
 		switch key {
 		case "type":
 			m.Type = value
@@ -117,7 +132,8 @@ func parseComposeMountString(spec string) composeMount {
 		case "target", "dst", "destination":
 			m.Target = value
 		case "external":
-			m.External = value == "true"
+			// TS tests the string's truthiness: "false" is external too.
+			m.External = value != ""
 		case "readonly", "ro":
 			m.ReadOnly = value == "" || value == "true" || value == "1"
 		}
@@ -274,10 +290,7 @@ func generateComposeFeaturesOverride(in composeFeaturesOverride) string {
 	if len(named) > 0 {
 		b.WriteString("\nvolumes:")
 		for _, m := range named {
-			fmt.Fprintf(&b, "\n  \n  %s:", m.Source)
-			if m.External {
-				b.WriteString("\n    external: true")
-			}
+			b.WriteString("\n  " + composeTopLevelVolume(m))
 		}
 	}
 	b.WriteString("\n")

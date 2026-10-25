@@ -4,10 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/big"
 	"path"
 	"runtime"
+	"slices"
 	"strings"
+	"unicode/utf16"
 )
 
 type SubstitutionPhase uint8
@@ -201,7 +204,7 @@ func resolveHostTag(ctx HostSubContext, variable string, args []string, tag stri
 			if isWin {
 				return winBasename(ctx.LocalWorkspaceFolder), true, nil
 			}
-			return path.Base(ctx.LocalWorkspaceFolder), true, nil
+			return posixBasename(ctx.LocalWorkspaceFolder), true, nil
 		}
 	case "containerWorkspaceFolder":
 		if ctx.ContainerWorkspaceFolder != "" {
@@ -209,7 +212,7 @@ func resolveHostTag(ctx HostSubContext, variable string, args []string, tag stri
 		}
 	case "containerWorkspaceFolderBasename":
 		if ctx.ContainerWorkspaceFolder != "" {
-			return path.Base(ctx.ContainerWorkspaceFolder), true, nil
+			return posixBasename(ctx.ContainerWorkspaceFolder), true, nil
 		}
 	}
 	return "", false, nil
@@ -221,7 +224,7 @@ func resolveEnvTag(isWin bool, env map[string]string, args []string, tag, config
 		if configFilePath != "" {
 			location = " in " + path.Base(configFilePath)
 		}
-		return "", false, fmt.Errorf("'${%s}'%s cannot be resolved because no environment variable name is given", tag, location)
+		return "", false, fmt.Errorf("'${%s}'%s can not be resolved because no environment variable name is given.", tag, location)
 	}
 	name := args[0]
 	if isWin {
@@ -249,19 +252,65 @@ type HostSubContext struct {
 	ConfigFilePath           string // for error messages
 }
 
-// ComputeDevContainerID produces a deterministic ID from id-labels,
-// matching the TS implementation exactly: SHA256 → BigInt → base32 padded to 52.
+// ComputeDevContainerID produces a deterministic ID from id-labels, as TS
+// devcontainerIdForLabels does: the labels' JSON.stringify with sorted keys,
+// SHA-256, then the hash as a base-32 number padded to 52 digits.
 func ComputeDevContainerID(idLabels map[string]string) string {
-	// encoding/json writes a map's keys sorted, as the TS JSON.stringify of the
-	// sorted labels does.
-	data, _ := json.Marshal(idLabels)
-	hash := sha256.Sum256(data)
-
-	// Convert hash to BigInt, then to base32 string, padded to 52 chars
-	n := new(big.Int).SetBytes(hash[:])
-	str := n.Text(32)
+	hash := sha256.Sum256([]byte(jsonStringifySorted(idLabels)))
+	str := new(big.Int).SetBytes(hash[:]).Text(32)
 	// A 256-bit hash has at most 52 base-32 digits.
 	return strings.Repeat("0", 52-len(str)) + str
+}
+
+// jsonStringifySorted is JSON.stringify(m, Object.keys(m).sort()): keys in
+// UTF-16 code unit order (JS's sort), strings escaped as JSON.stringify does
+// (encoding/json would also escape &, <, >, U+2028 and U+2029).
+func jsonStringifySorted(m map[string]string) string {
+	keys := slices.Collect(maps.Keys(m))
+	slices.SortFunc(keys, func(a, b string) int {
+		return slices.Compare(utf16.Encode([]rune(a)), utf16.Encode([]rune(b)))
+	})
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		writeJSString(&b, k)
+		b.WriteByte(':')
+		writeJSString(&b, m[k])
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+func writeJSString(b *strings.Builder, s string) {
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(b, `\u%04x`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
 }
 
 func normalizeEnvKeys(env map[string]string) map[string]string {
@@ -272,9 +321,21 @@ func normalizeEnvKeys(env map[string]string) map[string]string {
 	return m
 }
 
+// posixBasename is node's path.posix.basename: trailing slashes are ignored,
+// and "/" has none.
+func posixBasename(p string) string {
+	p = strings.TrimRight(p, "/")
+	return p[strings.LastIndexByte(p, '/')+1:]
+}
+
+// winBasename is node's path.win32.basename: both / and \ separate, a drive
+// letter is no name, trailing separators are ignored.
 func winBasename(p string) string {
-	// Both / and \ separate on Windows; no separator leaves p whole.
-	return p[strings.LastIndexAny(p, "/\\")+1:]
+	if len(p) >= 2 && p[1] == ':' && ('a' <= p[0]|0x20 && p[0]|0x20 <= 'z') {
+		p = p[2:]
+	}
+	p = strings.TrimRight(p, `/\`)
+	return p[strings.LastIndexAny(p, `/\`)+1:]
 }
 
 // IsWindows returns true if the current platform is Windows.
