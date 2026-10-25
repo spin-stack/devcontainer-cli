@@ -366,6 +366,7 @@ func execExitCode(exitErr *exec.ExitError) int {
 	if code != -1 {
 		return code
 	}
+	// mutate-exempt: ExitCode is -1 only for a child a signal ended, whose WaitStatus is always there and Signaled, so || takes the same branch
 	if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 		return 128 + int(ws.Signal())
 	}

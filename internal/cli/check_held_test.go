@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -96,5 +98,84 @@ func TestWriteSetupResultText(t *testing.T) {
 	}
 	if saved.err.Len() != 0 {
 		t.Errorf("stderr = %q, want no note when the state was saved", saved.err.String())
+	}
+}
+
+// The table pads its columns two spaces past their widest cell.
+func TestWriteReportTableAlignsTheColumns(t *testing.T) {
+	var buf strings.Builder
+	writeReportTable(&buf, sampleReport())
+	want := "✔  docker-daemon       Docker daemon reachable (server 27.0)\n" +
+		"⚠  build-cache-export  cannot export cache\n" +
+		"  → build-cache-export: run `devcontainer setup`\n" +
+		"\noverall: ⚠ warn\n"
+	if buf.String() != want {
+		t.Errorf("table =\n%s\nwant\n%s", buf.String(), want)
+	}
+}
+
+// runCheckWithoutDocker runs check against a docker CLI that does not exist,
+// so the daemon check fails, with the check state under stateHome.
+func runCheckWithoutDocker(t *testing.T, out Output, json bool, stateHome string) error {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	return runCheck(t.Context(), out, &checkOpts{json: json, dockerPath: filepath.Join(t.TempDir(), "docker")})
+}
+
+// A failing host prints the table, saves the state and exits 1.
+func TestRunCheckFailingHostExitsOne(t *testing.T) {
+	state := t.TempDir()
+	out := &captureOutput{}
+	err := runCheckWithoutDocker(t, out, false, state)
+	if exitCode(err) != 1 {
+		t.Fatalf("err = %v, want exit code 1 for a failing host", err)
+	}
+	if s := out.out.String(); !strings.HasSuffix(s, "\noverall: ✖ fail\n") {
+		t.Errorf("stdout = %q, want the table of a failing host", s)
+	}
+	if out.err.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing when the state was saved", out.err.String())
+	}
+	saved, ok, err := doctor.LoadFrom(filepath.Join(state, "devcontainer", "check.json"))
+	if err != nil || !ok || saved.Overall != doctor.StatusFail {
+		t.Errorf("saved state = %+v, %v, %v; want the failing report", saved, ok, err)
+	}
+}
+
+// A state that cannot be saved is a note on stderr, not a failure of its own.
+func TestRunCheckNotesAStateItCouldNotSave(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := &captureOutput{}
+	err := runCheckWithoutDocker(t, out, false, blocker)
+	if exitCode(err) != 1 {
+		t.Fatalf("err = %v, want exit code 1 for a failing host", err)
+	}
+	if s := out.err.String(); !strings.HasPrefix(s, "note: could not save check state: ") {
+		t.Errorf("stderr = %q, want the note", s)
+	}
+}
+
+// --json prints the report as JSON and still exits 1 for a failing host; a
+// stdout that cannot be written fails with that error.
+func TestRunCheckJSON(t *testing.T) {
+	out := &captureOutput{}
+	err := runCheckWithoutDocker(t, out, true, t.TempDir())
+	if exitCode(err) != 1 {
+		t.Fatalf("err = %v, want exit code 1 for a failing host", err)
+	}
+	var got doctor.Report
+	if err := json.Unmarshal(out.out.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out.out.String())
+	}
+	if got.Overall != doctor.StatusFail || len(got.Results) == 0 {
+		t.Errorf("report = %+v, want a failing report", got)
+	}
+
+	err = runCheckWithoutDocker(t, &brokenStdout{}, true, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "stdout closed") {
+		t.Fatalf("err = %v, want the write error", err)
 	}
 }
