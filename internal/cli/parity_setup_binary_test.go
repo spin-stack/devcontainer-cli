@@ -34,7 +34,8 @@ func TestParitySetupUsesLaneBinary(t *testing.T) {
 	if got := env["PARITY_CLI_GO"]; got != filepath.Join("/repo", "devcontainer") {
 		t.Errorf("PARITY_CLI_GO default = %q, want the repo-root binary", got)
 	}
-	if got, want := env["PARITY_CLI_TS"], "node "+filepath.Join("/repo", "reference", "devcontainer.js"); got != want {
+	// The oracle's node is this process's, by absolute path (defaultParityTSCLI).
+	if got, want := env["PARITY_CLI_TS"], defaultParityTSCLI("/repo"); got != want {
 		t.Errorf("PARITY_CLI_TS default = %q, want %q", got, want)
 	}
 
