@@ -912,11 +912,12 @@ func extractTarGz(archivePath, destDir string) error {
 
 		// Tar paths always use forward slashes. Localize rejects absolute paths,
 		// parent traversal, and names that cannot be represented safely on the
-		// current platform. Root also prevents escapes through symlinks already
-		// present below destDir.
+		// current platform; what it returns is always local, as filepath.IsLocal
+		// reports. Root also prevents escapes through symlinks already present
+		// below destDir.
 		cleanName := path.Clean(header.Name)
 		localName, err := filepath.Localize(cleanName)
-		if err != nil || !filepath.IsLocal(localName) {
+		if err != nil {
 			return fmt.Errorf("tar entry %q escapes the destination directory", header.Name)
 		}
 
@@ -992,9 +993,6 @@ func (e *digestMismatchError) Error() string {
 // It returns the tarball bytes and their computed "sha256:<hex>" digest so the
 // caller can pin/verify integrity (TS records and checks this digest).
 func downloadFeatureTarball(ctx context.Context, logger log.Logger, tarballURL string, env map[string]string) ([]byte, string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tarballURL, nil)
 	if err != nil {
 		return nil, "", err

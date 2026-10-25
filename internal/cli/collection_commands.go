@@ -599,7 +599,7 @@ func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, c
 }
 
 func renderDocsTemplate(template string, values map[string]string) string {
-	pairs := make([]string, 0, len(values)*2)
+	var pairs []string
 	for name, value := range values {
 		pairs = append(pairs, "#{"+name+"}", value)
 	}
@@ -707,15 +707,9 @@ func defaultCell(ov map[string]any) string {
 
 // orderedObjectKeys returns the keys of a JSON object in source order.
 func orderedObjectKeys(raw json.RawMessage) []string {
-	if len(raw) == 0 {
-		return nil
-	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	t, err := dec.Token()
-	if err != nil {
-		return nil
-	}
-	if d, ok := t.(json.Delim); !ok || d != '{' {
+	if err != nil || t != json.Delim('{') {
 		return nil
 	}
 	var keys []string
@@ -734,27 +728,24 @@ func orderedObjectKeys(raw json.RawMessage) []string {
 	return keys
 }
 
+// skipJSONValue consumes the next value from dec. At a value's position the
+// decoder only ever yields an opening delimiter, so any Delim starts a
+// container; an object's keys are string tokens, consumed like its values.
 func skipJSONValue(dec *json.Decoder) error {
 	t, err := dec.Token()
 	if err != nil {
 		return err
 	}
-	if d, ok := t.(json.Delim); ok && (d == '{' || d == '[') {
-		for dec.More() {
-			if d == '{' {
-				if _, err := dec.Token(); err != nil { // key
-					return err
-				}
-			}
-			if err := skipJSONValue(dec); err != nil {
-				return err
-			}
-		}
-		if _, err := dec.Token(); err != nil { // closing delim
+	if _, ok := t.(json.Delim); !ok {
+		return nil
+	}
+	for dec.More() {
+		if err := skipJSONValue(dec); err != nil {
 			return err
 		}
 	}
-	return nil
+	_, err = dec.Token() // closing delim
+	return err
 }
 
 // createTarArchive creates a plain (uncompressed) tar archive from a directory,
