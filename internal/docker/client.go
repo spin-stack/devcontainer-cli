@@ -266,10 +266,10 @@ func (c *Client) FindDockerDriverBuilder(ctx context.Context) string {
 	// Prefer builder matching the current context, fall back to any docker driver builder
 	fallback := ""
 	for line := range strings.SplitSeq(string(res.Stdout), "\n") {
-		if line == "" || strings.HasPrefix(line, "NAME") {
+		if strings.HasPrefix(line, "NAME") {
 			continue
 		}
-		fields := strings.Fields(line)
+		fields := strings.Fields(line) // a blank line has none
 		if len(fields) >= 2 {
 			name := strings.TrimSuffix(fields[0], "*")
 			driver := fields[1]
