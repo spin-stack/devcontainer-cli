@@ -48,6 +48,8 @@ func TestCheck(t *testing.T) {
 		{"falsy false", returns(Truthiness(false), nil), call("f", `false`, ""), ""},
 		{"truthiness differs", returns(Truthiness(true), nil), call("f", `0`, ""), "truthy: false"},
 		{"truthy object", returns(Truthiness(true), nil), call("f", `{}`, ""), ""},
+		{"bad recorded result", returns(1, nil), call("f", `{`, ""), "bad recorded result: unexpected end of JSON input"},
+		{"Go result is no JSON", returns(func() {}, nil), call("f", `1`, ""), "Go result is no JSON: invalid character"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

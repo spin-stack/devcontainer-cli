@@ -4,6 +4,7 @@ package oracletest
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,11 +69,7 @@ func Run(t *testing.T, path string, impls map[string]Func) {
 		if impl == nil {
 			continue
 		}
-		name := c.Name
-		if name == "" {
-			name = c.Fn + "#" + strconv.Itoa(i)
-		}
-		t.Run(name, func(t *testing.T) {
+		t.Run(cmp.Or(c.Name, c.Fn+"#"+strconv.Itoa(i)), func(t *testing.T) {
 			if c.Result == nil && c.Error == "" {
 				t.Fatal("no recorded result: run `go tool task testdata:ts-oracle`")
 			}

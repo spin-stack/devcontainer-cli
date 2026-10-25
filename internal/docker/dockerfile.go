@@ -15,7 +15,6 @@ type Dockerfile struct {
 	Preamble      Preamble
 	Stages        []Stage
 	StagesByLabel map[string]*Stage
-	escapeToken   rune
 }
 
 // Preamble is the content before any FROM statement.
@@ -53,14 +52,12 @@ func ExtractDockerfile(content string) *Dockerfile {
 	df := &Dockerfile{
 		Preamble:      Preamble{Directives: map[string]string{}},
 		StagesByLabel: map[string]*Stage{},
-		escapeToken:   '\\',
 	}
 
 	res, err := parser.Parse(strings.NewReader(content))
 	if err != nil {
 		return df
 	}
-	df.escapeToken = res.EscapeToken
 	if syntax, _, _, ok := parser.DetectSyntax([]byte(content)); ok {
 		df.Preamble.Directives["syntax"] = syntax
 		df.Preamble.Version = syntaxVersion(syntax)
@@ -111,9 +108,11 @@ func ExtractDockerfile(content string) *Dockerfile {
 }
 
 // stageLabel is the stage's name as the FROM line spells it: BuildKit
-// lowercases it, TS extractDockerfile keeps it, and looks stages up by it.
+// lowercases it, TS extractDockerfile keeps it, and looks stages up by it. On
+// a FROM line BuildKit accepts (continuations joined), the FROM-line
+// expression reads the label BuildKit names.
 func stageLabel(s *instructions.Stage) string {
-	if m := fromLineLabel.FindStringSubmatch(s.SourceCode); m != nil && strings.EqualFold(m[1], s.Name) {
+	if m := fromLineLabel.FindStringSubmatch(s.SourceCode); m != nil {
 		return m[1]
 	}
 	return s.Name
@@ -202,7 +201,7 @@ var (
 // backslash, which no builder accepts; this reads the stage's name with
 // BuildKit instead when it has one.
 func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string, err error) {
-	lines := findFromLines.FindAllStringIndex(content, -1)
+	lines := findFromLines.FindAllStringIndex(content, -1) // mutate-exempt: any n < 0 is every match
 	if len(lines) == 0 {
 		return "", "", errors.New("Error parsing Dockerfile: Dockerfile contains no FROM instructions")
 	}
@@ -216,7 +215,7 @@ func EnsureFinalStageName(content, defaultName string) (stageName string, modifi
 	if m == nil {
 		return "", "", errors.New("Error parsing Dockerfile: failed to parse final FROM line")
 	}
-	if m[2] != -1 { // the label group, when it matched, is never empty
+	if m[2] != -1 { // mutate-exempt: m[2] and m[3] are both -1 exactly when the label group is unmatched, and a matched label is never empty
 		return content[lineStart+m[2] : lineStart+m[3]], "", nil
 	}
 	pos := lineStart + m[1]
@@ -230,9 +229,9 @@ func finalStageName(content string) string {
 	if err != nil {
 		return ""
 	}
-	stages, _, err := instructions.Parse(res.AST, nil)
-	if err != nil || len(stages) == 0 {
-		return ""
+	// instructions.Parse returns no stages with its error.
+	if stages, _, _ := instructions.Parse(res.AST, nil); len(stages) > 0 {
+		return stages[len(stages)-1].Name
 	}
-	return stages[len(stages)-1].Name
+	return ""
 }
