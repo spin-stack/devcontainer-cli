@@ -68,6 +68,10 @@ type parityCase struct {
 	// Serial forces a case to run sequentially (no t.Parallel). Used for the few
 	// runtime cases that can't be isolated for parallel execution.
 	Serial bool `yaml:"serial"`
+	// Lock names a Docker resource the case shares with other cases and cannot
+	// isolate; cases with the same lock run one at a time, still in parallel
+	// with every other case. See parityLocks.
+	Lock string `yaml:"lock"`
 	// CompareHashes keeps sha256/hex digests UNSCRUBBED so they are compared
 	// exactly between TS and Go. Set it for cases whose digests are deterministic
 	// and meaningful (resolve-dependencies installOrder resource@digest,
@@ -187,6 +191,16 @@ func writeParityReport(path string, snapshot map[parityOutcome][]string) error {
 		return fmt.Errorf("write parity report: %w", err)
 	}
 	return nil
+}
+
+// parityLocks are the shared resources a case can name in `lock`.
+//
+// feature-content-image: without BuildKit, both CLIs build a Feature's files
+// into the fixed tag dev_container_feature_content_temp (TS containerFeatures.ts
+// getFeaturesBuildOptions) and build FROM it, so two such builds at once can
+// take each other's Features.
+var parityLocks = map[string]*sync.Mutex{
+	"feature-content-image": {},
 }
 
 // --- Main test ---
@@ -313,6 +327,14 @@ func TestParityMatrix(t *testing.T) {
 			if tc.Arm64Required && os.Getenv("PARITY_ARM64") != "true" {
 				outcome = paritySkippedArm64
 				t.Skip("arm64 experimental (set PARITY_ARM64=true to run; requires arm64 emulation)")
+			}
+			if tc.Lock != "" {
+				mu, ok := parityLocks[tc.Lock]
+				if !ok {
+					t.Fatalf("unknown lock %q", tc.Lock)
+				}
+				mu.Lock()
+				defer mu.Unlock()
 			}
 			perCaseTimeout := defaultTimeout
 			if tc.Lane == "runtime" {
