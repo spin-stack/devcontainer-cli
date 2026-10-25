@@ -28,12 +28,16 @@ func getCredential(env map[string]string, registry string, logger log.Logger) *c
 	// 1. DEVCONTAINERS_OCI_AUTH env var
 	if ociAuth := env["DEVCONTAINERS_OCI_AUTH"]; ociAuth != "" {
 		for entry := range strings.SplitSeq(ociAuth, ",") {
-			parts := strings.SplitN(entry, "|", 3)
-			if len(parts) == 3 && parts[0] == registry {
-				logger.Write(fmt.Sprintf("[httpOci] Using match from DEVCONTAINERS_OCI_AUTH for registry %q", registry), log.LevelTrace)
-				userToken := parts[1] + ":" + parts[2]
-				return &credential{base64Encoded: base64.StdEncoding.EncodeToString([]byte(userToken))}
+			parts := strings.Split(entry, "|")
+			if parts[0] != registry {
+				continue
 			}
+			logger.Write(fmt.Sprintf("[httpOci] Using match from DEVCONTAINERS_OCI_AUTH for registry '%s'", registry), log.LevelTrace)
+			// TS joins the second and third fields, ignoring any after them; a
+			// missing field is JS undefined.
+			parts = append(parts, "undefined", "undefined")
+			userToken := parts[1] + ":" + parts[2]
+			return &credential{base64Encoded: base64.StdEncoding.EncodeToString([]byte(userToken))}
 		}
 	}
 
