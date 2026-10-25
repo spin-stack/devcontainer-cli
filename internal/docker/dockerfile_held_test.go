@@ -14,8 +14,8 @@ func TestEnsureFinalStageNameInsertsTheLabelAfterTheImage(t *testing.T) {
 		{"# syntax\nFROM alpine # x\nRUN true\n", "# syntax\nFROM alpine AS dev # x\nRUN true\n"},
 		{"FROM a AS b\nRUN x\n  FROM --platform=linux/amd64 b # c\n", "FROM a AS b\nRUN x\n  FROM --platform=linux/amd64 b AS dev # c\n"},
 	} {
-		name, modified := EnsureFinalStageName(tc.in, "dev")
-		if name != "dev" || modified != tc.want {
+		name, modified, err := EnsureFinalStageName(tc.in, "dev")
+		if err != nil || name != "dev" || modified != tc.want {
 			t.Errorf("EnsureFinalStageName(%q) = (%q, %q), want (\"dev\", %q)", tc.in, name, modified, tc.want)
 		}
 	}

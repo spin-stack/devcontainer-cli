@@ -233,6 +233,19 @@ func imageBuildInfoFromDockerfile(ctx context.Context, insp *imageInspector, doc
 	return info, nil
 }
 
+// buildxPlatformArgs are the automatic platform ARGs of a build on this host
+// for platform, os/arch[/variant] as --platform takes it, the host's when
+// empty (TS devContainers.ts targetPlatformInfo).
+func buildxPlatformArgs(platform string) map[string]string {
+	target := targetPlatform()
+	if platform != "" {
+		os, rest, _ := strings.Cut(platform, "/")
+		arch, variant, _ := strings.Cut(rest, "/")
+		target = ocispec.Platform{OS: os, Architecture: arch, Variant: variant}
+	}
+	return globalBuildxPlatformArgs(targetPlatform(), target)
+}
+
 // globalBuildxPlatformArgs are BuildKit's automatic platform ARGs in the global
 // scope, as TS internalGetImageBuildInfoFromDockerfile defines them.
 func globalBuildxPlatformArgs(build, target ocispec.Platform) map[string]string {

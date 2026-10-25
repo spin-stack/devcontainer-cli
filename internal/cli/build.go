@@ -309,7 +309,10 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 	if cfg.Build != nil && cfg.Build.Target != "" {
 		prep.StageName = cfg.Build.Target
 	} else {
-		stageName, modified := docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
+		stageName, modified, err := docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
+		if err != nil {
+			return nil, err
+		}
 		prep.StageName = stageName
 		if modified != "" {
 			tmpDockerfile := dockerfilePath + ".devcontainer.build"
@@ -351,7 +354,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	stageName := prep.StageName
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 
-	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), stageName)
+	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), stageName, buildxPlatformArgs(opts.platform))
 	logger.Write(fmt.Sprintf("Base image: %s", baseImage), log.LevelInfo)
 
 	// Generate base-image metadata. Ensure the base image is available locally so

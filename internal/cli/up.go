@@ -612,7 +612,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	if cfg.Build != nil {
 		findTarget = cfg.Build.Target
 	}
-	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget)
+	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget, buildxPlatformArgs(opts.platform))
 
 	metadata := []imagemeta.Entry{}
 	// Read the FROM image's baked devcontainer.metadata (e.g. remoteUser=node on
