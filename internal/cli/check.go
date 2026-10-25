@@ -147,7 +147,9 @@ func writeSetupResult(out Output, opts *setupOpts, actions []doctor.Action, fina
 
 // writeReportTable renders the ✔/⚠/✖ table plus per-line remediation hints.
 func writeReportTable(w io.Writer, report doctor.Report) {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	// mutate-exempt: a minwidth of 1 is below every cell's width plus the padding of 2, tabwidth counts only with '\t' padding, and flag 1 (FilterHTML) re-measures only HTML, which no status symbol or check name holds
+	const minwidth, tabwidth, flags = 0, 0, 0
+	tw := tabwriter.NewWriter(w, minwidth, tabwidth, 2, ' ', flags)
 	for _, r := range report.Results {
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Status.Symbol(), r.Name, r.Summary)
 	}
