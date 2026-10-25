@@ -14,11 +14,8 @@ import (
 // isLocalRegistry reports whether the registry is a local/insecure one that
 // serves plain HTTP (localhost / loopback), as opposed to a real HTTPS registry.
 func isLocalRegistry(registry string) bool {
-	host := registry
-	if i := strings.IndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	host, _, _ := strings.Cut(registry, ":")
+	return host == "localhost" || host == "127.0.0.1"
 }
 
 // repository builds an oras-go remote.Repository for the given ref, wired to the

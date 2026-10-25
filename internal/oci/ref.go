@@ -38,10 +38,7 @@ type Ref struct {
 // registry, HTTPS otherwise. It is part of the `read-configuration` output
 // (featuresConfiguration.featureSets[].sourceInformation.featureRef.scheme).
 func (r *Ref) Scheme() string {
-	host := r.Registry
-	if i := strings.IndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
+	host, _, _ := strings.Cut(r.Registry, ":")
 	if strings.EqualFold(host, "localhost") {
 		return "http"
 	}
@@ -77,7 +74,8 @@ func ParseRef(input string) (*Ref, error) {
 		// Digest reference: registry/path@sha256:hex
 		resource = input[:indexOfLastAt]
 		digestWithAlgo := input[indexOfLastAt+1:]
-		parts := strings.SplitN(digestWithAlgo, ":", 2)
+		// TS splits on every colon and wants exactly two parts.
+		parts := strings.Split(digestWithAlgo, ":")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid digest format %q, expected 'sha256:hex'", digestWithAlgo)
 		}
@@ -88,8 +86,10 @@ func ParseRef(input string) (*Ref, error) {
 			return nil, fmt.Errorf("digest %q does not match expected pattern", parts[1])
 		}
 		digest = digestWithAlgo
-	} else if indexOfLastColon != -1 && indexOfLastColon > indexOfLastSlash {
-		// Tag reference: registry/path:tag
+	} else if indexOfLastColon > indexOfLastSlash {
+		// Tag reference: registry/path:tag. TS also checks
+		// indexOfLastColon !== -1, which this implies: the last slash is never
+		// before index -1.
 		resource = input[:indexOfLastColon]
 		tag = input[indexOfLastColon+1:]
 	} else {
