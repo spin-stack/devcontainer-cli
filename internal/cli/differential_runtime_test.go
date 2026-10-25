@@ -35,7 +35,7 @@ var differentialRuntimeKnown = map[string]map[string]string{
 		"dockerfile-with-parallel-commands": "the image label leaves out the configuration's entry",
 		"dockerfile-without-features":       "the image label leaves out the configuration's entry",
 		"image":                             "the container label holds the substituted configuration and runArgs; TS writes the raw one, without runArgs",
-		"image-metadata-containerEnv":       "the configuration's containerEnv is not written into the Features image as ENV",
+		"image-metadata-containerEnv":       "the image label leaves out the configuration's entry",
 		"image-with-features":               "the image label leaves out the configuration's entry",
 		"image-with-git-feature":            "the image label leaves out the configuration's entry",
 		"updateUID":                         "a container from a Dockerfile gets a container label repeating the image label; TS adds none",

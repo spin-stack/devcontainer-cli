@@ -659,3 +659,13 @@ func TestAddUpConfigurationDropsAConfigFilePathThatResolvesToNothing(t *testing.
 		t.Errorf("mergedConfiguration.configFilePath = %v, want it left out", v)
 	}
 }
+
+// up's Features build writes the configuration's containerEnv into the image
+// as ENV lines, as TS getFeaturesBuildOptions does and build already did.
+func TestUpFeatureBuildOptionsCarryTheContainerEnv(t *testing.T) {
+	cfg := &config.DevContainer{ContainerEnv: map[string]string{"VAR_WITH_SPACES": "value with spaces"}}
+	got := (&upRunner{opts: &upOpts{}}).featureBuildOptions(cfg, &config.LoadResult{}, "").ContainerEnv
+	if !reflect.DeepEqual(got, cfg.ContainerEnv) {
+		t.Errorf("ContainerEnv = %v, want the config's %v", got, cfg.ContainerEnv)
+	}
+}
