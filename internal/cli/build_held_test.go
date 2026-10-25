@@ -145,12 +145,13 @@ func TestDockerfileImageMetadata(t *testing.T) {
 	}
 
 	cfg := &config.DevContainer{RemoteUser: "dev"}
-	if got, want := ids(dockerfileImageMetadata(cfg, base, stage)), []string{"base/", "stage/", "/dev"}; !slices.Equal(got, want) {
-		t.Errorf("without features: %v, want %v", got, want)
+	configLabel := imagemeta.Entry{RemoteUser: "${localEnv:USER}"}
+	if got, want := ids(dockerfileImageMetadata(cfg, base, stage, configLabel)), []string{"base/", "stage/", "/${localEnv:USER}"}; !slices.Equal(got, want) {
+		t.Errorf("without features: %v, want %v (the config's entry as written)", got, want)
 	}
 
 	cfg.Features = map[string]any{"ghcr.io/devcontainers/features/go:1": true}
-	if got, want := ids(dockerfileImageMetadata(cfg, base, stage)), []string{"base/", "stage/"}; !slices.Equal(got, want) {
+	if got, want := ids(dockerfileImageMetadata(cfg, base, stage, configLabel)), []string{"base/", "stage/"}; !slices.Equal(got, want) {
 		t.Errorf("with features (the Feature build adds the config entry): %v, want %v", got, want)
 	}
 }
@@ -182,49 +183,6 @@ func TestBuildxSecrets(t *testing.T) {
 	}
 	if !strings.Contains(logged.String(), "--secrets-file requires BuildKit") {
 		t.Errorf("log = %q, want the dropped-secrets warning", logged.String())
-	}
-}
-
-func TestComposeBaseImageName(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		service map[string]any
-		want    string
-	}{
-		{"service image", map[string]any{"image": "alpine:3"}, "alpine:3"},
-		{"empty image", map[string]any{"image": ""}, "proj-app"},
-		{"build only", map[string]any{"build": map[string]any{}}, "proj-app"},
-		{"no service config", nil, "proj-app"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := composeBaseImageName("proj", "app", tc.service); got != tc.want {
-				t.Errorf("composeBaseImageName = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestComposeRetag(t *testing.T) {
-	cfg := &config.DevContainer{RemoteUser: "dev"}
-	isMetadata := func(l string) bool { return strings.HasPrefix(l, imagemeta.MetadataLabel+"=") }
-
-	if _, _, ok := composeRetag(cfg, &buildOpts{}, "proj-app"); ok {
-		t.Error("no --label or --image-name: want no re-tag")
-	}
-
-	tags, labels, ok := composeRetag(cfg, &buildOpts{labels: []string{"a=1"}}, "proj-app")
-	if !ok || !slices.Equal(tags, []string{"proj-app"}) || !slices.Equal(labels, []string{"a=1"}) {
-		t.Errorf("--label only: (%v, %v, %v), want the service image re-tagged with the user's label", tags, labels, ok)
-	}
-
-	tags, labels, ok = composeRetag(cfg, &buildOpts{imageNames: []string{"out:1"}}, "proj-app")
-	if !ok || !slices.Equal(tags, []string{"out:1"}) || len(labels) != 1 || !isMetadata(labels[0]) || !strings.Contains(labels[0], `"remoteUser":"dev"`) {
-		t.Errorf("--image-name only: (%v, %v, %v), want the name with the config's metadata label", tags, labels, ok)
-	}
-
-	tags, labels, ok = composeRetag(cfg, &buildOpts{imageNames: []string{"out:1", "out:2"}, labels: []string{"a=1"}}, "proj-app")
-	if !ok || !slices.Equal(tags, []string{"out:1", "out:2"}) || len(labels) != 2 || labels[0] != "a=1" || !isMetadata(labels[1]) {
-		t.Errorf("both: (%v, %v, %v), want the names, the user's label then the metadata label", tags, labels, ok)
 	}
 }
 

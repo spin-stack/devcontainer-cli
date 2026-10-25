@@ -588,6 +588,13 @@ func detectGitRootUntil(dir, stopAt string) string {
 	}
 }
 
+// EnvHostSubContext is the host substitution context without a configuration
+// file: the platform and this process's environment, which TS substitutes a
+// command's empty configuration with ({ platform, env }).
+func EnvHostSubContext() HostSubContext {
+	return HostSubContext{Platform: currentPlatform(), Env: EnvMap(os.Environ())}
+}
+
 func currentPlatform() string {
 	if IsWindows() {
 		return "win32"

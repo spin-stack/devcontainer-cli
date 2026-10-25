@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
@@ -108,6 +109,9 @@ type buildRunner struct {
 	docker *docker.Client
 	engine *docker.EngineClient
 	opts   *buildOpts
+	// configLabel is the configuration's entry in the devcontainer.metadata
+	// label: its properties as written (TS pick(config.raw, ...)).
+	configLabel imagemeta.Entry
 }
 
 func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
@@ -186,6 +190,9 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	defer engine.Close()
 
 	run := &buildRunner{log: logger, docker: dockerClient, engine: engine, opts: opts}
+	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, false); err != nil {
+		return writeErrorResult(out, err.Error())
+	}
 
 	// Detect BuildKit
 	var useBuildx bool
@@ -203,7 +210,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	if cfg.IsDockerfileConfig() {
 		imageNameResult, err = run.buildDockerfile(ctx, cfg, loadResult, useBuildx)
 	} else if cfg.IsComposeConfig() {
-		imageNameResult, err = run.buildCompose(ctx, cfg, useBuildx)
+		imageNameResult, err = run.buildCompose(ctx, cfg, loadResult, useBuildx)
 	} else {
 		// Image-based config
 		imageNameResult, err = run.buildImage(ctx, cfg, loadResult, useBuildx)
@@ -354,7 +361,14 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	stageName := prep.StageName
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 
-	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), stageName, buildxPlatformArgs(opts.platform))
+	// The base image is the FROM of the config's target, else of the last stage
+	// (TS getImageBuildInfoFromDockerfile with config.build.target), not of the
+	// stage name added to the Dockerfile.
+	findTarget := ""
+	if cfg.Build != nil {
+		findTarget = cfg.Build.Target
+	}
+	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget, buildxPlatformArgs(opts.platform))
 	logger.Write(fmt.Sprintf("Base image: %s", baseImage), log.LevelInfo)
 
 	// Generate base-image metadata. Ensure the base image is available locally so
@@ -362,7 +376,6 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
 	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
 	stageMetadata := imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)
-	metadataLabel := imagemeta.GenerateMetadataLabel(dockerfileImageMetadata(cfg, baseMetadata, stageMetadata))
 
 	// Determine image names (match TS getFolderImageName: vsc-{basename}-{hash})
 	imageNames := imageNamesOr(opts.imageNames, folderImageName(resolvePath(opts.workspaceFolder)))
@@ -377,7 +390,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	buildArgs := buildArgsFromConfig(cfg)
 
 	// Add metadata label
-	allLabels := append(opts.labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
+	allLabels := append(slices.Clone(opts.labels), imageLabelArgs(dockerfileImageMetadata(cfg, baseMetadata, stageMetadata, r.configLabel))...)
 
 	baseOutput, basePush := dockerfileBaseExport(opts, cfg)
 
@@ -436,7 +449,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	// If config has features, extend the built image with features
 	if len(cfg.Features) > 0 {
 		baseImageName := imageNames[0]
-		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, &loadResult.HostSub, configToMetadataEntry(cfg)))
+		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, &loadResult.HostSub))
 	}
 
 	return imageNames, nil
@@ -470,13 +483,23 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 	featureImageNames := imageNamesOr(opts.imageNames, folderImage+"-features")
 
 	// Ensure image exists locally
-	_, err := engine.InspectImage(ctx, cfg.Image)
+	info, err := engine.InspectImage(ctx, cfg.Image)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Pulling image %s...", cfg.Image), log.LevelInfo)
 		if pullErr := engine.PullImage(ctx, cfg.Image); pullErr != nil {
 			return nil, fmt.Errorf("image %q not found locally and pull failed: %w", cfg.Image, pullErr)
 		}
+		if info, err = engine.InspectImage(ctx, cfg.Image); err != nil {
+			return nil, fmt.Errorf("inspect image %q: %w", cfg.Image, err)
+		}
 	}
+	// The label of an image build without Features (TS getImageBuildOptions):
+	// the image's metadata, then the configuration's entry as written.
+	var imageMetadata []imagemeta.Entry
+	if info.Config != nil {
+		imageMetadata = imagemeta.ReadMetadataFromLabels(info.Config.Labels, logger)
+	}
+	imageMetadata = append(imageMetadata, r.configLabel)
 
 	switch imageBuildFor(cfg, opts) {
 	case imageWithFeatures:
@@ -484,10 +507,8 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 
 	case imageExported:
 		// --platform, --push, or --output still need a build: a minimal FROM
-		// Dockerfile carrying the config metadata.
-		metadata := []imagemeta.Entry{configToMetadataEntry(cfg)}
-		metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
-		allLabels := append(opts.labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
+		// Dockerfile carrying the metadata (TS getImageBuildOptions).
+		allLabels := append(slices.Clone(opts.labels), imageLabelArgs(imageMetadata)...)
 
 		tmpDir, tmpErr := os.MkdirTemp("", "devcontainer-image-build-")
 		if tmpErr != nil {
@@ -530,9 +551,7 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 
 	case imageRelabeled:
 		// No platform/push — use temp Dockerfile when imageNames require labeling
-		metadata := []imagemeta.Entry{configToMetadataEntry(cfg)}
-		metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
-		allLabels := append(opts.labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
+		allLabels := append(slices.Clone(opts.labels), imageLabelArgs(imageMetadata)...)
 
 		tmpDir, tmpErr := os.MkdirTemp("", "devcontainer-image-build-")
 		if tmpErr != nil {
@@ -621,12 +640,12 @@ func imageNamesOr(names []string, fallback string) []string {
 // dockerfileImageMetadata is the metadata a Dockerfile build stamps on its
 // image: the base image's, then a `LABEL devcontainer.metadata` the user's
 // Dockerfile declares (#1225; the CLI's own label would otherwise clobber it),
-// then the config's entry. With Features the Feature build appends that entry
-// instead.
-func dockerfileImageMetadata(cfg *config.DevContainer, base, stage []imagemeta.Entry) []imagemeta.Entry {
+// then the config's entry as written (configLabel). With Features the Feature
+// build appends that entry instead.
+func dockerfileImageMetadata(cfg *config.DevContainer, base, stage []imagemeta.Entry, configLabel imagemeta.Entry) []imagemeta.Entry {
 	metadata := append(append([]imagemeta.Entry{}, base...), stage...)
 	if len(cfg.Features) == 0 {
-		metadata = append(metadata, configToMetadataEntry(cfg))
+		metadata = append(metadata, configLabel)
 	}
 	return metadata
 }
@@ -735,16 +754,20 @@ func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
 	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: fmt.Sprintf("%s: %v", description, err)})
 }
 
-// buildCompose builds a compose config's service image, then its Features on
-// top, or re-tags it to apply --label and --image-name.
+// buildCompose is TS build for a Docker Compose configuration: the service's
+// image is built by `docker compose build` through the build override TS
+// buildAndExtendDockerCompose writes, with the metadata label on the image
+// (with or without Features, an image-only service included), so the image
+// carries compose's project and service labels; then it is tagged with each
+// --image-name.
 //
 // mutate-lane: TestParityMatrix (build.compose-dockerfile-multi-image-success,
 // build.compose-image-without-features-minimal-success,
 // build.compose-image-without-features-minimal-metadata-label-success,
 // build.compose-image-with-features-success,
 // build.compose-image-extra-cache-from-success), also run by
-// TestE2E_ComposeBuildLabel.
-func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer, useBuildx bool) ([]string, error) {
+// TestE2E_ComposeBuildLabel and TestDifferentialBuild.
+func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
 		return nil, fmt.Errorf("dockerComposeFile config requires 'service' property")
@@ -766,114 +789,108 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 	if err != nil {
 		return nil, fmt.Errorf("compose config: %w", err)
 	}
-	serviceConfig := composeServiceConfig(composeConfig, cfg.Service)
-
-	// Compute project name BEFORE build so compose image names are deterministic
-	projectName := docker.ToProjectName(
-		filepath.Base(resolvePath(opts.workspaceFolder))+"_devcontainer",
-		composeClient.UsesNewProjectNames(),
-	)
-
-	baseImageName := composeBaseImageName(projectName, cfg.Service, serviceConfig)
-	_, hasBuild := serviceConfig["build"]
-
-	if hasBuild {
-		logger.Write(fmt.Sprintf("Building compose service %s...", cfg.Service), log.LevelInfo)
-		buildErr := composeClient.Build(ctx, composeFiles, "", []string{"--project-name", projectName}, []string{cfg.Service}, opts.noCache)
-		if buildErr != nil {
-			return nil, fmt.Errorf("compose build: %w", buildErr)
-		}
-	}
-
-	if len(cfg.Features) > 0 {
-		if !hasBuild {
-			if _, err := engine.InspectImage(ctx, baseImageName); err != nil {
-				logger.Write(fmt.Sprintf("Pulling image %s...", baseImageName), log.LevelInfo)
-				if pullErr := engine.PullImage(ctx, baseImageName); pullErr != nil {
-					return nil, fmt.Errorf("pull image %q: %w", baseImageName, pullErr)
-				}
-			}
-		}
-		imageNames := imageNamesOr(opts.imageNames, baseImageName+"-features")
-		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, nil))
-	}
-
-	imageName := baseImageName
-
-	if tags, labels, ok := composeRetag(cfg, opts, imageName); ok {
-		tmpDir, tmpErr := os.MkdirTemp("", "devcontainer-compose-image-build-")
-		if tmpErr != nil {
-			return nil, fmt.Errorf("create temp dir: %w", tmpErr)
-		}
-		defer os.RemoveAll(tmpDir)
-		dfPath := filepath.Join(tmpDir, "Dockerfile")
-		if err := os.WriteFile(dfPath, []byte(fmt.Sprintf("FROM %s\n", imageName)), 0644); err != nil {
-			return nil, fmt.Errorf("write temp Dockerfile: %w", err)
-		}
-
-		result, buildErr := dockerClient.Build(ctx, docker.BuildOptions{
-			Dockerfile:  dfPath,
-			ContextPath: tmpDir,
-			Tags:        tags,
-			Labels:      labels,
-			UseBuildx:   useBuildx,
-		})
-		if buildErr != nil {
-			return nil, fmt.Errorf("build image: %w", buildErr)
-		}
-		if result.ExitCode != 0 {
-			return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
-		}
-		return tags, nil
-	}
-
-	return []string{imageName}, nil
-}
-
-// composeBaseImageName is the image of the compose service: its `image`, or
-// compose's own <project>-<service> name for a service that only builds.
-func composeBaseImageName(projectName, service string, serviceConfig map[string]any) string {
-	if image, ok := serviceConfig["image"].(string); ok && image != "" {
-		return image
-	}
-	return fmt.Sprintf("%s-%s", projectName, service)
-}
-
-// composeRetag is the FROM re-tag that applies image labels to a compose image,
-// and ok is false when no flag asks for one. compose build itself takes no
-// --label, so without it a --label with no --image-name is silently dropped
-// (upstream #930). With --image-name the devcontainer.metadata label is stamped
-// onto the distinct output image too; a bare re-tag under the same name carries
-// only the user's --label.
-func composeRetag(cfg *config.DevContainer, opts *buildOpts, imageName string) (tags, labels []string, ok bool) {
-	if len(opts.imageNames) == 0 && len(opts.labels) == 0 {
-		return nil, nil, false
-	}
-	labels = append([]string{}, opts.labels...)
-	if len(opts.imageNames) == 0 {
-		return []string{imageName}, labels, true
-	}
-	metadataLabel := imagemeta.GenerateMetadataLabel([]imagemeta.Entry{configToMetadataEntry(cfg)})
-	return opts.imageNames, append(labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel)), true
-}
-
-func composeServiceConfig(composeConfig map[string]any, service string) map[string]any {
-	services, ok := composeConfig["services"].(map[string]any)
+	projectName := resolveComposeProjectName(ctx, cfg, env, composeFiles, composeClient)
+	svc, ok := composeService(composeConfig, cfg.Service)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("Service '%s' configured in devcontainer.json not found in Docker Compose configuration.", cfg.Service)
 	}
-	svc, ok := services[service].(map[string]any)
-	if !ok {
-		return nil
+	versionPrefix, err := readComposeVersionPrefix(composeFiles)
+	if err != nil {
+		return nil, err
 	}
-	return svc
+	if opts.secretsFile != "" {
+		logger.Write("--secrets-file does not apply to a Docker Compose configuration: `docker compose build` takes no build secrets.", log.LevelWarning)
+	}
+
+	run := &upRunner{
+		log:    logger,
+		docker: dockerClient,
+		engine: engine,
+		opts: &upOpts{
+			cacheFrom:                  opts.cacheFrom,
+			buildNoCache:               opts.noCache,
+			skipFeatureAutoMapping:     opts.skipFeatureAutoMapping,
+			experimentalLockfile:       opts.experimentalLockfile,
+			experimentalFrozenLockfile: opts.experimentalFrozenLockfile,
+			noLockfile:                 opts.noLockfile,
+			lockfileExcludeIDs:         opts.lockfileExcludeIDs,
+		},
+		substitute:  hostMetadataSubstitution(loadResult.HostSub, nil),
+		configLabel: r.configLabel,
+	}
+	ext, err := run.buildAndExtendCompose(ctx, composeStart{
+		cfg:                cfg,
+		loadResult:         loadResult,
+		workspaceFolder:    resolvePath(opts.workspaceFolder),
+		useBuildx:          useBuildx,
+		projectName:        projectName,
+		composeFiles:       composeFiles,
+		composeConfig:      composeConfig,
+		client:             composeClient,
+		metadataOnImage:    true,
+		buildServices:      []string{cfg.Service},
+		skipPersistCustoms: opts.skipPersistCustoms,
+	}, cacheFolder(), versionPrefix, false)
+	if err != nil {
+		return nil, err
+	}
+
+	imageName := ext.overrideImageName
+	if imageName == "" {
+		imageName, _ = svc["image"].(string)
+	}
+	if imageName == "" {
+		imageName = composeClient.DefaultImageName(projectName, cfg.Service)
+	}
+	tags := imageNamesOr(opts.imageNames, imageName)
+	if len(opts.labels) > 0 {
+		// compose build takes no --label: a FROM build applies them (upstream
+		// #930), under the --image-name values or the image's own name.
+		return tags, labelComposeImage(ctx, dockerClient, imageName, tags, opts.labels, useBuildx)
+	}
+	for _, name := range opts.imageNames {
+		if err := dockerClient.Tag(ctx, imageName, name); err != nil {
+			return nil, fmt.Errorf("tag image %q: %w", name, err)
+		}
+	}
+	return tags, nil
+}
+
+// labelComposeImage builds `FROM imageName` with labels, tagged tags.
+//
+// mutate-lane: TestE2E_ComposeBuildLabel - builds a compose image with --label
+// and reads the label back.
+func labelComposeImage(ctx context.Context, dockerClient *docker.Client, imageName string, tags, labels []string, useBuildx bool) error {
+	tmpDir, err := os.MkdirTemp("", "devcontainer-compose-image-build-")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	dfPath := filepath.Join(tmpDir, "Dockerfile")
+	if err := os.WriteFile(dfPath, []byte(fmt.Sprintf("FROM %s\n", imageName)), 0o644); err != nil {
+		return fmt.Errorf("write temp Dockerfile: %w", err)
+	}
+	result, err := dockerClient.Build(ctx, docker.BuildOptions{
+		Dockerfile:  dfPath,
+		ContextPath: tmpDir,
+		Tags:        tags,
+		Labels:      labels,
+		UseBuildx:   useBuildx,
+	})
+	if err != nil {
+		return fmt.Errorf("build image: %w", err)
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
+	}
+	return nil
 }
 
 // featureBuildOptions are the Feature install options every build path passes:
 // the build flags and the config's Feature settings. hostSub resolves the
-// Features' ${localEnv:…} references (nil leaves them as written);
-// additionalMetadata is appended to the image's metadata label.
-func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *config.HostSubContext, additionalMetadata ...imagemeta.Entry) *FeatureBuildOptions {
+// Features' ${localEnv:…} references (nil leaves them as written). The
+// configuration's entry follows the Features' in the image's metadata label.
+func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *config.HostSubContext) *FeatureBuildOptions {
 	opts := r.opts
 	return &FeatureBuildOptions{
 		Secrets:                     buildSecretsFromFile(opts.secretsFile),
@@ -895,6 +912,7 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		HostSub:                     hostSub,
 		SkipPersistCustoms:          opts.skipPersistCustoms,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-		AdditionalMetadata:          additionalMetadata,
+		AdditionalMetadata:          []imagemeta.Entry{configToMetadataEntry(cfg)},
+		LabelMetadata:               []imagemeta.Entry{r.configLabel},
 	}
 }

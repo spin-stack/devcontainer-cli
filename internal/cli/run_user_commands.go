@@ -180,21 +180,21 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 	if err != nil {
 		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
 	}
-	// Build merged config. With a config loaded, read the image's metadata
-	// (features are baked into the image) + the config entry — reading the
-	// container label (which now carries the config metadata) and re-adding the
-	// config entry would double the lifecycle commands. Without a config
-	// (container-id path) the container metadata is authoritative.
-	var allEntries []imagemeta.Entry
-	if cfg != nil {
-		if inspect.Image != "" {
-			if img, imgErr := engine.InspectImage(ctx, inspect.Image); imgErr == nil && img.Config != nil {
-				allEntries = imagemeta.ReadMetadataFromLabels(img.Config.Labels, logger)
-			}
-		}
-		allEntries = append(allEntries, configToMetadataEntry(cfg))
-	} else {
-		allEntries = imagemeta.ReadMetadataFromLabels(inspect.Config.Labels, logger)
+	// The merged configuration is the container's metadata (TS
+	// getImageMetadataFromContainer), which records the configuration's entry
+	// for a container the CLI created.
+	hostSub, configFile := config.EnvHostSubContext(), ""
+	if loadResult != nil {
+		hostSub, configFile = loadResult.HostSub, loadResult.Config.ConfigFilePath
+	}
+	var containerLabels map[string]string
+	if inspect.Config != nil {
+		containerLabels = inspect.Config.Labels
+	}
+	idLabels := containerIDLabels(opts.idLabels, containerLabels, resolvePath(opts.workspaceFolder), configFile)
+	allEntries, err := imageMetadataFromContainer(containerLabels, cfg, nil, idLabels, hostMetadataSubstitution(hostSub, idLabels), logger)
+	if err != nil {
+		return writeErrorResult(out, err.Error())
 	}
 	merged := imagemeta.MergeConfiguration(allEntries)
 

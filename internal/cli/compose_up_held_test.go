@@ -295,6 +295,8 @@ func newComposeHarness(t *testing.T) *composeHarness {
 			docker: &docker.Client{DockerPath: "docker", Log: logger, Runner: run},
 			engine: &docker.EngineClient{API: engine, Log: logger},
 			opts:   &upOpts{userDataFolder: persisted, updateRemoteUserUIDDefault: "off", gpuAvailability: "none"},
+			// The fixtures' metadata names no variables.
+			substitute: func(*[]imagemeta.Entry) error { return nil },
 		},
 	}
 }
@@ -1226,5 +1228,50 @@ func TestStartComposeContainerImageServiceWithFeatures(t *testing.T) {
 	}
 	if ups := h.run.compose("up"); len(ups) != 1 || len(ups[0]) != 10 {
 		t.Errorf("compose up %q, want the compose file and both overrides", ups)
+	}
+}
+
+// For the build command (TS canAddLabelsToContainer false) an image-only
+// service without Features is still built, with the metadata label on its
+// image: the image's entries and the configuration's as written, while the
+// merged metadata has it substituted; compose builds the dev container
+// service alone.
+func TestBuildAndExtendComposeForTheBuildCommand(t *testing.T) {
+	h := newComposeHarness(t)
+	h.r.configLabel = imagemeta.Entry{RemoteUser: "${localEnv:ME}"}
+	s := h.start(&config.DevContainer{RemoteUser: "me", RunServices: []string{"db"}}, map[string]any{"image": "alpine:3"})
+	s.metadataOnImage, s.buildServices = true, []string{"app"}
+	res, err := h.r.buildAndExtendCompose(context.Background(), s, h.persisted, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.labels != nil || res.overrideImageName != folderImageName(h.ws) {
+		t.Errorf("labels %q, override image %q; want no container label and the folder image", res.labels, res.overrideImageName)
+	}
+	content := readFile(t, overrideDockerfile(t, readFile(t, res.overrideFiles[0])))
+	if !strings.Contains(content, `LABEL devcontainer.metadata="[`) || !strings.Contains(content, `\"remoteUser\":\"\${localEnv:ME}\"`) || !strings.Contains(content, `\"remoteUser\":\"node\"`) {
+		t.Errorf("final Dockerfile lacks the label with the image's and the raw config's entries:\n%s", content)
+	}
+	if last := res.imageMetadata[len(res.imageMetadata)-1]; last.RemoteUser != "me" {
+		t.Errorf("merged metadata ends with %+v, want the substituted config entry", last)
+	}
+	if got, want := h.run.compose("build"), [][]string{{"-f", h.compose, "-f", res.overrideFiles[0], "--project-name", "proj", "build", "app"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("compose build runs %q, want %q", got, want)
+	}
+
+	// --skip-persisting-customizations-from-features leaves a Feature's
+	// customizations out of the metadata.
+	h.write("custom/devcontainer-feature.json", `{"id":"custom","version":"1.0.0","customizations":{"vscode":{"extensions":["x"]}}}`)
+	h.write("custom/install.sh", "#!/bin/sh\n")
+	for _, skip := range []bool{false, true} {
+		s := h.start(&config.DevContainer{Features: map[string]any{"./custom": map[string]any{}}}, map[string]any{"image": "alpine:3"})
+		s.skipPersistCustoms = skip
+		res, err := h.r.buildAndExtendCompose(context.Background(), s, h.persisted, "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := res.imageMetadata[1].Customizations != nil; got == skip {
+			t.Errorf("skip=%t: Feature entry %+v", skip, res.imageMetadata[1])
+		}
 	}
 }

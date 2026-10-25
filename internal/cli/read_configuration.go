@@ -208,13 +208,19 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 				return &coreerrors.ExitCodeError{Code: 1, Err: biErr}
 			}
 			base = append(base, buildInfo.Metadata...)
-			if featResult != nil {
-				for _, fs := range featResult.FeatureSets {
-					base = append(base, featureMetadataEntry(fs, false))
-				}
+		}
+		var featureEntries []imagemeta.Entry
+		if featResult != nil {
+			for _, fs := range featResult.FeatureSets {
+				featureEntries = append(featureEntries, featureMetadataEntry(fs, false))
 			}
 		}
-		merged, mergeErr := mergedConfigurationOutput(base, containerCfg, result, cfgMap, lgr)
+		entries, entriesErr := readConfigurationMetadata(append(base, featureEntries...), featureEntries, containerCfg, result, opts.idLabels, workspaceFolder, lgr)
+		if entriesErr != nil {
+			lgr.Write(entriesErr.Error(), log.LevelError)
+			return &coreerrors.ExitCodeError{Code: 1, Err: entriesErr}
+		}
+		merged, mergeErr := mergedConfigurationOutput(entries, containerCfg, cfgMap)
 		if mergeErr != nil {
 			return mergeErr
 		}
@@ -392,21 +398,35 @@ func needsFeaturesConfiguration(opts *readConfigOpts, containerID string, result
 	return wanted && result != nil && len(result.Config.Features) > 0
 }
 
-// mergedConfigurationOutput is read-configuration's "mergedConfiguration". The
-// metadata entries are the container's devcontainer.metadata label when there is
-// a container, else base (the image's and the Features' metadata); the config is
-// the last, highest-priority entry. With a container, ${containerEnv:...} is
-// resolved with its environment. TS builds mergedConfiguration by spreading the
-// config, so the properties mergeConfiguration does not own (image, features,
-// build, configFilePath, ...) come from cfgMap.
-func mergedConfigurationOutput(base []imagemeta.Entry, containerCfg *container.Config, result *config.LoadResult, cfgMap map[string]any, lgr log.Logger) (map[string]any, error) {
-	entries := base
-	if containerCfg != nil {
-		entries = imagemeta.ReadMetadataFromLabels(containerCfg.Labels, lgr)
-	}
+// readConfigurationMetadata is the metadata read-configuration merges. With a
+// container it is TS getImageMetadataFromContainer: the container's
+// devcontainer.metadata entries, substituted, then the configuration's
+// updateable properties for a container with every id label, else the
+// Features' entries and the configuration's entry. Without one it is base (the
+// image's and the Features' metadata) and the configuration's entry.
+func readConfigurationMetadata(base, featureEntries []imagemeta.Entry, containerCfg *container.Config, result *config.LoadResult, providedIDLabels []string, workspaceFolder string, lgr log.Logger) ([]imagemeta.Entry, error) {
+	var cfg *config.DevContainer
+	hostSub, configFile := config.EnvHostSubContext(), ""
 	if result != nil {
-		entries = append(entries, configToMetadataEntry(result.Config))
+		cfg, hostSub, configFile = result.Config, result.HostSub, result.Config.ConfigFilePath
 	}
+	if containerCfg == nil {
+		if cfg == nil {
+			return base, nil
+		}
+		return append(base, configToMetadataEntry(cfg)), nil
+	}
+	idLabels := containerIDLabels(providedIDLabels, containerCfg.Labels, workspaceFolder, configFile)
+	return imageMetadataFromContainer(containerCfg.Labels, cfg, featureEntries, idLabels, hostMetadataSubstitution(hostSub, idLabels), lgr)
+}
+
+// mergedConfigurationOutput is read-configuration's "mergedConfiguration": the
+// merge of entries (readConfigurationMetadata). With a container,
+// ${containerEnv:...} is resolved with its environment. TS builds
+// mergedConfiguration by spreading the config, so the properties
+// mergeConfiguration does not own (image, features, build, configFilePath, ...)
+// come from cfgMap.
+func mergedConfigurationOutput(entries []imagemeta.Entry, containerCfg *container.Config, cfgMap map[string]any) (map[string]any, error) {
 	merged := imagemeta.MergeConfiguration(entries)
 
 	if containerCfg != nil {

@@ -135,8 +135,11 @@ Flags: `--workspace-folder`, `--config`, `--id-label`, `--container-id`,
 
 Boot the container from an already-built image (features baked in), **skipping the image
 build and feature installation entirely**. The merged configuration is recovered from the
-image's `devcontainer.metadata` label — exactly as an image-based config would — while
-`remoteUser`, mounts and lifecycle hooks still come from `devcontainer.json`.
+image's `devcontainer.metadata` label, which a `devcontainer build` of the configuration
+writes with the configuration's entry (its mounts, lifecycle hooks, …), as for any
+container the CLI creates; `remoteUser`, `userEnvProbe` and `remoteEnv` come from the
+current `devcontainer.json`. An image without that label is used as an image-based
+config's image is: the whole configuration comes from `devcontainer.json`.
 
 ```sh
 devcontainer up --workspace-folder . \
@@ -183,6 +186,10 @@ devcontainer build --workspace-folder . --secrets-file secrets.json
 Each `KEY` becomes `--secret id=KEY,env=KEY`; the value is delivered through the build
 subprocess environment, never as an argument. Requires buildx (ignored with a warning on
 the legacy builder).
+
+A Docker Compose configuration is built by `docker compose build`, as the reference CLI
+builds it, which takes no build secrets from the command line: there the flag is ignored
+with a warning.
 
 ## Automatic credential bridge
 
