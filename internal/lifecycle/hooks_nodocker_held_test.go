@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -29,15 +31,6 @@ func (l *lockedLog) has(s string) bool {
 	return slices.Contains(l.lines, s)
 }
 
-// orderExecutor records every command, and every AfterPostCreate call as
-// "<dotfiles>", in the order they happen.
-type orderExecutor struct{ seen []string }
-
-func (o *orderExecutor) Exec(command string) error {
-	o.seen = append(o.seen, command)
-	return nil
-}
-
 // skipPostAttach skips postAttachCommand alone, and the dotfiles hook runs once,
 // right after postCreateCommand (TS runLifecycleHooks / installDotfiles).
 func TestRunHooksSkipsOnlyPostAttachAndInstallsDotfilesAfterPostCreate(t *testing.T) {
@@ -48,14 +41,27 @@ func TestRunHooksSkipsOnlyPostAttachAndInstallsDotfilesAfterPostCreate(t *testin
 		PostStartCommands:     []any{"postStart"},
 		PostAttachCommands:    []any{"postAttach"},
 	}
-	exec := &orderExecutor{}
-	opts := RunOptions{SkipPostAttach: true, AfterPostCreate: func() { exec.seen = append(exec.seen, "<dotfiles>") }}
+	dotfiles := 0
+	dotfilesRanBefore := func(want int) func(string) {
+		return func(command string) {
+			if dotfiles != want {
+				t.Errorf("%s ran after %d dotfiles installs, want %d", command, dotfiles, want)
+			}
+		}
+	}
+	exec := NewMockCommandExecutor(gomock.NewController(t))
+	gomock.InOrder(
+		exec.EXPECT().Exec("onCreate"),
+		exec.EXPECT().Exec("updateContent"),
+		exec.EXPECT().Exec("postCreate").Do(dotfilesRanBefore(0)),
+		exec.EXPECT().Exec("postStart").Do(dotfilesRanBefore(1)),
+	)
+	opts := RunOptions{SkipPostAttach: true, AfterPostCreate: func() { dotfiles++ }}
 	if err := RunHooks(log.Null, exec, merged, opts); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"onCreate", "updateContent", "postCreate", "<dotfiles>", "postStart"}
-	if !slices.Equal(exec.seen, want) {
-		t.Errorf("ran %v, want %v", exec.seen, want)
+	if dotfiles != 1 {
+		t.Errorf("dotfiles installed %d times, want once", dotfiles)
 	}
 }
 
@@ -66,7 +72,10 @@ func TestRunHooksSkipsOnlyPostAttachAndInstallsDotfilesAfterPostCreate(t *testin
 func TestParallelCommandHeaderOnlyForSuccess(t *testing.T) {
 	l := &lockedLog{Logger: log.Null}
 	cmd := map[string]any{"a": "ok-a", "b": "fails-b"}
-	if err := executeCommand(&cmdErrExecutor{failOn: "fails"}, l, PhasePostCreate, cmd, ""); err == nil {
+	exec := NewMockCommandExecutor(gomock.NewController(t))
+	exec.EXPECT().Exec("ok-a")
+	exec.EXPECT().Exec("fails-b").Return(exitedOne("fails-b"))
+	if err := executeCommand(exec, l, PhasePostCreate, cmd, ""); err == nil {
 		t.Fatal("expected b's failure")
 	}
 	if !l.has("Running a of postCreateCommand from devcontainer.json...") {
@@ -80,24 +89,22 @@ func TestParallelCommandHeaderOnlyForSuccess(t *testing.T) {
 	}
 }
 
-// codeExecutor fails every command with the given exit code.
-type codeExecutor struct{ code int }
-
-func (c codeExecutor) Exec(command string) error {
-	return &CommandError{Command: command, ExitCode: c.code}
-}
-
 // TS runLifecycleCommand writes "failed with exit code N" only when the error
 // carries a code (`if (err?.code)`): exit code 1 is reported, 0 is not.
 func TestFailureLineNeedsANonZeroExitCode(t *testing.T) {
 	const line = "postStartCommand from devcontainer.json failed with exit code 1. Skipping any further user-provided commands."
+	exitsWith := func(code int) CommandExecutor {
+		exec := NewMockCommandExecutor(gomock.NewController(t))
+		exec.EXPECT().Exec("x").Return(&CommandError{Command: "x", ExitCode: code})
+		return exec
+	}
 	l := &lockedLog{Logger: log.Null}
-	_ = executeCommand(codeExecutor{code: 1}, l, PhasePostStart, "x", "")
+	_ = executeCommand(exitsWith(1), l, PhasePostStart, "x", "")
 	if !l.has(line) {
 		t.Errorf("exit code 1: lines = %q, want %q", l.lines, line)
 	}
 	l = &lockedLog{Logger: log.Null}
-	_ = executeCommand(codeExecutor{code: 0}, l, PhasePostStart, "x", "")
+	_ = executeCommand(exitsWith(0), l, PhasePostStart, "x", "")
 	for _, got := range l.lines {
 		if strings.Contains(got, "failed with exit code") {
 			t.Errorf("exit code 0 reported a failure line: %q", got)

@@ -2,42 +2,44 @@ package lifecycle
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
+
+	"go.uber.org/mock/gomock"
 
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// mockExecutor records commands; an object's commands run in parallel, so the
-// record is locked.
-type mockExecutor struct {
-	mu       sync.Mutex
-	commands []string
-	failOn   string
+//go:generate go tool mockgen -destination=mock_command_executor_test.go -package=lifecycle github.com/devcontainers/cli/internal/lifecycle CommandExecutor
+
+// expectInOrder makes exec expect exactly commands, one after another; the one
+// equal to failOn fails with "command failed: <command>", the others succeed.
+func expectInOrder(exec *MockCommandExecutor, failOn string, commands ...string) {
+	calls := make([]any, len(commands))
+	for i, c := range commands {
+		var err error
+		if c == failOn {
+			err = errors.New("command failed: " + c)
+		}
+		calls[i] = exec.EXPECT().Exec(c).Return(err)
+	}
+	gomock.InOrder(calls...)
 }
 
-func (m *mockExecutor) Exec(command string) error {
-	m.mu.Lock()
-	m.commands = append(m.commands, command)
-	m.mu.Unlock()
-	if m.failOn != "" && strings.Contains(command, m.failOn) {
-		return fmt.Errorf("command failed: %s", command)
-	}
-	return nil
-}
+// exitedOne is the *CommandError ShellExecutor returns for a command that
+// exits 1.
+func exitedOne(command string) error { return &CommandError{Command: command, ExitCode: 1} }
 
 func TestRunHooks(t *testing.T) {
 	tests := []struct {
-		name      string
-		merged    *imagemeta.MergedConfig
-		opts      RunOptions
-		failOn    string
-		wantErr   bool
-		wantCount int
+		name    string
+		merged  *imagemeta.MergedConfig
+		opts    RunOptions
+		failOn  string
+		wantErr bool
+		want    []string
 	}{
 		{
 			name: "all phases",
@@ -48,8 +50,8 @@ func TestRunHooks(t *testing.T) {
 				PostStartCommands:     []any{"echo postStart"},
 				PostAttachCommands:    []any{"echo postAttach"},
 			},
-			opts:      RunOptions{},
-			wantCount: 5,
+			opts: RunOptions{},
+			want: []string{"echo onCreate", "echo updateContent", "echo postCreate", "echo postStart", "echo postAttach"},
 		},
 		{
 			name: "skip post create",
@@ -58,8 +60,7 @@ func TestRunHooks(t *testing.T) {
 				PostCreateCommands: []any{"echo postCreate"},
 				PostStartCommands:  []any{"echo postStart"},
 			},
-			opts:      RunOptions{SkipPostCreate: true},
-			wantCount: 0,
+			opts: RunOptions{SkipPostCreate: true},
 		},
 		{
 			name: "skip post attach",
@@ -69,7 +70,7 @@ func TestRunHooks(t *testing.T) {
 			},
 			opts: RunOptions{SkipPostAttach: true},
 			// postStart runs, postAttach skipped
-			wantCount: 1,
+			want: []string{"echo postStart"},
 		},
 		{
 			name: "skip non-blocking",
@@ -80,7 +81,7 @@ func TestRunHooks(t *testing.T) {
 			},
 			opts: RunOptions{SkipNonBlocking: true},
 			// Default waitFor is updateContentCommand → stops after that
-			wantCount: 2,
+			want: []string{"echo onCreate", "echo updateContent"},
 		},
 		{
 			name: "prebuild",
@@ -91,7 +92,7 @@ func TestRunHooks(t *testing.T) {
 			},
 			opts: RunOptions{Prebuild: true},
 			// Prebuild stops after updateContentCommand
-			wantCount: 2,
+			want: []string{"echo onCreate", "echo updateContent"},
 		},
 		{
 			name: "command failure",
@@ -101,18 +102,19 @@ func TestRunHooks(t *testing.T) {
 			opts:    RunOptions{},
 			failOn:  "fail-here",
 			wantErr: true,
+			want:    []string{"echo ok", "fail-here"},
 		},
 		{
-			name:      "empty config",
-			merged:    &imagemeta.MergedConfig{},
-			opts:      RunOptions{},
-			wantCount: 0,
+			name:   "empty config",
+			merged: &imagemeta.MergedConfig{},
+			opts:   RunOptions{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exec := &mockExecutor{failOn: tt.failOn}
+			exec := NewMockCommandExecutor(gomock.NewController(t))
+			expectInOrder(exec, tt.failOn, tt.want...)
 			err := RunHooks(log.Null, exec, tt.merged, tt.opts)
 			if tt.wantErr {
 				if err == nil {
@@ -122,9 +124,6 @@ func TestRunHooks(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal(err)
-			}
-			if len(exec.commands) != tt.wantCount {
-				t.Errorf("commands = %d, want %d; got: %v", len(exec.commands), tt.wantCount, exec.commands)
 			}
 		})
 	}
@@ -163,14 +162,12 @@ func TestInstallDotfiles(t *testing.T) {
 	tests := []struct {
 		name            string
 		config          DotfilesConfig
-		wantCount       int      // -1 to skip the count assertion
-		wantContains    []string // substrings expected in commands[0]
-		wantNotContains []string // substrings that must NOT appear in commands[0]
+		wantContains    []string // substrings expected in the one command; none runs when empty
+		wantNotContains []string // substrings that must NOT appear in it
 	}{
 		{
-			name:      "empty repo",
-			config:    DotfilesConfig{},
-			wantCount: 0,
+			name:   "empty repo",
+			config: DotfilesConfig{},
 		},
 		{
 			name: "with repo",
@@ -178,7 +175,6 @@ func TestInstallDotfiles(t *testing.T) {
 				Repository: "owner/dotfiles",
 				TargetPath: "~/dotfiles",
 			},
-			wantCount: 1,
 			// should auto-prefix GitHub URL and search for install.sh
 			wantContains: []string{"github.com/owner/dotfiles.git", "install.sh"},
 		},
@@ -189,7 +185,6 @@ func TestInstallDotfiles(t *testing.T) {
 				InstallCommand: "my-setup.sh",
 				TargetPath:     "~/dotfiles",
 			},
-			wantCount:    -1,
 			wantContains: []string{"my-setup.sh"},
 		},
 		{
@@ -200,7 +195,6 @@ func TestInstallDotfiles(t *testing.T) {
 				InstallCommand: "~/install.sh",
 				TargetPath:     "~/dotfiles",
 			},
-			wantCount:       -1,
 			wantContains:    []string{`"$HOME/install.sh"`},
 			wantNotContains: []string{`"~/install.sh"`},
 		},
@@ -208,26 +202,15 @@ func TestInstallDotfiles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exec := &mockExecutor{}
-			err := InstallDotfiles(log.Null, exec, tt.config)
-			if err != nil {
+			exec := NewMockCommandExecutor(gomock.NewController(t))
+			if len(tt.wantContains) > 0 {
+				exec.EXPECT().Exec(gomock.Cond(func(command string) bool {
+					return !slices.ContainsFunc(tt.wantContains, func(sub string) bool { return !strings.Contains(command, sub) }) &&
+						!slices.ContainsFunc(tt.wantNotContains, func(sub string) bool { return strings.Contains(command, sub) })
+				}))
+			}
+			if err := InstallDotfiles(log.Null, exec, tt.config); err != nil {
 				t.Fatal(err)
-			}
-			if tt.wantCount >= 0 && len(exec.commands) != tt.wantCount {
-				t.Fatalf("commands = %d, want %d", len(exec.commands), tt.wantCount)
-			}
-			for _, sub := range tt.wantContains {
-				if len(exec.commands) == 0 {
-					t.Fatalf("expected a command containing %q, got none", sub)
-				}
-				if !strings.Contains(exec.commands[0], sub) {
-					t.Errorf("commands[0] = %q, should contain %q", exec.commands[0], sub)
-				}
-			}
-			for _, sub := range tt.wantNotContains {
-				if len(exec.commands) > 0 && strings.Contains(exec.commands[0], sub) {
-					t.Errorf("commands[0] = %q, should NOT contain %q", exec.commands[0], sub)
-				}
 			}
 		})
 	}
@@ -247,17 +230,6 @@ func TestCommandToString_ArrayQuoted(t *testing.T) {
 	}
 }
 
-// cmdErrExecutor returns a *CommandError on failure, mirroring ShellExecutor, so
-// we can assert the error chain survives the parallel (object-syntax) hook path.
-type cmdErrExecutor struct{ failOn string }
-
-func (e *cmdErrExecutor) Exec(command string) error {
-	if e.failOn != "" && strings.Contains(command, e.failOn) {
-		return &CommandError{Command: command, ExitCode: 1}
-	}
-	return nil
-}
-
 // Object-syntax hooks run in parallel and their errors are aggregated. The
 // aggregate must still expose the underlying *CommandError via errors.As, so
 // run_user_commands can special-case it exactly like the sequential path.
@@ -266,7 +238,10 @@ func TestExecuteCommand_ParallelPreservesCommandError(t *testing.T) {
 		"one": "run-one",
 		"two": "run-two-fails",
 	}
-	err := executeCommand(&cmdErrExecutor{failOn: "fails"}, log.Null, PhasePostCreate, cmd, "")
+	exec := NewMockCommandExecutor(gomock.NewController(t))
+	exec.EXPECT().Exec("run-one")
+	exec.EXPECT().Exec("run-two-fails").Return(exitedOne("run-two-fails"))
+	err := executeCommand(exec, log.Null, PhasePostCreate, cmd, "")
 	if err == nil {
 		t.Fatal("expected an error from the failing parallel hook")
 	}
@@ -291,7 +266,11 @@ func TestHookErrorDescribesTheCommandAndItsOrigin(t *testing.T) {
 		PostCreateCommands: []any{"ok", map[string]any{"a": "ok", "b": "fails-b", "c": "fails-c"}},
 		CommandOrigins:     map[string][]string{"postCreateCommand": {"./myfeat", "devcontainer.json"}},
 	}
-	err := RunHooks(log.Null, &cmdErrExecutor{failOn: "fails"}, merged, RunOptions{})
+	exec := NewMockCommandExecutor(gomock.NewController(t))
+	exec.EXPECT().Exec("ok").Times(2)
+	exec.EXPECT().Exec("fails-b").Return(exitedOne("fails-b"))
+	exec.EXPECT().Exec("fails-c").Return(exitedOne("fails-c"))
+	err := RunHooks(log.Null, exec, merged, RunOptions{})
 	he, ok := errors.AsType[*HookError](err)
 	if !ok || he.Description() != "b of postCreateCommand from devcontainer.json failed." {
 		t.Fatalf("parallel: err = %v, description = %q", err, he.Description())
@@ -301,14 +280,18 @@ func TestHookErrorDescribesTheCommandAndItsOrigin(t *testing.T) {
 		OnCreateCommands: []any{"fails-feature"},
 		CommandOrigins:   map[string][]string{"onCreateCommand": {"ghcr.io/o/f/x:1"}},
 	}
-	err = RunHooks(log.Null, &cmdErrExecutor{failOn: "fails"}, merged, RunOptions{})
+	exec = NewMockCommandExecutor(gomock.NewController(t))
+	exec.EXPECT().Exec("fails-feature").Return(exitedOne("fails-feature"))
+	err = RunHooks(log.Null, exec, merged, RunOptions{})
 	if he, ok := errors.AsType[*HookError](err); !ok || he.Description() != "onCreateCommand from Feature 'ghcr.io/o/f/x:1' failed." {
 		t.Fatalf("feature: err = %v", err)
 	}
 
 	// A command appended without an origin (the config's own) is devcontainer.json's.
 	merged = &imagemeta.MergedConfig{PostStartCommands: []any{"fails"}}
-	err = RunHooks(log.Null, &cmdErrExecutor{failOn: "fails"}, merged, RunOptions{})
+	exec = NewMockCommandExecutor(gomock.NewController(t))
+	exec.EXPECT().Exec("fails").Return(exitedOne("fails"))
+	err = RunHooks(log.Null, exec, merged, RunOptions{})
 	if he, ok := errors.AsType[*HookError](err); !ok || he.Description() != "postStartCommand from devcontainer.json failed." {
 		t.Fatalf("config: err = %v", err)
 	}
