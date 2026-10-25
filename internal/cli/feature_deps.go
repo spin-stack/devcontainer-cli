@@ -163,14 +163,14 @@ func featureMetadataFromTarball(blob []byte) (features.Feature, error) {
 	return meta, nil
 }
 
+// ociAnnotationID is the id in the manifest's metadata annotation, or "" when
+// the annotation is missing, empty or not JSON (none of which unmarshal).
 func ociAnnotationID(manifest *oci.ManifestContainer) string {
-	if mj, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok && mj != "" {
-		var meta features.Feature
-		if json.Unmarshal([]byte(mj), &meta) == nil {
-			return meta.ID
-		}
+	var meta features.Feature
+	if json.Unmarshal([]byte(manifest.Manifest.Annotations["dev.containers.metadata"]), &meta) != nil {
+		return ""
 	}
-	return ""
+	return meta.ID
 }
 
 func readLocalFeatureMetadata(dir string) (features.Feature, error) {
