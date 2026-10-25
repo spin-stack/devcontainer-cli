@@ -55,7 +55,12 @@ type FeatureBuildOptions struct {
 	SkipFeatureAutoMapping bool
 	SkipPersistCustoms     bool
 	FeaturesBasePath       string
-	AdditionalMetadata     []imagemeta.Entry
+	// AdditionalMetadata follows the Features' entries in the metadata the
+	// Features' users are found in (TS findContainerUsers), variables
+	// substituted; LabelMetadata follows them in the image's
+	// devcontainer.metadata label, as written (TS getDevcontainerMetadata's raw).
+	AdditionalMetadata []imagemeta.Entry
+	LabelMetadata      []imagemeta.Entry
 	// Lockfile writes devcontainer-lock.json with the resolved feature digests;
 	// FrozenLockfile validates the resolved features against the committed
 	// lockfile and aborts on drift. ConfigPath is the devcontainer.json path
@@ -687,6 +692,7 @@ func extendImageWithFeatures(
 	for _, fs := range featureSets {
 		metadata = append(metadata, featureMetadataEntry(fs, fbOpts.SkipPersistCustoms))
 	}
+	labelMetadata := append(slices.Clone(metadata), fbOpts.LabelMetadata...)
 	metadata = append(metadata, fbOpts.AdditionalMetadata...)
 
 	// TS findContainerUsers over the image, Features and config metadata.
@@ -715,7 +721,7 @@ func extendImageWithFeatures(
 	buildInfo := imagemeta.GenerateFeaturesBuildOptions(imagemeta.FeaturesBuildParams{
 		BaseName:            baseImage,
 		FeatureSets:         featureSets,
-		Metadata:            metadata,
+		Metadata:            labelMetadata,
 		ContainerUser:       containerUser,
 		RemoteUser:          remoteUser,
 		ImageUser:           imageUser,

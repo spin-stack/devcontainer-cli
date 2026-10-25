@@ -192,11 +192,18 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 
 	// 4-6. The container's env, and its image metadata from the labels.
 	containerEnv := config.EnvMap(containerCfg.Env)
-	merged := imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(containerCfg.Labels, logger))
 	var cfg *config.DevContainer
+	hostSub, configFile := config.EnvHostSubContext(), ""
 	if loadResult != nil {
-		cfg = loadResult.Config
+		cfg, hostSub, configFile = loadResult.Config, loadResult.HostSub, loadResult.Config.ConfigFilePath
 	}
+	// TS getImageMetadataFromContainer, with the host substitutions alone.
+	idLabels := containerIDLabels(opts.idLabels, containerCfg.Labels, resolvePath(opts.workspaceFolder), configFile)
+	entries, err := imageMetadataFromContainer(containerCfg.Labels, cfg, nil, idLabels, hostMetadataSubstitution(hostSub, nil), logger)
+	if err != nil {
+		return err
+	}
+	merged := imagemeta.MergeConfiguration(entries)
 	// The user is the merged configuration's remoteUser - the configuration's,
 	// else the image metadata's - else the container's, else root; the
 	// environment is probed as that user (TS createContainerProperties with

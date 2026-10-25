@@ -90,6 +90,14 @@ type upRunner struct {
 	docker *docker.Client
 	engine *docker.EngineClient
 	opts   *upOpts
+	// idLabels are the labels the dev container is found by.
+	idLabels []string
+	// substitute resolves the variables of entries read from a
+	// devcontainer.metadata label (TS configWithRaw.substitute).
+	substitute metadataSubstitution
+	// configLabel is the configuration's entry in the devcontainer.metadata
+	// label: its properties as written (TS pick(config.raw, ...)).
+	configLabel imagemeta.Entry
 }
 
 func newUpCmd() *cobra.Command {
@@ -331,6 +339,11 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := resolver.BeforeContainerInto(idCtx, loadResult.WorkspaceConfig); err != nil {
 		return writeErrorResult(out, fmt.Sprintf("apply workspace pre-container substitutions: %v", err))
 	}
+	run.idLabels = idLabels
+	run.substitute = func(entries *[]imagemeta.Entry) error { return resolver.BeforeContainerInto(idCtx, entries) }
+	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, opts.omitConfigRemoteEnvFromMeta); err != nil {
+		return writeErrorResult(out, err.Error())
+	}
 
 	// Apply --remove-existing-container up-front, BEFORE initializeCommand, so a
 	// failed initializeCommand (or rebuild) does not leave the old container
@@ -447,7 +460,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		result["composeProjectName"] = opts.composeProjectName
 	}
 
-	if err := addUpConfiguration(result, opts, cfg, inspectResp, imageLabels, logger); err != nil {
+	if err := addUpConfiguration(result, opts, cfg, inspectResp, run.metadataOfContainer, logger); err != nil {
 		return writeErrorResult(out, err.Error())
 	}
 
@@ -503,13 +516,10 @@ func upRemoteUser(cfgUser string, ctr container.InspectResponse, imageLabels fun
 // mergedConfiguration (--include-merged-configuration) to up's result, with
 // ${containerEnv:…} resolved from the container's environment as TS does.
 //
-// mergedConfiguration reads the image's metadata (features are baked into the
-// image), not the container's: the container carries the full config metadata
-// as a label, so reading it and re-adding the config entry would double the
-// lifecycle commands. Its config entry uses the config's remoteEnv regardless of
-// --omit-config-remote-env-from-metadata (that flag only affects the persisted
-// label).
-func addUpConfiguration(result map[string]any, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, imageLabels func(ref string) map[string]string, logger log.Logger) error {
+// mergedConfiguration merges the container's metadata (metadata, TS
+// getImageMetadataFromContainer), which records the configuration's entry, as
+// TS's up does for an existing container.
+func addUpConfiguration(result map[string]any, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, metadata func(ctr container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error), logger log.Logger) error {
 	if !opts.includeConfig && !opts.includeMergedConfig {
 		return nil
 	}
@@ -555,8 +565,11 @@ func addUpConfiguration(result map[string]any, opts *upOpts, cfg *config.DevCont
 	}
 
 	if opts.includeMergedConfig {
-		entries := imagemeta.ReadMetadataFromLabels(imageLabels(ctr.Image), logger)
-		merged := imagemeta.MergeConfiguration(append(entries, configToMetadataEntry(cfg)))
+		entries, err := metadata(ctr, cfg)
+		if err != nil {
+			return err
+		}
+		merged := imagemeta.MergeConfiguration(entries)
 		// image is spread from the config into mergedConfiguration (TS); it is
 		// not part of the metadata entries.
 		merged.Image = cfg.Image
@@ -614,17 +627,13 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	}
 	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget, buildxPlatformArgs(opts.platform))
 
-	metadata := []imagemeta.Entry{}
 	// Read the FROM image's baked devcontainer.metadata (e.g. remoteUser=node on
 	// the mcr devcontainers images). The metadata is computed before the build, so
 	// on a fresh run the base image is otherwise absent and its metadata would be
 	// silently lost — making exec/lifecycle fall back to root.
 	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
-	metadata = append(metadata, imagemeta.ReadMetadataFromLabels(baseLabels, logger)...)
-	// Preserve a `LABEL devcontainer.metadata` from the user's Dockerfile (#1225).
-	metadata = append(metadata, imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)...)
-	metadata = append(metadata, imagemeta.Entry{RemoteUser: cfg.RemoteUser, ContainerUser: cfg.ContainerUser})
-	metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
+	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
+	stageMetadata := imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)
 
 	contextPath := filepath.Join(configDir, cfg.BuildContext())
 
@@ -642,7 +651,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 		BuildArgs:   buildArgsFromConfig(cfg),
 		ExtraArgs:   buildOptionsFromConfig(cfg),
 		CacheFrom:   upCacheFrom,
-		Labels:      []string{fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel)},
+		Labels:      imageLabelArgs(dockerfileImageMetadata(cfg, baseMetadata, stageMetadata, r.configLabel)),
 		NoCache:     opts.buildNoCache,
 		UseBuildx:   useBuildx,
 		CacheTo:     opts.cacheTo,
@@ -677,7 +686,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 		return "", err
 	}
 
-	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
+	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels, true)
 }
 
 // fromImage pulls the config's image when it is missing, installs its
@@ -726,7 +735,9 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 		return "", err
 	}
 
-	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
+	// TS getExtendImageBuildInfo: an image with no Features is not built, so the
+	// metadata label, with the configuration's entry, goes on the container.
+	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels, len(cfg.Features) > 0)
 }
 
 // fromCacheImage starts the container from a prebuilt image (--cache-image),
@@ -755,7 +766,11 @@ func (r *upRunner) fromCacheImage(ctx context.Context, cfg *config.DevContainer,
 	if err != nil {
 		return "", err
 	}
-	return r.runContainer(ctx, image, cfg, loadResult, workspaceFolder, idLabels)
+	// A prebuilt image with a metadata label is a build of the configuration,
+	// whose label records the configuration's entry; one without is used as an
+	// image config's image is.
+	_, configInImage := r.imageLabels(ctx, image)[imagemeta.MetadataLabel]
+	return r.runContainer(ctx, image, cfg, loadResult, workspaceFolder, idLabels, configInImage)
 }
 
 // singleContainerRemoteUserUID is TS singleContainer's updateRemoteUserUID call:
@@ -795,23 +810,28 @@ func findUserArg(runArgs []string) string {
 // up.override-command-false-success, up.workspace-mount-custom-success,
 // up.image-with-mounts-success and up.config-without-workspace-success create
 // their container through it; also TestE2E_ReadonlyMountObject.
-func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
+func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, configInImage bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	// Inspect image once — used for metadata and containerUser resolution.
 	imageInspect, _ := engine.InspectImage(ctx, imageName)
 
-	var metaEntries []imagemeta.Entry
+	var labelEntries []imagemeta.Entry
 	if imageInspect.Config != nil {
-		metaEntries = append(metaEntries, imagemeta.ReadMetadataFromLabels(imageInspect.Config.Labels, logger)...)
+		labelEntries = imagemeta.ReadMetadataFromLabels(imageInspect.Config.Labels, logger)
 	}
-	metaEntries = append(metaEntries, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
+	metaEntries := slices.Clone(labelEntries)
+	if err := r.substitute(&metaEntries); err != nil {
+		return "", fmt.Errorf("substitute the image's metadata: %w", err)
+	}
+	containerLabels := append([]string{}, idLabels...)
+	// A Dockerfile or Features build put the metadata, with the configuration's
+	// entry, on the image (configInImage); otherwise TS adds the label, the
+	// image's entries and the configuration's as written, to the container.
+	if !configInImage {
+		metaEntries = append(metaEntries, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
+		containerLabels = append(containerLabels, imagemeta.MetadataLabel+"="+containerMetadataLabel(append(labelEntries, r.configLabel)))
+	}
 	merged := imagemeta.MergeConfiguration(metaEntries)
-
-	// The container carries the full devcontainer.metadata (image + config) so the
-	// CLI/VS Code can read remoteUser/lifecycle/customizations back on reattach —
-	// image-based containers previously had no metadata label. The label matches
-	// what the TS CLI adds with `-l`.
-	containerMetadataLabel := imagemeta.GenerateMetadataLabel(metaEntries)
 
 	// Build CMD script with feature entrypoints
 	cmdScript := docker.BuildEntrypointScript(merged.Entrypoints)
@@ -858,11 +878,6 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	}
 	// appPort → publish flags (127.0.0.1:N:N for numbers, verbatim for strings).
 	runArgs = append(runArgs, appPortPublishArgs(cfg.AppPort)...)
-
-	containerLabels := append([]string{}, idLabels...)
-	if containerMetadataLabel != "" {
-		containerLabels = append(containerLabels, imagemeta.MetadataLabel+"="+containerMetadataLabel)
-	}
 
 	// Command: the keep-alive script wrapping any feature entrypoints. When
 	// overrideCommand is false, append the image's own entrypoint+cmd so the
@@ -1169,15 +1184,15 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 
 	executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger, WorkDir: workDir}
 
-	// Read metadata from the image (features' lifecycle commands are baked into
-	// the image), NOT the container: the container now carries the config metadata
-	// as a label, so reading it and then re-adding the config commands below would
-	// run every hook twice.
-	// A container the engine cannot inspect has no image: its hooks are the
-	// config's alone.
+	// The hooks are the container's metadata's (TS getImageMetadataFromContainer),
+	// which records the configuration's entry; a container the engine cannot
+	// inspect has the configuration's alone.
 	inspectResp, _ := engine.InspectContainer(ctx, containerID)
-	merged := imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(r.imageLabels(ctx, inspectResp.Image), logger))
-	appendConfigHooks(merged, cfg)
+	entries, err := r.metadataOfContainer(inspectResp, cfg)
+	if err != nil {
+		return hookContainerError(err, containerID, "An error occurred setting up the container.")
+	}
+	merged := imagemeta.MergeConfiguration(entries)
 
 	applyLifecycleMarkers(shellServer, merged, inspectResp, opts.prebuild)
 
@@ -1229,26 +1244,6 @@ func hookRemoteEnv(probed map[string]string, extra []string, cfgRemoteEnv map[st
 		}
 	}
 	return env
-}
-
-// appendConfigHooks adds the config's lifecycle commands after the image
-// metadata's. It keeps each raw value so object-form commands still run in
-// parallel like the TS CLI.
-func appendConfigHooks(merged *imagemeta.MergedConfig, cfg *config.DevContainer) {
-	for _, h := range []struct {
-		list *[]any
-		cmd  *config.LifecycleCommand
-	}{
-		{&merged.OnCreateCommands, &cfg.OnCreateCommand},
-		{&merged.UpdateContentCommands, &cfg.UpdateContentCommand},
-		{&merged.PostCreateCommands, &cfg.PostCreateCommand},
-		{&merged.PostStartCommands, &cfg.PostStartCommand},
-		{&merged.PostAttachCommands, &cfg.PostAttachCommand},
-	} {
-		if !h.cmd.IsEmpty() {
-			*h.list = append(*h.list, h.cmd.Raw())
-		}
-	}
 }
 
 // hookContainerError is TS runLifecycleCommand's ContainerError for a failed
@@ -1368,5 +1363,21 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		// TS getFeaturesBuildOptions writes the config's containerEnv into the
 		// Features image as ENV lines (#{containerEnvMetadata}).
 		ContainerEnv: cfg.ContainerEnv,
+		// The configuration's entry: substituted for the Features' users, as
+		// written in the image's metadata label.
+		AdditionalMetadata: []imagemeta.Entry{configMetadataEntry(cfg, false)},
+		LabelMetadata:      []imagemeta.Entry{r.configLabel},
 	}
+}
+
+// metadataOfContainer is the container's metadata, TS
+// getImageMetadataFromContainer with up's id labels and substitutions. A
+// container without a config (the engine could not inspect it) has the
+// configuration's entry alone.
+func (r *upRunner) metadataOfContainer(ctr container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error) {
+	var labels map[string]string
+	if ctr.Config != nil {
+		labels = ctr.Config.Labels
+	}
+	return imageMetadataFromContainer(labels, cfg, nil, r.idLabels, r.substitute, r.log)
 }

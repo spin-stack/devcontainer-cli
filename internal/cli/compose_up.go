@@ -42,6 +42,14 @@ type composeStart struct {
 	client          *docker.ComposeClient
 	// container is the existing (stopped) service container, nil for none.
 	container *container.InspectResponse
+	// The build command's settings (zero for up): metadataOnImage puts the
+	// metadata label on an image-only service's image even without Features (TS
+	// canAddLabelsToContainer false), buildServices are the services `compose
+	// build` builds (nil for TS up's runServices filter), skipPersistCustoms
+	// leaves the Features' customizations out of the metadata.
+	metadataOnImage    bool
+	buildServices      []string
+	skipPersistCustoms bool
 }
 
 // persistedFolder is TS common.persistedFolder: --user-data-folder, or
@@ -418,12 +426,19 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		return nil, err
 	}
 
-	configEntry := configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta)
-	metadata := slices.Clone(baseEntries)
+	// TS getDevcontainerMetadata: the label records the image's entries, the
+	// Features' and the configuration's as written (labelMetadata); the merged
+	// configuration reads them with their variables substituted (metadata).
+	var featureEntries []imagemeta.Entry
 	for _, fs := range featureSets {
-		metadata = append(metadata, featureMetadataEntry(fs, false))
+		featureEntries = append(featureEntries, featureMetadataEntry(fs, s.skipPersistCustoms))
 	}
-	metadata = append(metadata, configEntry)
+	labelMetadata := slices.Concat(baseEntries, featureEntries, []imagemeta.Entry{r.configLabel})
+	metadata := slices.Clone(baseEntries)
+	if err := r.substitute(&metadata); err != nil {
+		return nil, fmt.Errorf("substitute the image's metadata: %w", err)
+	}
+	metadata = slices.Concat(metadata, featureEntries, []imagemeta.Entry{configMetadataEntry(cfg, false)})
 
 	result := &composeExtendResult{imageMetadata: metadata}
 	userSyntax := ""
@@ -434,10 +449,10 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 	var info *imagemeta.ExtendImageBuildInfo
 	dstFolder := featuresFolder
 	switch {
-	case len(featureSets) == 0 && !svcBuild.HasBuild:
+	case len(featureSets) == 0 && !svcBuild.HasBuild && !s.metadataOnImage:
 		// TS getExtendImageBuildInfo: no Features and an image (no Dockerfile) →
 		// only the metadata label, added to the container.
-		result.labels = []string{imagemeta.MetadataLabel + "=" + imagemeta.GenerateMetadataLabel(metadata)}
+		result.labels = []string{imagemeta.MetadataLabel + "=" + containerMetadataLabel(labelMetadata)}
 	case len(featureSets) == 0:
 		// TS getImageBuildOptions: extend the Dockerfile with the metadata label.
 		syntax := userSyntax
@@ -448,7 +463,7 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		if err := os.MkdirAll(dstFolder, 0o755); err != nil {
 			return nil, fmt.Errorf("create features folder: %w", err)
 		}
-		info = imagemeta.GenerateComposeLabelBuild(baseName, metadata, syntax)
+		info = imagemeta.GenerateComposeLabelBuild(baseName, labelMetadata, syntax)
 	default:
 		// TS findContainerUsers over the image + Features + config metadata.
 		containerUser, remoteUser := findContainerUsers(metadata, svcUser, imageUser)
@@ -471,7 +486,7 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		info = imagemeta.GenerateFeaturesBuildOptions(imagemeta.FeaturesBuildParams{
 			BaseName:            baseName,
 			FeatureSets:         featureSets,
-			Metadata:            metadata,
+			Metadata:            labelMetadata,
 			ContainerUser:       containerUser,
 			RemoteUser:          remoteUser,
 			ImageUser:           imageUser,
@@ -548,7 +563,11 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 
 	if !noBuild {
 		files := append(slices.Clone(s.composeFiles), result.overrideFiles...)
-		if err := s.client.Build(ctx, files, "", []string{"--project-name", s.projectName}, composeServicesFilter(cfg), opts.buildNoCache); err != nil {
+		services := s.buildServices
+		if services == nil {
+			services = composeServicesFilter(cfg)
+		}
+		if err := s.client.Build(ctx, files, "", []string{"--project-name", s.projectName}, services, opts.buildNoCache); err != nil {
 			return nil, fmt.Errorf("An error occurred building the Docker Compose images: %w", err)
 		}
 	}

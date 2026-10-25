@@ -112,12 +112,20 @@ func TestUpRemoteUserFallsBackInTSOrder(t *testing.T) {
 	}
 }
 
+// containerMetadata reads a container's metadata labels without substitution
+// or id labels: its entries, then the configuration's.
+func containerMetadata(labels map[string]string) func(container.InspectResponse, *config.DevContainer) ([]imagemeta.Entry, error) {
+	return func(_ container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error) {
+		return imageMetadataFromContainer(labels, cfg, nil, nil, func(*[]imagemeta.Entry) error { return nil }, quietLogger())
+	}
+}
+
 // upConfigurationJSON is what addUpConfiguration adds to up's result, as up
-// prints it.
-func upConfigurationJSON(t *testing.T, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, imageLabels map[string]string) map[string]any {
+// prints it, for a container whose metadata labels are containerLabels.
+func upConfigurationJSON(t *testing.T, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, containerLabels map[string]string) map[string]any {
 	t.Helper()
 	result := map[string]any{}
-	if err := addUpConfiguration(result, opts, cfg, ctr, func(string) map[string]string { return imageLabels }, quietLogger()); err != nil {
+	if err := addUpConfiguration(result, opts, cfg, ctr, containerMetadata(containerLabels), quietLogger()); err != nil {
 		t.Fatal(err)
 	}
 	b, err := json.Marshal(result)
@@ -209,7 +217,7 @@ func TestAddUpConfigurationAddsOnlyWhatWasAskedFor(t *testing.T) {
 
 func TestAddUpConfigurationReportsAContainerEnvReferenceWithoutAName(t *testing.T) {
 	cfg := &config.DevContainer{RemoteEnv: map[string]*string{"X": strPtr("${containerEnv}")}}
-	labels := func(string) map[string]string { return nil }
+	labels := containerMetadata(nil)
 	err := addUpConfiguration(map[string]any{}, &upOpts{includeConfig: true}, cfg, container.InspectResponse{}, labels, quietLogger())
 	if err == nil || !strings.HasPrefix(err.Error(), "resolve configuration container variables: ") {
 		t.Errorf("configuration error = %v, want the substitution error", err)
@@ -450,37 +458,6 @@ func TestHookRemoteEnvOrdersLaterSourcesLast(t *testing.T) {
 	)
 	if want := []string{"P=probed", "S=secret", "R=cli", "C=config"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("env = %q, want %q", got, want)
-	}
-}
-
-func TestAppendConfigHooksAddsTheConfigsCommandsAfterTheImages(t *testing.T) {
-	merged := imagemeta.MergeConfiguration([]imagemeta.Entry{{OnCreateCommand: "img-oc", PostStartCommand: "img-ps"}})
-	var cfg config.DevContainer
-	if err := json.Unmarshal([]byte(`{
-		"onCreateCommand": "oc",
-		"updateContentCommand": ["uc", "arg"],
-		"postCreateCommand": {"a": "pc"},
-		"postAttachCommand": "pa"
-	}`), &cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	appendConfigHooks(merged, &cfg)
-
-	for _, tc := range []struct {
-		name string
-		got  []any
-		want []any
-	}{
-		{"onCreate", merged.OnCreateCommands, []any{"img-oc", "oc"}},
-		{"updateContent", merged.UpdateContentCommands, []any{[]any{"uc", "arg"}}},
-		{"postCreate", merged.PostCreateCommands, []any{map[string]any{"a": "pc"}}},
-		{"postStart", merged.PostStartCommands, []any{"img-ps"}},
-		{"postAttach", merged.PostAttachCommands, []any{"pa"}},
-	} {
-		if !reflect.DeepEqual(tc.got, tc.want) {
-			t.Errorf("%s = %v, want %v", tc.name, tc.got, tc.want)
-		}
 	}
 }
 

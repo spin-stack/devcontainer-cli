@@ -273,16 +273,26 @@ func TestMergedConfigurationOutput(t *testing.T) {
 		"image": "img:1",
 		"remoteUser": "config-user",
 		"remoteEnv": {"P": "${containerEnv:PATH}"},
+		"postStartCommand": "from-config",
 		"x-vendor": true
 	}`, nil)
 	cfgMap := configurationOutput(result, &readConfigOpts{})
 	base := []imagemeta.Entry{{RemoteUser: "image-user", ContainerUser: "image-container-user"}}
-
-	t.Run("without a container", func(t *testing.T) {
-		got, err := mergedConfigurationOutput(base, nil, result, cfgMap, log.Null)
+	merge := func(t *testing.T, base, features []imagemeta.Entry, cc *container.Config, result *config.LoadResult, idLabels []string, cfgMap map[string]any) map[string]any {
+		t.Helper()
+		entries, err := readConfigurationMetadata(base, features, cc, result, idLabels, "/ws", log.Null)
 		if err != nil {
 			t.Fatal(err)
 		}
+		got, err := mergedConfigurationOutput(entries, cc, cfgMap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	t.Run("without a container", func(t *testing.T) {
+		got := merge(t, base, nil, nil, result, nil, cfgMap)
 		want := map[string]any{"remoteUser": "config-user", "containerUser": "image-container-user", "image": "img:1", "x-vendor": true, "configFilePath": cfgMap["configFilePath"]}
 		for k, v := range want {
 			if !reflect.DeepEqual(got[k], v) {
@@ -297,27 +307,40 @@ func TestMergedConfigurationOutput(t *testing.T) {
 	t.Run("with a container", func(t *testing.T) {
 		cc := &container.Config{
 			Env:    []string{"PATH=/container/bin"},
-			Labels: map[string]string{"devcontainer.metadata": `[{"containerUser":"label-user","postStartCommand":"from-label"}]`},
+			Labels: map[string]string{"devcontainer.metadata": `[{"containerUser":"label-user","postStartCommand":"from-label","containerEnv":{"H":"${localEnv:HOME}"}}]`},
 		}
-		got, err := mergedConfigurationOutput(base, cc, result, cfgMap, log.Null)
-		if err != nil {
-			t.Fatal(err)
-		}
+		got := merge(t, nil, []imagemeta.Entry{{ID: "feat", PostStartCommand: "from-feature"}}, cc, result, nil, cfgMap)
 		if got["containerUser"] != "label-user" || got["remoteUser"] != "config-user" {
 			t.Errorf("users = %v, %v; want the label's containerUser and the config's remoteUser", got["containerUser"], got["remoteUser"])
 		}
-		if !reflect.DeepEqual(got["postStartCommands"], []any{"from-label"}) {
-			t.Errorf("postStartCommands = %v, want the label's", got["postStartCommands"])
+		if !reflect.DeepEqual(got["postStartCommands"], []any{"from-label", "from-feature", "from-config"}) {
+			t.Errorf("postStartCommands = %v, want the label's, the Features' and the config's", got["postStartCommands"])
 		}
 		if env := got["remoteEnv"]; !reflect.DeepEqual(env, map[string]any{"P": "/container/bin"}) {
 			t.Errorf("remoteEnv = %v, want ${containerEnv:PATH} resolved with the container's env", env)
 		}
+		if env, _ := got["containerEnv"].(map[string]any); env["H"] != result.HostSub.Env["HOME"] {
+			t.Errorf("containerEnv = %v, want the label's ${localEnv:HOME} substituted", got["containerEnv"])
+		}
+	})
+
+	t.Run("with a container the CLI created", func(t *testing.T) {
+		// Its label records the configuration's entry: only the configuration's
+		// updateable properties follow, so its commands are not merged twice.
+		cc := &container.Config{Labels: map[string]string{
+			"devcontainer.metadata":     `[{"postStartCommand":"from-config"}]`,
+			"devcontainer.local_folder": "/ws",
+		}}
+		got := merge(t, nil, nil, cc, result, nil, cfgMap)
+		if !reflect.DeepEqual(got["postStartCommands"], []any{"from-config"}) || got["remoteUser"] != "config-user" {
+			t.Errorf("merged = %v, want the label's command once and the config's remoteUser", got)
+		}
 	})
 
 	t.Run("without a config", func(t *testing.T) {
-		got, err := mergedConfigurationOutput(base, nil, nil, map[string]any{}, log.Null)
-		if err != nil || got["remoteUser"] != "image-user" {
-			t.Fatalf("got %v, %v; want the base entries alone", got, err)
+		got := merge(t, base, nil, nil, nil, nil, map[string]any{})
+		if got["remoteUser"] != "image-user" {
+			t.Fatalf("got %v; want the base entries alone", got)
 		}
 	})
 }

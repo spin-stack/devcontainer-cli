@@ -161,24 +161,6 @@ func TestReadConfiguration_AllFixtures(t *testing.T) {
 	t.Logf("read-configuration: %d passed, %d skipped", passed, skipped)
 }
 
-func TestComposeServiceConfig(t *testing.T) {
-	cfg := map[string]any{
-		"services": map[string]any{
-			"app": map[string]any{
-				"image": "example/app:latest",
-			},
-		},
-	}
-
-	got := composeServiceConfig(cfg, "app")
-	if got == nil {
-		t.Fatal("composeServiceConfig() = nil")
-	}
-	if got["image"] != "example/app:latest" {
-		t.Fatalf("image = %v", got["image"])
-	}
-}
-
 func TestConfigToMetadataEntry_IncludesMountsAndUIDSetting(t *testing.T) {
 	trueValue := true
 	cfg := &config.DevContainer{

@@ -51,7 +51,7 @@ func TestBuildComposePathWiring(t *testing.T) {
 				DockerComposeFile: config.StringOrStrings{"docker-compose.yml"},
 			}
 
-			_, err := r.buildCompose(t.Context(), cfg, false)
+			_, err := r.buildCompose(t.Context(), cfg, &config.LoadResult{}, false)
 			if err == nil {
 				t.Fatal("expected compose-client detection error, got nil")
 			}
