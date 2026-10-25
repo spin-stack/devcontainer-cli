@@ -24,17 +24,14 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 		Short: "Read and resolve dependency graph from a configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := outputFor(cmd)
-			// 0.88: workspace-folder defaults to cwd when not provided.
-			if workspaceFolder == "" {
-				workspaceFolder, _ = os.Getwd()
-			}
-
 			logger := log.New(log.Options{
 				Level:  log.ParseLevel(logLevel),
 				Format: "text",
 				Writer: os.Stderr,
 			})
 
+			// 0.88: workspace-folder defaults to cwd when not provided, which
+			// resolvePath("") is.
 			ws := resolvePath(workspaceFolder)
 			loadResult, err := config.LoadDevContainerConfig(ws, "", "")
 			if err != nil {
