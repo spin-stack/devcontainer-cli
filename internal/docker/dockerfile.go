@@ -206,7 +206,7 @@ func EnsureFinalStageName(content, defaultName string) (stageName string, modifi
 	if m == nil {
 		return "", "", errors.New("Error parsing Dockerfile: failed to parse final FROM line")
 	}
-	if m[2] != -1 && m[3] > m[2] {
+	if m[2] != -1 { // the label group, when it matched, is never empty
 		return content[lineStart+m[2] : lineStart+m[3]], "", nil
 	}
 	pos := lineStart + m[1]

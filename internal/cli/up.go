@@ -1374,6 +1374,10 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 // getImageMetadataFromContainer with up's id labels and substitutions. A
 // container without a config (the engine could not inspect it) has the
 // configuration's entry alone.
+//
+// mutate-lane: TestParityMatrix - up.feature-hook-failure-error and
+// up.dockerfile-with-parallel-commands-success run the hooks it reads from a
+// real container; also TestDifferentialUp.
 func (r *upRunner) metadataOfContainer(ctr container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error) {
 	var labels map[string]string
 	if ctr.Config != nil {

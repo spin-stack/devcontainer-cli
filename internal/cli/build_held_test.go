@@ -225,3 +225,33 @@ func TestRunBuildBuildKitNeverIgnoresBuildx(t *testing.T) {
 		})
 	}
 }
+
+// The Dockerfile build targets the config's target when it names one, else
+// the final stage, named when it has no name; a Dockerfile without FROM is
+// TS's error.
+func TestPrepareDockerfileBuildStage(t *testing.T) {
+	ws := writeConfigFixture(t, map[string]string{
+		".devcontainer/Dockerfile": "FROM alpine:3 AS base\nFROM base\n",
+		".devcontainer/Empty":      "RUN true\n",
+	})
+	cfgFile := filepath.Join(ws, ".devcontainer", "devcontainer.json")
+	prep, err := prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Dockerfile", Target: "base"}})
+	if err != nil || prep.StageName != "base" {
+		t.Fatalf("with a target: %+v, %v; want stage base", prep, err)
+	}
+	prep.Cleanup()
+	prep, err = prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Dockerfile"}})
+	if err != nil || prep.StageName != "dev_container_auto_added_stage_label" {
+		t.Fatalf("without a target: %+v, %v", prep, err)
+	}
+	if _, err := os.Stat(prep.Path); err != nil {
+		t.Fatalf("named Dockerfile: %v", err)
+	}
+	prep.Cleanup()
+	if _, err := os.Stat(prep.Path); !os.IsNotExist(err) {
+		t.Errorf("named Dockerfile %s left after Cleanup: %v", prep.Path, err)
+	}
+	if _, err := prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Empty"}}); err == nil || !strings.Contains(err.Error(), "no FROM instructions") {
+		t.Errorf("no FROM: err = %v", err)
+	}
+}

@@ -152,3 +152,19 @@ func TestRefreshTSOracleGoldensRejects(t *testing.T) {
 		})
 	}
 }
+
+// With no cases the oracle is still asked with a cases array, which the
+// tools/tsoracle protocol requires, not with null.
+func TestRefreshTSOracleGoldensAsksWithAnEmptyCasesArray(t *testing.T) {
+	var asked string
+	_, err := RefreshTSOracleGoldens(map[string][]byte{"g.json": []byte(`{"cases":[]}`)}, func(request []byte) ([]byte, error) {
+		asked = string(request)
+		return []byte(`{"cases":[]}`), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != `{"cases":[]}` {
+		t.Errorf("request = %s, want an empty cases array", asked)
+	}
+}

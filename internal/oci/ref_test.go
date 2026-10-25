@@ -2,6 +2,7 @@ package oci
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
@@ -60,4 +61,13 @@ func TestTSOracleRef(t *testing.T) {
 			return QualifyImageName(name), nil
 		},
 	})
+}
+
+// TS getRef splits the digest on every colon and wants exactly two parts, so
+// a second colon is a malformed digest, even after a valid hex.
+func TestParseRefDigestWithASecondColon(t *testing.T) {
+	_, err := ParseRef("ghcr.io/a/b@sha256:" + strings.Repeat("a", 64) + ":def")
+	if err == nil || !strings.Contains(err.Error(), "invalid digest format") {
+		t.Errorf("err = %v, want the digest format error", err)
+	}
 }

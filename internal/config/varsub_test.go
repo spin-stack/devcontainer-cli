@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -116,5 +117,22 @@ func TestSubstituteTags(t *testing.T) {
 	boom := errors.New("boom")
 	if _, err := substituteTags("${x}", func(string) (string, bool, error) { return "", false, boom }); !errors.Is(err, boom) {
 		t.Errorf("error prop = %v", err)
+	}
+}
+
+// The id is the hash in base 32 padded to 52 digits, also when the hash's
+// leading digits are zeros.
+func TestComputeDevContainerIDIsPaddedTo52Digits(t *testing.T) {
+	padded := false
+	for i := 0; i < 200; i++ {
+		labels := map[string]string{"devcontainer.local_folder": fmt.Sprintf("/ws/%d", i)}
+		id := ComputeDevContainerID(labels)
+		if len(id) != 52 {
+			t.Fatalf("id for %v = %q, %d digits", labels, id, len(id))
+		}
+		padded = padded || id[0] == '0'
+	}
+	if !padded {
+		t.Error("no id needed padding: widen the search")
 	}
 }
