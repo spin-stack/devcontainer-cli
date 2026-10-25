@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -42,7 +43,6 @@ func ParseProfile(r io.Reader) (pkgs []PkgCov, total PkgCov, err error) {
 	var gCov, gTot int
 
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	first := true
 	for sc.Scan() {
 		line := sc.Text()
@@ -56,14 +56,9 @@ func ParseProfile(r io.Reader) (pkgs []PkgCov, total PkgCov, err error) {
 		if len(fields) < 3 {
 			continue
 		}
-		// "import/path/file.go:1.1,3.2" -> "import/path" (package import path).
-		p := fields[0]
-		if i := strings.IndexByte(p, ':'); i >= 0 {
-			p = p[:i]
-		}
-		if i := strings.LastIndex(p, "/"); i >= 0 {
-			p = p[:i]
-		}
+		// "import/path/file.go:1.1,3.2" -> "import/path" (package import path): the
+		// file and its positions hold no '/'.
+		p := path.Dir(fields[0])
 		stmts, _ := strconv.Atoi(fields[1])
 		count, _ := strconv.Atoi(fields[2])
 		tot[p] += stmts

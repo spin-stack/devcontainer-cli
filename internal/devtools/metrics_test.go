@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // metrics.json keeps the shape the former shell wrote: every key present, and a
@@ -40,6 +41,20 @@ func TestMeanMillisWarmsUpThenRuns(t *testing.T) {
 	}
 	if got := MeanMillis(0, func() { t.Fatal("ran with runs=0") }); got != 0 {
 		t.Errorf("runs=0 mean = %v, want 0", got)
+	}
+	calls = 0
+	MeanMillis(1, func() { calls++ })
+	if calls != 2 {
+		t.Errorf("runs=1: calls = %d, want 2 (1 warmup + 1 run)", calls)
+	}
+}
+
+// The mean is in milliseconds: a run of 20 ms measures as 20 ms, not as its
+// microseconds or seconds.
+func TestMeanMillisIsMilliseconds(t *testing.T) {
+	got := MeanMillis(2, func() { time.Sleep(20 * time.Millisecond) })
+	if got < 20 || got > 2000 {
+		t.Errorf("mean = %v ms for 20 ms runs", got)
 	}
 }
 
