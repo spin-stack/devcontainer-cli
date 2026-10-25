@@ -394,3 +394,42 @@ func TestLoadAllFixtures(t *testing.T) {
 	}
 	t.Logf("loaded %d fixtures, skipped %d (no devcontainer.json)", loaded, skipped)
 }
+
+// The deprecated properties reach the typed config even when customizations is
+// already set (the substituted re-read used to overwrite the move), and
+// RawConfig keeps the configuration as written, variables unresolved.
+func TestLoadMovesDeprecatedPropertiesAndKeepsRawConfig(t *testing.T) {
+	ws := t.TempDir()
+	cfg := filepath.Join(ws, ".devcontainer.json")
+	if err := os.WriteFile(cfg, []byte(`{
+		"image": "debian",
+		"extensions": ["a.ext"],
+		"settings": {"x": 1},
+		"customizations": {"vscode": {"settings": {"y": 2}}},
+		"containerEnv": {"P": "${localEnv:HOME}"}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", "/home/someone")
+	res, err := LoadDevContainerConfig(ws, cfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vscode, _ := res.Config.Customizations["vscode"].(map[string]any)
+	if exts, _ := vscode["extensions"].([]any); len(exts) != 1 || exts[0] != "a.ext" {
+		t.Errorf("customizations.vscode.extensions = %v", vscode["extensions"])
+	}
+	if settings, _ := vscode["settings"].(map[string]any); settings["x"] != float64(1) || settings["y"] != float64(2) {
+		t.Errorf("customizations.vscode.settings = %v", vscode["settings"])
+	}
+	if res.Config.ContainerEnv["P"] != "/home/someone" {
+		t.Errorf("containerEnv.P = %q, want the substituted HOME", res.Config.ContainerEnv["P"])
+	}
+	rawEnv, _ := res.RawConfig["containerEnv"].(map[string]any)
+	if rawEnv["P"] != "${localEnv:HOME}" {
+		t.Errorf("RawConfig containerEnv.P = %v, want it unresolved", rawEnv["P"])
+	}
+	if _, ok := res.RawConfig["extensions"]; ok {
+		t.Error("RawConfig keeps the deprecated extensions")
+	}
+}

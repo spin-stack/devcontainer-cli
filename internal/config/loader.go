@@ -28,8 +28,14 @@ func (e *NotFoundError) Error() string {
 
 // LoadResult contains a loaded and substituted devcontainer configuration.
 type LoadResult struct {
-	Config          *DevContainer
-	Raw             map[string]any // pre-substitution
+	Config *DevContainer
+	// Raw is the configuration after host-side substitution, as a map: it keeps
+	// the properties the typed Config has no field for.
+	Raw map[string]any
+	// RawConfig is the configuration as written - deprecated properties moved
+	// into customizations, nothing substituted - which TS keeps as a config's raw
+	// and writes into the devcontainer.metadata label.
+	RawConfig       map[string]any
 	WorkspaceConfig *WorkspaceConfig
 	// HostSub is the host-side substitution context used for the config; reuse it
 	// so Feature metadata (mounts/containerEnv) resolves ${localEnv:…} the same way.
@@ -166,14 +172,16 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		}
 	}
 
+	// TS moves the deprecated properties before anything reads the config, so the
+	// raw config, the substituted one and the typed struct all carry the move.
+	raw = updateFromOldProperties(raw)
+	rawConfig := raw
+
 	// Derive the typed struct from the (possibly merged) raw config.
 	var config DevContainer
 	if err := remarshal(raw, &config); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-
-	// Migrate deprecated properties
-	UpdateFromOldProperties(&config)
 
 	// Set config file path
 	if configPath != "" {
@@ -227,6 +235,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	return &LoadResult{
 		Config:          &config,
 		Raw:             raw,
+		RawConfig:       rawConfig,
 		WorkspaceConfig: wsConfig,
 		HostSub:         ctx,
 	}, nil
