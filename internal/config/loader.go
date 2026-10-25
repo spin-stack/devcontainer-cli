@@ -183,11 +183,9 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Set config file path
-	if configPath != "" {
-		config.ConfigFilePath = configPath
-	} else {
-		config.ConfigFilePath = overrideConfigPath
+	configFilePath := configPath
+	if configFilePath == "" {
+		configFilePath = overrideConfigPath
 	}
 
 	// Compute workspace config using the caller's mount options.
@@ -201,7 +199,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		LocalWorkspaceFolder:     localWS,
 		ContainerWorkspaceFolder: wsConfig.WorkspaceFolder,
 		Env:                      EnvMap(os.Environ()),
-		ConfigFilePath:           config.ConfigFilePath,
+		ConfigFilePath:           configFilePath,
 	}
 
 	substituted, err := NewVariableResolver().Resolve(SubstitutionContext{HostSubContext: ctx}, PhaseHost, raw)
@@ -227,10 +225,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		wsConfig.WorkspaceMount = config.WorkspaceMount
 	}
 
-	config.ConfigFilePath = configPath
-	if configPath == "" {
-		config.ConfigFilePath = overrideConfigPath
-	}
+	config.ConfigFilePath = configFilePath
 
 	return &LoadResult{
 		Config:          &config,
@@ -374,9 +369,8 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 	// workspaceFolder is the container mount folder, plus the workspace's path
 	// relative to the git root when it sits in a subfolder.
 	containerFolder := containerMountFolder
-	if mountWorkspaceGitRoot && sourceFolder != workspace.RootFolderPath {
-		rel, err := filepath.Rel(sourceFolder, workspace.RootFolderPath)
-		if err == nil && rel != "." {
+	if sourceFolder != workspace.RootFolderPath {
+		if rel, err := filepath.Rel(sourceFolder, workspace.RootFolderPath); err == nil {
 			containerFolder = path.Join(containerMountFolder, filepath.ToSlash(rel))
 		}
 	}
