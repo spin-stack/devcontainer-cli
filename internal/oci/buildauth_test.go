@@ -136,3 +136,15 @@ func TestResolveBuildAuth_IdentityToken(t *testing.T) {
 		t.Errorf("Auth should be empty for a token-only credential, got %q", entry.Auth)
 	}
 }
+
+// An empty registry (an image reference with no registry part resolved) is
+// skipped before any lookup, even when DEVCONTAINERS_OCI_AUTH carries an entry
+// with an empty host that would match it.
+func TestResolveBuildAuthSkipsAnEmptyRegistry(t *testing.T) {
+	env := map[string]string{"DEVCONTAINERS_OCI_AUTH": "|u|p", "DOCKER_CONFIG": isolatedDockerConfig(t)}
+	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{""}, log.Null)
+	defer cleanup()
+	if err != nil || ok || dir != "" {
+		t.Errorf("ResolveBuildAuth(\"\") = (%q, ok=%v, %v), want no auth config", dir, ok, err)
+	}
+}
