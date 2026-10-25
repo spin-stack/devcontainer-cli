@@ -44,17 +44,12 @@ func newSetUpCmd() *cobra.Command {
 			if containerID == "" {
 				return writeValidationError(out, "Missing required argument: --container-id")
 			}
-			for _, v := range []struct {
-				flag, val string
-				choices   []string
-			}{
-				{"log-level", logLevel, []string{"info", "debug", "trace"}},
-				{"log-format", logFormat, []string{"text", "json"}},
-				{"default-user-env-probe", defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
-			} {
-				if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-					return writeValidationError(out, err.Error())
-				}
+			if err := validateEnums(
+				enumFlag{"log-level", logLevel, logLevels},
+				enumFlag{"log-format", logFormat, logFormats},
+				enumFlag{"default-user-env-probe", defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
+			); err != nil {
+				return writeValidationError(out, err.Error())
 			}
 			if err := validateTerminalImplications(terminalColumns, terminalRows); err != nil {
 				return writeValidationError(out, err.Error())
@@ -72,11 +67,10 @@ func newSetUpCmd() *cobra.Command {
 			defer closeLog()
 
 			logger := log.New(log.Options{
-				Version:    cliVersion(),
-				Level:      log.ParseLevel(logLevel),
-				Format:     logFormat,
-				Writer:     logDst,
-				Dimensions: logDimensions(terminalColumns, terminalRows),
+				Version: cliVersion(),
+				Level:   log.ParseLevel(logLevel),
+				Format:  logFormat,
+				Writer:  logDst,
 			})
 
 			ctx := cmd.Context()
@@ -92,7 +86,7 @@ func newSetUpCmd() *cobra.Command {
 			}
 
 			// Get containerEnv from running container
-			containerEnv := envSliceToMap(inspect.Config.Env)
+			containerEnv := config.EnvMap(inspect.Config.Env)
 
 			// Load config if provided
 			var cfg *config.DevContainer
@@ -128,15 +122,8 @@ func newSetUpCmd() *cobra.Command {
 			}
 
 			var mergedRemoteEnv []string
-			if probeStrategy != lifecycle.ProbeNone {
-				probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
-				if probeErr == nil {
-					probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, containerSessionDataFolder)
-					probeServer.Close()
-					for k, v := range probedEnv {
-						mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
-					}
-				}
+			for k, v := range lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, containerSessionDataFolder) {
+				mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
 			}
 			mergedRemoteEnv = append(mergedRemoteEnv, remoteEnvs...)
 			if cfg != nil {
@@ -147,30 +134,24 @@ func newSetUpCmd() *cobra.Command {
 				}
 			}
 
-			shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
-			if err != nil {
-				return writeErrorResult(out, fmt.Sprintf("Failed to start shell: %v", err))
-			}
+			shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, mergedRemoteEnv...)
 			defer shellServer.Close()
 
 			executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger}
 
-			if dotfilesRepo != "" {
-				_ = lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
-					Repository:     dotfilesRepo,
-					InstallCommand: dotfilesCommand,
-					TargetPath:     dotfilesTarget,
-				})
-			}
-
 			if !skipPostCreate {
+				applyLifecycleMarkers(shellServer, merged, inspect, false)
 				hookErr := lifecycle.RunHooks(logger, executor, merged, lifecycle.RunOptions{
 					SkipNonBlocking: skipNonBlocking,
+					AfterPostCreate: dotfilesAfterPostCreate(logger, executor, lifecycle.DotfilesConfig{
+						Repository:     dotfilesRepo,
+						InstallCommand: dotfilesCommand,
+						TargetPath:     dotfilesTarget,
+					}),
 				})
 				if hookErr != nil {
-					return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
-						Description: fmt.Sprintf("An error occurred running user commands: %v", hookErr),
-					}))
+					// TS set-up reports only the message and description.
+					return writeErrorJSON(out, coreerrors.ToErrorOutput(hookContainerError(hookErr, "", "An error occurred running user commands in the container.")))
 				}
 			}
 

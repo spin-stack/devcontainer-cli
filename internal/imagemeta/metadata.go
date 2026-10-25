@@ -69,6 +69,7 @@ func ReadMetadataFromLabels(labels map[string]string, logger log.Logger) []Entry
 // yields "". ReadMetadataFromLabels still accepts a bare object for backward
 // compatibility with labels written by older tooling.
 func GenerateMetadataLabel(entries []Entry) string {
+	entries = nonEmptyEntries(entries)
 	if len(entries) == 0 {
 		return ""
 	}

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"os"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -20,7 +19,7 @@ func bridgeBuildAuth(logger log.Logger, baseImage string, tags, cacheFrom []stri
 	if len(regs) == 0 {
 		return nil, noop
 	}
-	dir, clean, ok, err := oci.ResolveBuildAuth(environMap(), regs, logger)
+	dir, clean, ok, err := oci.ResolveBuildAuth(osEnvMap(), regs, logger)
 	if err != nil || !ok {
 		return nil, noop
 	}
@@ -83,16 +82,4 @@ func registryCacheRef(spec string) string {
 		}
 	}
 	return ""
-}
-
-// environMap snapshots the process environment as a map for the credential chain.
-func environMap() map[string]string {
-	env := os.Environ()
-	m := make(map[string]string, len(env))
-	for _, kv := range env {
-		if before, after, ok := strings.Cut(kv, "="); ok {
-			m[before] = after
-		}
-	}
-	return m
 }

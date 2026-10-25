@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -28,12 +29,7 @@ type LockfileEntry struct {
 // userFeatureId is in excludeUserFeatureIDs are omitted — the upstream CLI does not
 // write features supplied only via --additional-features to the lockfile.
 func GenerateLockfile(config *Config, excludeUserFeatureIDs map[string]bool) *Lockfile {
-	type entry struct {
-		id    string
-		entry LockfileEntry
-	}
-
-	var entries []entry
+	lf := &Lockfile{Features: map[string]LockfileEntry{}}
 	for _, fs := range config.FeatureSets {
 		src := fs.SourceInfo
 		if src == nil {
@@ -60,33 +56,16 @@ func GenerateLockfile(config *Config, excludeUserFeatureIDs map[string]bool) *Lo
 			resolved = s.TarballURI
 		}
 
-		var dependsOn []string
-		if feat.DependsOn != nil {
-			for k := range feat.DependsOn {
-				dependsOn = append(dependsOn, k)
-			}
-			sort.Strings(dependsOn)
-		}
-
 		e := LockfileEntry{
 			Version:   feat.Version,
 			Resolved:  resolved,
 			Integrity: fs.ComputedDigest,
 		}
-		if len(dependsOn) > 0 {
-			e.DependsOn = dependsOn
+		if len(feat.DependsOn) > 0 {
+			e.DependsOn = slices.Sorted(maps.Keys(feat.DependsOn))
 		}
-
-		entries = append(entries, entry{id: src.UserFeatureID(), entry: e})
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].id < entries[j].id
-	})
-
-	lf := &Lockfile{Features: make(map[string]LockfileEntry, len(entries))}
-	for _, e := range entries {
-		lf.Features[e.id] = e.entry
+		// A map: the file is written with its keys sorted (json.MarshalIndent).
+		lf.Features[src.UserFeatureID()] = e
 	}
 	return lf
 }

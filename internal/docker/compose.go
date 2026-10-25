@@ -272,3 +272,14 @@ func ToProjectName(basename string, newProjectName bool) string {
 		return -1
 	}, strings.ToLower(basename))
 }
+
+// DefaultImageName is the image name Compose gives a service built without an
+// `image:` (TS getDefaultImageName): "<project>-<service>", with "_" before
+// Compose 2.8.0.
+func (c *ComposeClient) DefaultImageName(projectName, service string) string {
+	sep := "-"
+	if len(c.Version) > 0 && (c.Version[0] < 2 || (c.Version[0] == 2 && len(c.Version) > 1 && c.Version[1] < 8)) {
+		sep = "_"
+	}
+	return projectName + sep + service
+}

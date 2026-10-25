@@ -13,8 +13,10 @@ type ContainerError struct {
 	OriginalError       error
 	ContainerID         string
 	DisallowedFeatureID string
-	DidStopContainer    bool
-	LearnMoreURL        string
+	// DidStopContainer is set only by the disallowed-Feature check, which TS
+	// reports as a boolean either way; nil leaves it out of the output.
+	DidStopContainer *bool
+	LearnMoreURL     string
 }
 
 func (e *ContainerError) Error() string {
@@ -66,17 +68,19 @@ func ToErrorOutput(err error) ErrorOutput {
 		}
 	}
 
+	// TS ContainerError's message is its original error's, else its description.
+	message := ce.Description
+	if ce.OriginalError != nil {
+		message = ce.OriginalError.Error()
+	}
 	out := ErrorOutput{
 		Outcome:             "error",
-		Message:             ce.Error(),
+		Message:             message,
 		Description:         ce.Description,
 		ContainerID:         ce.ContainerID,
 		DisallowedFeatureID: ce.DisallowedFeatureID,
+		DidStopContainer:    ce.DidStopContainer,
 		LearnMoreURL:        ce.LearnMoreURL,
-	}
-	if ce.DidStopContainer {
-		v := true
-		out.DidStopContainer = &v
 	}
 	return out
 }

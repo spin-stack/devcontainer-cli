@@ -38,7 +38,7 @@ func TestToErrorOutput(t *testing.T) {
 				Description:         "An error occurred setting up the container.",
 				ContainerID:         "abc123",
 				DisallowedFeatureID: "ghcr.io/bad/feature",
-				DidStopContainer:    true,
+				DidStopContainer:    new(true),
 				LearnMoreURL:        "https://example.com",
 			},
 			check: func(t *testing.T, out ErrorOutput) {

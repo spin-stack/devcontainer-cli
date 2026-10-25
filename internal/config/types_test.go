@@ -269,9 +269,6 @@ func TestParseFixture_WithJSONC(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func intPtr(i int) *int { return new(i) }
-
 // TestPortAttrsSpecFields locks all five spec-defined portsAttributes properties
 // (label, protocol, onAutoForward, requireLocalPort, elevateIfNeeded) through a
 // parse → re-marshal round-trip. protocol and requireLocalPort were previously

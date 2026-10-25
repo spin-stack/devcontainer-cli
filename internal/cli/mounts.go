@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
@@ -59,46 +58,6 @@ func mountsFromMetadata(entries []any, devcontainerID string) ([]dockermount.Mou
 		mounts = append(mounts, mountSpec)
 	}
 	return mounts, nil
-}
-
-// composeServiceImage returns the `image:` of a service from parsed
-// `docker compose config` output, or "" if not set (e.g. a build-only service).
-func composeServiceImage(composeConfig map[string]any, service string) string {
-	services, ok := composeConfig["services"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	svc, ok := services[service].(map[string]any)
-	if !ok {
-		return ""
-	}
-	image, _ := svc["image"].(string)
-	return image
-}
-
-func composeVolumeSpecsFromMetadata(entries []any, devcontainerID string) ([]string, []string, error) {
-	specs := make([]string, 0, len(entries))
-	namedVolumes := []string{}
-	for _, entry := range entries {
-		mountSpec, err := mountFromMetadata(entry, devcontainerID)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		spec := mountSpec.Target
-		if mountSpec.Source != "" {
-			spec = mountSpec.Source + ":" + mountSpec.Target
-		}
-		if mountSpec.ReadOnly {
-			spec += ":ro"
-		}
-		specs = append(specs, spec)
-
-		if mountSpec.Type == dockermount.TypeVolume && mountSpec.Source != "" && !strings.Contains(mountSpec.Source, "/") {
-			namedVolumes = append(namedVolumes, mountSpec.Source)
-		}
-	}
-	return specs, namedVolumes, nil
 }
 
 func mountFromMetadata(entry any, devcontainerID string) (dockermount.Mount, error) {

@@ -31,7 +31,6 @@ func TestComputeInstallOrder(t *testing.T) {
 	tests := []struct {
 		name      string
 		build     func() []*FNode
-		override  []string
 		wantErr   bool
 		wantOrder []string
 	}{
@@ -113,8 +112,8 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantOrder: []string{"a", "b", "c", "d"},
 		},
 		{
-			// a, b, c with no deps. Override order: [c, a].
-			// c has priority 2, a has priority 1, b has priority 0.
+			// a, b, c with no deps; BuildDependencyGraph gave the override
+			// order [c, a] as c priority 2, a priority 1, b priority 0.
 			// Round 1: all eligible, max priority = 2 → only c.
 			// Round 2: a,b eligible, max priority = 1 → only a.
 			// Round 3: b.
@@ -123,9 +122,9 @@ func TestComputeInstallOrder(t *testing.T) {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
 				b := makeOCINode("ghcr.io/ns/b:1", "ghcr.io", "ns", "b")
 				c := makeOCINode("ghcr.io/ns/c:1", "ghcr.io", "ns", "c")
+				c.RoundPriority, a.RoundPriority = 2, 1
 				return []*FNode{a, b, c}
 			},
-			override:  []string{"ghcr.io/ns/c:1", "ghcr.io/ns/a:1"},
 			wantOrder: []string{"c", "a", "b"},
 		},
 		{
@@ -161,7 +160,7 @@ func TestComputeInstallOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ComputeInstallationOrder(log.Null, tt.build(), tt.override)
+			result, err := ComputeInstallationOrder(log.Null, tt.build())
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")

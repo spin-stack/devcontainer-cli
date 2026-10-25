@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/product"
-	"github.com/tailscale/hujson"
 )
 
 // mergeAdditionalFeatures parses a JSON(C) string of additional features and
@@ -21,14 +20,8 @@ func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON st
 		return nil, nil
 	}
 
-	// Parse JSONC (tolerant of comments/trailing commas)
-	standardJSON, err := hujson.Standardize([]byte(additionalFeaturesJSON))
-	if err != nil {
-		return nil, fmt.Errorf("parse additional-features: %w", err)
-	}
-
 	var additional map[string]any
-	if err := json.Unmarshal(standardJSON, &additional); err != nil {
+	if err := jsonc.Unmarshal([]byte(additionalFeaturesJSON), &additional); err != nil {
 		return nil, fmt.Errorf("parse additional-features: %w", err)
 	}
 
@@ -81,14 +74,6 @@ func appPortPublishArgs(raw json.RawMessage) []string {
 // cliVersion returns the CLI version for the log banner (set via ldflags).
 func cliVersion() string {
 	return product.Get().Version
-}
-
-// logDimensions returns Dimensions for the logger if terminal size was provided.
-func logDimensions(columns, rows int) *log.Dimensions {
-	if columns > 0 || rows > 0 {
-		return &log.Dimensions{Columns: columns, Rows: rows}
-	}
-	return nil
 }
 
 // findPlatformArg extracts the target platform from runArgs, supporting both

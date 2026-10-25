@@ -115,17 +115,12 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	if opts.workspaceFolder == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
-	for _, v := range []struct {
-		flag, val string
-		choices   []string
-	}{
-		{"log-level", opts.logLevel, []string{"info", "debug", "trace"}},
-		{"log-format", opts.logFormat, []string{"text", "json"}},
-		{"buildkit", opts.buildkit, []string{"auto", "never"}},
-	} {
-		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return writeValidationError(out, err.Error())
-		}
+	if err := validateEnums(
+		enumFlag{"log-level", opts.logLevel, logLevels},
+		enumFlag{"log-format", opts.logFormat, logFormats},
+		enumFlag{"buildkit", opts.buildkit, []string{"auto", "never"}},
+	); err != nil {
+		return writeValidationError(out, err.Error())
 	}
 
 	// --no-lockfile is mutually exclusive with every frozen/write lockfile flag
@@ -178,8 +173,9 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		return writeErrorResult(out, err.Error())
 	}
 
-	if derr := enforceDisallowedFeatures(ctx, cfg, logger); derr != nil {
-		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
+	// TS build reports only the message and description of this error.
+	if derr := enforceDisallowedFeatures(ctx, cfg, opts.additionalFeatures, logger, nil); derr != nil {
+		return writeErrorJSON(out, coreerrors.ErrorOutput{Outcome: "error", Message: derr.Error(), Description: derr.Description})
 	}
 
 	// Setup Docker clients
@@ -441,28 +437,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	// If config has features, extend the built image with features
 	if len(cfg.Features) > 0 {
 		baseImageName := imageNames[0]
-		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, &FeatureBuildOptions{
-			Secrets:                     buildSecretsFromFile(opts.secretsFile),
-			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-			NoCache:                     opts.noCache,
-			CacheFrom:                   opts.cacheFrom,
-			CacheTo:                     opts.cacheTo,
-			Labels:                      opts.labels,
-			Platform:                    opts.platform,
-			Push:                        opts.push,
-			Output:                      opts.output,
-			ContainerEnv:                cfg.ContainerEnv,
-			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-			Lockfile:                    opts.experimentalLockfile,
-			FrozenLockfile:              opts.experimentalFrozenLockfile,
-			NoLockfile:                  opts.noLockfile,
-			ConfigPath:                  cfg.ConfigFilePath,
-			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-			HostSub:                     &loadResult.HostSub,
-			SkipPersistCustoms:          opts.skipPersistCustoms,
-			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-			AdditionalMetadata:          []imagemeta.Entry{configToMetadataEntry(cfg)},
-		})
+		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, &loadResult.HostSub, configToMetadataEntry(cfg)))
 	}
 
 	return imageNames, nil
@@ -512,64 +487,17 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		if len(featureImageNames) == 0 {
 			featureImageNames = []string{folderImageName(resolvePath(opts.workspaceFolder)) + "-features"}
 		}
-		return extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, featureImageNames, &FeatureBuildOptions{
-			Secrets:                     buildSecretsFromFile(opts.secretsFile),
-			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-			NoCache:                     opts.noCache,
-			CacheFrom:                   opts.cacheFrom,
-			CacheTo:                     opts.cacheTo,
-			Labels:                      opts.labels,
-			Platform:                    opts.platform,
-			Push:                        opts.push,
-			Output:                      opts.output,
-			ContainerEnv:                cfg.ContainerEnv,
-			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-			Lockfile:                    opts.experimentalLockfile,
-			FrozenLockfile:              opts.experimentalFrozenLockfile,
-			NoLockfile:                  opts.noLockfile,
-			ConfigPath:                  cfg.ConfigFilePath,
-			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-			HostSub:                     &loadResult.HostSub,
-			SkipPersistCustoms:          opts.skipPersistCustoms,
-			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-		})
+		return extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, featureImageNames, r.featureBuildOptions(cfg, &loadResult.HostSub))
 	}
 
-	// When --platform, --push, or --output is specified, route through the feature
-	// extension path to generate a proper Dockerfile for buildx. When features exist,
-	// extendImageWithFeatures handles everything. When no features, build a minimal
-	// Dockerfile directly (extendImageWithFeatures returns early with 0 features).
+	// Without Features (handled above), --platform, --push, or --output still need
+	// a build: a minimal FROM Dockerfile carrying the config metadata.
 	if opts.platform != "" || opts.push || opts.output != "" {
 		featureImageNames := opts.imageNames
 		if len(featureImageNames) == 0 {
 			featureImageNames = []string{folderImageName(resolvePath(opts.workspaceFolder)) + "-features"}
 		}
 
-		if len(cfg.Features) > 0 {
-			return extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, featureImageNames, &FeatureBuildOptions{
-				Secrets:                     buildSecretsFromFile(opts.secretsFile),
-				OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-				NoCache:                     opts.noCache,
-				CacheFrom:                   opts.cacheFrom,
-				CacheTo:                     opts.cacheTo,
-				Labels:                      opts.labels,
-				Platform:                    opts.platform,
-				Push:                        opts.push,
-				Output:                      opts.output,
-				ContainerEnv:                cfg.ContainerEnv,
-				SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-				Lockfile:                    opts.experimentalLockfile,
-				FrozenLockfile:              opts.experimentalFrozenLockfile,
-				NoLockfile:                  opts.noLockfile,
-				ConfigPath:                  cfg.ConfigFilePath,
-				LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-				HostSub:                     &loadResult.HostSub,
-				SkipPersistCustoms:          opts.skipPersistCustoms,
-				FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-			})
-		}
-
-		// 0 features + platform/push: build a minimal FROM Dockerfile with config metadata.
 		metadata := []imagemeta.Entry{configToMetadataEntry(cfg)}
 		metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
 		allLabels := append(opts.labels, fmt.Sprintf("%s=%s", imagemeta.MetadataLabel, metadataLabel))
@@ -676,15 +604,6 @@ func buildArgsFromConfig(cfg *config.DevContainer) map[string]string {
 		return map[string]string{}
 	}
 	return cfg.Build.Args
-}
-
-func dockerfileBuildMetadataEntries(cfg *config.DevContainer, baseLabels map[string]string, logger log.Logger) []imagemeta.Entry {
-	metadata := []imagemeta.Entry{}
-	if len(baseLabels) > 0 {
-		metadata = append(metadata, imagemeta.ReadMetadataFromLabels(baseLabels, logger)...)
-	}
-	metadata = append(metadata, configToMetadataEntry(cfg))
-	return metadata
 }
 
 // --- Output helpers ---
@@ -796,26 +715,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 		if len(imageNames) == 0 {
 			imageNames = []string{baseImageName + "-features"}
 		}
-		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, &FeatureBuildOptions{
-			Secrets:                     buildSecretsFromFile(opts.secretsFile),
-			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-			NoCache:                     opts.noCache,
-			CacheFrom:                   opts.cacheFrom,
-			CacheTo:                     opts.cacheTo,
-			Labels:                      opts.labels,
-			Platform:                    opts.platform,
-			Push:                        opts.push,
-			Output:                      opts.output,
-			ContainerEnv:                cfg.ContainerEnv,
-			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-			Lockfile:                    opts.experimentalLockfile,
-			FrozenLockfile:              opts.experimentalFrozenLockfile,
-			NoLockfile:                  opts.noLockfile,
-			ConfigPath:                  cfg.ConfigFilePath,
-			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-			SkipPersistCustoms:          opts.skipPersistCustoms,
-			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-		})
+		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, nil))
 	}
 
 	imageName := baseImageName
@@ -875,4 +775,34 @@ func composeServiceConfig(composeConfig map[string]any, service string) map[stri
 		return nil
 	}
 	return svc
+}
+
+// featureBuildOptions are the Feature install options every build path passes:
+// the build flags and the config's Feature settings. hostSub resolves the
+// Features' ${localEnv:…} references (nil leaves them as written);
+// additionalMetadata is appended to the image's metadata label.
+func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *config.HostSubContext, additionalMetadata ...imagemeta.Entry) *FeatureBuildOptions {
+	opts := r.opts
+	return &FeatureBuildOptions{
+		Secrets:                     buildSecretsFromFile(opts.secretsFile),
+		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
+		NoCache:                     opts.noCache,
+		CacheFrom:                   opts.cacheFrom,
+		CacheTo:                     opts.cacheTo,
+		Labels:                      opts.labels,
+		Platform:                    opts.platform,
+		Push:                        opts.push,
+		Output:                      opts.output,
+		ContainerEnv:                cfg.ContainerEnv,
+		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
+		Lockfile:                    opts.experimentalLockfile,
+		FrozenLockfile:              opts.experimentalFrozenLockfile,
+		NoLockfile:                  opts.noLockfile,
+		ConfigPath:                  cfg.ConfigFilePath,
+		LockfileExcludeIDs:          opts.lockfileExcludeIDs,
+		HostSub:                     hostSub,
+		SkipPersistCustoms:          opts.skipPersistCustoms,
+		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+		AdditionalMetadata:          additionalMetadata,
+	}
 }

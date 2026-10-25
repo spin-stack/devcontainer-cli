@@ -189,10 +189,9 @@ func TestMetadataInteropGoRoundTrip(t *testing.T) {
 	// Expected merge computed purely in-memory from the same entries.
 	expected := mergeFromLabel(t, imagemeta.GenerateMetadataLabel(entries))
 
-	// Build the Dockerfile exactly as build.go does for the no-features case
-	// (base image + metadata label), but pin the base to `scratch` so the build
-	// needs no network.
-	info := imagemeta.GenerateExtendImageBuild("scratch", nil, entries, "root", "", false, nil, nil)
+	// Label a `scratch` image with the metadata, as the no-Features builds do,
+	// so the build needs no network.
+	info := imagemeta.GenerateComposeLabelBuild("scratch", entries, "")
 	dockerfile := info.DockerfilePrefixContent + info.DockerfileContent
 
 	tmp := t.TempDir()
@@ -227,26 +226,66 @@ func TestMetadataInteropGoRoundTrip(t *testing.T) {
 	}
 }
 
-// TestMetadataInteropTSToGo is the TS->Go direction: build an image with the TS
-// oracle carrying the same features, then read the devcontainer.metadata label
-// with the Go reader and assert the normalized merge matches. It requires the
-// compiled reference oracle, so it is guarded to Skip in this hermetic worktree.
-//
-// TODO: run the full bidirectional exchange (TS build -> Go read AND Go build ->
-// TS read) end-to-end once the compiled oracle is present.
+// TestMetadataInteropTSToGo is the TS->Go direction: the same configuration -
+// a Dockerfile, a local Feature with its own containerEnv, init and hook, and
+// config-level properties - is built by the TS oracle and by this CLI, and both
+// images' devcontainer.metadata labels, read and merged by the Go reader, are
+// the same configuration. It needs the compiled oracle and Docker.
 func TestMetadataInteropTSToGo(t *testing.T) {
 	repoRoot := findRepoRoot(t)
-	oracle := filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")
-	if _, err := os.Stat(oracle); err != nil {
-		t.Skip("TS reference oracle not compiled; skipping TS->Go interop")
+	oracle := filepath.Join(repoRoot, "reference", "devcontainer.js")
+	if _, err := os.Stat(filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")); err != nil {
+		t.Skip("TS reference oracle not compiled (task reference)")
 	}
 	if !isDockerAvailable() {
 		t.Skip("docker required")
 	}
-	// When the oracle is present, the TS build produces a
-	// devcontainer.metadata label with different whitespace/key-order than Go's.
-	// The assertion still holds: read via the Go reader and compare the merge as
-	// normalized JSON. This guard keeps the worktree hermetic until the
-	// bidirectional build wiring is added.
-	t.Skip("TS->Go interop build wiring not implemented yet")
+	ctx := t.Context()
+
+	ws := t.TempDir()
+	for path, content := range map[string]string{
+		".devcontainer/devcontainer.json": `{
+	"build": {"dockerfile": "Dockerfile"},
+	"features": {"./feat": {}},
+	"remoteUser": "root",
+	"containerEnv": {"FROM_CONFIG": "1"},
+	"capAdd": ["SYS_PTRACE"],
+	"mounts": ["type=volume,source=interop-vol,target=/interop"],
+	"postCreateCommand": "echo config",
+	"customizations": {"vscode": {"extensions": ["a.b"]}}
+}`,
+		".devcontainer/Dockerfile":                     "FROM alpine:3\n",
+		".devcontainer/feat/devcontainer-feature.json": `{"id": "feat", "version": "1.0.0", "containerEnv": {"FROM_FEATURE": "2"}, "init": true, "postStartCommand": "echo feature"}`,
+		".devcontainer/feat/install.sh":                "#!/bin/sh\necho installed\n",
+	} {
+		full := filepath.Join(ws, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	label := func(tag string) string {
+		t.Helper()
+		out, err := exec.CommandContext(ctx, "docker", "inspect", "--format",
+			`{{ index .Config.Labels "`+imagemeta.MetadataLabel+`" }}`, tag).Output()
+		if err != nil {
+			t.Fatalf("docker inspect %s: %v", tag, err)
+		}
+		return string(bytes.TrimRight(out, "\n"))
+	}
+
+	const tsTag, goTag = "dcc-interop-ts:test", "dcc-interop-go:test"
+	t.Cleanup(func() { exec.Command("docker", "rmi", "-f", tsTag, goTag).Run() })
+	if out, err := exec.CommandContext(ctx, "node", oracle, "build", "--workspace-folder", ws, "--image-name", tsTag).CombinedOutput(); err != nil {
+		t.Fatalf("TS build: %v\n%s", err, out)
+	}
+	assertOutcome(t, runCLI(t, "build", "--workspace-folder", ws, "--image-name", goTag), "success")
+
+	tsMerged, goMerged := mergeFromLabel(t, label(tsTag)), mergeFromLabel(t, label(goTag))
+	if !jsonNormEqual(t, tsMerged, goMerged) {
+		t.Fatalf("the label TS wrote merges differently from Go's:\n--- TS\n%s\n--- Go\n%s", tsMerged, goMerged)
+	}
 }

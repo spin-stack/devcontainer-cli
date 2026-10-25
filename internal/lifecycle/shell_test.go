@@ -31,10 +31,7 @@ func TestShellServerExec(t *testing.T) {
 		}
 		return "hello\n", "", 0, nil
 	}}
-	s, err := NewShellServer(t.Context(), fe, "cid", "vscode", log.Null, "FOO=bar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewShellServer(t.Context(), fe, "cid", "vscode", "FOO=bar")
 
 	stdout, code, err := s.Exec("echo hello")
 	if err != nil {
@@ -66,7 +63,7 @@ func TestShellServerExecError(t *testing.T) {
 	fe := &fakeExecutor{fn: func(string) (string, string, int, error) {
 		return "", "", -1, errors.New("attach failed")
 	}}
-	s, _ := NewShellServer(t.Context(), fe, "cid", "", log.Null)
+	s := NewShellServer(t.Context(), fe, "cid", "")
 	if _, _, err := s.Exec("echo hi"); err == nil {
 		t.Fatal("expected the underlying exec error to propagate")
 	}
@@ -74,7 +71,7 @@ func TestShellServerExecError(t *testing.T) {
 
 func TestShellExecutorWorkdirAndFailure(t *testing.T) {
 	fe := &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 0, nil }}
-	s, _ := NewShellServer(t.Context(), fe, "cid", "", log.Null)
+	s := NewShellServer(t.Context(), fe, "cid", "")
 	ex := &ShellExecutor{Server: s, Log: log.Null, WorkDir: "/workspaces/project"}
 
 	if err := ex.Exec("make build"); err != nil {
@@ -110,5 +107,28 @@ func TestShellSingleQuote(t *testing.T) {
 				t.Fatalf("shellSingleQuote(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// ProbedRemoteEnv runs nothing for the none strategy, and otherwise returns
+// what the probe reads in the container as the remote user; a probe whose
+// command fails is an empty environment, not an error.
+func TestProbedRemoteEnv(t *testing.T) {
+	fe := &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 0, nil }}
+	if env := ProbedRemoteEnv(t.Context(), fe, log.Null, "cid", "vscode", ProbeNone, ""); len(env) != 0 || fe.calls != 0 {
+		t.Fatalf("none: env = %v, calls = %d", env, fe.calls)
+	}
+
+	fe = &fakeExecutor{fn: func(command string) (string, string, int, error) {
+		return "PATH=/usr/bin\nHOME=/home/vscode\n", "", 0, nil
+	}}
+	env := ProbedRemoteEnv(t.Context(), fe, log.Null, "cid", "vscode", ProbeLoginShell, "")
+	if env["HOME"] != "/home/vscode" || fe.lastUser != "vscode" {
+		t.Fatalf("probe: env = %v, user = %q", env, fe.lastUser)
+	}
+
+	fe = &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 1, errors.New("no shell") }}
+	if env := ProbedRemoteEnv(t.Context(), fe, log.Null, "cid", "vscode", ProbeLoginShell, ""); env == nil || len(env) != 0 {
+		t.Fatalf("failed probe: env = %v, want empty", env)
 	}
 }

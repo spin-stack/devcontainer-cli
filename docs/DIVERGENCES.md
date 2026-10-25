@@ -89,6 +89,16 @@ touches a compared surface, reflected in the parity matrix.
 Known gaps that are deliberately not closed; each is a conscious trade-off, not an
 oversight.
 
+- **Which of several failing parallel lifecycle commands is named.** When more than one
+  command of an object-form hook (`"postCreateCommand": {"a": ..., "b": ...}`) fails,
+  TS names the first failure in the object's key order (`Promise.allSettled` +
+  `find`); the command maps decode without key order here, so the first failure in
+  sorted order is named. With one failing command — the common case — the description
+  (`b of postCreateCommand from devcontainer.json failed.`) is identical. Keeping key
+  order would mean an ordered representation for every lifecycle command through the
+  config, metadata and merge; `TestHookErrorDescribesTheCommandAndItsOrigin` pins the
+  current choice.
+
 - **Byte-for-byte tarball parity is unattainable** because of `mtime` differences; tarball
   contents are compared by parsed structure, not raw bytes.
 - **Cloud registry auth matrix is out of default CI scope.** The hermetic auth paths
@@ -96,14 +106,15 @@ oversight.
   unit-tested; a real ACR (identity/refresh) / ECR / authenticated-GHCR matrix is
   secrets-gated and non-blocking. Credential helpers are Linux-only
   (`secretservice`/`pass`).
-- **TS→Go metadata interop** (build with the TS oracle, read with Go) is skip-guarded in
-  the hermetic unit tests (which do not compile the oracle); it is exercised end-to-end by
-  the runtime lane's metadata cases (`container-metadata-success`,
-  `read-configuration.features-configuration`). The Go→Go round-trip and whitespace
-  invariance are unit-tested.
+- **TS→Go metadata interop** is exercised by `TestMetadataInteropTSToGo`, which builds
+  the same configuration with the oracle and with this CLI and compares the merged
+  `devcontainer.metadata` labels; it runs when the oracle is compiled (`task reference`)
+  and Docker is available. The Go→Go round-trip and whitespace invariance are
+  unit-tested.
 - **Version banner** differs cosmetically: this CLI reports a git hash / CalVer, TS a
   semver, and the banner box width depends on the version length. Verbose commands
   (features-test / features-info) are compared via `exit_code` / stderr rather than the
   banner.
 - **Legacy Feature fallback via GitHub Releases** is not implemented; feature resolution
-  is OCI-first (the supported path for v2 features).
+  is OCI-first (the supported path for v2 features). A configuration that references one fails with the
+  resolution error (read-configuration included) instead of silently omitting the Feature.

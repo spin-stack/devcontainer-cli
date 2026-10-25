@@ -1,8 +1,10 @@
 package lifecycle
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -28,16 +30,13 @@ type shellExec interface {
 
 // ProbeRemoteEnv runs a shell command in the container to capture environment variables.
 // If sessionDataFolder is provided, results are cached in a JSON file inside the container.
-func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvProbeStrategy, remoteUser string, sessionDataFolder ...string) (map[string]string, error) {
+func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvProbeStrategy, remoteUser, sessionDataFolder string) (map[string]string, error) {
 	if strategy == ProbeNone || strategy == "" {
 		return map[string]string{}, nil
 	}
 
 	// Try cache first
-	cacheDir := ""
-	if len(sessionDataFolder) > 0 {
-		cacheDir = sessionDataFolder[0]
-	}
+	cacheDir := sessionDataFolder
 	if cacheDir != "" {
 		if cached := readEnvCache(shellServer, strategy, cacheDir); cached != nil {
 			logger.Write(fmt.Sprintf("Using cached env probe (%s)", strategy), log.LevelTrace)
@@ -116,20 +115,11 @@ func mergePaths(shellPath, containerPath string, rootUser bool) string {
 	result := strings.Split(shellPath, ":")
 	insertAt := 0
 	for entry := range strings.SplitSeq(containerPath, ":") {
-		idx := -1
-		for i, e := range result {
-			if e == entry {
-				idx = i
-				break
-			}
-		}
-		if idx == -1 {
-			if rootUser || !isSbinPath(entry) {
-				result = append(result[:insertAt], append([]string{entry}, result[insertAt:]...)...)
-				insertAt++
-			}
-		} else {
+		if idx := slices.Index(result, entry); idx != -1 {
 			insertAt = idx + 1
+		} else if rootUser || !isSbinPath(entry) {
+			result = slices.Insert(result, insertAt, entry)
+			insertAt++
 		}
 	}
 	return strings.Join(result, ":")
@@ -208,5 +198,22 @@ func parseEnvOutput(output string) map[string]string {
 		env[currentKey] = currentValue
 	}
 
+	return env
+}
+
+// ProbedRemoteEnv probes the remote user's environment in the container with a
+// shell of its own, as the up, set-up, run-user-commands and exec commands do
+// before running anything there. A probe that fails or is disabled yields an
+// empty environment.
+func ProbedRemoteEnv(ctx context.Context, exec ContainerExecutor, logger log.Logger, containerID, remoteUser string, strategy UserEnvProbeStrategy, sessionDataFolder string) map[string]string {
+	if strategy == ProbeNone {
+		return map[string]string{}
+	}
+	server := NewShellServer(ctx, exec, containerID, remoteUser)
+	defer server.Close()
+	env, _ := ProbeRemoteEnv(logger, server, strategy, remoteUser, sessionDataFolder)
+	if env == nil {
+		env = map[string]string{}
+	}
 	return env
 }

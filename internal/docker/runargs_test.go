@@ -37,9 +37,6 @@ func TestParseMountSpec_BareRO(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func boolPtr(b bool) *bool { return new(b) }
-
 // TestCreateContainerArgs_Table asserts the exact `docker create` argument
 // slice for discriminating inputs. Ordering is load-bearing: id-labels first,
 // then mounts/env/caps/security, flags, runArgs (arbitrary devcontainer.json

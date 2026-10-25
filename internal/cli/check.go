@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"text/tabwriter"
 
 	"github.com/devcontainers/cli/internal/doctor"
@@ -104,7 +105,7 @@ func runSetup(ctx context.Context, out Output, opts *setupOpts) error {
 	// Re-run diagnostics after remediation so the persisted state reflects the
 	// fixed system (skip when nothing was applied or in dry-run).
 	final := report
-	if !opts.dryRun && appliedAny(actions) {
+	if !opts.dryRun && slices.ContainsFunc(actions, func(a doctor.Action) bool { return a.Applied }) {
 		final = doctor.Run(ctx, env)
 	}
 	saveErr := doctor.Save(final)
@@ -131,15 +132,6 @@ func runSetup(ctx context.Context, out Output, opts *setupOpts) error {
 		return &coreerrors.ExitCodeError{Code: 1}
 	}
 	return nil
-}
-
-func appliedAny(actions []doctor.Action) bool {
-	for _, a := range actions {
-		if a.Applied {
-			return true
-		}
-	}
-	return false
 }
 
 // writeReportTable renders the ✔/⚠/✖ table plus per-line remediation hints.
@@ -208,7 +200,7 @@ func warnUncheckedHost(out Output) {
 }
 
 // isTerminalWriter reports whether w is a character device (a real terminal).
-func isTerminalWriter(w io.Writer) bool {
+func isTerminalWriter(w any) bool {
 	f, ok := w.(*os.File)
 	if !ok {
 		return false

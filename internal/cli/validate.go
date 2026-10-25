@@ -52,6 +52,30 @@ func validateTerminalImplications(columns, rows int) error {
 }
 
 // validateEnum checks that a flag value is one of the allowed choices.
+// logLevels and logFormats are the choices TS yargs declares for --log-level
+// and --log-format.
+var (
+	logLevels  = []string{"info", "debug", "trace"}
+	logFormats = []string{"text", "json"}
+)
+
+// enumFlag is a flag value that must be one of choices.
+type enumFlag struct {
+	flag, value string
+	choices     []string
+}
+
+// validateEnums returns the error for the first flag whose value is not one of
+// its choices, in the order given (yargs reports the first invalid choice).
+func validateEnums(flags ...enumFlag) error {
+	for _, f := range flags {
+		if err := validateEnum(f.flag, f.value, f.choices); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func validateEnum(flagName, value string, choices []string) error {
 	if slices.Contains(choices, value) {
 		return nil

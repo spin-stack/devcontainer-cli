@@ -41,16 +41,11 @@ func realFeaturesInfoCmd() *cobra.Command {
 }
 
 func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel, outputFormat string) error {
-	for _, v := range []struct {
-		flag, val string
-		choices   []string
-	}{
-		{"log-level", logLevel, []string{"info", "debug", "trace"}},
-		{"output-format", outputFormat, []string{"text", "json"}},
-	} {
-		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return err
-		}
+	if err := validateEnums(
+		enumFlag{"log-level", logLevel, logLevels},
+		enumFlag{"output-format", outputFormat, logFormats},
+	); err != nil {
+		return err
 	}
 
 	logger := log.New(log.Options{

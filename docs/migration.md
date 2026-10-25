@@ -68,6 +68,25 @@ The Go-only commands and flags are additive. Existing workflows do not need to u
 them, but [Go-only features](go-only-features.md) describes the operational benefits
 available after migration.
 
+## Upgrading from an earlier release of this CLI
+
+Releases that close a divergence from the official CLI can change behavior that
+automation relied on. These changes match the official CLI, so a workflow that also
+runs the official CLI is unaffected:
+
+- `features package`, `features publish`, and `templates publish` require the
+  `<target>` folder argument. Earlier releases defaulted it to the current folder;
+  without it the command now exits 1 with `Not enough non-option arguments: got 0,
+  need at least 1`. Pass the folder explicitly, for example
+  `devcontainer features package . --output-folder output`.
+- A configuration that references a legacy GitHub Releases Feature fails, in
+  `read-configuration` too, instead of silently leaving the Feature out.
+- `up` with `--id-label` and no workspace folder or configuration fails with
+  `No dev container config and no workspace found.` instead of attaching to the
+  matching container.
+- Features are staged under `<tmp>/devcontainercli-<user>/container-features/`,
+  one folder per build, and that folder is kept as the official CLI keeps it.
+
 ## Rollback
 
 Keep the previous official CLI version available during rollout. Because project

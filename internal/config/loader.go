@@ -192,7 +192,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		Platform:                 currentPlatform(),
 		LocalWorkspaceFolder:     localWS,
 		ContainerWorkspaceFolder: wsConfig.WorkspaceFolder,
-		Env:                      envFromOS(),
+		Env:                      EnvMap(os.Environ()),
 		ConfigFilePath:           config.ConfigFilePath,
 	}
 
@@ -320,6 +320,12 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 // --- Helpers ---
 
 func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWorkspaceGitRoot, mountGitWorktreeCommonDir bool) *WorkspaceConfig {
+	// With no workspace (up --config without --workspace-folder) nothing is
+	// mounted: the folder and mount are the config's own, possibly empty, as TS
+	// getWorkspaceConfiguration leaves them for an undefined workspace.
+	if workspace.RootFolderPath == "" && !config.IsComposeConfig() {
+		return &WorkspaceConfig{WorkspaceFolder: config.WorkspaceFolder, WorkspaceMount: config.WorkspaceMount}
+	}
 	sourceFolder := workspace.RootFolderPath
 
 	// Detect git root for workspace mounting (matches TS getHostMountFolder)
@@ -489,7 +495,7 @@ func substituteHostString(workspace *Workspace, s string) string {
 	ctx := HostSubContext{
 		Platform:             currentPlatform(),
 		LocalWorkspaceFolder: strings.TrimRight(workspace.RootFolderPath, "/\\"),
-		Env:                  envFromOS(),
+		Env:                  EnvMap(os.Environ()),
 	}
 	out, err := NewVariableResolver().resolveString(SubstitutionContext{HostSubContext: ctx}, PhaseHost, s)
 	if err != nil {
@@ -557,14 +563,17 @@ func currentPlatform() string {
 	return os.Getenv("GOOS_OVERRIDE") // for testing; falls back to runtime
 }
 
-func envFromOS() map[string]string {
-	env := make(map[string]string)
-	for _, e := range os.Environ() {
-		if before, after, ok := strings.Cut(e, "="); ok {
-			env[before] = after
+// EnvMap turns KEY=VALUE entries (os.Environ, a container's Config.Env, id
+// labels) into a map; an entry without '=' is skipped and a repeated key keeps
+// its last value.
+func EnvMap(entries []string) map[string]string {
+	m := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if k, v, ok := strings.Cut(e, "="); ok {
+			m[k] = v
 		}
 	}
-	return env
+	return m
 }
 
 func remarshal(raw map[string]any, target *DevContainer) error {

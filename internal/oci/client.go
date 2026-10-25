@@ -59,13 +59,7 @@ type Client struct {
 	authPolicy *AuthPolicy
 }
 
-// NewClient creates an OCI client. Auth and retries are handled by oras-go (see
-// repository()); the HTTP transport is the shared proxy/CA-aware transport.
-func NewClient(logger log.Logger, env map[string]string) *Client {
-	return NewClientWithAuthPolicy(logger, env, DefaultAuthPolicy())
-}
-
-// NewClientWithAuthPolicy is NewClient with an explicit OCI auth policy, so every
+// NewClientWithAuthPolicy creates an OCI client with the given auth policy, so every
 // client built for one CLI invocation shares its hardening settings and
 // diagnostics.
 func NewClientWithAuthPolicy(logger log.Logger, env map[string]string, policy *AuthPolicy) *Client {

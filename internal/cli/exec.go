@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/lifecycle"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/moby/moby/api/types/container"
 	"github.com/spf13/cobra"
 )
 
@@ -69,19 +71,6 @@ func newExecCmd() *cobra.Command {
 				return err
 			}
 
-			opts.workspaceFolder, _ = cmd.Flags().GetString("workspace-folder")
-			opts.configPath, _ = cmd.Flags().GetString("config")
-			opts.overrideConfig, _ = cmd.Flags().GetString("override-config")
-			opts.dockerPath, _ = cmd.Flags().GetString("docker-path")
-			opts.containerID, _ = cmd.Flags().GetString("container-id")
-			opts.idLabels, _ = cmd.Flags().GetStringArray("id-label")
-			opts.logLevel, _ = cmd.Flags().GetString("log-level")
-			opts.logFormat, _ = cmd.Flags().GetString("log-format")
-			opts.remoteEnvs, _ = cmd.Flags().GetStringArray("remote-env")
-			opts.defaultUserEnvProbe, _ = cmd.Flags().GetString("default-user-env-probe")
-			opts.terminalColumns, _ = cmd.Flags().GetInt("terminal-columns")
-			opts.terminalRows, _ = cmd.Flags().GetInt("terminal-rows")
-
 			if len(cmdArgs) == 0 {
 				return fmt.Errorf("exec requires at least 1 arg")
 			}
@@ -90,21 +79,21 @@ func newExecCmd() *cobra.Command {
 	}
 
 	f := cmd.Flags()
-	f.String("workspace-folder", "", "Workspace folder path.")
-	f.String("config", "", "devcontainer.json path.")
-	f.String("override-config", "", "Override config path.")
-	f.String("docker-path", "", "Docker CLI path.")
-	f.String("container-id", "", "Container ID.")
-	f.StringArray("id-label", nil, "Id label(s).")
-	f.String("log-level", "info", "Log level.")
-	f.String("log-format", "text", "Log format.")
-	f.StringArray("remote-env", nil, "Remote env vars.")
+	f.StringVar(&opts.workspaceFolder, "workspace-folder", "", "Workspace folder path.")
+	f.StringVar(&opts.configPath, "config", "", "devcontainer.json path.")
+	f.StringVar(&opts.overrideConfig, "override-config", "", "Override config path.")
+	f.StringVar(&opts.dockerPath, "docker-path", "", "Docker CLI path.")
+	f.StringVar(&opts.containerID, "container-id", "", "Container ID.")
+	f.StringArrayVar(&opts.idLabels, "id-label", nil, "Id label(s).")
+	f.StringVar(&opts.logLevel, "log-level", "info", "Log level.")
+	f.StringVar(&opts.logFormat, "log-format", "text", "Log format.")
+	f.StringArrayVar(&opts.remoteEnvs, "remote-env", nil, "Remote env vars.")
 	f.String("docker-compose-path", "", "")
 	f.String("container-data-folder", "", "")
 	f.String("container-system-data-folder", "", "")
 	f.Bool("mount-workspace-git-root", true, "")
 	f.Bool("mount-git-worktree-common-dir", false, "")
-	f.String("default-user-env-probe", "loginInteractiveShell", "")
+	f.StringVar(&opts.defaultUserEnvProbe, "default-user-env-probe", "loginInteractiveShell", "")
 	f.Bool("skip-feature-auto-mapping", false, "")
 	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
 	f.String("user-data-folder", "", "")
@@ -126,16 +115,11 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
-	for _, v := range []struct {
-		flag, val string
-		choices   []string
-	}{
-		{"log-level", opts.logLevel, []string{"info", "debug", "trace"}},
-		{"log-format", opts.logFormat, []string{"text", "json"}},
-	} {
-		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return err
-		}
+	if err := validateEnums(
+		enumFlag{"log-level", opts.logLevel, logLevels},
+		enumFlag{"log-format", opts.logFormat, logFormats},
+	); err != nil {
+		return err
 	}
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return err
@@ -148,11 +132,10 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	defer closeLog()
 
 	logger := log.New(log.Options{
-		Version:    cliVersion(),
-		Level:      log.ParseLevel(opts.logLevel),
-		Format:     opts.logFormat,
-		Writer:     logDst,
-		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
+		Version: cliVersion(),
+		Level:   log.ParseLevel(opts.logLevel),
+		Format:  opts.logFormat,
+		Writer:  logDst,
 	})
 
 	// 1. If workspace-folder provided without container-id, validate config exists early
@@ -200,22 +183,15 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		return fmt.Errorf("Dev container is not running.")
 	}
 
-	// 4. Get containerEnv from running container
-	var containerEnv map[string]string
-	if inspect.Config != nil {
-		containerEnv = envSliceToMap(inspect.Config.Env)
-	} else {
-		containerEnv = map[string]string{}
+	if inspect.Config == nil {
+		inspect.Config = &container.Config{}
 	}
 
+	// 4. Get containerEnv from running container
+	containerEnv := config.EnvMap(inspect.Config.Env)
+
 	// 5. Determine remoteUser: container default → metadata → config
-	remoteUser := ""
-	if inspect.Config != nil {
-		remoteUser = inspect.Config.User
-	}
-	if remoteUser == "" {
-		remoteUser = "root"
-	}
+	remoteUser := cmp.Or(inspect.Config.User, "root")
 
 	// 6. Read image metadata from container labels
 	entries := imagemeta.ReadMetadataFromLabels(inspect.Config.Labels, logger)
@@ -235,14 +211,7 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	resolvedRemoteEnv := map[string]string{}
 
 	// Probed env (lowest priority)
-	if probeStrategy != lifecycle.ProbeNone {
-		probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
-		if probeErr == nil {
-			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser)
-			probeServer.Close()
-			maps.Copy(resolvedRemoteEnv, probedEnv)
-		}
-	}
+	maps.Copy(resolvedRemoteEnv, lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, ""))
 
 	// From merged metadata
 	for k, v := range merged.RemoteEnv {
@@ -282,7 +251,7 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	// --log-format json with a piped stdin (exactly how the VS Code extension
 	// invokes exec) makes docker fail with "cannot attach stdin to a
 	// TTY-enabled container". The TS CLI only uses a PTY when isTTY is true.
-	isTTY := isTerminal(os.Stdin) && isTerminal(os.Stdout)
+	isTTY := isTerminalWriter(os.Stdin) && isTerminalWriter(os.Stdout)
 	if isTTY {
 		dockerArgs = append(dockerArgs, "-it")
 	} else {
@@ -416,14 +385,6 @@ func findComposeContainer(ctx context.Context, engine *docker.EngineClient, opts
 	}
 
 	return ""
-}
-
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 // splitExecArgs separates devcontainer flags from the command to execute.

@@ -162,16 +162,18 @@ func TestJSONHandler_Progress(t *testing.T) {
 	}
 }
 
+// Null accepts every call and writes nothing; what can go wrong is a panic.
 func TestNullLog(t *testing.T) {
-	// Should not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Null panicked: %v", r)
+		}
+	}()
 	Null.Write("test")
 	Null.Raw("test")
 	ts := Null.Start("test")
 	Null.Stop("test", ts)
 	Null.Event(Event{Type: "text"})
-	if Null.Dimensions() != nil {
-		t.Error("Null dimensions should be nil")
-	}
 }
 
 func TestLogLevelFilter_TerminalVsJSON(t *testing.T) {

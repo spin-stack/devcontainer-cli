@@ -15,7 +15,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +30,7 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
-	"github.com/devcontainers/cli/internal/pfs"
+	mobyclient "github.com/moby/moby/client"
 )
 
 // FeatureBuildOptions holds extra build options to thread through feature install.
@@ -70,27 +73,37 @@ type FeatureBuildOptions struct {
 	OverrideFeatureInstallOrder []string
 }
 
-// extendImageWithFeatures fetches features from OCI, generates the extended
-// Dockerfile, and builds the image with features installed.
-// fetchFeatureResult holds fetched features and their temp directory.
+// fetchFeatureResult holds the fetched features and their features folder.
 type fetchFeatureResult struct {
 	FeatureSets []*features.Set
-	TmpDir      string // caller must os.RemoveAll when done
+	// TmpDir is the features folder (TS dstFolder):
+	// <cacheFolder>/container-features/<cliVersion>-<ms>, holding each Feature
+	// at its consecutiveId. Like TS, the build paths keep it.
+	TmpDir string
 }
 
-// fetchFeatureSets fetches features and returns them in install order. reg is the
-// registry seam; pass nil for the default OCI client.
-func fetchFeatureSets(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsWithOrder(ctx, logger, reg, featuresCfg, featuresBasePath, skipAutoMapping, lockfile, nil)
+// fetchFeatureSets fetches features, without a lockfile or an install-order
+// override, and returns them in install order.
+func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, featuresBasePath, skipAutoMapping, nil, nil)
+}
+
+// createFeaturesFolder creates the folder the Features are staged in, TS
+// createFeaturesTempFolder: <cacheFolder>/container-features/<cliVersion>-<ms>.
+func createFeaturesFolder() (string, error) {
+	dir := filepath.Join(cacheFolder(), "container-features", fmt.Sprintf("%s-%d", cliVersion(), time.Now().UnixMilli()))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create features folder: %w", err)
+	}
+	return dir, nil
 }
 
 // fetchFeatureSetsWithOrder resolves the feature dependency graph through the
 // unified features.BuildDependencyGraph builder, applying
 // overrideFeatureInstallOrder and returning the FeatureSets in install
-// order. Each returned Set's content is staged under the returned TmpDir
-// at _dev_container_feature_<installOrderIndex>, matching the generated
-// Dockerfile's COPY paths.
-func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.Registry, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+// order. Each returned Set's content is staged in the features folder at its
+// consecutiveId, `<feature id>_<installOrderIndex>`, as TS fetchFeatures does.
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
@@ -103,14 +116,11 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.R
 
 	logger.Write(fmt.Sprintf("Installing %d feature(s)...", len(userFeatures)), log.LevelInfo)
 
-	ociClient := reg
-	if ociClient == nil {
-		ociClient = newOCIClient(ctx, logger)
-	}
+	ociClient := newOCIClient(ctx, logger)
 
-	tmpDir, err := os.MkdirTemp("", "devcontainer-features-")
+	dstFolder, err := createFeaturesFolder()
 	if err != nil {
-		return nil, fmt.Errorf("create temp dir: %w", err)
+		return nil, err
 	}
 
 	// processFeature is the injected seam (TS processFeature): given a node's
@@ -120,7 +130,7 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.R
 	// name, applied later by realignFeatureDirs.
 	stageIdx := 0
 	nextStageDir := func() string {
-		dir := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_stage_%d", stageIdx))
+		dir := filepath.Join(dstFolder, fmt.Sprintf("%s%d", featureStagePrefix, stageIdx))
 		stageIdx++
 		return dir
 	}
@@ -131,28 +141,33 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, reg oci.R
 
 	graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, overrideOrder, lockfile)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		os.RemoveAll(dstFolder)
 		return nil, err
 	}
 	if len(graph) == 0 {
-		os.RemoveAll(tmpDir)
+		os.RemoveAll(dstFolder)
 		return nil, nil
 	}
 
-	orderedSets, err := features.ComputeInstallationOrder(logger, graph, nil)
+	orderedSets, err := features.ComputeInstallationOrder(logger, graph)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		os.RemoveAll(dstFolder)
 		return nil, fmt.Errorf("compute Feature install order: %w", err)
 	}
 
-	if err := realignFeatureDirs(tmpDir, orderedSets); err != nil {
-		os.RemoveAll(tmpDir)
+	if err := realignFeatureDirs(dstFolder, orderedSets); err != nil {
+		os.RemoveAll(dstFolder)
 		return nil, err
 	}
 
 	logger.Write(fmt.Sprintf("Install order: %s", featureSetIDs(orderedSets)), log.LevelTrace)
-	return &fetchFeatureResult{FeatureSets: orderedSets, TmpDir: tmpDir}, nil
+	logFeatureAdvisories(ctx, logger, orderedSets)
+	return &fetchFeatureResult{FeatureSets: orderedSets, TmpDir: dstFolder}, nil
 }
+
+// featureStagePrefix names the folders a Feature is fetched into before its
+// install-order index, and so its consecutiveId, is known.
+const featureStagePrefix = ".stage-"
 
 // featureFromMetadata builds a features.Feature for a local or direct-tarball
 // feature from its parsed devcontainer-feature.json (m), overriding the identity
@@ -253,7 +268,16 @@ func processInstallFeature(
 			return nil, fmt.Errorf("parse local feature %q metadata: %w", id, err)
 		}
 
-		feat := featureFromMetadata(m, id, opts, featureDir)
+		// TS: the Feature's id is the folder name and its name the user's
+		// reference, until devcontainer-feature.json's id and name replace them.
+		featID := m.ID
+		if featID == "" {
+			featID = filepath.Base(id)
+		}
+		feat := featureFromMetadata(m, featID, opts, featureDir)
+		if feat.Name == "" {
+			feat.Name = id
+		}
 		return &features.Set{
 			SourceInfo:      &features.LocalSource{LocalPath: id, ResolvedPath: resolvedPath, UserID: id},
 			Features:        []features.Feature{feat},
@@ -262,22 +286,18 @@ func processInstallFeature(
 
 	case features.SourceDirectTarball:
 		featureDir := nextStageDir()
-		pfs.MkdirAll(featureDir)
+		os.MkdirAll(featureDir, 0o755)
 
 		logger.Write(fmt.Sprintf("Fetching feature tarball %s...", id), log.LevelInfo)
 		blobData, computedDigest, dlErr := downloadFeatureTarball(context.Background(), logger, id, osEnvMap())
 		if dlErr != nil {
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, dlErr)
 		}
-		// Verify integrity against the lockfile pin when present (TS parity: it
-		// rejects a tarball whose digest does not match the expected one).
-		if lockfile != nil {
-			if entry, ok := lockfile.Features[id]; ok && entry.Integrity != "" && entry.Integrity != computedDigest {
-				return nil, fmt.Errorf("ERR: Feature '%s' tarball digest %s did not match lockfile integrity %s", id, computedDigest, entry.Integrity)
-			}
+		if err := verifyTarballDigest(lockfile, id, computedDigest); err != nil {
+			return nil, err
 		}
 		tgzPath := filepath.Join(featureDir, "feature.tgz")
-		if err := pfs.WriteFile(tgzPath, blobData); err != nil {
+		if err := os.WriteFile(tgzPath, blobData, 0o644); err != nil {
 			return nil, fmt.Errorf("write feature tarball: %w", err)
 		}
 		if err := extractTarGz(tgzPath, featureDir); err != nil {
@@ -290,10 +310,13 @@ func processInstallFeature(
 		}
 		featID := m.ID
 		if featID == "" {
-			featID = filepath.Base(featureDir)
+			featID = tarballFeatureID(id)
 		}
 
 		feat := featureFromMetadata(m, featID, opts, featureDir)
+		if feat.Name == "" {
+			feat.Name = id
+		}
 		return &features.Set{
 			SourceInfo:      &features.TarballSource{TarballURI: id, UserID: id},
 			Features:        []features.Feature{feat},
@@ -337,9 +360,9 @@ func processInstallFeature(
 		}
 
 		featureDir := nextStageDir()
-		pfs.MkdirAll(featureDir)
+		os.MkdirAll(featureDir, 0o755)
 		tgzPath := filepath.Join(featureDir, "feature.tgz")
-		if err := pfs.WriteFile(tgzPath, blobData); err != nil {
+		if err := os.WriteFile(tgzPath, blobData, 0o644); err != nil {
 			return nil, fmt.Errorf("write feature tarball: %w", err)
 		}
 		if err := extractTarGz(tgzPath, featureDir); err != nil {
@@ -380,10 +403,7 @@ func processInstallFeature(
 			feat.Version = ref.Tag
 		}
 
-		userIDNoVer := id
-		if idx := strings.LastIndex(id, ":"); idx > 0 {
-			userIDNoVer = id[:idx]
-		}
+		userIDNoVer := featureIDWithoutVersion(id)
 
 		set := &features.Set{
 			SourceInfo: &features.OCISource{
@@ -431,42 +451,142 @@ func processInstallFeature(
 	}
 }
 
-// realignFeatureDirs renames each ordered Set's staging directory to
-// _dev_container_feature_<installOrderIndex> under tmpDir, so the generated
-// Dockerfile's `COPY _dev_container_feature_<i>` resolves to the right content.
-// Orphaned staging directories (duplicates and soft-dependency probes that are
-// not installed) are removed so they don't bloat the build context.
-func realignFeatureDirs(tmpDir string, sets []*features.Set) error {
-	keep := make(map[string]bool, len(sets))
+// featureIDWithoutVersion is TS getFeatureIdWithoutVersion: the reference
+// without its last `:tag` or `@digest` (a registry port is kept).
+func featureIDWithoutVersion(id string) string {
+	if loc := featureVersionDelimiter.FindStringIndex(id); loc != nil {
+		return id[:loc[0]]
+	}
+	return id
+}
+
+var featureVersionDelimiter = regexp.MustCompile(`[:@][^/]*$`)
+
+// tarballFeatureID is the id TS processFeatureIdentifier derives from a direct
+// tarball's name, devcontainer-feature-<id>.tgz, used when the Feature's
+// devcontainer-feature.json declares none.
+func tarballFeatureID(uri string) string {
+	name := uri
+	if u, err := url.Parse(uri); err == nil {
+		name = u.Path
+	}
+	name = path.Base(name)
+	if m := regexp.MustCompile(`devcontainer-feature-(.*)\.tgz`).FindStringSubmatch(name); m != nil {
+		return m[1]
+	}
+	return name
+}
+
+// realignFeatureDirs moves each ordered Set's staging directory to
+// <dstFolder>/<consecutiveId>, consecutiveId being TS's
+// `${feature.id}_${installOrderIndex}`, so the generated Dockerfile's
+// references resolve to the right content. Orphaned staging directories
+// (duplicates and soft-dependency probes that are not installed) are removed so
+// they don't bloat the build context.
+func realignFeatureDirs(dstFolder string, sets []*features.Set) error {
 	for i, set := range sets {
 		if len(set.Features) == 0 || set.Features[0].CachePath == "" {
 			continue
 		}
+		consecutiveID := fmt.Sprintf("%s_%d", set.Features[0].ID, i)
 		src := set.Features[0].CachePath
-		dst := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_%d", i))
+		dst := filepath.Join(dstFolder, consecutiveID)
 		if src != dst {
 			os.RemoveAll(dst)
 			if err := os.Rename(src, dst); err != nil {
 				if cpErr := copyDir(src, dst); cpErr != nil {
-					return fmt.Errorf("stage feature %d: %w", i, cpErr)
+					return fmt.Errorf("stage feature %s: %w", consecutiveID, cpErr)
 				}
 				os.RemoveAll(src)
 			}
 			set.Features[0].CachePath = dst
 		}
-		// consecutiveId is the TS `${feature.id}_${idx}` identity (NOT the staging
-		// directory name, which stays _dev_container_feature_<i> for the COPY).
-		set.Features[0].ConsecutiveId = fmt.Sprintf("%s_%d", set.Features[0].ID, i)
-		keep[dst] = true
+		set.Features[0].ConsecutiveId = consecutiveID
 	}
 	// Remove any leftover staging directories.
-	entries, _ := os.ReadDir(tmpDir)
+	entries, _ := os.ReadDir(dstFolder)
 	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "_dev_container_feature_stage_") {
-			os.RemoveAll(filepath.Join(tmpDir, e.Name()))
+		if e.IsDir() && strings.HasPrefix(e.Name(), featureStagePrefix) {
+			os.RemoveAll(filepath.Join(dstFolder, e.Name()))
 		}
 	}
 	return nil
+}
+
+// stageFeatureBuildFiles writes the files the features Dockerfile refers to, as
+// TS getFeaturesBuildOptions does: devcontainer-features.builtin.env in the
+// features folder, and devcontainer-features.env plus the
+// devcontainer-features-install.sh wrapper in each Feature's folder. The option
+// order, deprecation and currentId come from the Feature's staged
+// devcontainer-feature.json, which TS spreads into the Feature.
+func stageFeatureBuildFiles(dstFolder string, sets []*features.Set, containerUser, remoteUser string) error {
+	if err := os.WriteFile(filepath.Join(dstFolder, imagemeta.FeaturesBuiltinEnvFile), []byte(imagemeta.FeaturesBuiltinEnvContent(containerUser, remoteUser)), 0o644); err != nil {
+		return fmt.Errorf("write Features builtin env: %w", err)
+	}
+	for _, set := range sets {
+		for _, f := range set.Features {
+			if f.CachePath == "" {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(f.CachePath, "devcontainer-feature.json"))
+			if err != nil {
+				return fmt.Errorf("read Feature %s metadata: %w", f.ID, err)
+			}
+			std, err := jsonc.StripComments(data)
+			if err != nil {
+				return fmt.Errorf("parse Feature %s metadata: %w", f.ID, err)
+			}
+			info, err := imagemeta.ParseFeatureFileInfo(std)
+			if err != nil {
+				return fmt.Errorf("parse Feature %s metadata: %w", f.ID, err)
+			}
+			vars := imagemeta.FeatureEnvVariables(f, info)
+			if err := os.WriteFile(filepath.Join(f.CachePath, imagemeta.FeatureEnvFile), []byte(strings.Join(vars, "\n")), 0o644); err != nil {
+				return fmt.Errorf("write Feature %s env: %w", f.ID, err)
+			}
+			wrapper := imagemeta.FeatureInstallWrapperScript(f, set, info, vars)
+			if err := os.WriteFile(filepath.Join(f.CachePath, imagemeta.FeatureInstallWrapperFile), []byte(wrapper), 0o644); err != nil {
+				return fmt.Errorf("write Feature %s install wrapper: %w", f.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// buildFeatureContentImage builds the temporary image holding the Features'
+// content for a build without BuildKit build contexts (TS
+// getFeaturesBuildOptions, non-BuildKit branch).
+func buildFeatureContentImage(ctx context.Context, dockerClient *docker.Client, folder string) error {
+	dockerfile := filepath.Join(folder, "Dockerfile.buildContent")
+	if err := os.WriteFile(dockerfile, []byte("\n\tFROM scratch\n\tCOPY . /tmp/build-features/\n\t"), 0o644); err != nil {
+		return fmt.Errorf("write feature content Dockerfile: %w", err)
+	}
+	res, err := dockerClient.Build(ctx, docker.BuildOptions{
+		Dockerfile:  dockerfile,
+		ContextPath: folder,
+		Tags:        []string{imagemeta.ComposeFeatureContentImage},
+	})
+	if err != nil {
+		return fmt.Errorf("build feature content image: %w", err)
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("build feature content image failed (exit %d): %s", res.ExitCode, string(res.Stderr))
+	}
+	return nil
+}
+
+// engineAtLeast23 reports whether the daemon is Docker Engine >= 23 (TS
+// skipDefaultSyntax: BuildKit's built-in frontend supports build contexts).
+func engineAtLeast23(ctx context.Context, engine *docker.EngineClient) bool {
+	if engine == nil || engine.API == nil {
+		return false
+	}
+	ver, err := engine.API.ServerVersion(ctx, mobyclient.ServerVersionOptions{})
+	if err != nil {
+		return false
+	}
+	major, _ := strconv.Atoi(strings.SplitN(ver.Version, ".", 2)[0])
+	return major >= 23
 }
 
 // extendImageWithFeatures fetches features from OCI, generates the extended
@@ -517,21 +637,12 @@ func extendImageWithFeatures(
 	imageNames []string,
 	fbOpts *FeatureBuildOptions,
 ) ([]string, error) {
-	skipAutoMap := fbOpts != nil && fbOpts.SkipFeatureAutoMapping
-	featuresBasePath := ""
-	if fbOpts != nil {
-		featuresBasePath = fbOpts.FeaturesBasePath
-	}
 	// Read the lockfile (if any) to pin feature resolution to recorded digests.
 	var lockfile *features.Lockfile
-	if fbOpts != nil && fbOpts.ConfigPath != "" && !fbOpts.NoLockfile {
+	if fbOpts.ConfigPath != "" && !fbOpts.NoLockfile {
 		lockfile, _, _ = features.ReadLockfile(fbOpts.ConfigPath)
 	}
-	var overrideOrder []string
-	if fbOpts != nil {
-		overrideOrder = fbOpts.OverrideFeatureInstallOrder
-	}
-	result, err := fetchFeatureSetsWithOrder(ctx, logger, nil, featuresCfg, featuresBasePath, skipAutoMap, lockfile, overrideOrder)
+	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, fbOpts.FeaturesBasePath, fbOpts.SkipFeatureAutoMapping, lockfile, fbOpts.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -539,12 +650,12 @@ func extendImageWithFeatures(
 		return imageNames, nil
 	}
 	featureSets := result.FeatureSets
+	// The features folder is kept, as TS keeps it.
 	tmpDir := result.TmpDir
-	defer os.RemoveAll(tmpDir)
 
 	// Resolve ${localEnv:…} / ${localWorkspaceFolder} / … in each Feature's
 	// containerEnv and mounts, like the config's own values (upstream #308).
-	if fbOpts != nil && fbOpts.HostSub != nil {
+	if fbOpts.HostSub != nil {
 		if err := substituteFeatureHostVars(featureSets, *fbOpts.HostSub); err != nil {
 			return nil, err
 		}
@@ -553,7 +664,7 @@ func extendImageWithFeatures(
 	// Write/validate the features lockfile when requested (opt-in via the
 	// --experimental-lockfile / --experimental-frozen-lockfile flags). Writing
 	// records the resolved digests for reproducibility; frozen aborts on drift.
-	if fbOpts != nil && (fbOpts.Lockfile || fbOpts.FrozenLockfile) && fbOpts.ConfigPath != "" {
+	if (fbOpts.Lockfile || fbOpts.FrozenLockfile) && fbOpts.ConfigPath != "" {
 		lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
 		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, features.WriteOptions{Frozen: fbOpts.FrozenLockfile, Force: fbOpts.Lockfile}); err != nil {
 			return nil, fmt.Errorf("lockfile: %w", err)
@@ -570,56 +681,55 @@ func extendImageWithFeatures(
 		metadata = append(metadata, baseEntries...)
 	}
 	for _, fs := range featureSets {
-		skipPersistCustoms := fbOpts != nil && fbOpts.SkipPersistCustoms
-		metadata = append(metadata, featureMetadataEntry(fs, skipPersistCustoms))
+		metadata = append(metadata, featureMetadataEntry(fs, fbOpts.SkipPersistCustoms))
 	}
-	if fbOpts != nil && len(fbOpts.AdditionalMetadata) > 0 {
-		metadata = append(metadata, fbOpts.AdditionalMetadata...)
-	}
+	metadata = append(metadata, fbOpts.AdditionalMetadata...)
 
-	// Resolve containerUser/remoteUser matching TS findContainerUsers():
-	// metadata containerUser → image Config.User → "root"
-	// metadata remoteUser → containerUser
-	containerUser := "root"
-	remoteUser := "root"
-	if baseImageInfo.Config != nil {
-		if baseImageInfo.Config.User != "" {
-			containerUser = baseImageInfo.Config.User
-		}
-		if len(baseEntries) > 0 {
-			baseMerged := imagemeta.MergeConfiguration(baseEntries)
-			if baseMerged.ContainerUser != "" {
-				containerUser = baseMerged.ContainerUser
-			}
-			if baseMerged.RemoteUser != "" {
-				remoteUser = baseMerged.RemoteUser
-			}
-		}
+	// TS findContainerUsers over the image, Features and config metadata.
+	imageUser := "root"
+	if baseImageInfo.Config != nil && baseImageInfo.Config.User != "" {
+		imageUser = baseImageInfo.Config.User
 	}
-	if remoteUser == "root" {
-		remoteUser = containerUser
-	}
-
-	// Collect config-level containerEnv if provided
-	var configContainerEnv map[string]string
-	if fbOpts != nil {
-		configContainerEnv = fbOpts.ContainerEnv
-	}
+	containerUser, remoteUser := findContainerUsers(metadata, "", imageUser)
 
 	// Build secrets are mounted into each feature-install RUN, but only when the
 	// build uses buildx (RUN --mount=type=secret + --secret both require BuildKit).
 	var secretIDs []string
-	if useBuildx && fbOpts != nil {
+	if useBuildx {
 		secretIDs = buildSecretIDs(fbOpts.Secrets)
 	}
-	buildInfo := imagemeta.GenerateExtendImageBuild(
-		baseImage, featureSets, metadata, containerUser, remoteUser, useBuildx, configContainerEnv, secretIDs,
-	)
+	if err := stageFeatureBuildFiles(tmpDir, featureSets, containerUser, remoteUser); err != nil {
+		return nil, err
+	}
+	// TS dockerfilePrefixContent for an image (no Dockerfile of the user's):
+	// Docker >= 23 needs no syntax directive; an older one needs
+	// docker/dockerfile:1.4 for the build contexts.
+	syntax := ""
+	if useBuildx && !engineAtLeast23(ctx, engine) {
+		syntax = "docker/dockerfile:1.4"
+	}
+	buildInfo := imagemeta.GenerateFeaturesBuildOptions(imagemeta.FeaturesBuildParams{
+		BaseName:            baseImage,
+		FeatureSets:         featureSets,
+		Metadata:            metadata,
+		ContainerUser:       containerUser,
+		RemoteUser:          remoteUser,
+		ImageUser:           imageUser,
+		UseBuildKitContexts: useBuildx,
+		Syntax:              syntax,
+		ConfigContainerEnv:  fbOpts.ContainerEnv,
+		SecretIDs:           secretIDs,
+	})
+	if !useBuildx {
+		if err := buildFeatureContentImage(ctx, dockerClient, tmpDir); err != nil {
+			return nil, err
+		}
+	}
 
 	// Write the Dockerfile
 	dockerfilePath := filepath.Join(tmpDir, "Dockerfile.extended")
 	content := buildInfo.DockerfilePrefixContent + buildInfo.DockerfileContent
-	if err := pfs.WriteFile(dockerfilePath, []byte(content)); err != nil {
+	if err := os.WriteFile(dockerfilePath, []byte(content), 0o644); err != nil {
 		return nil, fmt.Errorf("write extended Dockerfile: %w", err)
 	}
 
@@ -645,19 +755,17 @@ func extendImageWithFeatures(
 		Target:      buildInfo.OverrideTarget,
 		BuildArgs:   buildInfo.BuildArgs,
 		UseBuildx:   useBuildx,
-	}
-	if fbOpts != nil {
-		buildOpts.NoCache = fbOpts.NoCache
-		buildOpts.CacheFrom = fbOpts.CacheFrom
-		buildOpts.CacheTo = fbOpts.CacheTo
-		buildOpts.Labels = fbOpts.Labels
-		buildOpts.Platform = fbOpts.Platform
-		buildOpts.Push = fbOpts.Push
-		buildOpts.Output = fbOpts.Output
-		buildOpts.Secrets = fbOpts.Secrets
+		NoCache:     fbOpts.NoCache,
+		CacheFrom:   fbOpts.CacheFrom,
+		CacheTo:     fbOpts.CacheTo,
+		Labels:      fbOpts.Labels,
+		Platform:    fbOpts.Platform,
+		Push:        fbOpts.Push,
+		Output:      fbOpts.Output,
+		Secrets:     fbOpts.Secrets,
 	}
 
-	// Add BuildKit contexts — resolve relative paths to tmpDir
+	// Add BuildKit contexts — "." is the features folder
 	for ctx, ctxPath := range buildInfo.BuildKitContexts {
 		if ctxPath == "." {
 			ctxPath = tmpDir
@@ -702,11 +810,37 @@ func extendImageWithFeatures(
 	return []string{outputName}, nil
 }
 
+// findContainerUsers is TS findContainerUsers: the last containerUser of the
+// metadata, else the compose service's user, else the image's user; the last
+// remoteUser, else the containerUser.
+func findContainerUsers(metadata []imagemeta.Entry, composeServiceUser, imageUser string) (containerUser, remoteUser string) {
+	for _, e := range slices.Backward(metadata) {
+		if containerUser == "" && e.ContainerUser != "" {
+			containerUser = e.ContainerUser
+		}
+		if remoteUser == "" && e.RemoteUser != "" {
+			remoteUser = e.RemoteUser
+		}
+	}
+	if containerUser == "" {
+		containerUser = composeServiceUser
+	}
+	if containerUser == "" {
+		containerUser = imageUser
+	}
+	if remoteUser == "" {
+		remoteUser = containerUser
+	}
+	return containerUser, remoteUser
+}
+
 func featureMetadataEntry(fs *features.Set, skipPersistCustoms bool) imagemeta.Entry {
 	feat := fs.Features[0]
+	// TS getDevcontainerMetadata: the entry's id is the user's reference
+	// (sourceInformation.userFeatureId) for every source type.
 	id := feat.ID
-	if src, ok := fs.SourceInfo.(*features.OCISource); ok && src.UserID != "" {
-		id = src.UserID
+	if fs.SourceInfo != nil && fs.SourceInfo.UserFeatureID() != "" {
+		id = fs.SourceInfo.UserFeatureID()
 	}
 	// Note: a feature's containerEnv is NOT recorded in the metadata label — it
 	// is baked into the image as ENV during the feature build. Recording it would
@@ -725,18 +859,12 @@ func featureMetadataEntry(fs *features.Set, skipPersistCustoms bool) imagemeta.E
 	if !skipPersistCustoms {
 		entry.Customizations = feat.Customizations
 	}
-	if feat.OnCreateCommand != nil {
-		entry.OnCreateCommand = feat.OnCreateCommand
-	}
-	if feat.PostCreateCommand != nil {
-		entry.PostCreateCommand = feat.PostCreateCommand
-	}
-	if feat.PostStartCommand != nil {
-		entry.PostStartCommand = feat.PostStartCommand
-	}
-	if feat.PostAttachCommand != nil {
-		entry.PostAttachCommand = feat.PostAttachCommand
-	}
+	// TS pickFeatureLifecycleHookProperties: every hook a Feature declares.
+	entry.OnCreateCommand = feat.OnCreateCommand
+	entry.UpdateContentCommand = feat.UpdateContentCommand
+	entry.PostCreateCommand = feat.PostCreateCommand
+	entry.PostStartCommand = feat.PostStartCommand
+	entry.PostAttachCommand = feat.PostAttachCommand
 	return entry
 }
 
@@ -831,6 +959,25 @@ func extractUserOptions(v any) map[string]any {
 		return m
 	}
 	return nil
+}
+
+// verifyTarballDigest rejects a direct tarball whose digest is not the one the
+// lockfile records for its URI, with TS fetchContentsAtTarballUri's error, which
+// reaches the user unwrapped.
+func verifyTarballDigest(lockfile *features.Lockfile, uri, computedDigest string) error {
+	if lockfile == nil {
+		return nil
+	}
+	if want := lockfile.Features[uri].Integrity; want != "" && want != computedDigest {
+		return &digestMismatchError{uri: uri}
+	}
+	return nil
+}
+
+type digestMismatchError struct{ uri string }
+
+func (e *digestMismatchError) Error() string {
+	return fmt.Sprintf("Digest did not match for %s.", e.uri)
 }
 
 // downloadFeatureTarball fetches a Feature published as a direct HTTP(S) tarball,

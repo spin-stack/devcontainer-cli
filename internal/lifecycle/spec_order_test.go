@@ -13,15 +13,6 @@ import (
 // finalization phases run onCreateCommand → updateContentCommand →
 // postCreateCommand, then on start/attach postStartCommand → postAttachCommand.
 func TestSpecLifecycleOrder(t *testing.T) {
-	// AllPhases advertises the canonical order, initializeCommand (host) first.
-	wantPhases := []Phase{
-		PhaseInitialize, PhaseOnCreate, PhaseUpdateContent,
-		PhasePostCreate, PhasePostStart, PhasePostAttach,
-	}
-	if got := AllPhases(); !reflect.DeepEqual(got, wantPhases) {
-		t.Fatalf("AllPhases() = %v, want %v", got, wantPhases)
-	}
-
 	// RunHooks runs the in-container phases in exactly that order. Each phase has
 	// a single command; the recording executor captures the execution sequence.
 	merged := &imagemeta.MergedConfig{

@@ -2,12 +2,13 @@
 package log
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -62,12 +63,6 @@ func ParseLevel(text string) Level {
 	}
 }
 
-// Dimensions holds terminal size for formatting.
-type Dimensions struct {
-	Columns int `json:"columns"`
-	Rows    int `json:"rows"`
-}
-
 // Event represents a structured log event, matching the TS LogEvent union.
 type Event struct {
 	Type           string `json:"type"`                     // "text", "raw", "start", "stop", "progress"
@@ -88,7 +83,6 @@ type Logger interface {
 	Start(text string, level ...Level) int64
 	Stop(text string, startTimestamp int64, level ...Level)
 	Event(e Event)
-	Dimensions() *Dimensions
 }
 
 // Handler processes log events. Multiple handlers can be combined.
@@ -98,12 +92,11 @@ type Handler interface {
 
 // Options configures a new Logger instance.
 type Options struct {
-	Level      Level
-	Format     string // "text" or "json"
-	Writer     io.Writer
-	Dimensions *Dimensions
-	Version    string
-	StartTime  time.Time
+	Level     Level
+	Format    string // "text" or "json"
+	Writer    io.Writer
+	Version   string
+	StartTime time.Time
 	// Secrets, when set, are replaced with "********" in every emitted log line
 	// (matching the TS CLI maskSecrets). Pass the secret *values*.
 	Secrets []string
@@ -112,7 +105,6 @@ type Options struct {
 type logger struct {
 	handler      Handler
 	defaultLevel Level
-	dimensions   *Dimensions
 	secrets      []string
 }
 
@@ -145,7 +137,6 @@ func New(opts Options) Logger {
 	l := &logger{
 		handler:      h,
 		defaultLevel: opts.Level,
-		dimensions:   opts.Dimensions,
 		secrets:      prepareSecrets(opts.Secrets),
 	}
 
@@ -187,13 +178,8 @@ func osRelease() string {
 // prepareSecrets drops empty values and sorts by length descending so that
 // longer secrets are masked before any shorter substring of them.
 func prepareSecrets(values []string) []string {
-	var out []string
-	for _, v := range values {
-		if v != "" {
-			out = append(out, v)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	out := slices.DeleteFunc(slices.Clone(values), func(v string) bool { return v == "" })
+	slices.SortFunc(out, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
 	return out
 }
 
@@ -252,10 +238,6 @@ func (l *logger) Event(e Event) {
 	l.handler.HandleEvent(e)
 }
 
-func (l *logger) Dimensions() *Dimensions {
-	return l.dimensions
-}
-
 // Null is a no-op logger.
 var Null Logger = &nullLog{}
 
@@ -266,7 +248,6 @@ func (n *nullLog) Raw(string, ...Level)         {}
 func (n *nullLog) Start(string, ...Level) int64 { return nowMillis() }
 func (n *nullLog) Stop(string, int64, ...Level) {}
 func (n *nullLog) Event(Event)                  {}
-func (n *nullLog) Dimensions() *Dimensions      { return nil }
 
 // --- Terminal handler ---
 
@@ -276,10 +257,8 @@ type terminalHandler struct {
 	minLevel Level
 }
 
+// newTerminalHandler's minLevel is never 0: New defaults it to info.
 func newTerminalHandler(w io.Writer, start time.Time, minLevel Level) Handler {
-	if minLevel == 0 {
-		minLevel = LevelInfo
-	}
 	return &terminalHandler{w: w, start: start.UnixMilli(), minLevel: minLevel}
 }
 

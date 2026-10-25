@@ -221,6 +221,11 @@ func (p PortOrString) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p.raw)
 }
 
+// Value returns the port as decoded: a float64 for a JSON number, else a string.
+func (p PortOrString) Value() any {
+	return p.raw
+}
+
 // MountOrString represents either a Mount object or a string mount spec.
 type MountOrString struct {
 	raw any // string or map → Mount

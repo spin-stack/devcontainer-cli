@@ -16,12 +16,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mergedPassthroughKeys are config-only properties spread into mergedConfiguration
-// by the TS CLI that the typed MergedConfig does not model. They are copied from
-// the raw config into the merged output.
-var mergedPassthroughKeys = []string{
-	"features", "build", "dockerComposeFile", "service", "workspaceFolder",
-	"name", "overrideFeatureInstallOrder",
+// mergedOwnKeys are the properties TS mergeConfiguration sets itself, from the
+// metadata, or removes from the config (replaceProperties) - in imageMetadata.ts.
+// Every other property of the config passes into mergedConfiguration as it is
+// ({...config}); one of these never does, even when the merge leaves it unset.
+var mergedOwnKeys = map[string]bool{
+	"customizations": true, "entrypoint": true, "onCreateCommand": true, "updateContentCommand": true,
+	"postCreateCommand": true, "postStartCommand": true, "postAttachCommand": true, "shutdownAction": true,
+	"init": true, "privileged": true, "capAdd": true, "securityOpt": true, "entrypoints": true, "mounts": true,
+	"onCreateCommands": true, "updateContentCommands": true, "postCreateCommands": true,
+	"postStartCommands": true, "postAttachCommands": true, "waitFor": true, "remoteUser": true,
+	"containerUser": true, "userEnvProbe": true, "remoteEnv": true, "containerEnv": true,
+	"overrideCommand": true, "portsAttributes": true, "otherPortsAttributes": true, "forwardPorts": true,
+	"updateRemoteUserUID": true, "hostRequirements": true,
 }
 
 type readConfigOpts struct {
@@ -93,16 +100,11 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		return err
 	}
 
-	for _, v := range []struct {
-		flag, val string
-		choices   []string
-	}{
-		{"log-level", opts.logLevel, []string{"info", "debug", "trace"}},
-		{"log-format", opts.logFormat, []string{"text", "json"}},
-	} {
-		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return err
-		}
+	if err := validateEnums(
+		enumFlag{"log-level", opts.logLevel, logLevels},
+		enumFlag{"log-format", opts.logFormat, logFormats},
+	); err != nil {
+		return err
 	}
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return err
@@ -206,7 +208,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	// Find container for containerEnv substitution
-	lgr := log.New(log.Options{Version: cliVersion(), Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
+	lgr := log.New(log.Options{Version: cliVersion(), Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 	engine, engineErr := docker.NewEngineClient(lgr)
 	if engineErr != nil {
 		// Non-fatal: container lookup features won't work but config can still be read.
@@ -230,7 +232,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if containerID != "" && engine != nil {
 		inspect, inspectErr := engine.InspectContainer(ctx, containerID)
 		if inspectErr == nil && inspect.Config != nil {
-			cEnv := envSliceToMap(inspect.Config.Env)
+			cEnv := config.EnvMap(inspect.Config.Env)
 			substituted, subErr := resolveContainerVariables(cEnv, cfgMap)
 			if subErr != nil {
 				return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
@@ -272,9 +274,15 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	// Include features configuration if requested (or needed for merged config without container)
 	needsFeaturesConfig := opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 	if needsFeaturesConfig && result != nil && len(result.Config.Features) > 0 {
-		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst, Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows)})
-		featResult, featErr := fetchFeatureSets(ctx, lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
-		if featErr == nil && featResult != nil {
+		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
+		featResult, featErr := fetchFeatureSets(ctx, lgr, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping)
+		if featErr != nil {
+			// TS readConfiguration writes the error to the log and exits 1 with no
+			// result; a Feature that cannot be resolved is not an empty one.
+			lgr.Write(featErr.Error(), log.LevelError)
+			return &coreerrors.ExitCodeError{Code: 1, Err: featErr}
+		}
+		if featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
 			output["featuresConfiguration"] = map[string]any{
 				"featureSets": featResult.FeatureSets,
@@ -298,19 +306,21 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			if insErr == nil && inspect.Config != nil {
 				entries = imagemeta.ReadMetadataFromLabels(inspect.Config.Labels, lgr)
 			}
-		} else if result != nil && engine != nil {
-			// No container yet: derive the base metadata from the image and the
-			// features, like the TS getImageBuildInfo. Otherwise mergedConfiguration
-			// loses the image's remoteUser/lifecycle/customizations and the features'
-			// metadata before the container is created — VS Code calls
-			// this before creating the container.
-			if result.Config.Image != "" {
-				if img, imgErr := engine.InspectImage(ctx, result.Config.Image); imgErr == nil && img.Config != nil {
-					entries = append(entries, imagemeta.ReadMetadataFromLabels(img.Config.Labels, lgr)...)
-				}
+		} else if cid == "" {
+			// No container yet: derive the base metadata from the image (the base
+			// image of a Dockerfile, the compose service's image or build) and the
+			// features, like TS readConfiguration does with getImageBuildInfo and
+			// getDevcontainerMetadata. VS Code calls this before creating the
+			// container. The image is inspected locally, else in its registry, else
+			// pulled; a failure is an error, as in TS.
+			buildInfo, biErr := readConfigurationImageBuildInfo(ctx, lgr, engine, opts.dockerPath, result)
+			if biErr != nil {
+				lgr.Write(biErr.Error(), log.LevelError)
+				return &coreerrors.ExitCodeError{Code: 1, Err: biErr}
 			}
-			if len(result.Config.Features) > 0 {
-				if fr, ferr := fetchFeatureSets(ctx, lgr, nil, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping, nil); ferr == nil && fr != nil {
+			entries = append(entries, buildInfo.Metadata...)
+			if result != nil && len(result.Config.Features) > 0 {
+				if fr, ferr := fetchFeatureSets(ctx, lgr, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping); ferr == nil && fr != nil {
 					defer os.RemoveAll(fr.TmpDir)
 					for _, fs := range fr.FeatureSets {
 						entries = append(entries, featureMetadataEntry(fs, false))
@@ -341,7 +351,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		if cid != "" && engine != nil {
 			inspect, insErr := engine.InspectContainer(ctx, cid)
 			if insErr == nil && inspect.Config != nil {
-				cEnv := envSliceToMap(inspect.Config.Env)
+				cEnv := config.EnvMap(inspect.Config.Env)
 				mergedJSON, _ := json.Marshal(merged)
 				var mergedGeneric any
 				json.Unmarshal(mergedJSON, &mergedGeneric)
@@ -360,8 +370,8 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		mergedJSON, _ := json.Marshal(merged)
 		var mergedMap map[string]any
 		if json.Unmarshal(mergedJSON, &mergedMap) == nil {
-			for _, k := range mergedPassthroughKeys {
-				if v, ok := cfgMap[k]; ok {
+			for k, v := range cfgMap {
+				if !mergedOwnKeys[k] {
 					mergedMap[k] = v
 				}
 			}
@@ -382,6 +392,24 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 
 	fmt.Fprintln(out.Stdout(), string(data))
 	return nil
+}
+
+// readConfigurationImageBuildInfo runs getImageBuildInfo for read-configuration's
+// merged configuration without a container. Without a configuration TS reads an
+// empty one, which names no image.
+func readConfigurationImageBuildInfo(ctx context.Context, lgr log.Logger, engine *docker.EngineClient, dockerPath string, result *config.LoadResult) (*imageBuildInfo, error) {
+	cfg := &config.DevContainer{}
+	if result != nil {
+		cfg = result.Config
+	}
+	composeConfig := func(ctx context.Context, files []string, envFile string) (map[string]any, error) {
+		client, err := docker.NewComposeClient(dockerPath, "", nil, lgr)
+		if err != nil {
+			return nil, err
+		}
+		return client.Config(ctx, files, envFile)
+	}
+	return getImageBuildInfo(ctx, cfg, newImageInspector(ctx, lgr, engine), composeConfig, lgr)
 }
 
 // configToMetadataEntry converts a DevContainer to a metadata Entry
@@ -418,7 +446,7 @@ func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta
 	if len(cfg.ForwardPorts) > 0 {
 		fp := make([]any, len(cfg.ForwardPorts))
 		for i, p := range cfg.ForwardPorts {
-			fp[i] = p
+			fp[i] = p.Value()
 		}
 		entry.ForwardPorts = fp
 	}
@@ -456,5 +484,3 @@ func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta
 	}
 	return entry
 }
-
-// envSliceToMap moved to helpers.go

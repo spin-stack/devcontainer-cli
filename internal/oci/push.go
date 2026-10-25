@@ -92,57 +92,10 @@ func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tag
 		return nil, fmt.Errorf("read tarball: %w", err)
 	}
 
-	// Upload the layer blob.
-	layerDigest := godigest.FromBytes(tgzData)
-	layerDesc := ocispec.Descriptor{
-		MediaType: TarLayerMediaType,
-		Digest:    layerDigest,
-		Size:      int64(len(tgzData)),
-		Annotations: map[string]string{
-			"org.opencontainers.image.title": fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, ref.ID),
-		},
-	}
-	if err := pushBlobIfAbsent(ctx, repo, layerDesc, tgzData); err != nil {
-		return nil, fmt.Errorf("upload blob: %w", err)
-	}
-
-	// Upload the empty config blob (required by the OCI spec).
-	configData := []byte("{}")
-	configDigest := godigest.FromBytes(configData)
-	configDesc := ocispec.Descriptor{
-		MediaType: ManifestMediaType,
-		Digest:    configDigest,
-		Size:      int64(len(configData)),
-	}
-	if err := pushBlobIfAbsent(ctx, repo, configDesc, configData); err != nil {
-		return nil, fmt.Errorf("upload config: %w", err)
-	}
-
-	// Build the manifest with the local type to keep the exact byte layout.
-	manifest := Manifest{
-		SchemaVersion: 2,
-		MediaType:     OCIManifestMediaType,
-		Config: Descriptor{
-			Digest:    configDigest.String(),
-			MediaType: ManifestMediaType,
-			Size:      int64(len(configData)),
-		},
-		Layers: []Layer{
-			{
-				MediaType:   TarLayerMediaType,
-				Digest:      layerDigest.String(),
-				Size:        int64(len(tgzData)),
-				Annotations: layerDesc.Annotations,
-			},
-		},
-		Annotations: annotations,
-	}
-
-	manifestBytes, _ := json.Marshal(manifest)
-	manifestDesc := ocispec.Descriptor{
-		MediaType: OCIManifestMediaType,
-		Digest:    godigest.FromBytes(manifestBytes),
-		Size:      int64(len(manifestBytes)),
+	manifestDesc, manifestBytes, err := pushArtifactManifest(ctx, repo, TarLayerMediaType,
+		fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, ref.ID), tgzData, annotations)
+	if err != nil {
+		return nil, err
 	}
 
 	// Push the manifest under each version tag (PushReference does PUT
@@ -184,55 +137,10 @@ func (c *Client) PushCollectionMetadata(ctx context.Context, ref *Ref, collectio
 		return nil, fmt.Errorf("read collection metadata: %w", err)
 	}
 
-	layerDigest := godigest.FromBytes(data)
-	layerDesc := ocispec.Descriptor{
-		MediaType: CollectionLayerMediaType,
-		Digest:    layerDigest,
-		Size:      int64(len(data)),
-		Annotations: map[string]string{
-			"org.opencontainers.image.title": "devcontainer-collection.json",
-		},
-	}
-	if err := pushBlobIfAbsent(ctx, repo, layerDesc, data); err != nil {
-		return nil, fmt.Errorf("upload collection layer: %w", err)
-	}
-
-	configData := []byte("{}")
-	configDigest := godigest.FromBytes(configData)
-	configDesc := ocispec.Descriptor{
-		MediaType: ManifestMediaType,
-		Digest:    configDigest,
-		Size:      int64(len(configData)),
-	}
-	if err := pushBlobIfAbsent(ctx, repo, configDesc, configData); err != nil {
-		return nil, fmt.Errorf("upload config: %w", err)
-	}
-
-	manifest := Manifest{
-		SchemaVersion: 2,
-		MediaType:     OCIManifestMediaType,
-		Config: Descriptor{
-			Digest:    configDigest.String(),
-			MediaType: ManifestMediaType,
-			Size:      int64(len(configData)),
-		},
-		Layers: []Layer{
-			{
-				MediaType:   CollectionLayerMediaType,
-				Digest:      layerDigest.String(),
-				Size:        int64(len(data)),
-				Annotations: layerDesc.Annotations,
-			},
-		},
-		Annotations: map[string]string{
-			"com.github.package.type": "devcontainer_collection",
-		},
-	}
-	manifestBytes, _ := json.Marshal(manifest)
-	manifestDesc := ocispec.Descriptor{
-		MediaType: OCIManifestMediaType,
-		Digest:    godigest.FromBytes(manifestBytes),
-		Size:      int64(len(manifestBytes)),
+	manifestDesc, manifestBytes, err := pushArtifactManifest(ctx, repo, CollectionLayerMediaType,
+		"devcontainer-collection.json", data, map[string]string{"com.github.package.type": "devcontainer_collection"})
+	if err != nil {
+		return nil, err
 	}
 	if err := repo.PushReference(ctx, manifestDesc, bytes.NewReader(manifestBytes), "latest"); err != nil {
 		return nil, fmt.Errorf("push collection manifest: %w", err)
@@ -249,16 +157,34 @@ func pushBlobIfAbsent(ctx context.Context, repo *remote.Repository, desc ocispec
 	return repo.Blobs().Push(ctx, desc, bytes.NewReader(data))
 }
 
-// computeTags derives the version tags to publish (X.Y.Z, X.Y, X, latest).
-func computeTags(version string) []string {
-	parts := strings.Split(version, ".")
-	tags := []string{version}
-	if len(parts) >= 3 {
-		tags = append(tags, strings.Join(parts[:2], "."))
+// pushArtifactManifest uploads data as the artifact's one layer (titled title)
+// and the empty config the OCI spec requires, and returns the manifest that
+// references them, built with the local types to keep the TS byte layout.
+func pushArtifactManifest(ctx context.Context, repo *remote.Repository, layerMediaType, title string, data []byte, annotations map[string]string) (ocispec.Descriptor, []byte, error) {
+	layerDesc := ocispec.Descriptor{
+		MediaType:   layerMediaType,
+		Digest:      godigest.FromBytes(data),
+		Size:        int64(len(data)),
+		Annotations: map[string]string{"org.opencontainers.image.title": title},
 	}
-	if len(parts) >= 2 {
-		tags = append(tags, parts[0])
+	if err := pushBlobIfAbsent(ctx, repo, layerDesc, data); err != nil {
+		return ocispec.Descriptor{}, nil, fmt.Errorf("upload layer: %w", err)
 	}
-	tags = append(tags, "latest")
-	return tags
+	configData := []byte("{}")
+	configDesc := ocispec.Descriptor{MediaType: ManifestMediaType, Digest: godigest.FromBytes(configData), Size: int64(len(configData))}
+	if err := pushBlobIfAbsent(ctx, repo, configDesc, configData); err != nil {
+		return ocispec.Descriptor{}, nil, fmt.Errorf("upload config: %w", err)
+	}
+	manifest := Manifest{
+		SchemaVersion: 2,
+		MediaType:     OCIManifestMediaType,
+		Config:        Descriptor{Digest: configDesc.Digest.String(), MediaType: ManifestMediaType, Size: configDesc.Size},
+		Layers:        []Layer{{MediaType: layerMediaType, Digest: layerDesc.Digest.String(), Size: layerDesc.Size, Annotations: layerDesc.Annotations}},
+		Annotations:   annotations,
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return ocispec.Descriptor{}, nil, fmt.Errorf("encode manifest: %w", err)
+	}
+	return ocispec.Descriptor{MediaType: OCIManifestMediaType, Digest: godigest.FromBytes(manifestBytes), Size: int64(len(manifestBytes))}, manifestBytes, nil
 }

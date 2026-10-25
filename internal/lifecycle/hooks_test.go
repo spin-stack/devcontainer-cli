@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -259,7 +260,7 @@ func TestExecuteCommand_ParallelPreservesCommandError(t *testing.T) {
 		"one": "run-one",
 		"two": "run-two-fails",
 	}
-	err := executeCommand(&cmdErrExecutor{failOn: "fails"}, log.Null, PhasePostCreate, cmd)
+	err := executeCommand(&cmdErrExecutor{failOn: "fails"}, log.Null, PhasePostCreate, cmd, "")
 	if err == nil {
 		t.Fatal("expected an error from the failing parallel hook")
 	}
@@ -272,5 +273,53 @@ func TestExecuteCommand_ParallelPreservesCommandError(t *testing.T) {
 	}
 	if cmdErr.ExitCode != 1 {
 		t.Errorf("unexpected exit code: %d", cmdErr.ExitCode)
+	}
+}
+
+// A failed command's error says which command it was and where it comes from,
+// as TS runLifecycleCommand's ContainerError: the hook alone for a single
+// command, "<name> of <hook>" for one of an object's parallel commands, and
+// "Feature '<id>'" for a Feature's command.
+func TestHookErrorDescribesTheCommandAndItsOrigin(t *testing.T) {
+	merged := &imagemeta.MergedConfig{
+		PostCreateCommands: []any{"ok", map[string]any{"a": "ok", "b": "fails-b", "c": "fails-c"}},
+		CommandOrigins:     map[string][]string{"postCreateCommand": {"./myfeat", "devcontainer.json"}},
+	}
+	err := RunHooks(log.Null, &cmdErrExecutor{failOn: "fails"}, merged, RunOptions{})
+	he, ok := errors.AsType[*HookError](err)
+	if !ok || he.Description() != "b of postCreateCommand from devcontainer.json failed." {
+		t.Fatalf("parallel: err = %v, description = %q", err, he.Description())
+	}
+
+	merged = &imagemeta.MergedConfig{
+		OnCreateCommands: []any{"fails-feature"},
+		CommandOrigins:   map[string][]string{"onCreateCommand": {"ghcr.io/o/f/x:1"}},
+	}
+	err = RunHooks(log.Null, &cmdErrExecutor{failOn: "fails"}, merged, RunOptions{})
+	if he, ok := errors.AsType[*HookError](err); !ok || he.Description() != "onCreateCommand from Feature 'ghcr.io/o/f/x:1' failed." {
+		t.Fatalf("feature: err = %v", err)
+	}
+
+	// A command appended without an origin (the config's own) is devcontainer.json's.
+	merged = &imagemeta.MergedConfig{PostStartCommands: []any{"fails"}}
+	err = RunHooks(log.Null, &cmdErrExecutor{failOn: "fails"}, merged, RunOptions{})
+	if he, ok := errors.AsType[*HookError](err); !ok || he.Description() != "postStartCommand from devcontainer.json failed." {
+		t.Fatalf("config: err = %v", err)
+	}
+}
+
+// MergeConfiguration records each command's origin: a Feature entry's id, or
+// devcontainer.json for the entry without one (TS lifecycleCommandOriginMapFromMetadata).
+func TestMergeRecordsCommandOrigins(t *testing.T) {
+	m := imagemeta.MergeConfiguration([]imagemeta.Entry{
+		{ID: "./myfeat", PostCreateCommand: "a"},
+		{ID: "ghcr.io/o/f/x:1", PostCreateCommand: ""},
+		{PostCreateCommand: "c", OnCreateCommand: "d"},
+	})
+	if got := m.CommandOrigins["postCreateCommand"]; !slices.Equal(got, []string{"./myfeat", "devcontainer.json"}) {
+		t.Errorf("postCreate origins = %v", got)
+	}
+	if got := m.CommandOrigins["onCreateCommand"]; !slices.Equal(got, []string{"devcontainer.json"}) {
+		t.Errorf("onCreate origins = %v", got)
 	}
 }

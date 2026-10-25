@@ -7,9 +7,11 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/pfs"
@@ -270,12 +272,8 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 	if err != nil {
 		return merged
 	}
-	standardized, err := hujson.Standardize(data)
-	if err != nil {
-		return merged
-	}
 	var meta TemplateMetadata
-	if err := json.Unmarshal(standardized, &meta); err != nil {
+	if err := jsonc.Unmarshal(data, &meta); err != nil {
 		return merged
 	}
 	for key, raw := range meta.Options {
@@ -290,11 +288,7 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 		case string:
 			merged[key] = d
 		case bool:
-			if d {
-				merged[key] = "true"
-			} else {
-				merged[key] = "false"
-			}
+			merged[key] = strconv.FormatBool(d)
 		default:
 			continue
 		}

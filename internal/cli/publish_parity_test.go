@@ -91,7 +91,7 @@ func TestPublishParity(t *testing.T) {
 
 			// Output parity alone is insufficient for a mutating command. Verify the
 			// registry state for every item and the collection metadata artifact.
-			client := oci.NewClient(log.Null, osEnvMap())
+			client := oci.NewClientWithAuthPolicy(log.Null, osEnvMap(), oci.DefaultAuthPolicy())
 			for _, id := range tc.itemIDs {
 				tagsFor := func(namespace string) []string {
 					ref, err := oci.ParseRef(registry + "/" + namespace + "/" + id)

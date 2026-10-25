@@ -6,10 +6,12 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,7 +19,6 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
-	"github.com/devcontainers/cli/internal/pfs"
 	"github.com/iancoleman/orderedmap"
 	"github.com/spf13/cobra"
 )
@@ -32,14 +33,11 @@ func realFeaturesPackageCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "package [target]",
+		Use:   "package <target>",
 		Short: "Package Features",
-		Args:  cobra.MaximumNArgs(1),
+		Args:  requireTarget,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target := "."
-			if len(args) > 0 {
-				target = args[0]
-			}
+			target := args[0]
 			return packageCollection(resolvePath(target), resolvePath(outputFolder), "feature", forceClean, logLevel)
 		},
 	}
@@ -53,6 +51,15 @@ func realFeaturesPackageCmd() *cobra.Command {
 
 // --- Features publish ---
 
+// requireTarget is yargs' check for a required <target> positional: TS declares
+// `package <target>` and `publish <target>`, and stops when it is missing.
+func requireTarget(_ *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("Not enough non-option arguments: got %d, need at least 1", len(args))
+	}
+	return cobra.MaximumNArgs(1)(nil, args)
+}
+
 func realFeaturesPublishCmd() *cobra.Command {
 	var (
 		registry  string
@@ -61,14 +68,11 @@ func realFeaturesPublishCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "publish [target]",
+		Use:   "publish <target>",
 		Short: "Package and publish Features",
-		Args:  cobra.MaximumNArgs(1),
+		Args:  requireTarget,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target := "."
-			if len(args) > 0 {
-				target = args[0]
-			}
+			target := args[0]
 			return publishCollection(cmd.Context(), resolvePath(target), registry, namespace, "feature", logLevel)
 		},
 	}
@@ -90,14 +94,11 @@ func realTemplatesPublishCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "publish [target]",
+		Use:   "publish <target>",
 		Short: "Package and publish templates",
-		Args:  cobra.MaximumNArgs(1),
+		Args:  requireTarget,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target := "."
-			if len(args) > 0 {
-				target = args[0]
-			}
+			target := args[0]
 			return publishCollection(cmd.Context(), resolvePath(target), registry, namespace, "template", logLevel)
 		},
 	}
@@ -267,158 +268,6 @@ func realFeaturesTestCmd() *cobra.Command {
 
 // --- Shared implementation ---
 
-func packageCollection(targetFolder, outputDir, collectionType string, forceClean bool, logLevelStr string) error {
-	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
-	// silently defaulting to Info (collectionCommonUtils/package.ts:18).
-	if err := validateEnum("log-level", logLevelStr, []string{"info", "debug", "trace"}); err != nil {
-		return err
-	}
-	logger := log.New(log.Options{
-		Level:  log.ParseLevel(logLevelStr),
-		Format: "text",
-		Writer: os.Stderr,
-	})
-
-	if forceClean {
-		pfs.Remove(outputDir, true)
-	}
-	pfs.MkdirAll(outputDir)
-
-	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
-
-	// TS dispatch (prepPackageCommand → isSingle = isLocalFile(target/devcontainer-<type>.json)):
-	// when the target folder itself holds the metadata file it is a SINGLE
-	// Feature/Template, so package it directly (packageSingleFeatureOrTemplate)
-	// instead of scanning for sub-folders — a single-feature folder has none, which
-	// would otherwise yield an empty collection and a wrong "Failed to package".
-	if singleMeta := filepath.Join(targetFolder, metadataFile); pfs.IsFile(singleMeta) {
-		return packageSingleItem(targetFolder, outputDir, collectionType, singleMeta, logger)
-	}
-
-	srcDir := filepath.Join(targetFolder, "src")
-	if !pfs.IsDir(srcDir) {
-		srcDir = targetFolder
-	}
-
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return fmt.Errorf("read source directory: %w", err)
-	}
-
-	// orderedmap preserves each metadata file's key order so the emitted
-	// collection matches the TS CLI (which spreads the parsed JSON verbatim) rather
-	// than the alphabetical order a plain Go map would produce.
-	var collection []*orderedmap.OrderedMap
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		featureDir := filepath.Join(srcDir, entry.Name())
-		metaPath := filepath.Join(featureDir, metadataFile)
-		if !pfs.IsFile(metaPath) {
-			continue
-		}
-
-		data, _ := os.ReadFile(metaPath)
-		std, stripErr := jsonc.StripComments(data)
-		if stripErr != nil {
-			continue
-		}
-		meta := orderedmap.New()
-		if err := json.Unmarshal(std, meta); err != nil {
-			continue
-		}
-		// TS skips (with an error) any feature/template missing id, version or name.
-		if !hasNonEmptyString(meta, "id") || !hasNonEmptyString(meta, "version") || !hasNonEmptyString(meta, "name") {
-			logger.Write(fmt.Sprintf("%s '%s' is missing one of the following required properties in its %s: 'id', 'version', 'name'.", collectionType, entry.Name(), metadataFile), log.LevelError)
-			continue
-		}
-
-		// Create tarball
-		archiveName := fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, entry.Name())
-		archivePath := filepath.Join(outputDir, archiveName)
-		if err := createTarArchive(archivePath, featureDir); err != nil {
-			return fmt.Errorf("package %s: %w", entry.Name(), err)
-		}
-
-		logger.Write(fmt.Sprintf("Packaged %s → %s", entry.Name(), archiveName), log.LevelInfo)
-		collection = append(collection, meta)
-	}
-
-	if len(collection) == 0 {
-		logger.Write(fmt.Sprintf("Failed to package %ss", collectionType), log.LevelError)
-		return &coreerrors.ExitCodeError{Code: 1}
-	}
-
-	if err := writeCollectionMetadata(outputDir, collectionType, collection); err != nil {
-		return err
-	}
-
-	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", len(collection), collectionType, outputDir), log.LevelInfo)
-	return nil
-}
-
-// packageSingleItem packages a lone Feature/Template folder (one that directly
-// contains devcontainer-<type>.json + install.sh), mirroring TS's
-// packageSingleFeatureOrTemplate: it emits devcontainer-<type>-<id>.tgz plus a
-// one-element devcontainer-collection.json.
-func packageSingleItem(targetFolder, outputDir, collectionType, metaPath string, logger log.Logger) error {
-	metadataFile := fmt.Sprintf("devcontainer-%s.json", collectionType)
-
-	data, _ := os.ReadFile(metaPath)
-	std, stripErr := jsonc.StripComments(data)
-	meta := orderedmap.New()
-	if stripErr != nil || json.Unmarshal(std, meta) != nil {
-		logger.Write(fmt.Sprintf("Failed to package %ss", collectionType), log.LevelError)
-		return &coreerrors.ExitCodeError{Code: 1}
-	}
-	// TS skips (with an error) a single feature/template missing id, version or name.
-	// The message omits the folder name (unlike the collection path).
-	if !hasNonEmptyString(meta, "id") || !hasNonEmptyString(meta, "version") || !hasNonEmptyString(meta, "name") {
-		logger.Write(fmt.Sprintf("%s is missing one of the following required properties in its %s: 'id', 'version', 'name'.", collectionType, metadataFile), log.LevelError)
-		return &coreerrors.ExitCodeError{Code: 1}
-	}
-
-	idVal, _ := meta.Get("id")
-	id, _ := idVal.(string)
-
-	archiveName := fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, id)
-	archivePath := filepath.Join(outputDir, archiveName)
-	if err := createTarArchive(archivePath, targetFolder); err != nil {
-		return fmt.Errorf("package %s: %w", id, err)
-	}
-	logger.Write(fmt.Sprintf("Packaged %s '%s'", collectionType, id), log.LevelInfo)
-
-	if err := writeCollectionMetadata(outputDir, collectionType, []*orderedmap.OrderedMap{meta}); err != nil {
-		return err
-	}
-
-	logger.Write(fmt.Sprintf("Packaged %d %s(s) to %s", 1, collectionType, outputDir), log.LevelInfo)
-	return nil
-}
-
-// writeCollectionMetadata writes devcontainer-collection.json: sourceInformation
-// first, then the features/templates array — JSON.stringify(collection, null, 4)
-// in TS, so 4-space indentation. Returns an error instead of swallowing a
-// marshal/write failure: a full disk or read-only output would otherwise yield an
-// incomplete package that the command still reports as a success.
-func writeCollectionMetadata(outputDir, collectionType string, collection []*orderedmap.OrderedMap) error {
-	collMeta := orderedmap.New()
-	collMeta.Set("sourceInformation", map[string]string{"source": "devcontainer-cli"})
-	collMeta.Set(fmt.Sprintf("%ss", collectionType), collection)
-	collData, err := json.MarshalIndent(collMeta, "", "    ")
-	if err != nil {
-		return fmt.Errorf("serialize collection metadata: %w", err)
-	}
-	collPath := filepath.Join(outputDir, "devcontainer-collection.json")
-	if err := os.WriteFile(collPath, collData, 0644); err != nil {
-		return fmt.Errorf("write collection metadata: %w", err)
-	}
-	return nil
-}
-
 // publishCollection wires the real OCI registry and process stdout, then
 // delegates to publishCollectionWith. Tests call publishCollectionWith directly
 // with a fake oci.Registry and a capturing Output to drive the partial-publish
@@ -431,7 +280,7 @@ func publishCollection(ctx context.Context, targetFolder, registry, namespace, c
 	}
 	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
 	// silently defaulting to Info (collectionCommonUtils/publish.ts:14).
-	if err := validateEnum("log-level", logLevelStr, []string{"info", "debug", "trace"}); err != nil {
+	if err := validateEnum("log-level", logLevelStr, logLevels); err != nil {
 		return err
 	}
 	logger := log.New(log.Options{
@@ -459,6 +308,10 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	defer os.RemoveAll(tmpDir)
 
 	if err := packageCollection(targetFolder, tmpDir, collectionType, true, logLevelStr); err != nil {
+		// TS features publish adds this line when packaging failed (featuresCLI/publish.ts).
+		if _, ok := errors.AsType[*coreerrors.ExitCodeError](err); ok && collectionType == "feature" {
+			logger.Write("(!) ERR: Failed to fetch devcontainer-collection.json", log.LevelError)
+		}
 		return err
 	}
 
@@ -474,109 +327,142 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	var collMeta map[string]any
 	json.Unmarshal(collData, &collMeta)
 
-	// Get items from collection
+	// Get items from collection. The ordered copy keeps each item's key order for
+	// its dev.containers.metadata annotation, which TS writes as JSON.stringify(f).
 	itemsKey := fmt.Sprintf("%ss", collectionType)
 	items, _ := collMeta[itemsKey].([]any)
+	orderedColl := orderedmap.New()
+	_ = json.Unmarshal(collData, orderedColl)
+	orderedItemsVal, _ := orderedColl.Get(itemsKey)
+	orderedItems, _ := orderedItemsVal.([]any)
 
 	ociClient := reg
+	failed := func(msg string) error {
+		logger.Write(msg, log.LevelError)
+		return &coreerrors.ExitCodeError{Code: 1}
+	}
+	kind := strings.ToUpper(collectionType[:1]) + collectionType[1:]
 
-	result := make(map[string]any)
-	failures := 0
-
-	// publishOne pushes an item under the forward-only semantic tags derived from
-	// what is already published, skipping when the exact version already exists.
-	publishOne := func(resource, archivePath, version string, annotations map[string]string) (*oci.PushResult, bool) {
-		ref, err := oci.ParseRef(resource)
-		if err != nil {
-			logger.Write(fmt.Sprintf("(!) ERR: could not parse %q: %v", resource, err), log.LevelError)
-			failures++
-			return nil, false
-		}
-		// The repository is empty on first publish (404). Any OTHER error — auth,
-		// network, a 5xx — must abort: treating it as "no tags yet" would republish
-		// mobile aliases (latest, 1, 1.2) off an empty list and could clobber them.
+	// publishOne is TS doPublishCommand: the published tags and digest, an empty
+	// result when the version is already published, or an error that ends the
+	// command (TS exits 1, before printing any result).
+	publishOne := func(ref *oci.Ref, archivePath, version string, annotations map[string]string) (*oci.PushResult, error) {
+		logger.Write("Fetching published versions...", log.LevelInfo)
 		published, tagsErr := ociClient.GetPublishedTagsContext(ctx, ref)
 		if tagsErr != nil && !oci.IsNotFound(tagsErr) {
-			logger.Write(fmt.Sprintf("(!) ERR: could not list existing tags for %q: %v", resource, tagsErr), log.LevelError)
-			failures++
-			return nil, false
+			logger.Write(fmt.Sprintf("(!) ERR: Could not fetch published tags for '%s/%s' : %v ", ref.Namespace, ref.ID, tagsErr), log.LevelError)
+			return nil, tagsErr
 		}
-		tags, skip, tagErr := oci.SemanticTags(version, published)
+		if slices.Contains(published, version) {
+			logger.Write(fmt.Sprintf("(!) WARNING: Version %s already exists, skipping %s...", version, version), log.LevelWarning)
+			return &oci.PushResult{}, nil
+		}
+		tags, _, tagErr := oci.SemanticTags(version, published)
 		if tagErr != nil {
-			logger.Write(fmt.Sprintf("(!) ERR: %v, skipping...", tagErr), log.LevelError)
-			failures++
-			return nil, false
+			return nil, failed(fmt.Sprintf("(!) ERR: Version %s is not a valid semantic version, skipping %s...", version, version))
 		}
-		if skip {
-			logger.Write(fmt.Sprintf("(!) WARNING: Version %s already exists, skipping %s...", version, resource), log.LevelWarning)
-			return &oci.PushResult{PublishedTags: []string{}}, true
-		}
+		logger.Write(fmt.Sprintf("Publishing tags: %s...", strings.Join(tags, ",")), log.LevelInfo)
 		pushResult, err := ociClient.PushArtifact(ctx, ref, archivePath, tags, collectionType, annotations)
 		if err != nil {
-			logger.Write(fmt.Sprintf("(!) ERR: Failed to publish %s: %v", resource, err), log.LevelError)
-			failures++
-			return nil, false
+			logger.Write(fmt.Sprintf("(!) ERR: Failed to publish %s: '%s'", collectionType, ref.Resource), log.LevelError)
+			return nil, err
 		}
-		pushResult.Version = version // TS reports the published version in the result
-		return pushResult, true
+		logger.Write(fmt.Sprintf("Published %s: '%s'", collectionType, ref.ID), log.LevelInfo)
+		return pushResult, nil
 	}
 
-	for _, item := range items {
+	result := make(map[string]publishItemResult)
+	for i, item := range items {
 		meta, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
 		id, _ := meta["id"].(string)
 		version, _ := meta["version"].(string)
-		if id == "" || version == "" {
-			logger.Write(fmt.Sprintf("Skipping %s with no id or version", collectionType), log.LevelWarning)
+		logger.Write(fmt.Sprintf("Processing %s: %s...", collectionType, id), log.LevelInfo)
+		if version == "" {
+			logger.Write(fmt.Sprintf("(!) WARNING: Version does not exist, skipping %s...", id), log.LevelWarning)
 			continue
 		}
+		resource := fmt.Sprintf("%s/%s/%s", registry, namespace, id)
+		ref, err := oci.ParseRef(resource)
+		if err != nil {
+			return failed(fmt.Sprintf("(!) Could not parse provided %s identifier: '%s'", kind, resource))
+		}
+		archivePath := filepath.Join(tmpDir, fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, id))
+		var annotated any = meta
+		if i < len(orderedItems) {
+			annotated = orderedItems[i]
+		}
+		annotations := map[string]string{"dev.containers.metadata": string(jsStringifyCompact(annotated))}
 
-		archiveName := fmt.Sprintf("devcontainer-%s-%s.tgz", collectionType, id)
-		archivePath := filepath.Join(tmpDir, archiveName)
-		annotations := map[string]string{
-			"dev.containers.metadata": string(mustJSON(meta)),
+		pushResult, err := publishOne(ref, archivePath, version, annotations)
+		if err != nil {
+			if _, ok := errors.AsType[*coreerrors.ExitCodeError](err); ok {
+				return err
+			}
+			return failed(fmt.Sprintf("(!) ERR: Failed to publish '%s'", resource))
+		}
+		isPublished := pushResult.Digest != "" && len(pushResult.PublishedTags) > 0
+		var this publishItemResult
+		if isPublished {
+			this = publishItemResult{PublishedTags: pushResult.PublishedTags, Digest: pushResult.Digest, Version: version}
 		}
 
-		if pushResult, ok := publishOne(fmt.Sprintf("%s/%s/%s", registry, namespace, id), archivePath, version, annotations); ok {
-			result[id] = pushResult
-		}
-
-		// Republish under legacyIds (aliases), matching TS behavior.
-		if collectionType == "feature" {
-			if legacyIds, ok := meta["legacyIds"].([]any); ok {
-				for _, lid := range legacyIds {
-					legacyID, ok := lid.(string)
-					if !ok || legacyID == "" {
-						continue
+		// TS republishes a Feature under its legacyIds only when this version was
+		// published, and reports the aliases it published inside the item.
+		legacyIDs, _ := meta["legacyIds"].([]any)
+		if collectionType == "feature" && isPublished && len(legacyIDs) > 0 {
+			logger.Write(fmt.Sprintf("Processing legacyIds for '%s'...", id), log.LevelInfo)
+			for _, lid := range legacyIDs {
+				legacyID, _ := lid.(string)
+				logger.Write(fmt.Sprintf("Processing legacyId: '%s'...", legacyID), log.LevelInfo)
+				legacyResource := fmt.Sprintf("%s/%s/%s", registry, namespace, legacyID)
+				legacyRef, err := oci.ParseRef(legacyResource)
+				if err != nil {
+					return failed(fmt.Sprintf("(!) Could not parse provided Feature identifier: '%s'", legacyResource))
+				}
+				lr, err := publishOne(legacyRef, archivePath, version, annotations)
+				if err != nil {
+					if _, ok := errors.AsType[*coreerrors.ExitCodeError](err); ok {
+						return err
 					}
-					logger.Write(fmt.Sprintf("Publishing legacy alias %s for %s...", legacyID, id), log.LevelInfo)
-					if lr, ok := publishOne(fmt.Sprintf("%s/%s/%s", registry, namespace, legacyID), archivePath, version, annotations); ok {
-						result[legacyID] = lr
-					}
+					return failed(fmt.Sprintf("(!) ERR: Failed to publish '%s'", legacyResource))
+				}
+				if lr.Digest != "" && len(lr.PublishedTags) > 0 {
+					this.PublishedLegacyIDs = append(this.PublishedLegacyIDs, legacyID)
 				}
 			}
 		}
+		result[id] = this
 	}
 
-	// Publish the collection metadata for the namespace so the collection's
-	// items are discoverable (containers.dev, `devcontainer outdated`).
-	collectionResource := fmt.Sprintf("%s/%s", registry, namespace)
-	if collRef, refErr := oci.ParseRef(collectionResource); refErr == nil {
-		if _, err := ociClient.PushCollectionMetadata(ctx, collRef, collMetaPath); err != nil {
-			logger.Write(fmt.Sprintf("(!) ERR: Failed to publish collection metadata: %v", err), log.LevelError)
-			failures++
-		}
+	// Publish the collection metadata for the namespace (TS getCollectionRef +
+	// doPublishMetadata) so the collection's items are discoverable.
+	collRef, err := oci.ParseCollectionRef(registry, namespace)
+	if err != nil {
+		return failed(fmt.Sprintf("(!) Could not parse provided collection identifier with registry '%s' and namespace '%s'", registry, namespace))
 	}
+	logger.Write("Publishing collection metadata...", log.LevelInfo)
+	if _, err := ociClient.PushCollectionMetadata(ctx, collRef.Ref(), collMetaPath); err != nil {
+		logger.Write("(!) ERR: Failed to publish collection metadata: devcontainer-collection.json", log.LevelError)
+		return failed(fmt.Sprintf("(!) ERR: Failed to publish '%s/%s'", collRef.Registry, collRef.Path))
+	}
+	logger.Write("Published collection metadata.", log.LevelInfo)
 
 	data, _ := json.Marshal(result)
 	fmt.Fprintln(out.Stdout(), string(data))
-
-	if failures > 0 {
-		return fmt.Errorf("%d %s publish operation(s) failed", failures, collectionType)
-	}
 	return nil
+}
+
+// publishItemResult is one item of TS publish's result: empty when nothing was
+// published (the version already existed), else the tags, digest and version,
+// and for a Feature the legacy ids it was also published under.
+type publishItemResult struct {
+	PublishedTags      []string `json:"publishedTags,omitempty"`
+	Digest             string   `json:"digest,omitempty"`
+	Version            string   `json:"version,omitempty"`
+	PublishedLegacyIDs []string `json:"publishedLegacyIds,omitempty"`
 }
 
 // README templates match the TS FEATURES_README_TEMPLATE / TEMPLATE_README_TEMPLATE
@@ -784,17 +670,6 @@ func generateDocsHeader(meta map[string]any) string {
 	return h
 }
 
-// hasNonEmptyString reports whether an orderedmap has a non-empty string at key,
-// mirroring the JS truthiness check (`!metadata.id`).
-func hasNonEmptyString(m *orderedmap.OrderedMap, key string) bool {
-	v, ok := m.Get(key)
-	if !ok {
-		return false
-	}
-	s, ok := v.(string)
-	return ok && s != ""
-}
-
 // jsTruthyString mirrors JS `value || fallback` for string cells: an empty or
 // non-string value falls back.
 func jsTruthyString(v any, fallback string) string {
@@ -820,10 +695,7 @@ func defaultCell(ov map[string]any) string {
 	}
 	switch x := d.(type) {
 	case bool:
-		if x {
-			return "true"
-		}
-		return "false"
+		return strconv.FormatBool(x)
 	case float64:
 		return strconv.FormatFloat(x, 'f', -1, 64)
 	case nil:
@@ -955,9 +827,4 @@ func createTarArchive(archivePath, sourceDir string) error {
 		return fmt.Errorf("close %s: %w", archivePath, err)
 	}
 	return nil
-}
-
-func mustJSON(v any) []byte {
-	data, _ := json.Marshal(v)
-	return data
 }

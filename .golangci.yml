@@ -17,8 +17,6 @@ linters:
         - fmt.Fprintln
         - (*github.com/spf13/pflag.FlagSet).MarkHidden
         - (*github.com/spf13/cobra.Command).MarkFlagRequired
-        - github.com/devcontainers/cli/internal/pfs.Remove
-        - github.com/devcontainers/cli/internal/pfs.MkdirAll
         # Best-effort metadata/config parsing: on failure the target stays zero
         # (an accepted fallback throughout); behavioral divergences are caught by
         # the parity matrix, not by these unchecked returns.

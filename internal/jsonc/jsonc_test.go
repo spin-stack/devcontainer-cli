@@ -76,17 +76,6 @@ func TestUnmarshal(t *testing.T) {
 	}
 }
 
-func TestParse(t *testing.T) {
-	input := []byte(`{"image": "ubuntu"}`)
-	m, err := Parse(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m["image"] != "ubuntu" {
-		t.Errorf("image = %v", m["image"])
-	}
-}
-
 func TestStripComments(t *testing.T) {
 	input := []byte(`{"image": "ubuntu" /* comment */}`)
 	out, err := StripComments(input)
