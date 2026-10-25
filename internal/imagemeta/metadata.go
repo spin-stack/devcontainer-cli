@@ -2,7 +2,10 @@
 package imagemeta
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"slices"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -41,6 +44,64 @@ type Entry struct {
 	Entrypoint           string             `json:"entrypoint,omitempty"`
 }
 
+// featureEntryKeys is the order TS writes a Feature's entry in: id, then
+// pickFeatureProperties.
+var featureEntryKeys = []string{
+	"id", "onCreateCommand", "updateContentCommand", "postCreateCommand", "postStartCommand", "postAttachCommand",
+	"init", "privileged", "capAdd", "securityOpt", "entrypoint", "mounts", "customizations",
+}
+
+// configEntryKeys is the order TS writes the configuration's entry in
+// (pickConfigProperties); entrypoint, which only a Feature's entry has, last.
+var configEntryKeys = []string{
+	"onCreateCommand", "updateContentCommand", "postCreateCommand", "postStartCommand", "postAttachCommand",
+	"waitFor", "customizations", "mounts", "containerEnv", "containerUser", "init", "privileged", "capAdd",
+	"securityOpt", "remoteUser", "userEnvProbe", "remoteEnv", "overrideCommand", "portsAttributes",
+	"otherPortsAttributes", "forwardPorts", "shutdownAction", "updateRemoteUserUID", "hostRequirements",
+	"entrypoint",
+}
+
+// MarshalJSON writes the entry's properties in the order TS writes them: a
+// Feature's entry (one with an id) in pickFeatureProperties order, then the
+// other properties in configEntryKeys order; any other entry in
+// pickConfigProperties order (configEntryKeys names every property but id).
+// Object values are written with their keys sorted (a Go map keeps no order).
+// &, < and > are not escaped, as JSON.stringify does not escape them.
+func (e Entry) MarshalJSON() ([]byte, error) {
+	type plain Entry
+	var data bytes.Buffer
+	enc := json.NewEncoder(&data)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(plain(e)); err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data.Bytes(), &fields); err != nil {
+		return nil, err
+	}
+	order := configEntryKeys
+	if e.ID != "" {
+		order = append(slices.Clone(featureEntryKeys), configEntryKeys...)
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	written := 0
+	for _, k := range order {
+		v, ok := fields[k]
+		if !ok {
+			continue
+		}
+		delete(fields, k) // a Feature's order names some keys twice
+		if written > 0 {
+			out.WriteByte(',')
+		}
+		fmt.Fprintf(&out, "%q:%s", k, v)
+		written++
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
+}
+
 // ReadMetadataFromLabels extracts metadata entries from Docker image/container labels.
 func ReadMetadataFromLabels(labels map[string]string, logger log.Logger) []Entry {
 	raw, ok := labels[MetadataLabel]
@@ -74,7 +135,10 @@ func GenerateMetadataLabel(entries []Entry) string {
 	}
 	// 0.88 (#1199): always write the devcontainer.metadata label as a JSON array,
 	// even for a single entry — tools that expect an array (e.g. Zed) fail on a
-	// bare object.
-	data, _ := json.Marshal(entries)
-	return string(data)
+	// bare object. JSON.stringify leaves &, < and > as they are.
+	var data bytes.Buffer
+	enc := json.NewEncoder(&data)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(entries) // an Entry holds JSON values only
+	return string(bytes.TrimSuffix(data.Bytes(), []byte("\n")))
 }
