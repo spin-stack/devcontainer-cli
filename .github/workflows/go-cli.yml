@@ -19,12 +19,27 @@ on:
 permissions:
   contents: read
 
+# A newer push to a branch makes the run before it moot, so that run is cancelled; never on main,
+# whose every commit needs its answer. 3 of 11 push runs (2026-10-23..25) ran for a commit a newer
+# push had replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+
+# The jobs that build and run containers land on spin-stack's docker8 fleet (spin-stack/ci: an
+# ephemeral 8-vCPU EC2 instance per job, no nested virtualization). On GitHub's 4-vCPU runners a
+# runtime parity shard took 10.7 min at p50 and 14.4 at p90, against 5.0 on Blacksmith's. A pull
+# request from a fork runs on GitHub's runners instead: its code never reaches spin-stack's AWS
+# account. Only a branch of this repository, which takes write access to push, runs on the fleet.
+
 jobs:
   # What a pull request changed, broken one small edit at a time (go-tools mutate): an
   # edit no test refuses fails, so new code arrives with tests that hold it.
   mutate:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'runs-on/fleet=docker8/env=production' || 'ubuntu-latest' }}
+    # 4 min on GitHub's runners for a diff's 200 mutations; a large diff's builds are many.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -41,8 +56,13 @@ jobs:
 
   lint-and-test:
     runs-on: ubuntu-latest
+    # p90 3.2 min on GitHub's runners.
+    timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      # Where the jobs that build and run containers land (see the top of this file).
+      fleet: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'runs-on/fleet=docker8/env=production' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -70,7 +90,9 @@ jobs:
           if-no-files-found: error
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.lint-and-test.outputs.fleet }}
+    # p90 1.6 min on GitHub's runners.
+    timeout-minutes: 15
     needs: lint-and-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -94,7 +116,10 @@ jobs:
   # Hermetic parity gate: read-configuration golden comparison + the contract
   # lane of the parity matrix (flag validation / output contract, no Docker).
   parity:
+    # The contract and network lanes start no container: GitHub's runner is enough.
     runs-on: ubuntu-latest
+    # p90 2.0 min on GitHub's runners.
+    timeout-minutes: 10
     needs: lint-and-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -143,6 +168,7 @@ jobs:
   daily-changes:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
@@ -158,7 +184,7 @@ jobs:
   #             run with the plain binary: a fast gate (the full matrix is ~45 min).
   #   daily   — the FULL matrix with the instrumented binary, so one run gates parity
   #             AND measures coverage; daily-changes keeps it off on quiet days.
-  # 4 shards across independent runners (each its own docker daemon) so the matrix
+  # 2 shards across independent runners (each its own docker daemon) so the matrix
   # never contends for one runner's CPU/disk/daemon. PARITY_SHARD_TOTAL MUST equal the
   # length of matrix.shard — parity_sharding_workflow_test.go enforces it so a mismatch
   # can't silently drop cases.
@@ -172,18 +198,25 @@ jobs:
       && needs.lint-and-test.result == 'success'
       && (github.event_name == 'push' || github.event_name == 'pull_request'
           || needs.daily-changes.outputs.run == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.lint-and-test.outputs.fleet }}
+    # A shard took 14.4 min at p90 as one of four on GitHub's runners; one of two on them (a
+    # fork's pull request) takes about twice that.
+    timeout-minutes: 45
     strategy:
-      fail-fast: false
+      # On a push or a pull request the first failing shard stops the other: what it would have
+      # found is in the next push's run. The daily run keeps going, since it also measures
+      # coverage.
+      fail-fast: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1]
     env:
       PARITY_RUNTIME_TIMEOUT: "10m"
-      # Each shard owns ~a quarter of the selected cases; -parallel 2 per 2-core runner
-      # is the proven-safe load (per-case id-label / COMPOSE_PROJECT_NAME isolation).
-      PARITY_PARALLEL: "2"
+      # Each shard owns half of the selected cases. -parallel 2 was the proven load on a
+      # 4-vCPU runner (per-case id-label / COMPOSE_PROJECT_NAME isolation); docker8's 8 vCPU
+      # hold twice that.
+      PARITY_PARALLEL: ${{ needs.lint-and-test.outputs.fleet == 'ubuntu-latest' && '2' || '4' }}
       PARITY_SHARD_INDEX: ${{ matrix.shard }}
-      PARITY_SHARD_TOTAL: "4"
+      PARITY_SHARD_TOTAL: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -239,7 +272,10 @@ jobs:
   parity-publish-full:
     needs: [lint-and-test, daily-changes]
     if: needs.daily-changes.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    # Daily and dispatched only: this repository's own code.
+    runs-on: runs-on/fleet=docker8/env=production
+    # p90 3.3 min on GitHub's runners.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -266,6 +302,7 @@ jobs:
   parity-runtime-gate:
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [lint-and-test, e2e, parity, parity-runtime, parity-publish-full]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -296,6 +333,7 @@ jobs:
 
   cross-compile:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: lint-and-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
