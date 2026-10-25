@@ -248,9 +248,7 @@ func readConfigurationPaths(opts *readConfigOpts, cwd string) (workspaceFolder, 
 }
 
 // loadReadConfiguration loads the configuration read-configuration prints,
-// with the --additional-features merged in. The legacy properties the loader
-// migrated into customizations (extensions, settings, devPort) are dropped
-// from it.
+// with the --additional-features merged in.
 func loadReadConfiguration(workspaceFolder, configPath, overridePath string, opts *readConfigOpts) (*config.LoadResult, error) {
 	result, err := config.LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overridePath, config.MountOptions{
 		MountWorkspaceGitRoot:     opts.mountWorkspaceGitRoot,
@@ -268,16 +266,14 @@ func loadReadConfiguration(workspaceFolder, configPath, overridePath string, opt
 	if _, err := mergeAdditionalFeatures(result.Config, opts.additionalFeatures); err != nil {
 		return nil, fmt.Errorf("additional-features: %w", err)
 	}
-	result.Config.Extensions = nil
-	result.Config.Settings = nil
-	result.Config.DevPort = nil
 	return result, nil
 }
 
 // configurationOutput is read-configuration's "configuration": the config as
 // TS prints it, an empty object without one. Unknown and vendor properties the
-// typed config drops are kept, except the legacy properties the loader migrated
-// into customizations (settings, extensions, devPort). configFilePath is a
+// typed config drops are kept. The legacy settings, extensions and devPort are
+// left out only where the loader migrated them into customizations: one it
+// left in place, as TS updateFromOldProperties does, is printed. configFilePath is a
 // VS Code URI, with the file scheme when the config was named on the command
 // line or a container was.
 func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[string]any {
@@ -296,7 +292,9 @@ func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[st
 		if _, known := cfgMap[k]; known {
 			continue
 		}
-		if k == "settings" || k == "extensions" || k == "devPort" {
+		// TS moves a null devPort into customizations.vscode, which the loader
+		// does not; it is never printed at the top level.
+		if k == "devPort" && v == nil {
 			continue
 		}
 		cfgMap[k] = v
