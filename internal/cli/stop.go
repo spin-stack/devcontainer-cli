@@ -76,7 +76,9 @@ func addStopFlags(cmd *cobra.Command, opts *stopOpts) {
 }
 
 func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) error {
-	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
+	// The workspace defaults to the current directory. It is only looked at
+	// when neither --container-id nor --id-label names the container.
+	if opts.workspaceFolder == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
 
