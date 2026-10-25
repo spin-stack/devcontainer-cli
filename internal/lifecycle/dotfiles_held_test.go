@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -18,12 +20,12 @@ func TestInstallDotfilesPrefixesOnlyGitHubShorthand(t *testing.T) {
 		"../dots":                "../dots",
 		"git@example.com:o/dots": "git@example.com:o/dots",
 	} {
-		exec := &mockExecutor{}
+		exec := NewMockCommandExecutor(gomock.NewController(t))
+		exec.EXPECT().Exec(gomock.Cond(func(command string) bool {
+			return strings.Contains(command, "git clone --depth 1 "+want+" /t ")
+		}))
 		if err := InstallDotfiles(log.Null, exec, DotfilesConfig{Repository: repo, TargetPath: "/t"}); err != nil {
 			t.Fatal(err)
-		}
-		if len(exec.commands) != 1 || !strings.Contains(exec.commands[0], "git clone --depth 1 "+want+" /t ") {
-			t.Errorf("%s: commands = %q, want a clone of %s", repo, exec.commands, want)
 		}
 	}
 }

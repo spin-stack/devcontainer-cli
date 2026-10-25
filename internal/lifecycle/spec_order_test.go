@@ -1,8 +1,9 @@
 package lifecycle
 
 import (
-	"reflect"
 	"testing"
+
+	"go.uber.org/mock/gomock"
 
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
@@ -14,7 +15,7 @@ import (
 // postCreateCommand, then on start/attach postStartCommand → postAttachCommand.
 func TestSpecLifecycleOrder(t *testing.T) {
 	// RunHooks runs the in-container phases in exactly that order. Each phase has
-	// a single command; the recording executor captures the execution sequence.
+	// a single command; the mock expects them in sequence.
 	merged := &imagemeta.MergedConfig{
 		OnCreateCommands:      []any{"cmd-onCreate"},
 		UpdateContentCommands: []any{"cmd-updateContent"},
@@ -22,14 +23,10 @@ func TestSpecLifecycleOrder(t *testing.T) {
 		PostStartCommands:     []any{"cmd-postStart"},
 		PostAttachCommands:    []any{"cmd-postAttach"},
 	}
-	exec := &mockExecutor{}
+	exec := NewMockCommandExecutor(gomock.NewController(t))
+	expectInOrder(exec, "", "cmd-onCreate", "cmd-updateContent", "cmd-postCreate", "cmd-postStart", "cmd-postAttach")
 	if err := RunHooks(log.Null, exec, merged, RunOptions{}); err != nil {
 		t.Fatalf("RunHooks: %v", err)
-	}
-
-	want := []string{"cmd-onCreate", "cmd-updateContent", "cmd-postCreate", "cmd-postStart", "cmd-postAttach"}
-	if !reflect.DeepEqual(exec.commands, want) {
-		t.Fatalf("execution order = %v, want %v", exec.commands, want)
 	}
 }
 
@@ -43,12 +40,9 @@ func TestSpecWaitForGatesExecution(t *testing.T) {
 		UpdateContentCommands: []any{"cmd-updateContent"},
 		PostCreateCommands:    []any{"cmd-postCreate"},
 	}
-	exec := &mockExecutor{}
+	exec := NewMockCommandExecutor(gomock.NewController(t))
+	expectInOrder(exec, "", "cmd-onCreate", "cmd-updateContent") // postCreate must not run
 	if err := RunHooks(log.Null, exec, merged, RunOptions{SkipNonBlocking: true}); err != nil {
 		t.Fatalf("RunHooks: %v", err)
-	}
-	want := []string{"cmd-onCreate", "cmd-updateContent"}
-	if !reflect.DeepEqual(exec.commands, want) {
-		t.Fatalf("with waitFor=updateContentCommand + skipNonBlocking, ran %v, want %v (postCreate must not run)", exec.commands, want)
 	}
 }

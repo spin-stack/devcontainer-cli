@@ -8,6 +8,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/iancoleman/orderedmap v0.3.0
 	github.com/moby/buildkit v0.34.1
+	github.com/moby/docker-image-spec v1.3.1
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
 	github.com/opencontainers/go-digest v1.0.0
@@ -17,6 +18,7 @@ require (
 	github.com/spin-stack/go-tools v0.0.0-20261025134518-0ee222410bc5
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/testcontainers/testcontainers-go v0.44.0
+	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -127,7 +129,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.27 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
-	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.3.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
@@ -197,5 +198,6 @@ tool (
 	github.com/spin-stack/go-tools/cmd/testquality
 	github.com/spin-stack/go-tools/cmd/versions
 	github.com/spin-stack/go-tools/cmd/vulngate
+	go.uber.org/mock/mockgen
 	golang.org/x/tools/cmd/deadcode
 )
