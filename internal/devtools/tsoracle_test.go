@@ -3,6 +3,8 @@ package devtools
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -166,5 +168,65 @@ func TestRefreshTSOracleGoldensAsksWithAnEmptyCasesArray(t *testing.T) {
 	}
 	if asked != `{"cases":[]}` {
 		t.Errorf("request = %s, want an empty cases array", asked)
+	}
+}
+
+// refreshTSOracleFiles rewrites only the goldens whose answers changed and
+// names them; with check it writes nothing and fails naming the stale ones.
+func TestRefreshTSOracleFiles(t *testing.T) {
+	root := t.TempDir()
+	write := func(p, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, p), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const fresh = "{\n  \"cases\": [\n    {\n      \"fn\": \"len\",\n      \"args\": [\n        \"ab\"\n      ],\n      \"result\": 2\n    }\n  ]\n}\n"
+	const stale = `{"cases":[{"fn":"len","args":["abc"]}]}`
+	write("internal/a/testdata/ts-oracle/fresh.json", fresh)
+	write("internal/b/testdata/ts-oracle/stale.json", stale)
+	var sent []byte
+
+	var errw strings.Builder
+	err := refreshTSOracleFiles(root, fakeOracle(&sent), true, &errw)
+	if err == nil || !strings.Contains(err.Error(), "internal/b/testdata/ts-oracle/stale.json") || strings.Contains(err.Error(), "fresh.json") {
+		t.Fatalf("check = %v, want the stale golden named alone", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(root, "internal/b/testdata/ts-oracle/stale.json")); string(got) != stale {
+		t.Errorf("check rewrote the stale golden: %s", got)
+	}
+
+	errw.Reset()
+	if err := refreshTSOracleFiles(root, fakeOracle(&sent), false, &errw); err != nil {
+		t.Fatal(err)
+	}
+	if want := "updated internal/b/testdata/ts-oracle/stale.json\n2 ts-oracle goldens checked\n"; errw.String() != want {
+		t.Errorf("stderr = %q, want %q", errw.String(), want)
+	}
+	if got, _ := os.ReadFile(filepath.Join(root, "internal/b/testdata/ts-oracle/stale.json")); !strings.Contains(string(got), `"result": 3`) {
+		t.Errorf("stale golden not refreshed: %s", got)
+	}
+	if err := refreshTSOracleFiles(root, fakeOracle(&sent), true, &errw); err != nil {
+		t.Errorf("check after a refresh = %v, want nil", err)
+	}
+	if err := refreshTSOracleFiles(root, func([]byte) ([]byte, error) { return nil, errors.New("node failed") }, true, &errw); err == nil || !strings.Contains(err.Error(), "node failed") {
+		t.Errorf("oracle failure = %v", err)
+	}
+}
+
+// The recorded goldens are what the reference's functions return today. It
+// runs where `task reference` has installed the reference (the parity CI job,
+// through task parity:contract).
+func TestTSOracleGoldensMatchTheReference(t *testing.T) {
+	const root = "../.."
+	if _, err := os.Stat(filepath.Join(root, "reference/node_modules/esbuild")); err != nil {
+		t.Skipf("reference not installed (%v); run `task reference`", err)
+	}
+	var out strings.Builder
+	if err := (tool{out: &out, errw: &out}).tsOracle(root, true); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
 	}
 }

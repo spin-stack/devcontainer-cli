@@ -3,15 +3,18 @@
 // The plugin exports the module-private reference functions the oracle calls,
 // so they are tested as they are, not copied.
 import { createRequire } from 'node:module';
+import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const [refDir, outfile] = process.argv.slice(2).map(p => path.resolve(p));
-if (!refDir || !outfile) {
+const [refArg, outfile] = process.argv.slice(2).map(p => path.resolve(p));
+if (!refArg || !outfile) {
 	console.error('usage: node build.mjs <reference dir> <outfile>');
 	process.exit(2);
 }
+// esbuild reports real paths, so a symlinked reference/ must be resolved too.
+const refDir = realpathSync(refArg);
 const esbuild = createRequire(path.join(refDir, 'package.json'))('esbuild');
 
 const privateExports = {
