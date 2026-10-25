@@ -127,7 +127,6 @@ func substituteTags(s string, replace func(tag string) (string, bool, error)) (s
 		return s, nil
 	}
 	var b strings.Builder
-	b.Grow(len(s) + len(s)/4)
 	for {
 		i := strings.Index(s, "${")
 		if i < 0 {
