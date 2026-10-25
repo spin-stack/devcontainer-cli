@@ -5,19 +5,25 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 )
 
+// mockExecutor records commands; an object's commands run in parallel, so the
+// record is locked.
 type mockExecutor struct {
+	mu       sync.Mutex
 	commands []string
 	failOn   string
 }
 
 func (m *mockExecutor) Exec(command string) error {
+	m.mu.Lock()
 	m.commands = append(m.commands, command)
+	m.mu.Unlock()
 	if m.failOn != "" && strings.Contains(command, m.failOn) {
 		return fmt.Errorf("command failed: %s", command)
 	}
