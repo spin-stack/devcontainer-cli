@@ -377,14 +377,17 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		if svcBuild.Target != "" {
 			baseName = svcBuild.Target
 		} else {
-			name, modified := docker.EnsureFinalStageName(dockerfile, baseName)
+			name, modified, err := docker.EnsureFinalStageName(dockerfile, baseName)
+			if err != nil {
+				return nil, err
+			}
 			baseName = name
 			if modified != "" {
 				dockerfile = modified
 			}
 		}
 		parsed = docker.ExtractDockerfile(string(raw))
-		if baseImage := docker.FindBaseImage(parsed, svcBuild.Args, svcBuild.Target); baseImage != "" {
+		if baseImage := docker.FindBaseImage(parsed, svcBuild.Args, svcBuild.Target, buildxPlatformArgs("")); baseImage != "" {
 			info, err := r.inspectImagePulling(ctx, baseImage)
 			if err != nil {
 				return nil, err

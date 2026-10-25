@@ -1,5 +1,5 @@
 {
-  "comment": "dockerfileUtils.ts ensureDockerfileHasFinalStageName and findBaseImage (no platform ARGs), and utils.ts isBuildxCacheToInline, ported in dockerfile.go (EnsureFinalStageName, FindBaseImage) and internal/cli's dockerfileResolver, client.go (isBuildxCacheToInline).",
+  "comment": "dockerfileUtils.ts ensureDockerfileHasFinalStageName and findBaseImage, and utils.ts isBuildxCacheToInline, ported in dockerfile.go (EnsureFinalStageName, FindBaseImage) and internal/cli's dockerfileResolver, client.go (isBuildxCacheToInline).",
   "cases": [
     {
       "name": "ts: named simple FROM",
@@ -77,7 +77,6 @@
         "\nRUN some command\n",
         "placeholder"
       ],
-      "divergence": "unresolved: TS throws; EnsureFinalStageName has no error result and its callers (internal/cli/build.go, compose_up.go) are not changed here",
       "error": "Error parsing Dockerfile: Dockerfile contains no FROM instructions"
     },
     {
@@ -99,7 +98,6 @@
         "",
         "placeholder"
       ],
-      "divergence": "unresolved: TS throws; EnsureFinalStageName has no error result and its callers (internal/cli/build.go, compose_up.go) are not changed here",
       "error": "Error parsing Dockerfile: Dockerfile contains no FROM instructions"
     },
     {
@@ -276,6 +274,15 @@
       "result": {
         "lastStageName": "DevStage"
       }
+    },
+    {
+      "name": "final FROM without an image",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM base AS b\nFROM\n",
+        "placeholder"
+      ],
+      "error": "Error parsing Dockerfile: failed to parse final FROM line"
     },
     {
       "name": "ts: simple FROM",
@@ -732,6 +739,48 @@
         {}
       ],
       "result": "node:20"
+    },
+    {
+      "name": "platform ARGs in FROM",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM node-$TARGETARCH AS base\nFROM base\n",
+        {},
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "node-arm64"
+    },
+    {
+      "name": "build arg overrides a platform ARG",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG TARGETOS\nFROM img-${TARGETOS}-$BUILDARCH\n",
+        {
+          "TARGETOS": "windows"
+        },
+        null,
+        {
+          "BUILDPLATFORM": "linux/amd64",
+          "BUILDOS": "linux",
+          "BUILDARCH": "amd64",
+          "BUILDVARIANT": "",
+          "TARGETPLATFORM": "linux/arm64",
+          "TARGETOS": "linux",
+          "TARGETARCH": "arm64",
+          "TARGETVARIANT": ""
+        }
+      ],
+      "result": "img-windows-amd64"
     },
     {
       "name": "cacheTo undefined",

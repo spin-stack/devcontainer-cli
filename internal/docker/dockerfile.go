@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 
@@ -167,12 +168,13 @@ func derefTrim(p *string) string {
 	return trimQuotes(*p)
 }
 
-// FindBaseImage is TS findBaseImage without platform ARGs: the image the
-// target stage (or the last one) is built from, following FROM <stage> to the
-// first image that is no stage; "" when the target is unknown or the stages
-// form a cycle.
-func FindBaseImage(df *Dockerfile, buildArgs map[string]string, target string) string {
-	return NewResolver(df, buildArgs, nil).FindBaseImage(target)
+// FindBaseImage is TS findBaseImage: the image the target stage (or the last
+// one) is built from, with the --build-arg values and the automatic BUILD*/
+// TARGET* platform ARGs (platformArgs, TS globalBuildxPlatformArgs), following
+// FROM <stage> to the first image that is no stage; "" when the target is
+// unknown or the stages form a cycle.
+func FindBaseImage(df *Dockerfile, buildArgs map[string]string, target string, platformArgs map[string]string) string {
+	return NewResolver(df, buildArgs, platformArgs).FindBaseImage(target)
 }
 
 // jsSpace is the JavaScript regular expression class \s (Go's \s lacks \v and
@@ -191,22 +193,22 @@ var (
 // EnsureFinalStageName is TS ensureDockerfileHasFinalStageName: the name of the
 // final build stage, adding " AS <defaultName>" to the last FROM line when it
 // has none (so features can extend a known stage). The modified Dockerfile is
-// returned only when a name was added; otherwise modifiedContent is empty.
-// Where TS throws (no FROM line, or a last FROM line it cannot parse) this
-// returns defaultName and the content unchanged.
-func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string) {
+// returned only when a name was added; otherwise modifiedContent is empty. A
+// Dockerfile without a FROM line, or whose last FROM line does not parse, is
+// TS's error.
+func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string, err error) {
 	lines := findFromLines.FindAllStringIndex(content, -1)
 	if len(lines) == 0 {
-		return defaultName, content
+		return "", "", errors.New("Error parsing Dockerfile: Dockerfile contains no FROM instructions")
 	}
 	lineStart, lineEnd := lines[len(lines)-1][0], lines[len(lines)-1][1]
 	m := fromLineLabel.FindStringSubmatchIndex(content[lineStart:lineEnd])
 	if m == nil {
-		return defaultName, content
+		return "", "", errors.New("Error parsing Dockerfile: failed to parse final FROM line")
 	}
 	if m[2] != -1 && m[3] > m[2] {
-		return content[lineStart+m[2] : lineStart+m[3]], ""
+		return content[lineStart+m[2] : lineStart+m[3]], "", nil
 	}
 	pos := lineStart + m[1]
-	return defaultName, content[:pos] + " AS " + defaultName + content[pos:]
+	return defaultName, content[:pos] + " AS " + defaultName + content[pos:], nil
 }

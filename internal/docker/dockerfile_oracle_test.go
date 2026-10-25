@@ -17,7 +17,10 @@ func TestTSOracleDockerfile(t *testing.T) {
 			if err := oracletest.Args(args, &content, &name); err != nil {
 				return nil, err
 			}
-			stage, modified := EnsureFinalStageName(content, name)
+			stage, modified, err := EnsureFinalStageName(content, name)
+			if err != nil {
+				return nil, err
+			}
 			out := map[string]string{"lastStageName": stage}
 			if modified != "" {
 				out["modifiedDockerfile"] = modified
@@ -30,7 +33,7 @@ func TestTSOracleDockerfile(t *testing.T) {
 			if err := oracletest.Args(args, &content, &buildArgs, &target, &platformArgs); err != nil {
 				return nil, err
 			}
-			return oracletest.OptionalString(FindBaseImage(ExtractDockerfile(content), buildArgs, target)), nil
+			return oracletest.OptionalString(FindBaseImage(ExtractDockerfile(content), buildArgs, target, platformArgs)), nil
 		},
 		"isBuildxCacheToInline": func(args []json.RawMessage) (any, error) {
 			var cacheTo string

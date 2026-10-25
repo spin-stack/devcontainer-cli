@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -209,5 +210,22 @@ func TestImageBuildInfoImagePullFailurePropagates(t *testing.T) {
 	info, err := getImageBuildInfo(context.Background(), cfg, (&fakeImages{}).inspector(), noCompose, log.Null)
 	if err == nil || info != nil {
 		t.Fatalf("got %+v, %v; want the pull error", info, err)
+	}
+}
+
+// The platform ARGs up and build resolve a Dockerfile's FROM with target the
+// --platform value (os/arch[/variant]), else this host, as TS
+// devContainers.ts targetPlatformInfo; the build platform is always the host.
+func TestBuildxPlatformArgs(t *testing.T) {
+	host := runtime.GOOS + "/" + runtime.GOARCH
+	if got := buildxPlatformArgs(""); got["TARGETPLATFORM"] != host || got["BUILDPLATFORM"] != host || got["TARGETARCH"] != runtime.GOARCH {
+		t.Errorf("no --platform: %v, want the host's", got)
+	}
+	got := buildxPlatformArgs("linux/arm64/v8")
+	if got["TARGETPLATFORM"] != "linux/arm64/v8" || got["TARGETOS"] != "linux" || got["TARGETARCH"] != "arm64" || got["TARGETVARIANT"] != "v8" || got["BUILDPLATFORM"] != host {
+		t.Errorf("--platform linux/arm64/v8: %v", got)
+	}
+	if got := buildxPlatformArgs("linux/amd64"); got["TARGETARCH"] != "amd64" || got["TARGETVARIANT"] != "" {
+		t.Errorf("--platform linux/amd64: %v", got)
 	}
 }
