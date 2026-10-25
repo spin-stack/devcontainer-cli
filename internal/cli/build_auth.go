@@ -14,14 +14,11 @@ import (
 // build's ambient auth untouched. Errors are swallowed (best-effort): a build
 // that would have worked anonymously must not fail because auth bridging did.
 func bridgeBuildAuth(logger log.Logger, baseImage string, tags, cacheFrom []string, cacheTo string) (env []string, cleanup func()) {
-	noop := func() {}
+	// With no registry to bridge, ResolveBuildAuth resolves nothing and is not ok.
 	regs := collectBuildRegistries(baseImage, tags, cacheFrom, cacheTo)
-	if len(regs) == 0 {
-		return nil, noop
-	}
 	dir, clean, ok, err := oci.ResolveBuildAuth(osEnvMap(), regs, logger)
 	if err != nil || !ok {
-		return nil, noop
+		return nil, func() {}
 	}
 	return []string{"DOCKER_CONFIG=" + dir}, clean
 }

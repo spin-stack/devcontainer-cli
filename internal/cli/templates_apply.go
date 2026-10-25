@@ -26,8 +26,9 @@ func realTemplatesApplyCmd() *cobra.Command {
 		Use:   "apply",
 		Short: "Apply a template to the project",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if templateID == "" {
-				return fmt.Errorf("Missing required argument: --template-id")
+			selected, err := templateSelection(templateID, templateArgs, featuresJSON, omitPaths)
+			if err != nil {
+				return err
 			}
 
 			logger := log.New(log.Options{
@@ -37,42 +38,7 @@ func realTemplatesApplyCmd() *cobra.Command {
 			})
 
 			ws := resolvePath(workspaceFolder)
-
-			// Parse template args
-			var options map[string]string
-			if templateArgs != "" {
-				if err := jsonc.Unmarshal([]byte(templateArgs), &options); err != nil {
-					// TS emits a fixed message (no parser detail) so both the
-					// non-object and malformed-JSON paths canonicalize identically.
-					return fmt.Errorf("Invalid template arguments provided.")
-				}
-			}
-			if options == nil {
-				options = map[string]string{}
-			}
-
-			// Parse omit paths
-			var omit []string
-			if omitPaths != "" {
-				jsonc.Unmarshal([]byte(omitPaths), &omit)
-			}
-
-			// Parse features
-			var featureOpts []templates.TemplateFeatureOption
-			if featuresJSON != "" && featuresJSON != "[]" {
-				if err := json.Unmarshal([]byte(featuresJSON), &featureOpts); err != nil {
-					return fmt.Errorf("Invalid features JSON: %w", err)
-				}
-			}
-
 			ociClient := newOCIClient(cmd.Context(), logger)
-
-			selected := templates.SelectedTemplate{
-				ID:        templateID,
-				Options:   options,
-				Features:  featureOpts,
-				OmitPaths: omit,
-			}
 
 			files, err := templates.FetchAndApply(templates.ApplyParams{
 				OCIClient:       ociClient,
@@ -100,4 +66,36 @@ func realTemplatesApplyCmd() *cobra.Command {
 	f.StringVar(&tmpDir, "tmp-dir", "", "Temp directory.")
 	f.StringVar(&omitPaths, "omit-paths", "[]", "Paths to omit JSON.")
 	return cmd
+}
+
+// templateSelection validates the apply flags and turns them into the template
+// to apply: --template-id is required, --template-args must be a JSON object of
+// strings, and --features a JSON array; --omit-paths is best-effort, as in TS.
+func templateSelection(templateID, templateArgs, featuresJSON, omitPaths string) (templates.SelectedTemplate, error) {
+	if templateID == "" {
+		return templates.SelectedTemplate{}, fmt.Errorf("Missing required argument: --template-id")
+	}
+	// A nil options map is applied as an empty one.
+	var options map[string]string
+	if templateArgs != "" {
+		if err := jsonc.Unmarshal([]byte(templateArgs), &options); err != nil {
+			// TS emits a fixed message (no parser detail) so both the
+			// non-object and malformed-JSON paths canonicalize identically.
+			return templates.SelectedTemplate{}, fmt.Errorf("Invalid template arguments provided.")
+		}
+	}
+	var omit []string
+	_ = jsonc.Unmarshal([]byte(omitPaths), &omit) // empty or malformed omits nothing
+	var featureOpts []templates.TemplateFeatureOption
+	if featuresJSON != "" {
+		if err := json.Unmarshal([]byte(featuresJSON), &featureOpts); err != nil {
+			return templates.SelectedTemplate{}, fmt.Errorf("Invalid features JSON: %w", err)
+		}
+	}
+	return templates.SelectedTemplate{
+		ID:        templateID,
+		Options:   options,
+		Features:  featureOpts,
+		OmitPaths: omit,
+	}, nil
 }
