@@ -142,7 +142,11 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	containerID := readConfigurationContainerID(ctx, engine, opts, workspaceFolder, result)
-	containerCfg := inspectContainerConfig(ctx, engine, containerID)
+	containerCfg, inspectErr := inspectContainerConfig(ctx, engine, containerID)
+	if inspectErr != nil {
+		lgr.Write(inspectErr.Error(), log.LevelError)
+		return &coreerrors.ExitCodeError{Code: 1, Err: inspectErr}
+	}
 	cfgMap, subErr := substituteContainerEnv(containerCfg, cfgMap)
 	if subErr != nil {
 		return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
@@ -329,16 +333,20 @@ func readConfigurationContainerID(ctx context.Context, engine *docker.EngineClie
 }
 
 // inspectContainerConfig is the config of container cid, nil when there is no
-// container to inspect or it cannot be inspected.
-func inspectContainerConfig(ctx context.Context, engine *docker.EngineClient, cid string) *container.Config {
-	if cid == "" || engine == nil {
-		return nil
+// container to inspect. A container that cannot be inspected is an error, as
+// TS findContainerAndIdLabels' inspectContainer throws.
+func inspectContainerConfig(ctx context.Context, engine *docker.EngineClient, cid string) (*container.Config, error) {
+	if cid == "" {
+		return nil, nil
+	}
+	if engine == nil {
+		return nil, fmt.Errorf("inspect container %s: no Docker engine", cid)
 	}
 	inspect, err := engine.InspectContainer(ctx, cid)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("inspect container %s: %w", cid, err)
 	}
-	return inspect.Config
+	return inspect.Config, nil
 }
 
 // substituteContainerEnv resolves ${containerEnv:...} in cfgMap with the

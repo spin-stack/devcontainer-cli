@@ -178,6 +178,8 @@ func TestReadConfigurationContainerID(t *testing.T) {
 	}
 }
 
+// A container read-configuration cannot inspect fails it, as TS's
+// inspectContainer throws; with no container there is nothing to inspect.
 func TestInspectContainerConfig(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeEngineAPI{containers: map[string]string{
@@ -185,18 +187,19 @@ func TestInspectContainerConfig(t *testing.T) {
 		"noconfig": `{"Id":"noconfig"}`,
 	}}
 	engine := &docker.EngineClient{API: api, Log: log.Null}
-	if got := inspectContainerConfig(ctx, engine, "c1"); got == nil || !slices.Equal(got.Env, []string{"A=b"}) {
-		t.Errorf("c1 = %+v, want its config", got)
+	if got, err := inspectContainerConfig(ctx, engine, "c1"); err != nil || got == nil || !slices.Equal(got.Env, []string{"A=b"}) {
+		t.Errorf("c1 = %+v, %v; want its config", got, err)
 	}
-	for name, got := range map[string]*container.Config{
-		"no container":         inspectContainerConfig(ctx, engine, ""),
-		"no engine":            inspectContainerConfig(ctx, nil, "c1"),
-		"missing container":    inspectContainerConfig(ctx, engine, "missing"),
-		"container w/o config": inspectContainerConfig(ctx, engine, "noconfig"),
-	} {
-		if got != nil {
-			t.Errorf("%s = %+v, want nil", name, got)
+	for name, cid := range map[string]string{"no container": "", "container w/o config": "noconfig"} {
+		if got, err := inspectContainerConfig(ctx, engine, cid); got != nil || err != nil {
+			t.Errorf("%s = %+v, %v; want nil", name, got, err)
 		}
+	}
+	if _, err := inspectContainerConfig(ctx, engine, "missing"); err == nil || !strings.Contains(err.Error(), "inspect container missing") {
+		t.Errorf("missing container: err = %v, want the inspect error", err)
+	}
+	if _, err := inspectContainerConfig(ctx, nil, "c1"); err == nil {
+		t.Error("no engine: want an error")
 	}
 }
 
@@ -409,17 +412,12 @@ func TestReadConfigurationCommandWithoutConfigExitsOne(t *testing.T) {
 }
 
 func TestReadConfigurationCommandContainerIDWithoutWorkspace(t *testing.T) {
-	// --container-id alone loads no configuration: there is no workspace folder
-	// or config file to read one from.
+	// --container-id alone loads no configuration; a container that cannot be
+	// inspected fails the command with no result, as TS's inspectContainer throws.
 	out, err := runReadConfigurationCmd(t, "--container-id", "devcontainer-cli-test-no-such-container")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg, ok := out["configuration"].(map[string]any); !ok || len(cfg) != 0 {
-		t.Errorf("configuration = %v, want an empty object", out["configuration"])
-	}
-	if ws, ok := out["workspace"]; ok {
-		t.Errorf("workspace = %v, want none without a configuration", ws)
+	wantExitCode(t, err, 1)
+	if out != nil {
+		t.Errorf("result = %v, want none", out)
 	}
 }
 

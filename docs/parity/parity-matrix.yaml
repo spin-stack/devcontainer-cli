@@ -856,6 +856,17 @@ initial_cases:
     current_status: match
     notes: "The compose service's Features Dockerfile (appended to `FROM <image> AS dev_container_auto_added_stage_label`) has the same structure as the image build's: builtin env, consecutiveId folders, install wrapper, the Feature's containerEnv and, like TS getFeaturesBuildOptions, the config's containerEnv as ENV lines (CFG_VAR). Go used the _dev_container_feature_<i> layout and left the config's containerEnv out of the compose image."
 
+  - id: read-configuration.container-id-missing-error
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    ts_cmd: "read-configuration --container-id devcontainer-cli-parity-no-such-container"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "A --container-id that cannot be inspected fails read-configuration: TS findContainerAndIdLabels runs inspectContainer, whose `docker inspect` failure throws, so the command exits 1 with nothing on stdout. Go used to ignore the inspect failure and print the configuration."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade
