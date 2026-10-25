@@ -47,6 +47,7 @@ func TestSplitShellWords(t *testing.T) {
 		{`"x\y`, []string{"xy"}},
 		{`"a\`, []string{`a\`}},
 		{`a\`, []string{`a\`}},
+		{`x\y`, []string{"xy"}},
 	}
 	for _, tt := range tests {
 		if got := splitShellWords(tt.in); !slices.Equal(got, tt.want) {

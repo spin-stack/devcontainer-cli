@@ -1030,7 +1030,7 @@ const maxFeatureTarballBytes = 512 << 20
 // more than max bytes: a cut tarball would be extracted and its digest checked
 // against the lockfile as if it were whole.
 func readCapped(r io.Reader, max int64) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(r, max+1))
+	data, err := io.ReadAll(io.LimitReader(r, max+1)) // mutate-exempt: any limit past max reads more than max from a body over the cap, so max+2 fails exactly where max+1 does
 	if err != nil {
 		return nil, err
 	}
