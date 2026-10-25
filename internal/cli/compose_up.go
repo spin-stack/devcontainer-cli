@@ -121,9 +121,11 @@ func splitShellWords(s string) []string {
 func newRandomUUID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	b[6] &= 0x0f
+	b[6] |= 0x40 // version 4
+	b[8] &= 0x3f
+	b[8] |= 0x80 // RFC 4122 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // persistedComposeFile is TS checkForPersistedFile's result.
@@ -165,9 +167,10 @@ func (r *upRunner) startComposeContainer(ctx context.Context, s composeStart) (s
 		originalImageName = s.client.DefaultImageName(s.projectName, cfg.Service)
 	}
 
-	logger.Write(fmt.Sprintf("PersistedPath=%s, ContainerHasLabels=%t", persisted, s.container != nil && s.container.Config != nil && s.container.Config.Labels != nil), log.LevelInfo)
+	hasLabels := s.container != nil && s.container.Config != nil && s.container.Config.Labels != nil
+	logger.Write(fmt.Sprintf("PersistedPath=%s, ContainerHasLabels=%t", persisted, hasLabels), log.LevelInfo)
 	restored := false
-	if s.container != nil && s.container.Config != nil && s.container.Config.Labels != nil {
+	if hasLabels {
 		configFiles, ok := s.container.Config.Labels["com.docker.compose.project.config_files"]
 		logger.Write(fmt.Sprintf("Container was created with these config files: %s", configFiles), log.LevelInfo)
 		var labelFiles []string
@@ -230,18 +233,8 @@ func (r *upRunner) startComposeContainer(ctx context.Context, s composeStart) (s
 		files = append(files, overridePath)
 	}
 
-	// Match the TS CLI: with no runServices there is no service filter, so
-	// `compose up` brings up the whole project; otherwise runServices plus the
-	// dev container service.
-	var services []string
-	if len(cfg.RunServices) > 0 {
-		services = append(services, cfg.RunServices...)
-		if !slices.Contains(services, cfg.Service) {
-			services = append(services, cfg.Service)
-		}
-	}
 	noRecreate := s.container != nil || opts.expectExistingContainer
-	if err := s.client.Up(ctx, files, "", nil, s.projectName, services, noRecreate); err != nil {
+	if err := s.client.Up(ctx, files, "", nil, s.projectName, composeServicesFilter(cfg), noRecreate); err != nil {
 		return "", fmt.Errorf("compose up: %w", err)
 	}
 
@@ -253,6 +246,20 @@ func (r *upRunner) startComposeContainer(ctx context.Context, s composeStart) (s
 		return "", fmt.Errorf("could not find container for service %q in project %q", cfg.Service, s.projectName)
 	}
 	return ids[0], nil
+}
+
+// composeServicesFilter is the services `compose build` and `compose up` are
+// given, as in TS: none (the whole project) without runServices, otherwise
+// runServices plus the dev container service.
+func composeServicesFilter(cfg *config.DevContainer) []string {
+	if len(cfg.RunServices) == 0 {
+		return nil
+	}
+	services := slices.Clone(cfg.RunServices)
+	if !slices.Contains(services, cfg.Service) {
+		services = append(services, cfg.Service)
+	}
+	return services
 }
 
 // inspectImagePulling is TS inspectDockerImage(..., pullImageOnError=true).
@@ -284,9 +291,6 @@ type composeExtendResult struct {
 // override references it (TS keeps its features folder too).
 func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult) ([]*features.Set, string, error) {
 	opts := r.opts
-	if len(cfg.Features) == 0 {
-		return nil, "", nil
-	}
 	var lockfile *features.Lockfile
 	if cfg.ConfigFilePath != "" && !opts.noLockfile {
 		lockfile, _, _ = features.ReadLockfile(cfg.ConfigFilePath)
@@ -363,9 +367,6 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		}
 		if !filepath.IsAbs(dockerfilePath) {
 			dockerfilePath = filepath.Join(buildContext, dockerfilePath)
-		}
-		if abs, err := filepath.Abs(dockerfilePath); err == nil {
-			dockerfilePath = abs
 		}
 		originalDockerfilePath = dockerfilePath
 		raw, err := os.ReadFile(dockerfilePath)
@@ -543,15 +544,8 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 	}
 
 	if !noBuild {
-		var services []string
-		if len(cfg.RunServices) > 0 {
-			services = append(services, cfg.RunServices...)
-			if !slices.Contains(services, cfg.Service) {
-				services = append(services, cfg.Service)
-			}
-		}
 		files := append(slices.Clone(s.composeFiles), result.overrideFiles...)
-		if err := s.client.Build(ctx, files, "", []string{"--project-name", s.projectName}, services, opts.buildNoCache); err != nil {
+		if err := s.client.Build(ctx, files, "", []string{"--project-name", s.projectName}, composeServicesFilter(cfg), opts.buildNoCache); err != nil {
 			return nil, fmt.Errorf("An error occurred building the Docker Compose images: %w", err)
 		}
 	}
