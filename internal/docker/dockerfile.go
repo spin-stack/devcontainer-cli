@@ -1,6 +1,8 @@
 package docker
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
@@ -78,7 +80,6 @@ func ExtractDockerfile(content string) *Dockerfile {
 		}
 	}
 
-	df.Stages = make([]Stage, 0, len(stages))
 	for i := range stages {
 		s := &stages[i]
 		st := Stage{From: From{Platform: s.Platform, Image: trimQuotes(s.BaseName), Label: s.Name}}
@@ -163,13 +164,7 @@ func derefTrim(p *string) string {
 type mapEnv map[string]string
 
 func (m mapEnv) Get(k string) (string, bool) { v, ok := m[k]; return v, ok }
-func (m mapEnv) Keys() []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	return ks
-}
+func (m mapEnv) Keys() []string              { return slices.Collect(maps.Keys(m)) }
 
 // FindBaseImage resolves the base image for a target stage (or the last stage),
 // following FROM <stage> references to the root image. ${VAR} / ${VAR:+x} /
@@ -225,7 +220,9 @@ func EnsureFinalStageName(content, defaultName string) (stageName string, modifi
 	// on a parse error (e.g. a trailing inline comment the strict parser rejects
 	// but the TS tolerates) or no name, fall through to the tolerant scan below.
 	if res, err := parser.Parse(strings.NewReader(content)); err == nil {
-		if stages, _, perr := instructions.Parse(res.AST, nil); perr == nil && len(stages) > 0 {
+		// instructions.Parse returns no stages with its error, so an error lands in
+		// the tolerant scan like "no stages" does.
+		if stages, _, _ := instructions.Parse(res.AST, nil); len(stages) > 0 {
 			if name := stages[len(stages)-1].Name; name != "" {
 				return name, ""
 			}
@@ -236,7 +233,11 @@ func EnsureFinalStageName(content, defaultName string) (stageName string, modifi
 	// it by hand (no regex). If it already has an "AS <label>" return it; otherwise
 	// inject " AS <defaultName>" right after the base image, preserving the rest of
 	// the line (trailing comment/whitespace).
-	lineStart, fromStart, fromLine, found := 0, 0, "", false
+	var (
+		lineStart, fromStart int
+		fromLine             string
+		found                bool
+	)
 	for _, l := range strings.SplitAfter(content, "\n") {
 		if isFromLine(l) {
 			fromStart = lineStart
@@ -284,14 +285,14 @@ func parseFromLine(line string) (label string, imageEnd int, ok bool) {
 		return line[start:i], i
 	}
 	if kw, _ := readTok(); !strings.EqualFold(kw, "FROM") {
-		return "", 0, false
+		return "", 0, false // mutate-exempt: imageEnd is unread when ok is false
 	}
 	tok, end := readTok()
 	if strings.HasPrefix(tok, "--") { // optional --platform flag
 		tok, end = readTok()
 	}
 	if tok == "" {
-		return "", 0, false
+		return "", 0, false // mutate-exempt: imageEnd is unread when ok is false
 	}
 	imageEnd = end
 	if as, _ := readTok(); strings.EqualFold(as, "AS") {

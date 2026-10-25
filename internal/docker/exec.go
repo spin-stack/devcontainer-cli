@@ -16,6 +16,7 @@ import (
 // user (docker exec -u) and env ("KEY=VALUE", docker exec -e) mirror how the
 // lifecycle shell runs hooks and the userEnvProbe as the remote user.
 func (e *EngineClient) ExecInContainer(ctx context.Context, containerID, user string, env []string, command string) (stdout, stderr string, exitCode int, err error) {
+	const failed = -1 // mutate-exempt: the exit code is unread whenever err is non-nil (lifecycle.ShellServer discards it)
 	created, err := e.API.ExecCreate(ctx, containerID, mobyclient.ExecCreateOptions{
 		User:         user,
 		Env:          env,
@@ -24,24 +25,24 @@ func (e *EngineClient) ExecInContainer(ctx context.Context, containerID, user st
 		AttachStderr: true,
 	})
 	if err != nil {
-		return "", "", -1, err
+		return "", "", failed, err
 	}
 
 	attach, err := e.API.ExecAttach(ctx, created.ID, mobyclient.ExecAttachOptions{})
 	if err != nil {
-		return "", "", -1, err
+		return "", "", failed, err
 	}
 	defer attach.Close()
 
 	var outBuf, errBuf bytes.Buffer
 	// Non-TTY exec output is a multiplexed stdout/stderr frame stream.
 	if _, copyErr := stdcopy.StdCopy(&outBuf, &errBuf, attach.Reader); copyErr != nil {
-		return outBuf.String(), errBuf.String(), -1, copyErr
+		return outBuf.String(), errBuf.String(), failed, copyErr
 	}
 
 	inspect, err := e.API.ExecInspect(ctx, created.ID, mobyclient.ExecInspectOptions{})
 	if err != nil {
-		return outBuf.String(), errBuf.String(), -1, err
+		return outBuf.String(), errBuf.String(), failed, err
 	}
 	return outBuf.String(), errBuf.String(), inspect.ExitCode, nil
 }
