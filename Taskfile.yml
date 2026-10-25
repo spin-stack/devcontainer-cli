@@ -258,8 +258,7 @@ tasks:
     desc: Fail when a testdata/ts-oracle golden differs from what the reference TypeScript functions return
     deps: [reference:compile]
     cmds:
-      - go run ./cmd/devtool ts-oracle
-      - git diff --exit-code -- '*/testdata/ts-oracle/*.json'
+      - go test ./internal/devtools -run '^TestTSOracleGoldensMatchTheReference$' -count=1 -v
 
   reference:
     desc: Install and compile the TypeScript parity oracle
@@ -280,6 +279,8 @@ tasks:
       # Oracle flag-surface gate: every flag the TS oracle declares per command
       # must be in the inventory (needs reference/ checked out, so it lives here).
       - go test ./internal/cli -run TestOracleFlagCoverage -count=1
+      # The ts-oracle goldens must be what the reference's functions return.
+      - go test ./internal/devtools -run '^TestTSOracleGoldensMatchTheReference$' -count=1
       - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-contract.json PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 10m -v {{.CLI_ARGS}}
 
   parity:semantic:

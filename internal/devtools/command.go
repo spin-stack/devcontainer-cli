@@ -2,6 +2,7 @@ package devtools
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,7 +49,7 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "metrics":
 		err = t.metrics(rest)
 	case "ts-oracle":
-		err = t.tsOracle()
+		err = t.tsOracle(".", false)
 	default:
 		fmt.Fprintf(stderr, "devtool: unknown command %q\n", cmd)
 		return 2
@@ -550,50 +551,68 @@ func (t tool) metrics(args []string) error {
 	return nil
 }
 
-// tsOracle rewrites every internal/**/testdata/ts-oracle/*.json with the
-// answers the reference's own functions give to the golden's requests.
-func (t tool) tsOracle() error {
+// tsOracle rewrites every internal/**/testdata/ts-oracle/*.json under root
+// with the answers the reference's own functions give to the golden's
+// requests; with check it writes nothing and fails on a stale golden.
+//
+// mutate-lane: TestTSOracleGoldensMatchTheReference
+func (t tool) tsOracle(root string, check bool) error {
 	dir, err := os.MkdirTemp("", "ts-oracle-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(dir)
 	bundle := filepath.Join(dir, "oracle.js")
-	if err := t.run("node", "tools/tsoracle/build.mjs", "reference", bundle); err != nil {
+	if err := t.run("node", filepath.Join(root, "tools/tsoracle/build.mjs"), filepath.Join(root, "reference"), bundle); err != nil {
 		return fmt.Errorf("bundle tools/tsoracle/oracle.ts: %w", err)
 	}
-	paths, err := TSOracleGoldens(os.DirFS("."))
-	if err != nil {
-		return err
-	}
-	goldens := map[string][]byte{}
-	for _, p := range paths {
-		if goldens[p], err = os.ReadFile(p); err != nil {
-			return err
-		}
-	}
-	refreshed, err := RefreshTSOracleGoldens(goldens, func(request []byte) ([]byte, error) {
+	return refreshTSOracleFiles(root, func(request []byte) ([]byte, error) {
 		cmd := exec.Command("node", bundle)
-		cmd.Stdin = strings.NewReader(string(request))
+		cmd.Stdin = bytes.NewReader(request)
 		cmd.Stderr = t.errw
 		out, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("run the oracle: %w", err)
 		}
 		return out, nil
-	})
+	}, check, t.errw)
+}
+
+// refreshTSOracleFiles asks oracle for every golden under root and rewrites
+// the ones whose answers changed, naming each on errw; with check it writes
+// nothing and fails naming the stale ones.
+func refreshTSOracleFiles(root string, oracle func(request []byte) ([]byte, error), check bool, errw io.Writer) error {
+	paths, err := TSOracleGoldens(os.DirFS(root))
 	if err != nil {
 		return err
 	}
+	goldens := map[string][]byte{}
 	for _, p := range paths {
-		if string(refreshed[p]) == string(goldens[p]) {
-			continue
-		}
-		if err := os.WriteFile(p, refreshed[p], 0o644); err != nil {
+		if goldens[p], err = os.ReadFile(filepath.Join(root, p)); err != nil {
 			return err
 		}
-		fmt.Fprintln(t.errw, "updated", p)
 	}
-	fmt.Fprintf(t.errw, "%d ts-oracle goldens checked\n", len(paths))
+	refreshed, err := RefreshTSOracleGoldens(goldens, oracle)
+	if err != nil {
+		return err
+	}
+	var stale []string
+	for _, p := range paths {
+		if bytes.Equal(refreshed[p], goldens[p]) {
+			continue
+		}
+		stale = append(stale, p)
+		if check {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, p), refreshed[p], 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintln(errw, "updated", p)
+	}
+	if check && len(stale) > 0 {
+		return fmt.Errorf("stale ts-oracle goldens, run `go tool task testdata:ts-oracle`: %s", strings.Join(stale, ", "))
+	}
+	fmt.Fprintf(errw, "%d ts-oracle goldens checked\n", len(paths))
 	return nil
 }
