@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
 )
 
 // DevContainer represents a devcontainer.json.
@@ -295,51 +296,71 @@ func (s StringOrStrings) MarshalJSON() ([]byte, error) {
 
 // --- Legacy property migration ---
 
-// UpdateFromOldProperties migrates deprecated extensions/settings/devPort
-// to customizations.vscode.*, matching the TS function in configuration.ts.
-func UpdateFromOldProperties(c *DevContainer) {
-	if len(c.Extensions) == 0 && c.Settings == nil && c.DevPort == nil {
-		return
+// updateFromOldProperties is TS updateFromOldProperties: it moves the
+// deprecated top-level extensions, settings and devPort of a parsed
+// devcontainer.json into customizations.vscode, on a copy. extensions are
+// appended to customizations.vscode.extensions; settings are merged under
+// customizations.vscode.settings, whose keys win; devPort moves only when
+// customizations.vscode has none, and otherwise stays where it is.
+func updateFromOldProperties(raw map[string]any) map[string]any {
+	devPort, hasDevPort := raw["devPort"]
+	if !truthy(raw["extensions"]) && !truthy(raw["settings"]) && (!hasDevPort || devPort == nil) {
+		return raw
 	}
-
-	if c.Customizations == nil {
-		c.Customizations = make(map[string]any)
+	out := maps.Clone(raw)
+	customizations, _ := out["customizations"].(map[string]any)
+	customizations = maps.Clone(customizations)
+	if customizations == nil {
+		customizations = map[string]any{}
 	}
-	vscodeRaw, _ := c.Customizations["vscode"].(map[string]any)
-	if vscodeRaw == nil {
-		vscodeRaw = make(map[string]any)
+	vscode, _ := customizations["vscode"].(map[string]any)
+	vscode = maps.Clone(vscode)
+	if vscode == nil {
+		vscode = map[string]any{}
 	}
-
-	if len(c.Extensions) > 0 {
-		existing, _ := vscodeRaw["extensions"].([]any)
-		for _, ext := range c.Extensions {
-			existing = append(existing, ext)
+	if truthy(out["extensions"]) {
+		existing, _ := vscode["extensions"].([]any)
+		added, ok := out["extensions"].([]any)
+		if !ok {
+			added = []any{out["extensions"]}
 		}
-		vscodeRaw["extensions"] = existing
-		c.Extensions = nil
+		vscode["extensions"] = append(append([]any{}, existing...), added...)
+		delete(out, "extensions")
 	}
-
-	if c.Settings != nil {
-		if existingSettings, ok := vscodeRaw["settings"].(map[string]any); ok {
-			if newSettings, ok := c.Settings.(map[string]any); ok {
-				for k, v := range newSettings {
-					if _, exists := existingSettings[k]; !exists {
-						existingSettings[k] = v
-					}
-				}
-			}
-		} else {
-			vscodeRaw["settings"] = c.Settings
+	if truthy(out["settings"]) {
+		merged := map[string]any{}
+		if m, ok := out["settings"].(map[string]any); ok {
+			maps.Copy(merged, m)
 		}
-		c.Settings = nil
-	}
-
-	if c.DevPort != nil {
-		if _, exists := vscodeRaw["devPort"]; !exists {
-			vscodeRaw["devPort"] = *c.DevPort
+		if m, ok := vscode["settings"].(map[string]any); ok {
+			maps.Copy(merged, m)
 		}
-		c.DevPort = nil
+		vscode["settings"] = merged
+		delete(out, "settings")
 	}
+	if hasDevPort && devPort != nil {
+		if _, set := vscode["devPort"]; !set {
+			vscode["devPort"] = devPort
+			delete(out, "devPort")
+		}
+	}
+	customizations["vscode"] = vscode
+	out["customizations"] = customizations
+	return out
+}
 
-	c.Customizations["vscode"] = vscodeRaw
+// truthy is JavaScript truthiness for a JSON value.
+func truthy(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return x
+	case string:
+		return x != ""
+	case float64:
+		return x != 0
+	default:
+		return true
+	}
 }

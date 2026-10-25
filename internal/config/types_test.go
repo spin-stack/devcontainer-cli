@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -204,30 +205,44 @@ func TestStringOrStrings_Array(t *testing.T) {
 	}
 }
 
+// updateFromOldProperties follows TS updateFromOldProperties: extensions are
+// appended, settings merged under the existing ones (which win), devPort moved
+// only when customizations.vscode has none, and the input is left untouched.
 func TestUpdateFromOldProperties(t *testing.T) {
-	c := &DevContainer{
-		Extensions: []string{"ms-python.python"},
-		DevPort:    new(3000),
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"nothing deprecated", `{"image":"x"}`, `{"image":"x"}`},
+		{"empty deprecated values", `{"extensions":[],"settings":null}`, `{"settings":null,"customizations":{"vscode":{"extensions":[]}}}`},
+		{
+			"into existing customizations",
+			`{"extensions":["a"],"settings":{"x":1,"y":1},"customizations":{"vscode":{"extensions":["b"],"settings":{"y":2}}}}`,
+			`{"customizations":{"vscode":{"extensions":["b","a"],"settings":{"x":1,"y":2}}}}`,
+		},
+		{"devPort moves", `{"devPort":3000}`, `{"customizations":{"vscode":{"devPort":3000}}}`},
+		{"devPort stays when vscode has one", `{"devPort":3000,"customizations":{"vscode":{"devPort":1}}}`, `{"devPort":3000,"customizations":{"vscode":{"devPort":1}}}`},
 	}
-	UpdateFromOldProperties(c)
-
-	if len(c.Extensions) != 0 {
-		t.Error("extensions should be cleared")
-	}
-	if c.DevPort != nil {
-		t.Error("devPort should be cleared")
-	}
-
-	vscode, ok := c.Customizations["vscode"].(map[string]any)
-	if !ok {
-		t.Fatal("expected vscode customizations")
-	}
-	exts, ok := vscode["extensions"].([]any)
-	if !ok || len(exts) != 1 || exts[0] != "ms-python.python" {
-		t.Errorf("extensions = %v", vscode["extensions"])
-	}
-	if vscode["devPort"] != 3000 {
-		t.Errorf("devPort = %v", vscode["devPort"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var in, want map[string]any
+			if err := json.Unmarshal([]byte(tt.in), &in); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal([]byte(tt.want), &want); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := json.Marshal(in)
+			got := updateFromOldProperties(in)
+			if !reflect.DeepEqual(got, want) {
+				g, _ := json.Marshal(got)
+				t.Errorf("got %s, want %s", g, tt.want)
+			}
+			if after, _ := json.Marshal(in); string(after) != string(before) {
+				t.Errorf("input changed: %s -> %s", before, after)
+			}
+		})
 	}
 }
 
