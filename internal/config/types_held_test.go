@@ -11,9 +11,9 @@ import (
 func TestBuildContextPrefersTheLegacyProperty(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"dockerFile":"D","context":"legacy","build":{"context":"build"}}`: "legacy",
-		`{"build":{"context":".."}}`:                       "..",
-		`{"build":{"dockerfile":"Dockerfile"}}`:            "",
-		`{}`:                                               "",
+		`{"build":{"context":".."}}`:                                        "..",
+		`{"build":{"dockerfile":"Dockerfile"}}`:                             "",
+		`{}`:                                                                "",
 	} {
 		var c DevContainer
 		if err := json.Unmarshal([]byte(in), &c); err != nil {
