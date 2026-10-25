@@ -578,8 +578,18 @@ func runParityCLIOnce(ctx context.Context, repoRoot, cli, cmdArgs string, env ma
 	return outBuf.String(), errBuf.String(), exitCode
 }
 
+// runParitySetup runs a case's setup_cmd and returns the KEY=VALUE lines it
+// prints. A setup that fails with a transient build error is re-run like the
+// measured command (runWithInfraRetry): setups bring a container up, and two
+// cases building Features without BuildKit at once race on the fixed
+// dev_container_feature_content_temp image both CLIs build.
 func runParitySetup(ctx context.Context, repoRoot, setupCmd string, env map[string]string) (map[string]string, error) {
-	stdout, stderr, exitCode, err := runShellCommand(ctx, repoRoot, setupCmd, env)
+	var err error
+	stdout, stderr, exitCode := runWithInfraRetry(ctx, parityInfraRetries, func() (string, string, int) {
+		out, errOut, code, runErr := runShellCommand(ctx, repoRoot, setupCmd, env)
+		err = runErr
+		return out, errOut, code
+	})
 	if err != nil {
 		return nil, err
 	}
