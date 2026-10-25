@@ -1015,12 +1015,29 @@ func downloadFeatureTarball(ctx context.Context, logger log.Logger, tarballURL s
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, "", fmt.Errorf("download %s: HTTP %d", tarballURL, resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20)) // 512 MiB cap
+	data, err := readCapped(resp.Body, maxFeatureTarballBytes)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("download %s: %w", tarballURL, err)
 	}
 	sum := sha256.Sum256(data)
 	return data, "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// maxFeatureTarballBytes bounds a direct Feature tarball download.
+const maxFeatureTarballBytes = 512 << 20
+
+// readCapped reads r to the end, failing rather than truncating when it holds
+// more than max bytes: a cut tarball would be extracted and its digest checked
+// against the lockfile as if it were whole.
+func readCapped(r io.Reader, max int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > max {
+		return nil, fmt.Errorf("larger than the %d MiB a Feature tarball may be", max>>20)
+	}
+	return data, nil
 }
 
 // featureRequestHeaders mirrors the TS getRequestHeaders for a direct-tarball
