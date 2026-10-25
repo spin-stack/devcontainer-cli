@@ -73,6 +73,8 @@ dockers_v2:
     build_args:
       VERSION: "{{ .Version }}"
       REVISION: "{{ .FullCommit }}"
+      # The base image by digest, from versions.yaml (task release:env).
+      DISTROLESS_IMAGE: "{{ .Env.DISTROLESS_IMAGE }}"
     labels:
       org.opencontainers.image.title: devcontainer-cli
       org.opencontainers.image.source: https://github.com/spin-stack/devcontainer-cli

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -80,7 +80,7 @@ func ParseProfile(r io.Reader) (pkgs []PkgCov, total PkgCov, err error) {
 	for p := range tot {
 		pkgs = append(pkgs, PkgCov{Pkg: p, Covered: cov[p], Total: tot[p]})
 	}
-	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].Pkg < pkgs[j].Pkg })
+	slices.SortFunc(pkgs, func(a, b PkgCov) int { return strings.Compare(a.Pkg, b.Pkg) })
 	return pkgs, PkgCov{Pkg: "TOTAL", Covered: gCov, Total: gTot}, nil
 }
 

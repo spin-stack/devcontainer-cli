@@ -18,8 +18,12 @@
 # context. For a local single-arch build:
 #   mkdir -p linux/amd64
 #   CGO_ENABLED=0 go build -o linux/amd64/devcontainer ./cmd/devcontainer
-#   docker buildx build --platform linux/amd64 --load -t devcontainer-cli .
-FROM gcr.io/distroless/static:nonroot
+#   docker buildx build --platform linux/amd64 --load $(go tool versions args distroless) -t devcontainer-cli .
+#
+# The base is pinned by digest in versions.yaml (distroless) and handed in: GoReleaser
+# reads it from DISTROLESS_IMAGE, which `task release:env` exports.
+ARG DISTROLESS_IMAGE
+FROM ${DISTROLESS_IMAGE}
 
 # Version/revision are injected at build time. GoReleaser passes them via
 # build_args; a local build can pass --build-arg VERSION=... .

@@ -20,6 +20,25 @@ permissions:
   contents: read
 
 jobs:
+  # What a pull request changed, broken one small edit at a time (go-tools mutate): an
+  # edit no test refuses fails, so new code arrives with tests that hold it.
+  mutate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: What this change broke, and whether a test noticed
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: go tool task mutate
+
   lint-and-test:
     runs-on: ubuntu-latest
     permissions:

@@ -1,0 +1,2 @@
+# Functions no binary reaches that are correct for ever, one `<symbol>  # why` a line (go tool deadgate -allow).
+# An entry that matches nothing fails, so the list only shrinks.

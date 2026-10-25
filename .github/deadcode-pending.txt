@@ -1,0 +1,2 @@
+# Functions no binary reaches whose deletion somebody owes, one `<symbol>  # why` a line (go tool deadgate -pending).
+# Printed on every green run; an entry that matches nothing fails.

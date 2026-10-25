@@ -5,7 +5,8 @@
 package devtools
 
 import (
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -48,12 +49,7 @@ func ParityAffected(files []string) string {
 	if len(cmds) == 0 {
 		return "none"
 	}
-	keys := make([]string, 0, len(cmds))
-	for k := range cmds {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return strings.Join(keys, ",")
+	return strings.Join(slices.Sorted(maps.Keys(cmds)), ",")
 }
 
 type fileKind int

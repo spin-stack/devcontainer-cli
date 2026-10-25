@@ -70,7 +70,7 @@ tasks:
   test:unit:
     desc: Run hermetic unit tests
     cmds:
-      - go test ./cmd/... ./internal/... -skip '^TestE2E|^TestParityMatrix$|^TestPublishParity$' -count=1 {{.CLI_ARGS}}
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -count=1 {{.CLI_ARGS}}
 
   test:integration:
     desc: Run local HTTP integration tests
@@ -82,12 +82,12 @@ tasks:
     env:
       CGO_ENABLED: "1"
     cmds:
-      - go test ./cmd/... ./internal/... -skip '^TestE2E|^TestParityMatrix$|^TestPublishParity$' -race -count=1 {{.CLI_ARGS}}
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -race -count=1 {{.CLI_ARGS}}
 
   vuln:
-    desc: Scan module and code paths for known vulnerabilities (govulncheck)
+    desc: Fail on a vulnerability the code calls and that has a fix, the standard library's included (govulncheck through go-tools' vulngate)
     cmds:
-      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - go tool vulngate ./...
 
   coverage:
     desc: Hermetic unit coverage — per-package table + enforce the total/package floors
@@ -98,7 +98,7 @@ tasks:
       # -coverprofile keeps coverage.out byte-identical for the gate; the extra
       # -test.gocoverdir also emits binary covdata so `coverage:merge` can union it
       # with the e2e/parity lanes.
-      - go test ./cmd/... ./internal/... -skip '^TestE2E|^TestParityMatrix$|^TestPublishParity$' -coverprofile=coverage.out -count=1 -args -test.gocoverdir={{.ROOT_DIR}}/{{.COVER_DATA}}/unit
+      - go test ./cmd/... ./internal/... -skip '^TestClient$|^TestE2E|^TestParityMatrix$|^TestPublishParity$' -coverprofile=coverage.out -count=1 -args -test.gocoverdir={{.ROOT_DIR}}/{{.COVER_DATA}}/unit
       - go run ./cmd/devtool coverage-report coverage.out "unit (hermetic)"
       # Ratchet: total + per-package floors (parsers must not mask lost CLI/OCI coverage).
       - go run ./cmd/devtool coverage-gate coverage.out TOTAL={{.COVERAGE_MIN}} cli={{.COVERAGE_CLI_MIN}} docker={{.COVERAGE_DOCKER_MIN}} lifecycle={{.COVERAGE_LIFECYCLE_MIN}} oci={{.COVERAGE_OCI_MIN}}
@@ -198,11 +198,41 @@ tasks:
       - go test ./internal/cli -run TestE2E -count=1 -timeout 5m -v {{.CLI_ARGS}}
 
   lint:
-    desc: Run Go static checks; hold every workflow step to one task, and every install to pnpm through Socket Firewall
+    desc: Run Go static checks and go-tools' gates - golangci-lint, goroutine lifetimes, tests that cannot fail, AGENTS.md's references, unreachable code, one task per workflow step, pnpm through Socket Firewall
     cmds:
       - go vet ./cmd/... ./internal/...
+      - task: lint:go
+      - go tool ctxlife
+      - go tool testquality -allow .github/testquality-allow.txt ./...
+      - go tool refs
+      - go tool mutate -stale-exempts
+      - task: deadcode
       - go tool taskgate
       - go tool sfw check
+
+  lint:go:
+    desc: golangci-lint with .golangci.yml, at the version versions.yaml pins
+    cmds:
+      # As this user, on this host's module and build caches; GOTOOLCHAIN=local reads the code
+      # with the Go the image carries.
+      - mkdir -p {{.ROOT_DIR}}/artifacts/golangci-lint
+      - >-
+        docker run --rm -u "$(id -u):$(id -g)" -v {{.ROOT_DIR}}:/work -w /work
+        -v "$(go env GOMODCACHE)":/go/pkg/mod -v "$(go env GOCACHE)":/cache/go-build
+        -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/cache/go-build -e GOLANGCI_LINT_CACHE=/work/artifacts/golangci-lint
+        -e HOME=/tmp -e GOTOOLCHAIN=local
+        $(go tool versions ref golangci-lint) golangci-lint run ./cmd/... ./internal/...
+
+  deadcode:
+    desc: Fail on a function the binaries link and never call, or a package none imports, unless .github/deadcode-allow.txt says why
+    cmds:
+      - go tool deadgate -deadcode "$(go tool -n deadcode)" -roots ./cmd/... -packages ./internal/... -allow .github/deadcode-allow.txt -pending .github/deadcode-pending.txt
+
+  mutate:
+    desc: Break what the change against BASE touched and fail on an edit no test refuses (BASE=origin/main; on a pull request, what it merges into)
+    cmds:
+      # BASE comes from `task mutate BASE=...` or the environment (the workflow's).
+      - go tool mutate -base "{{.BASE | default "${BASE:-origin/main}"}}" -max 200
 
   spec:compliance:
     desc: Verify spec compliance — schema attribute coverage + normative behavior (merge/lifecycle/discovery), excludes Go-only additions
@@ -363,8 +393,16 @@ tasks:
     preconditions:
       - sh: command -v goreleaser >/dev/null
         msg: goreleaser is required
+    env:
+      DISTROLESS_IMAGE:
+        sh: go tool versions ref distroless
     cmds:
       - goreleaser release --clean {{.CLI_ARGS}}
+
+  release:env:
+    desc: "CI-ONLY: export what GoReleaser reads from versions.yaml (DISTROLESS_IMAGE) to $GITHUB_ENV"
+    cmds:
+      - echo "DISTROLESS_IMAGE=$(go tool versions ref distroless)" >> "$GITHUB_ENV"
 
   # The release workflow's own steps. What only the workflow knows - the dispatch input, the
   # prepare job's outputs, the published digest - comes in the environment.
@@ -372,39 +410,7 @@ tasks:
     desc: "Resolve the version, tag and commit to release (to $GITHUB_OUTPUT, or the terminal): a dispatch's VERSION_INPUT or the next CalVer, else the pushed tag"
     cmds:
       # Outside CI there is no tag push, so it answers as a dispatch would: a dry run.
-      - |
-        set -euo pipefail
-        if [ "${GITHUB_EVENT_NAME:-workflow_dispatch}" = "workflow_dispatch" ]; then
-          VERSION="${VERSION_INPUT:-}"
-          VERSION="${VERSION#v}"
-          if [ -z "$VERSION" ]; then
-            # Auto CalVer: YYYYMMDD.<next build number for today>.
-            DATE="$(date -u +%Y%m%d)"
-            N="$(git tag -l "v${DATE}.*" | wc -l | tr -d ' ')"
-            VERSION="${DATE}.$(printf '%02d' "$((N + 1))")"
-          fi
-          # Reject anything that is not a plain version token (defense in depth:
-          # this value later reaches git/docker command lines).
-          case "$VERSION" in
-            *[!0-9A-Za-z.+-]*|"")
-              echo "::error::invalid version '${VERSION}': use only [0-9A-Za-z.+-]"; exit 1 ;;
-          esac
-          TAG="v${VERSION}"
-          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "::error::tag ${TAG} already exists — releases are immutable, bump the build number"
-            exit 1
-          fi
-          SHA="$(git rev-parse HEAD)"
-        else
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          SHA="${GITHUB_SHA}"
-        fi
-        out="${GITHUB_OUTPUT:-/dev/stdout}"
-        echo "version=${VERSION}" >>"$out"
-        echo "tag=${TAG}" >>"$out"
-        echo "sha=${SHA}" >>"$out"
-        echo "Releasing ${TAG} (version ${VERSION}) from ${SHA}" >>"${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+      - go run ./cmd/devtool release-resolve
 
   release:tag:
     desc: "CI-ONLY: create and push the annotated tag RELEASE_TAG for RELEASE_VERSION, as github-actions[bot]"
@@ -466,100 +472,9 @@ tasks:
   metrics:
     desc: "Perf/distribution metrics (non-gating): Go startup vs Node oracle + artifact sizes -> artifacts/metrics.json"
     deps: [build]
-    vars:
-      ORACLE: reference/dist/spec-node/devContainersSpecCLI.js
     cmds:
       # Non-gating: never fail the caller. All measurement is best-effort.
-      - cmd: |
-          set -u
-          out={{.ROOT_DIR}}/artifacts/metrics.json
-          mkdir -p {{.ROOT_DIR}}/artifacts
-          bin={{.ROOT_DIR}}/{{.BINARY}}
-          oracle={{.ROOT_DIR}}/{{.ORACLE}}
-          runs="${METRICS_RUNS:-30}"
-
-          # Portable byte size of a file (Linux stat -c; BSD/mac stat -f fallback).
-          fsize() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1" 2>/dev/null || echo null; }
-
-          # Mean wall-clock ms for a command over N runs.
-          # Uses hyperfine when present (JSON mean, seconds->ms); otherwise a
-          # portable `date +%s%N` loop averaged over the runs.
-          have_hyperfine=0
-          command -v hyperfine >/dev/null 2>&1 && have_hyperfine=1
-
-          time_cmd() {
-            # args: label, then the command
-            _label="$1"; shift
-            if [ "$have_hyperfine" = "1" ]; then
-              _hf=$(hyperfine --warmup 3 --runs "$runs" --shell=none --export-json /dev/stdout "$*" 2>/dev/null \
-                | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const j=JSON.parse(d);process.stdout.write(String(j.results[0].mean*1000))}catch(e){process.stdout.write("null")}})' 2>/dev/null)
-              [ -n "$_hf" ] && echo "$_hf" || echo null
-            else
-              # warmup
-              "$@" >/dev/null 2>&1 || true
-              _start=$(date +%s%N)
-              _i=0
-              while [ "$_i" -lt "$runs" ]; do "$@" >/dev/null 2>&1 || true; _i=$((_i+1)); done
-              _end=$(date +%s%N)
-              # (end-start) ns / runs / 1e6 -> ms mean
-              awk -v s="$_start" -v e="$_end" -v n="$runs" 'BEGIN{printf "%.3f",(e-s)/n/1000000}'
-            fi
-          }
-
-          echo "metrics: timing tool = $([ "$have_hyperfine" = 1 ] && echo hyperfine || echo date-loop), runs=$runs"
-
-          go_version_ms=$(time_cmd go_version "$bin" --version)
-
-          # read-configuration no-op against a minimal image-based workspace
-          # (variable substitution only; no Docker involved).
-          ws=$(mktemp -d)
-          mkdir -p "$ws/.devcontainer"
-          printf '{"image":"mcr.microsoft.com/devcontainers/base:ubuntu"}\n' > "$ws/.devcontainer/devcontainer.json"
-          go_readcfg_ms=$(time_cmd go_readcfg "$bin" read-configuration --workspace-folder "$ws")
-
-          node_version_ms=null
-          if [ -f "$oracle" ] && command -v node >/dev/null 2>&1; then
-            node_version_ms=$(time_cmd node_version node "$oracle" --version)
-          else
-            echo "metrics: node oracle not found at $oracle (run 'task reference') — skipping Node A/B"
-          fi
-          rm -rf "$ws"
-
-          # Sizes: local binary + cross-compiled dist binaries + gzip-compressed size.
-          bin_size=$(fsize "$bin")
-          la_bin=null; la_gz=null; lr_bin=null; lr_gz=null
-          if [ -f {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-amd64 ]; then
-            la_bin=$(fsize {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-amd64)
-            la_gz=$(gzip -c {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-amd64 | wc -c | tr -d ' ')
-          fi
-          if [ -f {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-arm64 ]; then
-            lr_bin=$(fsize {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-arm64)
-            lr_gz=$(gzip -c {{.ROOT_DIR}}/dist/{{.BINARY}}-linux-arm64 | wc -c | tr -d ' ')
-          fi
-          [ "$la_bin" = null ] && echo "metrics: dist binaries absent — run 'task build:cross' for release sizes"
-
-          cat > "$out" <<EOF
-          {
-            "version": "{{.VERSION}}",
-            "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "timing_tool": "$([ "$have_hyperfine" = 1 ] && echo hyperfine || echo date-loop)",
-            "runs": $runs,
-            "startup_ms": {
-              "go_version": $go_version_ms,
-              "go_read_configuration": $go_readcfg_ms,
-              "node_version": $node_version_ms
-            },
-            "sizes_bytes": {
-              "local_binary": $bin_size,
-              "linux_amd64_binary": $la_bin,
-              "linux_amd64_gzip": $la_gz,
-              "linux_arm64_binary": $lr_bin,
-              "linux_arm64_gzip": $lr_gz
-            }
-          }
-          EOF
-          echo "metrics: wrote $out"
-          cat "$out"
+      - cmd: go run ./cmd/devtool metrics {{.VERSION}} {{.ROOT_DIR}}/{{.BINARY}} {{.ROOT_DIR}}/reference/dist/spec-node/devContainersSpecCLI.js {{.ROOT_DIR}}/artifacts/metrics.json
         ignore_error: true
 
   # reference/ is upstream's submodule, pinned by upstream's yarn.lock. pnpm installs it, through
