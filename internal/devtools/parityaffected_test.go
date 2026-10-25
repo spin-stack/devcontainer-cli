@@ -38,6 +38,8 @@ func TestParityAffected(t *testing.T) {
 		{"Taskfile → all", []string{"Taskfile.yml"}, "all"},
 		{"go-cli workflow → all", []string{".github/workflows/go-cli.yml"}, "all"},
 		{"shared internal → all", []string{"internal/foo.go"}, "all"},
+		{"shared cli file → all", []string{"internal/cli/shared.go"}, "all"},
+		{"test outside cli → all", []string{"internal/docker/client_test.go"}, "all"},
 		{"cmd → all", []string{"cmd/devcontainer/main.go"}, "all"},
 		{"unknown path → all", []string{"totally-unknown-file"}, "all"},
 		{"full wins over leaf", []string{"internal/cli/exec.go", "docs/parity/parity-matrix.yaml"}, "all"},

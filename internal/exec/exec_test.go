@@ -44,14 +44,17 @@ func helperArgs(args []string) []string {
 	return nil
 }
 
-func helperRunner(env ...string) OSRunner {
+// helperRunner runs this test binary as the helper process. GOCOVERDIR keeps a
+// binary built with coverage (as go tool mutate builds it) from warning on the
+// helper's stderr that it has nowhere to write its counters.
+func helperRunner(t *testing.T, env ...string) OSRunner {
 	return OSRunner{Env: append([]string{
-		"GO_WANT_EXEC_HELPER=1",
+		"GO_WANT_EXEC_HELPER=1", "GOCOVERDIR=" + t.TempDir(),
 	}, env...)}
 }
 
 func TestOSRunnerProcessContract(t *testing.T) {
-	stdout, stderr, code, err := helperRunner("EXEC_HELPER_STDERR=warning").Run(
+	stdout, stderr, code, err := helperRunner(t, "EXEC_HELPER_STDERR=warning").Run(
 		t.Context(), nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "one", "two",
 	)
 	if err != nil {
@@ -69,7 +72,7 @@ func TestOSRunnerProcessContract(t *testing.T) {
 }
 
 func TestOSRunnerNonZeroIsExitCodeNotTransportError(t *testing.T) {
-	_, _, code, err := helperRunner().Run(
+	_, _, code, err := helperRunner(t).Run(
 		t.Context(), nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "exit",
 	)
 	if err != nil {
@@ -83,7 +86,7 @@ func TestOSRunnerNonZeroIsExitCodeNotTransportError(t *testing.T) {
 func TestOSRunnerHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
-	_, _, code, err := helperRunner().Run(
+	_, _, code, err := helperRunner(t).Run(
 		ctx, nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "wait",
 	)
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -108,7 +111,7 @@ func TestOSRunnerMissingBinaryIsTransportError(t *testing.T) {
 // output live while the return value still captures it.
 func TestOSRunnerStreamsToWriter(t *testing.T) {
 	var live strings.Builder
-	stdout, _, code, err := helperRunner("EXEC_HELPER_STDERR=warn").Run(
+	stdout, _, code, err := helperRunner(t, "EXEC_HELPER_STDERR=warn").Run(
 		t.Context(), &live, os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "hi",
 	)
 	if err != nil || code != 0 {
@@ -121,5 +124,19 @@ func TestOSRunnerStreamsToWriter(t *testing.T) {
 	// The captured return value still holds stdout independently.
 	if got := string(stdout); got != "hi" {
 		t.Errorf("captured stdout = %q, want hi", got)
+	}
+}
+
+// TestOSRunnerAppliesASingleEnvEntry holds that one entry is enough for Env to
+// reach the child: without it the helper below would not act as the helper.
+func TestOSRunnerAppliesASingleEnvEntry(t *testing.T) {
+	stdout, _, code, err := OSRunner{Env: []string{"GO_WANT_EXEC_HELPER=1"}}.Run(
+		t.Context(), nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "alone",
+	)
+	if err != nil || code != 0 {
+		t.Fatalf("Run: err=%v code=%d", err, code)
+	}
+	if got := string(stdout); got != "alone" {
+		t.Errorf("stdout = %q, want alone", got)
 	}
 }

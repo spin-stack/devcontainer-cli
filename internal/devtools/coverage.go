@@ -29,7 +29,8 @@ func (p PkgCov) Pct() float64 {
 	}
 	// Round to 1 decimal exactly as fmt "%.1f" would, so String() and numeric
 	// comparisons never disagree at a boundary.
-	v, _ := strconv.ParseFloat(fmt.Sprintf("%.1f", float64(p.Covered)*100/float64(p.Total)), 64)
+	rounded := fmt.Sprintf("%.1f", float64(p.Covered)*100/float64(p.Total))
+	v, _ := strconv.ParseFloat(rounded, 64) // mutate-exempt: ParseFloat reads any bitSize but 32 as 64
 	return v
 }
 
@@ -156,7 +157,7 @@ func ParseFloors(specs []string) ([]Floor, error) {
 		if !found || k == "" {
 			return nil, fmt.Errorf("invalid floor %q: want <key>=<min>", s)
 		}
-		min, err := strconv.ParseFloat(v, 64)
+		min, err := strconv.ParseFloat(v, 64) // mutate-exempt: ParseFloat reads any bitSize but 32 as 64
 		if err != nil {
 			return nil, fmt.Errorf("invalid floor %q: %w", s, err)
 		}
