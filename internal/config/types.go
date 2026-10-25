@@ -301,10 +301,11 @@ func (s StringOrStrings) MarshalJSON() ([]byte, error) {
 // devcontainer.json into customizations.vscode, on a copy. extensions are
 // appended to customizations.vscode.extensions; settings are merged under
 // customizations.vscode.settings, whose keys win; devPort moves only when
-// customizations.vscode has none, and otherwise stays where it is.
+// customizations.vscode has none, and otherwise stays where it is; a null
+// devPort is present, as for the TS `devPort !== undefined`.
 func updateFromOldProperties(raw map[string]any) map[string]any {
 	devPort, hasDevPort := raw["devPort"]
-	if !truthy(raw["extensions"]) && !truthy(raw["settings"]) && (!hasDevPort || devPort == nil) {
+	if !truthy(raw["extensions"]) && !truthy(raw["settings"]) && !hasDevPort {
 		return raw
 	}
 	out := maps.Clone(raw)
@@ -338,7 +339,7 @@ func updateFromOldProperties(raw map[string]any) map[string]any {
 		vscode["settings"] = merged
 		delete(out, "settings")
 	}
-	if hasDevPort && devPort != nil {
+	if hasDevPort {
 		if _, set := vscode["devPort"]; !set {
 			vscode["devPort"] = devPort
 			delete(out, "devPort")
