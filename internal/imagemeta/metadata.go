@@ -19,7 +19,6 @@ type Entry struct {
 	CapAdd               []string           `json:"capAdd,omitempty"`
 	SecurityOpt          []string           `json:"securityOpt,omitempty"`
 	Mounts               []any              `json:"mounts,omitempty"`
-	RunArgs              []string           `json:"runArgs,omitempty"`
 	ContainerEnv         map[string]string  `json:"containerEnv,omitempty"`
 	ContainerUser        string             `json:"containerUser,omitempty"`
 	RemoteEnv            map[string]*string `json:"remoteEnv,omitempty"`

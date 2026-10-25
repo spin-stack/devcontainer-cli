@@ -1,13 +1,11 @@
 package docker
 
 import (
-	"maps"
-	"slices"
+	"regexp"
 	"strings"
 
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
-	"github.com/moby/buildkit/frontend/dockerfile/shell"
 )
 
 // Dockerfile is a parsed Dockerfile projected from BuildKit's AST into the small
@@ -82,7 +80,7 @@ func ExtractDockerfile(content string) *Dockerfile {
 
 	for i := range stages {
 		s := &stages[i]
-		st := Stage{From: From{Platform: s.Platform, Image: trimQuotes(s.BaseName), Label: s.Name}}
+		st := Stage{From: From{Platform: s.Platform, Image: trimQuotes(s.BaseName), Label: stageLabel(s)}}
 		for _, cmd := range s.Commands {
 			switch c := cmd.(type) {
 			case *instructions.EnvCommand:
@@ -109,6 +107,15 @@ func ExtractDockerfile(content string) *Dockerfile {
 		}
 	}
 	return df
+}
+
+// stageLabel is the stage's name as the FROM line spells it: BuildKit
+// lowercases it, TS extractDockerfile keeps it, and looks stages up by it.
+func stageLabel(s *instructions.Stage) string {
+	if m := fromLineLabel.FindStringSubmatch(s.SourceCode); m != nil && strings.EqualFold(m[1], s.Name) {
+		return m[1]
+	}
+	return s.Name
 }
 
 // StageLabels returns the LABEL key/value pairs declared in the named build
@@ -160,144 +167,46 @@ func derefTrim(p *string) string {
 	return trimQuotes(*p)
 }
 
-// mapEnv is a shell.EnvGetter backed by a plain map.
-type mapEnv map[string]string
-
-func (m mapEnv) Get(k string) (string, bool) { v, ok := m[k]; return v, ok }
-func (m mapEnv) Keys() []string              { return slices.Collect(maps.Keys(m)) }
-
-// FindBaseImage resolves the base image for a target stage (or the last stage),
-// following FROM <stage> references to the root image. ${VAR} / ${VAR:+x} /
-// ${VAR:-x} in the FROM line are expanded with BuildKit's shell lexer against the
-// global (preamble) ARGs plus --build-arg overrides — the same env Docker uses to
-// resolve a FROM line.
+// FindBaseImage is TS findBaseImage without platform ARGs: the image the
+// target stage (or the last one) is built from, following FROM <stage> to the
+// first image that is no stage; "" when the target is unknown or the stages
+// form a cycle.
 func FindBaseImage(df *Dockerfile, buildArgs map[string]string, target string) string {
-	var stage *Stage
-	if target != "" {
-		stage = df.StagesByLabel[target]
-	} else if len(df.Stages) > 0 {
-		stage = &df.Stages[len(df.Stages)-1]
-	}
-
-	env := mapEnv{}
-	for _, ins := range df.Preamble.Instructions {
-		if ins.Instruction == "ARG" {
-			v := ins.Value
-			if ov, ok := buildArgs[ins.Name]; ok {
-				v = ov
-			}
-			env[ins.Name] = v
-		}
-	}
-
-	lex := shell.NewLex(df.escapeToken)
-	seen := make(map[*Stage]bool)
-	for stage != nil {
-		if seen[stage] {
-			return ""
-		}
-		seen[stage] = true
-
-		image := stage.From.Image
-		if out, _, err := lex.ProcessWord(image, env); err == nil {
-			image = trimQuotes(out)
-		}
-		if next, ok := df.StagesByLabel[image]; ok {
-			stage = next
-		} else {
-			return image
-		}
-	}
-	return ""
+	return NewResolver(df, buildArgs, nil).FindBaseImage(target)
 }
 
-// EnsureFinalStageName returns the name of the final build stage, adding an
-// "AS <defaultName>" to its FROM line when it has none (so features can extend a
-// known stage). The modified Dockerfile is returned only when a name was added;
-// otherwise modifiedContent is empty.
+// jsSpace is the JavaScript regular expression class \s (Go's \s lacks \v and
+// the Unicode spaces), so the ports of TS regular expressions match the same text.
+const jsSpace = `\t\n\v\f\r \x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}`
+
+var (
+	// findFromLines is TS dockerfileUtils' /^(?<line>\s*FROM.*)/gmi; JS's . stops
+	// at \r, \u2028 and \u2029 as well as \n.
+	findFromLines = regexp.MustCompile(`(?mi)^[` + jsSpace + `]*FROM[^\n\r\x{2028}\x{2029}]*`)
+	// fromLineLabel is TS dockerfileUtils' parseFromLine:
+	// /FROM\s+(?<platform>--platform=\S+\s+)?(?<image>"?[^\s]+"?)(\s+AS\s+(?<label>[^\s]+))?/i.
+	fromLineLabel = regexp.MustCompile(`(?i)FROM[` + jsSpace + `]+(?:--platform=[^` + jsSpace + `]+[` + jsSpace + `]+)?"?[^` + jsSpace + `]+"?(?:[` + jsSpace + `]+AS[` + jsSpace + `]+([^` + jsSpace + `]+))?`)
+)
+
+// EnsureFinalStageName is TS ensureDockerfileHasFinalStageName: the name of the
+// final build stage, adding " AS <defaultName>" to the last FROM line when it
+// has none (so features can extend a known stage). The modified Dockerfile is
+// returned only when a name was added; otherwise modifiedContent is empty.
+// Where TS throws (no FROM line, or a last FROM line it cannot parse) this
+// returns defaultName and the content unchanged.
 func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string) {
-	// Primary detection via BuildKit (continuation-safe). Trust a positive name;
-	// on a parse error (e.g. a trailing inline comment the strict parser rejects
-	// but the TS tolerates) or no name, fall through to the tolerant scan below.
-	if res, err := parser.Parse(strings.NewReader(content)); err == nil {
-		// instructions.Parse returns no stages with its error, so an error lands in
-		// the tolerant scan like "no stages" does.
-		if stages, _, _ := instructions.Parse(res.AST, nil); len(stages) > 0 {
-			if name := stages[len(stages)-1].Name; name != "" {
-				return name, ""
-			}
-		}
-	}
-
-	// Tolerant fallback: locate the last line whose first token is FROM and inspect
-	// it by hand (no regex). If it already has an "AS <label>" return it; otherwise
-	// inject " AS <defaultName>" right after the base image, preserving the rest of
-	// the line (trailing comment/whitespace).
-	var (
-		lineStart, fromStart int
-		fromLine             string
-		found                bool
-	)
-	for _, l := range strings.SplitAfter(content, "\n") {
-		if isFromLine(l) {
-			fromStart = lineStart
-			fromLine = strings.TrimRight(l, "\n")
-			found = true
-		}
-		lineStart += len(l)
-	}
-	if !found {
+	lines := findFromLines.FindAllStringIndex(content, -1)
+	if len(lines) == 0 {
 		return defaultName, content
 	}
-	label, imageEnd, ok := parseFromLine(fromLine)
-	if !ok {
+	lineStart, lineEnd := lines[len(lines)-1][0], lines[len(lines)-1][1]
+	m := fromLineLabel.FindStringSubmatchIndex(content[lineStart:lineEnd])
+	if m == nil {
 		return defaultName, content
 	}
-	if label != "" {
-		return label, ""
+	if m[2] != -1 && m[3] > m[2] {
+		return content[lineStart+m[2] : lineStart+m[3]], ""
 	}
-	pos := fromStart + imageEnd
+	pos := lineStart + m[1]
 	return defaultName, content[:pos] + " AS " + defaultName + content[pos:]
-}
-
-func isFromLine(line string) bool {
-	t := strings.TrimLeft(line, " \t")
-	if len(t) < 4 || !strings.EqualFold(t[:4], "FROM") {
-		return false
-	}
-	return len(t) == 4 || t[4] == ' ' || t[4] == '\t' || t[4] == '\n' || t[4] == '\r'
-}
-
-// parseFromLine tokenizes "FROM [--platform=..] <image> [AS <label>] ..." on a
-// single line. It returns the label (empty if none) and the byte offset just past
-// the image, so a caller can inject " AS name" there. ok is false when the line
-// has no image.
-func parseFromLine(line string) (label string, imageEnd int, ok bool) {
-	i := 0
-	readTok := func() (string, int) {
-		for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-			i++
-		}
-		start := i
-		for i < len(line) && line[i] != ' ' && line[i] != '\t' {
-			i++
-		}
-		return line[start:i], i
-	}
-	if kw, _ := readTok(); !strings.EqualFold(kw, "FROM") {
-		return "", 0, false // mutate-exempt: imageEnd is unread when ok is false
-	}
-	tok, end := readTok()
-	if strings.HasPrefix(tok, "--") { // optional --platform flag
-		tok, end = readTok()
-	}
-	if tok == "" {
-		return "", 0, false // mutate-exempt: imageEnd is unread when ok is false
-	}
-	imageEnd = end
-	if as, _ := readTok(); strings.EqualFold(as, "AS") {
-		name, _ := readTok()
-		return name, imageEnd, true
-	}
-	return "", imageEnd, true
 }

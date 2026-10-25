@@ -1,0 +1,409 @@
+{
+  "comment": "containerFeaturesOCI.ts getFeatureIdWithoutVersion, dockerCompose.ts readVersionPrefix (given the compose files' contents), convertMountToVolume and convertMountToVolumeTopLevelElement (a string mount through parseMount first, as generateFeaturesComposeOverrideContent does); ported in feature_install.go and compose_override.go.",
+  "cases": [
+    {
+      "name": "'ghcr.io/devcontainers/features/node:1'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "ghcr.io/devcontainers/features/node:1"
+      ],
+      "result": "ghcr.io/devcontainers/features/node"
+    },
+    {
+      "name": "'ghcr.io/devcontainers/features/node@sha256:ab'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "ghcr.io/devcontainers/features/node@sha256:ab"
+      ],
+      "result": "ghcr.io/devcontainers/features/node"
+    },
+    {
+      "name": "'localhost:5000/o/f/node'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "localhost:5000/o/f/node"
+      ],
+      "result": "localhost:5000/o/f/node"
+    },
+    {
+      "name": "'localhost:5000/o/f/node:2'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "localhost:5000/o/f/node:2"
+      ],
+      "result": "localhost:5000/o/f/node"
+    },
+    {
+      "name": "'ghcr.io/devcontainers/features/node'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "ghcr.io/devcontainers/features/node"
+      ],
+      "result": "ghcr.io/devcontainers/features/node"
+    },
+    {
+      "name": "'node'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "node"
+      ],
+      "result": "node"
+    },
+    {
+      "name": "'node:1'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "node:1"
+      ],
+      "result": "node"
+    },
+    {
+      "name": "'./local-feature'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "./local-feature"
+      ],
+      "result": "./local-feature"
+    },
+    {
+      "name": "'../up/feature:x'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "../up/feature:x"
+      ],
+      "result": "../up/feature"
+    },
+    {
+      "name": "'https://example.com/devcontainer-feature-go.tgz'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "https://example.com/devcontainer-feature-go.tgz"
+      ],
+      "result": "https://example.com/devcontainer-feature-go.tgz"
+    },
+    {
+      "name": "'octocat/myfeatures/helloworld@v0.0.4'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "octocat/myfeatures/helloworld@v0.0.4"
+      ],
+      "result": "octocat/myfeatures/helloworld"
+    },
+    {
+      "name": "'ghcr.io/a/b/c:1@sha256:abc'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "ghcr.io/a/b/c:1@sha256:abc"
+      ],
+      "result": "ghcr.io/a/b/c"
+    },
+    {
+      "name": "'localhost:5000/o/f/node@sha256:abc'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "localhost:5000/o/f/node@sha256:abc"
+      ],
+      "result": "localhost:5000/o/f/node"
+    },
+    {
+      "name": "''",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        ""
+      ],
+      "result": ""
+    },
+    {
+      "name": "'a:b/c'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "a:b/c"
+      ],
+      "result": "a:b/c"
+    },
+    {
+      "name": "'ghcr.io/a/b/ñ:1'",
+      "fn": "getFeatureIdWithoutVersion",
+      "args": [
+        "ghcr.io/a/b/ñ:1"
+      ],
+      "result": "ghcr.io/a/b/ñ"
+    },
+    {
+      "name": "version line after a comment",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "# c\n  version: '3.8'\nservices: {}\n",
+          "services: {}\n"
+        ]
+      ],
+      "result": "version: '3.8'\n\n"
+    },
+    {
+      "name": "no version",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "services: {}\n"
+        ]
+      ],
+      "result": ""
+    },
+    {
+      "name": "no files",
+      "fn": "readVersionPrefix",
+      "args": [
+        []
+      ],
+      "result": ""
+    },
+    {
+      "name": "version first",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "version: \"3\"\nservices: {}\n"
+        ]
+      ],
+      "result": "version: \"3\"\n\n"
+    },
+    {
+      "name": "CRLF",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "version: \"3\"\r\nservices: {}\r\n"
+        ]
+      ],
+      "result": "version: \"3\"\n\n"
+    },
+    {
+      "name": "version in a later file only",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "services: {}\n",
+          "version: '2'\n"
+        ]
+      ],
+      "result": ""
+    },
+    {
+      "name": "indented under a key",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "services:\n  app:\n    version: 1\n"
+        ]
+      ],
+      "result": "version: 1\n\n"
+    },
+    {
+      "name": "version without space",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "version:'3'\n"
+        ]
+      ],
+      "result": "version:'3'\n\n"
+    },
+    {
+      "name": "versions key",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "versions: x\n"
+        ]
+      ],
+      "result": ""
+    },
+    {
+      "name": "tab indented",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "\tversion: '3.9'\n"
+        ]
+      ],
+      "result": "version: '3.9'\n\n"
+    },
+    {
+      "name": "empty file",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          ""
+        ]
+      ],
+      "result": ""
+    },
+    {
+      "name": "comment after value",
+      "fn": "readVersionPrefix",
+      "args": [
+        [
+          "version: '3' # old\n"
+        ]
+      ],
+      "result": "version: '3' # old\n\n"
+    },
+    {
+      "name": "volume string",
+      "fn": "convertMountToVolume",
+      "args": [
+        "type=volume,src=data,dst=/data"
+      ],
+      "result": "data:/data"
+    },
+    {
+      "name": "bind string",
+      "fn": "convertMountToVolume",
+      "args": [
+        "source=/h,target=/c,type=bind"
+      ],
+      "result": "/h:/c"
+    },
+    {
+      "name": "destination key",
+      "fn": "convertMountToVolume",
+      "args": [
+        "source=s,destination=/d,type=volume"
+      ],
+      "result": "s:/d"
+    },
+    {
+      "name": "no source",
+      "fn": "convertMountToVolume",
+      "args": [
+        "type=tmpfs,target=/tmp"
+      ],
+      "result": "/tmp"
+    },
+    {
+      "name": "readonly string",
+      "fn": "convertMountToVolume",
+      "args": [
+        "source=/h,target=/c,type=bind,readonly"
+      ],
+      "divergence": "docs/DIVERGENCES.md: a read-only mount keeps :ro in the compose override (upstream devcontainers/cli#881, newer than the pinned reference, whose convertMountToVolume drops readonly)",
+      "result": "/h:/c"
+    },
+    {
+      "name": "value with equals",
+      "fn": "convertMountToVolume",
+      "args": [
+        "type=bind,source=/a=b,target=/c"
+      ],
+      "result": "/a:/c"
+    },
+    {
+      "name": "volume object",
+      "fn": "convertMountToVolume",
+      "args": [
+        {
+          "type": "volume",
+          "source": "ext",
+          "target": "/e",
+          "external": true
+        }
+      ],
+      "result": "ext:/e"
+    },
+    {
+      "name": "object without source",
+      "fn": "convertMountToVolume",
+      "args": [
+        {
+          "type": "tmpfs",
+          "target": "/t"
+        }
+      ],
+      "result": "/t"
+    },
+    {
+      "name": "readonly object",
+      "fn": "convertMountToVolume",
+      "args": [
+        {
+          "type": "bind",
+          "source": "/h",
+          "target": "/c",
+          "readonly": true
+        }
+      ],
+      "divergence": "docs/DIVERGENCES.md: a read-only mount keeps :ro in the compose override (upstream devcontainers/cli#881, newer than the pinned reference, whose convertMountToVolume drops readonly)",
+      "result": "/h:/c"
+    },
+    {
+      "name": "unicode",
+      "fn": "convertMountToVolume",
+      "args": [
+        {
+          "type": "bind",
+          "source": "/home/usuário",
+          "target": "/w ✓"
+        }
+      ],
+      "result": "/home/usuário:/w ✓"
+    },
+    {
+      "name": "named volume string",
+      "fn": "convertMountToVolumeTopLevelElement",
+      "args": [
+        "type=volume,src=data,dst=/data"
+      ],
+      "result": "\n  data:"
+    },
+    {
+      "name": "external object",
+      "fn": "convertMountToVolumeTopLevelElement",
+      "args": [
+        {
+          "type": "volume",
+          "source": "ext",
+          "target": "/e",
+          "external": true
+        }
+      ],
+      "result": "\n  ext:\n    external: true"
+    },
+    {
+      "name": "external=true string",
+      "fn": "convertMountToVolumeTopLevelElement",
+      "args": [
+        "type=volume,source=ext,target=/e,external=true"
+      ],
+      "result": "\n  ext:\n    external: true"
+    },
+    {
+      "name": "external=false string",
+      "fn": "convertMountToVolumeTopLevelElement",
+      "args": [
+        "type=volume,source=ext,target=/e,external=false"
+      ],
+      "result": "\n  ext:\n    external: true"
+    },
+    {
+      "name": "external without value",
+      "fn": "convertMountToVolumeTopLevelElement",
+      "args": [
+        "type=volume,source=ext,target=/e,external"
+      ],
+      "result": "\n  ext:"
+    },
+    {
+      "name": "not external",
+      "fn": "convertMountToVolumeTopLevelElement",
+      "args": [
+        {
+          "type": "volume",
+          "source": "v",
+          "target": "/v"
+        }
+      ],
+      "result": "\n  v:"
+    }
+  ]
+}

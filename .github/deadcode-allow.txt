@@ -1,2 +1,3 @@
 # Functions no binary reaches that are correct for ever, one `<symbol>  # why` a line (go tool deadgate -allow).
 # An entry that matches nothing fails, so the list only shrinks.
+package internal/tsoracle/oracletest  # test helper: the Go tests assert their ports against the testdata/ts-oracle goldens with it; no binary should link it

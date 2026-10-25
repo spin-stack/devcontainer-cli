@@ -21,7 +21,7 @@ func TestMergeConfiguration(t *testing.T) {
 			entries: []Entry{
 				{RemoteUser: "base-user", ContainerUser: "base-container", ShutdownAction: "stopContainer"},
 				{RemoteUser: "feature-user"},
-				{RemoteUser: "config-user", UserEnvProbe: "loginInteractiveShell", RunArgs: []string{"-e", "A=B"}},
+				{RemoteUser: "config-user", UserEnvProbe: "loginInteractiveShell"},
 			},
 			check: func(t *testing.T, m *MergedConfig) {
 				if m.RemoteUser != "config-user" {
@@ -35,9 +35,6 @@ func TestMergeConfiguration(t *testing.T) {
 				}
 				if m.ShutdownAction != "stopContainer" {
 					t.Errorf("shutdownAction = %q, want 'stopContainer'", m.ShutdownAction)
-				}
-				if len(m.RunArgs) != 2 || m.RunArgs[0] != "-e" || m.RunArgs[1] != "A=B" {
-					t.Errorf("runArgs = %#v", m.RunArgs)
 				}
 			},
 		},

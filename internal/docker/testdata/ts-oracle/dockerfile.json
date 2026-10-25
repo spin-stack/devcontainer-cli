@@ -1,0 +1,841 @@
+{
+  "comment": "dockerfileUtils.ts ensureDockerfileHasFinalStageName and findBaseImage (no platform ARGs), and utils.ts isBuildxCacheToInline, ported in dockerfile.go (EnsureFinalStageName, FindBaseImage) and internal/cli's dockerfileResolver, client.go (isBuildxCacheToInline).",
+  "cases": [
+    {
+      "name": "ts: named simple FROM",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nFROM ubuntu:latest as base\n\nRUN some command\n\nFROM base as final\n\nCOPY src dest\nRUN another command\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "final"
+      }
+    },
+    {
+      "name": "ts: named, indented, comment",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nFROM ubuntu:latest as base\n\nRUN some command\n\n \tFROM base  as\t  final  #<- deliberately mixing with whitespace and including: as something here\n\nCOPY src dest\nRUN another command\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "final"
+      }
+    },
+    {
+      "name": "ts: named, platform, indented, comment",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nFROM ubuntu:latest as base\n\nRUN some command\n\n \tFROM  --platform=my-platform \tbase  as\t  final  #<- deliberately mixing with whitespace and including: as something here\n\nCOPY src dest\nRUN another command\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "final"
+      }
+    },
+    {
+      "name": "ts: unnamed simple FROM",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nFROM ubuntu:latest as base\n\nRUN some command\n\nFROM base\n\nCOPY src dest\nRUN another command\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "\nFROM ubuntu:latest as base\n\nRUN some command\n\nFROM base AS placeholder\n\nCOPY src dest\nRUN another command\n"
+      }
+    },
+    {
+      "name": "ts: unnamed trailing FROM",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nFROM ubuntu:latest as base\n\nRUN some command\n\nFROM base",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "\nFROM ubuntu:latest as base\n\nRUN some command\n\nFROM base AS placeholder"
+      }
+    },
+    {
+      "name": "ts: unnamed, platform, comment",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nFROM ubuntu:latest as base\n\nRUN some command\n\n \tFROM  --platform=my-platform \tbase   #<- deliberately mixing with whitespace and including: as something here\n\nCOPY src dest\nRUN another command\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "\nFROM ubuntu:latest as base\n\nRUN some command\n\n \tFROM  --platform=my-platform \tbase AS placeholder   #<- deliberately mixing with whitespace and including: as something here\n\nCOPY src dest\nRUN another command\n"
+      }
+    },
+    {
+      "name": "ts: no FROM",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "\nRUN some command\n",
+        "placeholder"
+      ],
+      "divergence": "unresolved: TS throws; EnsureFinalStageName has no error result and its callers (internal/cli/build.go, compose_up.go) are not changed here",
+      "error": "Error parsing Dockerfile: Dockerfile contains no FROM instructions"
+    },
+    {
+      "name": "single stage",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM ubuntu:latest\nRUN echo hello\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM ubuntu:latest AS placeholder\nRUN echo hello\n"
+      }
+    },
+    {
+      "name": "empty",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "",
+        "placeholder"
+      ],
+      "divergence": "unresolved: TS throws; EnsureFinalStageName has no error result and its callers (internal/cli/build.go, compose_up.go) are not changed here",
+      "error": "Error parsing Dockerfile: Dockerfile contains no FROM instructions"
+    },
+    {
+      "name": "lowercase from and as",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "from base as Final\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "Final"
+      }
+    },
+    {
+      "name": "uppercase AS kept",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM base AS dev\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "dev"
+      }
+    },
+    {
+      "name": "tab after FROM",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM\tubuntu\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM\tubuntu AS placeholder\n"
+      }
+    },
+    {
+      "name": "CRLF unnamed",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM ubuntu:22.04\r\nRUN true\r\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM ubuntu:22.04 AS placeholder\r\nRUN true\r\n"
+      }
+    },
+    {
+      "name": "CRLF named",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM ubuntu:22.04 AS dev\r\nRUN true\r\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "dev"
+      }
+    },
+    {
+      "name": "digest image",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM ubuntu@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM ubuntu@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef AS placeholder\n"
+      }
+    },
+    {
+      "name": "registry with port",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM localhost:5000/team/img:1.0\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM localhost:5000/team/img:1.0 AS placeholder\n"
+      }
+    },
+    {
+      "name": "quoted ARG image",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "ARG BASE=\"ubuntu\"\nFROM \"${BASE}\"\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "ARG BASE=\"ubuntu\"\nFROM \"${BASE}\" AS placeholder\n"
+      }
+    },
+    {
+      "name": "platform variable, named build then unnamed final",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM --platform=$BUILDPLATFORM golang:1.22 AS build\nRUN go build\nFROM alpine:3.20\nCOPY --from=build /app /app\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM --platform=$BUILDPLATFORM golang:1.22 AS build\nRUN go build\nFROM alpine:3.20 AS placeholder\nCOPY --from=build /app /app\n"
+      }
+    },
+    {
+      "name": "FROM word inside RUN",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM alpine AS a\nRUN echo FROM nowhere\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "a"
+      }
+    },
+    {
+      "name": "comment mentioning FROM",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM alpine\n# FROM other AS x\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM alpine AS placeholder\n# FROM other AS x\n"
+      }
+    },
+    {
+      "name": "AS without a name",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM alpine AS\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM alpine AS placeholder AS\n"
+      }
+    },
+    {
+      "name": "unicode image",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM imágen:ñ\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM imágen:ñ AS placeholder\n"
+      }
+    },
+    {
+      "name": "line continuation",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM \\\n  ubuntu:22.04\nRUN true\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "placeholder",
+        "modifiedDockerfile": "FROM \\ AS placeholder\n  ubuntu:22.04\nRUN true\n"
+      }
+    },
+    {
+      "name": "named, CRLF, mixed case",
+      "fn": "ensureDockerfileHasFinalStageName",
+      "args": [
+        "FROM ubuntu:22.04 AS DevStage\r\n",
+        "placeholder"
+      ],
+      "result": {
+        "lastStageName": "DevStage"
+      }
+    },
+    {
+      "name": "ts: simple FROM",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM image1\nUSER user1\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "image1"
+    },
+    {
+      "name": "ts: arg FROM",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG BASE_IMAGE=\"image2\"\nFROM ${BASE_IMAGE}\nARG IMAGE_USER=user2\nUSER $IMAGE_USER\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "image2"
+    },
+    {
+      "name": "ts: arg FROM overwritten",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG BASE_IMAGE=\"image2\"\nFROM ${BASE_IMAGE}\nARG IMAGE_USER=user2\nUSER $IMAGE_USER\n",
+        {
+          "BASE_IMAGE": "image3"
+        },
+        null,
+        {}
+      ],
+      "result": "image3"
+    },
+    {
+      "name": "ts: multistage",
+      "fn": "findBaseImage",
+      "args": [
+        "\nFROM image1 as stage1\nFROM stage3 as stage2\nFROM image3 as stage3\nFROM image4 as stage4\n",
+        {},
+        "stage2",
+        {}
+      ],
+      "result": "image3"
+    },
+    {
+      "name": "ts: quoted",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG BASE_IMAGE=\"ubuntu:latest\"\n\nFROM \"${BASE_IMAGE}\"\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "ubuntu:latest"
+    },
+    {
+      "name": "ts: positive expression, value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM ${cloud:+mcr.microsoft.com/}azure-cli:latest\n",
+        {
+          "cloud": "true"
+        },
+        null,
+        {}
+      ],
+      "result": "mcr.microsoft.com/azure-cli:latest"
+    },
+    {
+      "name": "ts: positive expression, no value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM ${cloud:+mcr.microsoft.com/}azure-cli:latest\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "azure-cli:latest"
+    },
+    {
+      "name": "ts: negative expression, value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM ${cloud:-mcr.microsoft.com/}azure-cli:latest\n",
+        {
+          "cloud": "ghcr.io/"
+        },
+        null,
+        {}
+      ],
+      "result": "ghcr.io/azure-cli:latest"
+    },
+    {
+      "name": "ts: negative expression, no value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM ${cloud:-mcr.microsoft.com/}azure-cli:latest\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "mcr.microsoft.com/azure-cli:latest"
+    },
+    {
+      "name": "ts: quoted positive expression, value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM ${cloud:+\"mcr.microsoft.com/\"}azure-cli:latest\"\n",
+        {
+          "cloud": "true"
+        },
+        null,
+        {}
+      ],
+      "result": "mcr.microsoft.com/azure-cli:latest"
+    },
+    {
+      "name": "ts: quoted positive expression, no value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM \"${cloud:+\"mcr.microsoft.com/\"}azure-cli:latest\"\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "azure-cli:latest"
+    },
+    {
+      "name": "ts: quoted negative expression, value",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM \"${cloud:-\"mcr.microsoft.com/\"}azure-cli:latest\"\n",
+        {
+          "cloud": "ghcr.io/"
+        },
+        null,
+        {}
+      ],
+      "result": "ghcr.io/azure-cli:latest"
+    },
+    {
+      "name": "ts: quoted negative expression, no value, label",
+      "fn": "findBaseImage",
+      "args": [
+        "\nARG cloud\nFROM ${cloud:-\"mcr.microsoft.com/\"}azure-cli:latest as label\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "mcr.microsoft.com/azure-cli:latest"
+    },
+    {
+      "name": "platform flag",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM --platform=linux/amd64 ubuntu:22.04\nRUN echo hello\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "ubuntu:22.04"
+    },
+    {
+      "name": "cycle",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM stage1 as stage1\nRUN echo hello\n",
+        {},
+        "stage1",
+        {}
+      ],
+      "result": null
+    },
+    {
+      "name": "unknown target",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM a:1\n",
+        {},
+        "nope",
+        {}
+      ],
+      "result": null
+    },
+    {
+      "name": "last stage chain",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM a:1 AS one\nFROM one\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "a:1"
+    },
+    {
+      "name": "stage ENV does not reach FROM",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM debian\nENV BASE=custom-image\nFROM $BASE\n",
+        {},
+        null,
+        {}
+      ],
+      "result": ""
+    },
+    {
+      "name": "global ARG default",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG V=1\nFROM img:${V}\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "img:1"
+    },
+    {
+      "name": "build arg overrides global ARG",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG V=1\nFROM img:${V}\n",
+        {
+          "V": "2"
+        },
+        null,
+        {}
+      ],
+      "result": "img:2"
+    },
+    {
+      "name": "undeclared build arg",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM img:${V}\n",
+        {
+          "V": "2"
+        },
+        null,
+        {}
+      ],
+      "result": "img:"
+    },
+    {
+      "name": "unset variable",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG V\nFROM img${V}\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "img"
+    },
+    {
+      "name": "bare dollar variable",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG TAG=3.20\nFROM alpine:$TAG\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "alpine:3.20"
+    },
+    {
+      "name": "single-quoted ARG default",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG BASE='ubuntu:24.04'\nFROM ${BASE}\n",
+        {},
+        null,
+        {}
+      ],
+      "divergence": "docs/DIVERGENCES.md: Dockerfile instructions are read with BuildKit's parser, which unquotes '...' values, reads every NAME=value of an ARG or ENV and takes 'ENV A = B' as A='= B', where TS extractDockerfile's regular expression does not",
+      "result": "'ubuntu:24.04'"
+    },
+    {
+      "name": "stage-scoped ARG is not global",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM alpine AS a\nARG V=x\nFROM img:${V}\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "img:"
+    },
+    {
+      "name": "ARG names a stage",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG FROM_STAGE=dev\nFROM node:20 AS dev\nFROM ${FROM_STAGE}\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "node:20"
+    },
+    {
+      "name": "build arg names a stage",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM node:20 AS dev\nFROM node:22 AS prod\nARG X\nFROM ${STAGE}\n",
+        {},
+        null,
+        {}
+      ],
+      "result": ""
+    },
+    {
+      "name": "digest",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM ubuntu@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "ubuntu@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "registry with port",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM localhost:5000/team/img:1.0 AS x\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "localhost:5000/team/img:1.0"
+    },
+    {
+      "name": "lowercase from",
+      "fn": "findBaseImage",
+      "args": [
+        "from alpine:3 as base\nfrom base\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "alpine:3"
+    },
+    {
+      "name": "empty Dockerfile",
+      "fn": "findBaseImage",
+      "args": [
+        "",
+        {},
+        null,
+        {}
+      ],
+      "result": null
+    },
+    {
+      "name": "no FROM",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG A=1\nRUN true\n",
+        {},
+        null,
+        {}
+      ],
+      "result": null
+    },
+    {
+      "name": "CRLF",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG V=1\r\nFROM img:${V}\r\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "img:1"
+    },
+    {
+      "name": "default with variable",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG REG=ghcr.io\nARG IMG\nFROM ${IMG:-${REG}/app}:1\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "${REG/app}:1"
+    },
+    {
+      "name": "two ARGs on one line",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG A=x B=y\nFROM ${A}-${B}\n",
+        {},
+        null,
+        {}
+      ],
+      "divergence": "docs/DIVERGENCES.md: Dockerfile instructions are read with BuildKit's parser, which unquotes '...' values, reads every NAME=value of an ARG or ENV and takes 'ENV A = B' as A='= B', where TS extractDockerfile's regular expression does not",
+      "result": "x-"
+    },
+    {
+      "name": "unicode",
+      "fn": "findBaseImage",
+      "args": [
+        "ARG N=imágen\nFROM ${N}:ñ\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "imágen:ñ"
+    },
+    {
+      "name": "target with platform",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM --platform=$BUILDPLATFORM golang:1.22 AS build\nFROM alpine\n",
+        {},
+        "build",
+        {}
+      ],
+      "result": "golang:1.22"
+    },
+    {
+      "name": "mixed-case stage name as target",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM node:20 AS Dev\nFROM alpine\n",
+        {},
+        "Dev",
+        {}
+      ],
+      "result": "node:20"
+    },
+    {
+      "name": "stage named in another case",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM node:20 AS Dev\nFROM alpine\n",
+        {},
+        "dev",
+        {}
+      ],
+      "result": null
+    },
+    {
+      "name": "FROM a mixed-case stage",
+      "fn": "findBaseImage",
+      "args": [
+        "FROM node:20 AS Base\nFROM Base\n",
+        {},
+        null,
+        {}
+      ],
+      "result": "node:20"
+    },
+    {
+      "name": "cacheTo undefined",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        null
+      ],
+      "result": false
+    },
+    {
+      "name": "cacheTo ''",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        ""
+      ],
+      "result": false
+    },
+    {
+      "name": "cacheTo 'type=inline'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type=inline"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'type = inline'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type = inline"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'type=INLINE'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type=INLINE"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'mode=max,type=inline,compression=zstd'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "mode=max,type=inline,compression=zstd"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'type=registry'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type=registry"
+      ],
+      "result": false
+    },
+    {
+      "name": "cacheTo 'type=local'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type=local"
+      ],
+      "result": false
+    },
+    {
+      "name": "cacheTo 'inline'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "inline"
+      ],
+      "result": false
+    },
+    {
+      "name": "cacheTo 'type=inline2'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type=inline2"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'TYPE=inline'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "TYPE=inline"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'type=\\tinline'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "type=\tinline"
+      ],
+      "result": true
+    },
+    {
+      "name": "cacheTo 'ref=x,type=registry,mode=inline'",
+      "fn": "isBuildxCacheToInline",
+      "args": [
+        "ref=x,type=registry,mode=inline"
+      ],
+      "result": false
+    }
+  ]
+}

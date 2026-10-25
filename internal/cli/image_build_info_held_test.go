@@ -10,7 +10,6 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	mobyclient "github.com/moby/moby/client"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
@@ -151,58 +150,5 @@ func TestImageBuildInfoDockerfileUserFromBaseImageEnv(t *testing.T) {
 	info, err := imageBuildInfoFromDockerfile(context.Background(), f.inspector(), "FROM base\nUSER ${IMG_USER}\n", nil, "", log.Null)
 	if err != nil || info.User != "vscode" {
 		t.Fatalf("info = %+v, %v; want the USER resolved with the base image's env", info, err)
-	}
-}
-
-func TestDockerfileResolverVariableExpressions(t *testing.T) {
-	platform := globalBuildxPlatformArgs(ocispec.Platform{OS: "linux", Architecture: "amd64"}, ocispec.Platform{OS: "linux", Architecture: "amd64"})
-	for _, tc := range []struct {
-		name, dockerfile string
-		want             string
-	}{
-		{"default word, variable set", "ARG V=set\nFROM img:${V:-fallback}\n", "img:set"},
-		{"default word, variable unset", "ARG V\nFROM img:${V:-fallback}\n", "img:fallback"},
-		{"alternate word, variable set", "ARG V=set\nFROM img:${V:+alt}\n", "img:alt"},
-		{"alternate word, variable unset", "ARG V\nFROM img:x${V:+alt}\n", "img:x"},
-		{"quoted word", "ARG V\nFROM img:${V:-\"quoted\"}\n", "img:quoted"},
-		{"plain variable", "ARG V=1\nFROM img:$V-${V}\n", "img:1-1"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newDockerfileResolver(docker.ExtractDockerfile(tc.dockerfile), nil, platform)
-			if got := r.findBaseImage(""); got != tc.want {
-				t.Errorf("findBaseImage = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestDockerfileResolverParentStageArgIsNotInherited(t *testing.T) {
-	// An ARG of the stage a stage is built FROM is not in scope, its ENV is, and
-	// so is a global ARG (TS findValue considers ARGs only in the stage itself
-	// and in the global scope).
-	platform := globalBuildxPlatformArgs(ocispec.Platform{OS: "linux", Architecture: "amd64"}, ocispec.Platform{OS: "linux", Architecture: "amd64"})
-	r := newDockerfileResolver(docker.ExtractDockerfile("ARG G=global\nFROM img AS base\nARG U=parent\nENV E=env\nFROM base\nUSER ${U:-none}-${E}-${G}\n"), nil, platform)
-	if got := r.findUserStatement(nil, ""); got != "none-env-global" {
-		t.Fatalf("findUserStatement = %q, want %q", got, "none-env-global")
-	}
-}
-
-func TestTrimOneQuote(t *testing.T) {
-	for in, want := range map[string]string{
-		``:       ``,
-		`"`:      ``,
-		`'`:      ``,
-		`a`:      `a`,
-		`"ab"`:   `ab`,
-		`'ab'`:   `ab`,
-		`"ab`:    `ab`,
-		`ab"`:    `ab`,
-		`'ab`:    `ab`,
-		`ab'`:    `ab`,
-		`""ab""`: `"ab"`,
-	} {
-		if got := trimOneQuote(in); got != want {
-			t.Errorf("trimOneQuote(%q) = %q, want %q", in, got, want)
-		}
 	}
 }

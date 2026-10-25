@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,7 +11,6 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 )
@@ -97,51 +97,16 @@ func TestImageInspectorFallbackChain(t *testing.T) {
 	})
 }
 
-func TestDockerfileResolverBaseImage(t *testing.T) {
-	platform := globalBuildxPlatformArgs(ocispec.Platform{OS: "linux", Architecture: "amd64"}, ocispec.Platform{OS: "linux", Architecture: "arm64"})
-	for _, tc := range []struct {
-		name, dockerfile, target string
-		args                     map[string]string
-		want                     string
-	}{
-		{"global arg default", "ARG V=1\nFROM img:${V}\n", "", nil, "img:1"},
-		{"build arg override", "ARG V=1\nFROM img:${V}\n", "", map[string]string{"V": "2"}, "img:2"},
-		{"automatic platform arg", "FROM img-$TARGETARCH:${BUILDOS}\n", "", nil, "img-arm64:linux"},
-		{"declared platform arg without default", "ARG TARGETPLATFORM\nFROM --platform=$BUILDPLATFORM img:${TARGETPLATFORM}\n", "", nil, "img:linux/arm64"},
-		{"var expression", "ARG V\nFROM img:${V:-fallback}\n", "", nil, "img:fallback"},
-		{"stage chain", "FROM base:1 AS one\nFROM one AS two\nFROM other:2\n", "two", nil, "base:1"},
-		{"last stage by default", "FROM a:1 AS one\nFROM one\n", "", nil, "a:1"},
-		{"unknown target", "FROM a:1\n", "nope", nil, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newDockerfileResolver(docker.ExtractDockerfile(tc.dockerfile), tc.args, platform)
-			if got := r.findBaseImage(tc.target); got != tc.want {
-				t.Errorf("findBaseImage = %q, want %q", got, tc.want)
-			}
-		})
+// globalBuildxPlatformArgs feeds docker.Resolver the automatic platform ARGs
+// (its resolution is asserted against TS in testdata/ts-oracle/dockerfile.json).
+func TestGlobalBuildxPlatformArgs(t *testing.T) {
+	got := globalBuildxPlatformArgs(ocispec.Platform{OS: "linux", Architecture: "amd64"}, ocispec.Platform{OS: "linux", Architecture: "arm", Variant: "v7"})
+	want := map[string]string{
+		"BUILDPLATFORM": "linux/amd64", "BUILDOS": "linux", "BUILDARCH": "amd64", "BUILDVARIANT": "",
+		"TARGETPLATFORM": "linux/arm/v7", "TARGETOS": "linux", "TARGETARCH": "arm", "TARGETVARIANT": "v7",
 	}
-}
-
-func TestDockerfileResolverUserStatement(t *testing.T) {
-	platform := globalBuildxPlatformArgs(ocispec.Platform{OS: "linux", Architecture: "amd64"}, ocispec.Platform{OS: "linux", Architecture: "amd64"})
-	for _, tc := range []struct {
-		name, dockerfile, target string
-		args, baseEnv            map[string]string
-		want                     string
-	}{
-		{"plain", "FROM img\nUSER node\n", "", nil, nil, "node"},
-		{"stage arg", "FROM img\nARG U=dev\nUSER $U\n", "", nil, nil, "dev"},
-		{"build arg", "FROM img\nARG U=dev\nUSER $U\n", "", map[string]string{"U": "ci"}, nil, "ci"},
-		{"base image env", "FROM img\nUSER ${IMG_USER}\n", "", nil, map[string]string{"IMG_USER": "vscode"}, "vscode"},
-		{"parent stage", "FROM img AS base\nUSER app\nFROM base\nRUN true\n", "", nil, nil, "app"},
-		{"none", "FROM img\nRUN true\n", "", nil, nil, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newDockerfileResolver(docker.ExtractDockerfile(tc.dockerfile), tc.args, platform)
-			if got := r.findUserStatement(tc.baseEnv, tc.target); got != tc.want {
-				t.Errorf("findUserStatement = %q, want %q", got, tc.want)
-			}
-		})
+	if !maps.Equal(got, want) {
+		t.Errorf("globalBuildxPlatformArgs = %v, want %v", got, want)
 	}
 }
 

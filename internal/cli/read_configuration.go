@@ -468,7 +468,6 @@ func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta
 		WaitFor:             cfg.WaitFor,
 		ShutdownAction:      cfg.ShutdownAction,
 		UpdateRemoteUserUID: cfg.UpdateRemoteUserUID,
-		RunArgs:             cfg.RunArgs,
 		ContainerEnv:        cfg.ContainerEnv,
 		CapAdd:              cfg.CapAdd,
 		SecurityOpt:         cfg.SecurityOpt,

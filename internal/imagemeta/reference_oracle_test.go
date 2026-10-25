@@ -1,101 +1,81 @@
 package imagemeta
 
-// Oracle tests ported VERBATIM from the upstream devcontainers CLI test suite:
-//   reference/src/test/imageMetadata.test.ts  (describe 'mergeConfiguration').
-//
-// The inputs and expected values come from the reference author (who defines the
-// spec behavior), NOT from our reading of it — so these catch a divergence our
-// own hand-written tests cannot, because our tests would encode the same
-// misunderstanding as our code. Entries are built from the exact JSON the TS test
-// uses, to avoid hand-translation drift.
-
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-func mustEntries(t *testing.T, jsonArray string) []Entry {
-	t.Helper()
-	var entries []Entry
-	if err := json.Unmarshal([]byte(jsonArray), &entries); err != nil {
-		t.Fatalf("bad entries JSON: %v", err)
-	}
-	return entries
-}
-
-// Ported from: it('should merge metadata from devcontainer.json and features').
-// The config's remoteEnv is the LAST entry (our MergeConfiguration takes the
-// metadata array; the caller appends the config entry, mirroring the TS
-// imageMetadata array whose last element carries the config's remoteEnv).
-func TestOracle_MergeRemoteEnv(t *testing.T) {
-	merged := MergeConfiguration(mustEntries(t, `[
-		{ "remoteEnv": { "ENV1": "feature1", "ENV2": "feature1", "ENV3": "feature1", "ENV4": "feature1" } },
-		{ "remoteEnv": { "ENV1": "feature2", "ENV2": "feature2" } },
-		{ "remoteEnv": { "ENV1": "devcontainer.json", "ENV3": "devcontainer.json" } }
-	]`))
-	want := map[string]string{
-		"ENV1": "devcontainer.json",
-		"ENV2": "feature2",
-		"ENV3": "devcontainer.json",
-		"ENV4": "feature1",
-	}
-	for k, v := range want {
-		got := merged.RemoteEnv[k]
-		if got == nil || *got != v {
-			t.Errorf("remoteEnv[%s] = %v, want %q", k, got, v)
+// TestTSOracleImageMetadata asserts the ports in merge.go and extend.go against
+// the reference functions' results (go tool task testdata:ts-oracle).
+func TestTSOracleImageMetadata(t *testing.T) {
+	str := func(port func(string) string) oracletest.Func {
+		return func(args []json.RawMessage) (any, error) {
+			var s string
+			if err := oracletest.Args(args, &s); err != nil {
+				return nil, err
+			}
+			return port(s), nil
 		}
 	}
-}
-
-// Ported from: it('should deduplicate mounts'). Mixed string+object mounts across
-// three entries; de-dup by target keeping the LAST, preserving order.
-func TestOracle_DeduplicateMounts(t *testing.T) {
-	merged := MergeConfiguration(mustEntries(t, `[
-		{ "mounts": [
-			"source=source1,dst=target1,type=volume",
-			"source=source2,target=target2,type=volume",
-			"source=source3,destination=target3,type=volume"
-		] },
-		{ "mounts": [ { "source": "source4", "target": "target1", "type": "volume" } ] },
-		{ "mounts": [ { "source": "source5", "target": "target3", "type": "volume" } ] }
-	]`))
-
-	if len(merged.Mounts) != 3 {
-		t.Fatalf("mounts length = %d, want 3: %v", len(merged.Mounts), merged.Mounts)
-	}
-	if s, ok := merged.Mounts[0].(string); !ok || s != "source=source2,target=target2,type=volume" {
-		t.Errorf("mounts[0] = %v, want the source2 string mount", merged.Mounts[0])
-	}
-	if m, ok := merged.Mounts[1].(map[string]any); !ok || m["source"] != "source4" {
-		t.Errorf("mounts[1] = %v, want the source4 object", merged.Mounts[1])
-	}
-	if m, ok := merged.Mounts[2].(map[string]any); !ok || m["source"] != "source5" {
-		t.Errorf("mounts[2] = %v, want the source5 object", merged.Mounts[2])
-	}
-}
-
-// Ported from: it('should merge gpu requirements from devcontainer.json and
-// features'). The config's gpu:'optional' is NOT part of the merge (TS reduces
-// over the metadata array only), so only the three feature entries are passed.
-func TestOracle_MergeGPURequirements(t *testing.T) {
-	merged := MergeConfiguration(mustEntries(t, `[
-		{ "hostRequirements": { "gpu": true } },
-		{ "hostRequirements": { "gpu": { "cores": 4 } } },
-		{ "hostRequirements": { "gpu": { "memory": "8gb" } } }
-	]`))
-
-	hr, ok := merged.HostRequirements.(map[string]any)
-	if !ok {
-		t.Fatalf("hostRequirements = %v (%T), want a map", merged.HostRequirements, merged.HostRequirements)
-	}
-	gpu, ok := hr["gpu"].(map[string]any)
-	if !ok {
-		t.Fatalf("gpu = %v (%T), want a map", hr["gpu"], hr["gpu"])
-	}
-	if gpu["cores"] != float64(4) {
-		t.Errorf("gpu.cores = %v, want 4", gpu["cores"])
-	}
-	if gpu["memory"] != "8589934592" {
-		t.Errorf("gpu.memory = %v, want 8589934592", gpu["memory"])
-	}
+	oracletest.Run(t, "testdata/ts-oracle/imagemeta.json", map[string]oracletest.Func{
+		"mergeConfiguration": func(args []json.RawMessage) (any, error) {
+			var config map[string]any
+			var entries []Entry
+			if err := oracletest.Args(args, &config, &entries); err != nil {
+				return nil, err
+			}
+			data, err := json.Marshal(MergeConfiguration(entries))
+			if err != nil {
+				return nil, err
+			}
+			// TS leaves the properties it has no value for undefined, out of its JSON.
+			var merged map[string]any
+			if err := json.Unmarshal(data, &merged); err != nil {
+				return nil, err
+			}
+			for k, v := range merged {
+				if v == nil {
+					delete(merged, k)
+				}
+			}
+			return merged, nil
+		},
+		"getDevcontainerMetadataLabel": func(args []json.RawMessage) (any, error) {
+			var entries []Entry
+			if err := oracletest.Args(args, &entries); err != nil {
+				return nil, err
+			}
+			return devcontainerMetadataLabel(entries), nil
+		},
+		"getEntPasswdShellCommand": str(getEntPasswdShellCommand),
+		"generateContainerEnvs": func(args []json.RawMessage) (any, error) {
+			var env map[string]string
+			var escapeDollar bool
+			if err := oracletest.Args(args, &env, &escapeDollar); err != nil {
+				return nil, err
+			}
+			return generateContainerEnvs(env, escapeDollar), nil
+		},
+		"getFeatureValueObject": func(args []json.RawMessage) (any, error) {
+			var feat features.Feature
+			if err := oracletest.Args(args, &feat); err != nil {
+				return nil, err
+			}
+			info, err := ParseFeatureFileInfo(args[0])
+			if err != nil {
+				return nil, err
+			}
+			keys, values := featureValueObject(feat, info)
+			entries := make([][2]any, len(keys))
+			for i, k := range keys {
+				entries[i] = [2]any{k, values[k]}
+			}
+			return entries, nil
+		},
+		"getSafeId":            str(safeID),
+		"escapeQuotesForShell": str(escapeQuotesForShell),
+	})
 }

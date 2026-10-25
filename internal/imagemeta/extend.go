@@ -261,8 +261,12 @@ func devcontainerMetadataLabel(entries []Entry) string {
 	}
 	parts := make([]string, 0, len(entries))
 	for _, e := range entries {
-		data, _ := json.Marshal(e)
-		parts = append(parts, " \\\n"+backslashEscape(string(data), `"\$`))
+		// JSON.stringify leaves &, < and > as they are.
+		var data strings.Builder
+		enc := json.NewEncoder(&data)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(e) // an Entry holds JSON values only
+		parts = append(parts, " \\\n"+backslashEscape(strings.TrimSuffix(data.String(), "\n"), `"\$`))
 	}
 	return "LABEL " + MetadataLabel + `="[` + strings.Join(parts, ",") + ` \` + "\n]\""
 }

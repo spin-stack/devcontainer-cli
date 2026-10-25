@@ -47,6 +47,8 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = t.releaseResolve()
 	case "metrics":
 		err = t.metrics(rest)
+	case "ts-oracle":
+		err = t.tsOracle()
 	default:
 		fmt.Fprintf(stderr, "devtool: unknown command %q\n", cmd)
 		return 2
@@ -545,5 +547,53 @@ func (t tool) metrics(args []string) error {
 		return err
 	}
 	fmt.Fprintf(t.out, "metrics: wrote %s\n%s\n", out, data)
+	return nil
+}
+
+// tsOracle rewrites every internal/**/testdata/ts-oracle/*.json with the
+// answers the reference's own functions give to the golden's requests.
+func (t tool) tsOracle() error {
+	dir, err := os.MkdirTemp("", "ts-oracle-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	bundle := filepath.Join(dir, "oracle.js")
+	if err := t.run("node", "tools/tsoracle/build.mjs", "reference", bundle); err != nil {
+		return fmt.Errorf("bundle tools/tsoracle/oracle.ts: %w", err)
+	}
+	paths, err := TSOracleGoldens(os.DirFS("."))
+	if err != nil {
+		return err
+	}
+	goldens := map[string][]byte{}
+	for _, p := range paths {
+		if goldens[p], err = os.ReadFile(p); err != nil {
+			return err
+		}
+	}
+	refreshed, err := RefreshTSOracleGoldens(goldens, func(request []byte) ([]byte, error) {
+		cmd := exec.Command("node", bundle)
+		cmd.Stdin = strings.NewReader(string(request))
+		cmd.Stderr = t.errw
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("run the oracle: %w", err)
+		}
+		return out, nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, p := range paths {
+		if string(refreshed[p]) == string(goldens[p]) {
+			continue
+		}
+		if err := os.WriteFile(p, refreshed[p], 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintln(t.errw, "updated", p)
+	}
+	fmt.Fprintf(t.errw, "%d ts-oracle goldens checked\n", len(paths))
 	return nil
 }

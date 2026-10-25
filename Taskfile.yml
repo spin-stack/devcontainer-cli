@@ -248,6 +248,19 @@ tasks:
       - curl -fsSL https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.base.schema.json -o internal/config/testdata/devContainer.base.schema.json
       - 'echo "Schema refreshed. Run ''task spec:compliance'' — any new spec property fails until modeled in internal/config/types.go."'
 
+  testdata:ts-oracle:
+    desc: Rewrite every internal/**/testdata/ts-oracle/*.json with the results of the reference TypeScript functions (tools/tsoracle)
+    deps: [reference:compile]
+    cmds:
+      - go run ./cmd/devtool ts-oracle
+
+  testdata:ts-oracle:check:
+    desc: Fail when a testdata/ts-oracle golden differs from what the reference TypeScript functions return
+    deps: [reference:compile]
+    cmds:
+      - go run ./cmd/devtool ts-oracle
+      - git diff --exit-code -- '*/testdata/ts-oracle/*.json'
+
   reference:
     desc: Install and compile the TypeScript parity oracle
     cmds:

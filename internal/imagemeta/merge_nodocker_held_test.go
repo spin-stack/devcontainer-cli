@@ -11,15 +11,13 @@ import (
 // `reversed.find(entry => entry.<property>)`: the last entry setting it wins and
 // an earlier entry never overrides it, and overrideCommand/updateRemoteUserUID
 // (found by `typeof === 'boolean'`) keep a later false over an earlier true.
-// runArgs is not a TS metadata property (TS spreads it from the config); Go
-// carries it on the config's entry with the same last-entry-wins rule.
 func TestMergeConfigurationScalarsTakeTheLastEntryThatSetsThem(t *testing.T) {
 	m := MergeConfiguration(mustEntries(t, `[
 		{"remoteUser": "u0", "containerUser": "c0", "userEnvProbe": "none", "waitFor": "onCreateCommand",
-		 "shutdownAction": "none", "otherPortsAttributes": {"onAutoForward": "ignore"}, "runArgs": ["--a"],
+		 "shutdownAction": "none", "otherPortsAttributes": {"onAutoForward": "ignore"},
 		 "overrideCommand": true, "updateRemoteUserUID": true},
 		{"remoteUser": "u1", "containerUser": "c1", "userEnvProbe": "loginShell", "waitFor": "postCreateCommand",
-		 "shutdownAction": "stopContainer", "otherPortsAttributes": {"onAutoForward": "silent"}, "runArgs": ["--b"],
+		 "shutdownAction": "stopContainer", "otherPortsAttributes": {"onAutoForward": "silent"},
 		 "overrideCommand": false, "updateRemoteUserUID": false},
 		{"containerEnv": {"A": "1"}}
 	]`))
@@ -30,7 +28,6 @@ func TestMergeConfigurationScalarsTakeTheLastEntryThatSetsThem(t *testing.T) {
 		"waitFor":              m.WaitFor,
 		"shutdownAction":       m.ShutdownAction,
 		"otherPortsAttributes": m.OtherPortsAttributes,
-		"runArgs":              m.RunArgs,
 		"overrideCommand":      m.OverrideCommand,
 		"updateRemoteUserUID":  m.UpdateRemoteUserUID,
 	}
@@ -39,7 +36,7 @@ func TestMergeConfigurationScalarsTakeTheLastEntryThatSetsThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"containerUser":"c1","otherPortsAttributes":{"onAutoForward":"silent"},"overrideCommand":false,` +
-		`"remoteUser":"u1","runArgs":["--b"],"shutdownAction":"stopContainer","updateRemoteUserUID":false,` +
+		`"remoteUser":"u1","shutdownAction":"stopContainer","updateRemoteUserUID":false,` +
 		`"userEnvProbe":"loginShell","waitFor":"postCreateCommand"}`
 	if string(data) != want {
 		t.Errorf("merged scalars = %s\nwant %s", data, want)
