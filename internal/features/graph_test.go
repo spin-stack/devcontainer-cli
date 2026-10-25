@@ -23,16 +23,13 @@ type stubFeature struct {
 // not present in the registry resolves to (nil, nil) — "could not be processed".
 func newStubProcessFeature(registry map[string]stubFeature) ProcessFeature {
 	return func(node *FNode) (*Set, error) {
-		resource := StripVersionFromID(node.UserFeatureID)
+		// The stub ids carry no registry port, so the tag follows the last colon.
+		resource, tag, _ := strings.Cut(node.UserFeatureID, ":")
 		sf, ok := registry[resource]
 		if !ok {
 			return nil, nil
 		}
 		reg, ns, id := splitResource(resource)
-		tag := ""
-		if idx := strings.LastIndex(node.UserFeatureID, ":"); idx > 0 {
-			tag = node.UserFeatureID[idx+1:]
-		}
 		featID := sf.id
 		if featID == "" {
 			featID = id
@@ -79,9 +76,9 @@ func userFeats(ids ...string) []DevContainerFeature {
 	return out
 }
 
-func orderIDs(t *testing.T, graph []*FNode, override []string) []string {
+func orderIDs(t *testing.T, graph []*FNode) []string {
 	t.Helper()
-	sets, err := ComputeInstallationOrder(log.Null, graph, override)
+	sets, err := ComputeInstallationOrder(log.Null, graph)
 	if err != nil {
 		t.Fatalf("ComputeInstallationOrder: %v", err)
 	}
@@ -102,7 +99,7 @@ func TestBuildDependencyGraph_TransitiveDependsOn(t *testing.T) {
 	if len(graph) != 3 {
 		t.Fatalf("worklist size = %d, want 3", len(graph))
 	}
-	if got, want := orderIDs(t, graph, nil), []string{"c", "b", "a"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"c", "b", "a"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
@@ -125,7 +122,7 @@ func TestBuildDependencyGraph_DiamondDedup(t *testing.T) {
 	if len(graph) != 4 {
 		t.Fatalf("worklist size = %d, want 4 (a deduped)", len(graph))
 	}
-	if got, want := orderIDs(t, graph, nil), []string{"a", "b", "c", "d"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"a", "b", "c", "d"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
@@ -162,7 +159,7 @@ func TestBuildDependencyGraph_SoftDepPruned(t *testing.T) {
 	if len(graph) != 1 {
 		t.Fatalf("worklist size = %d, want 1 (soft dep not added)", len(graph))
 	}
-	if got, want := orderIDs(t, graph, nil), []string{"b"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
@@ -177,7 +174,7 @@ func TestBuildDependencyGraph_SoftDepOrders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := orderIDs(t, graph, nil), []string{"a", "b"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"a", "b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
@@ -194,7 +191,7 @@ func TestBuildDependencyGraph_SoftDepAliasMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := orderIDs(t, graph, nil), []string{"node", "b"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"node", "b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v (alias match should order node before b)", got, want)
 	}
 }
@@ -208,7 +205,7 @@ func TestBuildDependencyGraph_Cycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ComputeInstallationOrder(log.Null, graph, nil); err == nil {
+	if _, err := ComputeInstallationOrder(log.Null, graph); err == nil {
 		t.Fatal("expected circular dependency error")
 	}
 }
@@ -235,7 +232,7 @@ func TestBuildDependencyGraph_OverridePriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Override is applied during graph build; pass nil to ComputeInstallationOrder.
-	if got, want := orderIDs(t, graph, nil), []string{"c", "a", "b"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"c", "a", "b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
@@ -252,7 +249,7 @@ func TestBuildDependencyGraph_OverrideAliasMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := orderIDs(t, graph, nil), []string{"node", "b"}; !reflect.DeepEqual(got, want) {
+	if got, want := orderIDs(t, graph), []string{"node", "b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v (override alias should prioritize node)", got, want)
 	}
 }

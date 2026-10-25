@@ -128,26 +128,6 @@ func TestDeprecatedFeatureIntoOptions(t *testing.T) {
 	}
 }
 
-func TestStripVersionFromFeatureID(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"ghcr.io/devcontainers/features/go:1", "ghcr.io/devcontainers/features/go"},
-		{"ghcr.io/devcontainers/features/go:1.2.3", "ghcr.io/devcontainers/features/go"},
-		{"ghcr.io/devcontainers/features/go@sha256:abc", "ghcr.io/devcontainers/features/go"},
-		{"ghcr.io/devcontainers/features/go", "ghcr.io/devcontainers/features/go"},
-		{"./local-feature", "./local-feature"},
-		{"node:18", "node"},
-	}
-	for _, tt := range tests {
-		got := StripVersionFromID(tt.input)
-		if got != tt.want {
-			t.Errorf("StripVersionFromID(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestUserFeaturesToArray(t *testing.T) {
 	features := map[string]any{
 		"ghcr.io/devcontainers/features/go:1":   map[string]any{"version": "1.21"},

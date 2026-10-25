@@ -33,16 +33,14 @@ type ShellServer struct {
 // remoteEnv entries ("KEY=VALUE", docker exec -e) are applied to every command,
 // matching the TS CLI which runs lifecycle hooks and the userEnvProbe as the
 // remote user.
-// The logger param is accepted for call-site stability and future use; the
-// server currently logs nothing itself (callers surface command output).
-func NewShellServer(ctx context.Context, exec ContainerExecutor, containerID, user string, _ log.Logger, remoteEnv ...string) (*ShellServer, error) {
+func NewShellServer(ctx context.Context, exec ContainerExecutor, containerID, user string, remoteEnv ...string) *ShellServer {
 	return &ShellServer{
 		ctx:         ctx,
 		exec:        exec,
 		containerID: containerID,
 		user:        user,
 		env:         remoteEnv,
-	}, nil
+	}
 }
 
 // Exec runs a command inside the container and returns its stdout and exit code.

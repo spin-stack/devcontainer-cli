@@ -4,6 +4,8 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 
@@ -23,18 +25,6 @@ const (
 	PhasePostAttach    Phase = "postAttachCommand"
 )
 
-// AllPhases returns lifecycle phases in execution order.
-func AllPhases() []Phase {
-	return []Phase{
-		PhaseInitialize,
-		PhaseOnCreate,
-		PhaseUpdateContent,
-		PhasePostCreate,
-		PhasePostStart,
-		PhasePostAttach,
-	}
-}
-
 // RunOptions controls which lifecycle phases to execute.
 type RunOptions struct {
 	SkipPostCreate  bool
@@ -53,12 +43,39 @@ type CommandExecutor interface {
 	Exec(command string) error
 }
 
-// HookError records which lifecycle phase failed while preserving the
-// underlying command error for CLI-specific error envelopes.
+// HookError records which lifecycle command failed - its phase, its name when
+// it is one of an object's parallel commands, and the Feature id or
+// "devcontainer.json" it comes from - while preserving the underlying command
+// error for CLI-specific error envelopes.
 type HookError struct {
-	Phase Phase
-	Name  string
-	Err   error
+	Phase  Phase
+	Name   string
+	Origin string
+	Err    error
+}
+
+// Description is TS runLifecycleCommand's error description:
+// "[<name> of ]<hook> from <devcontainer.json | Feature '<id>'> failed."
+func (e *HookError) Description() string {
+	return e.label() + " from " + displayOrigin(e.Origin) + " failed."
+}
+
+func (e *HookError) label() string {
+	if e.Name != "" {
+		return e.Name + " of " + string(e.Phase)
+	}
+	return string(e.Phase)
+}
+
+// displayOrigin is how TS runLifecycleCommands names a command's origin.
+func displayOrigin(origin string) string {
+	switch origin {
+	case "":
+		return "devcontainer.json"
+	case "devcontainer.json":
+		return origin
+	}
+	return "Feature '" + origin + "'"
 }
 
 func (e *HookError) Error() string {
@@ -100,7 +117,7 @@ func RunHooks(
 	}
 
 	for _, p := range phases {
-		if opts.SkipPostCreate && isPostCreatePhase(p.phase) {
+		if opts.SkipPostCreate {
 			logger.Write(fmt.Sprintf("Skipping %s (skipPostCreate)", p.phase), log.LevelInfo)
 			continue
 		}
@@ -116,8 +133,12 @@ func RunHooks(
 				Status: "running",
 			})
 
-			for _, cmd := range p.commands {
-				if err := executeCommand(executor, logger, p.phase, cmd); err != nil {
+			for i, cmd := range p.commands {
+				var origin string
+				if origins := merged.CommandOrigins[string(p.phase)]; i < len(origins) {
+					origin = origins[i]
+				}
+				if err := executeCommand(executor, logger, p.phase, cmd, origin); err != nil {
 					logger.Event(log.Event{
 						Type:   "progress",
 						Name:   "Running " + string(p.phase) + "...",
@@ -140,11 +161,9 @@ func RunHooks(
 		}
 
 		// Check stop conditions
-		if opts.Prebuild && (p.phase == PhaseOnCreate || p.phase == PhaseUpdateContent) {
-			if p.phase == PhaseUpdateContent {
-				logger.Write("Stopping after updateContentCommand (prebuild)", log.LevelInfo)
-				return nil
-			}
+		if opts.Prebuild && p.phase == PhaseUpdateContent {
+			logger.Write("Stopping after updateContentCommand (prebuild)", log.LevelInfo)
+			return nil
 		}
 		if opts.SkipNonBlocking && p.phase == waitFor {
 			logger.Write(fmt.Sprintf("Stopping after %s (skipNonBlocking)", waitFor), log.LevelInfo)
@@ -155,65 +174,60 @@ func RunHooks(
 	return nil
 }
 
-func isPostCreatePhase(p Phase) bool {
-	return p == PhaseOnCreate || p == PhaseUpdateContent ||
-		p == PhasePostCreate || p == PhasePostStart || p == PhasePostAttach
-}
-
 // executeCommand runs a single lifecycle command entry. If the command is a
 // map (object syntax), entries are executed in parallel matching TS behavior
-// (Promise.allSettled). All commands run to completion; errors are collected.
-func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cmd any) error {
+// (Promise.allSettled): all commands run to completion, and the error names the
+// first that failed. TS takes the first in the object's key order; the decoded
+// map has none, so it is the first in sorted order (docs/DIVERGENCES.md).
+func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cmd any, origin string) error {
+	from := displayOrigin(origin)
 	m, isMap := cmd.(map[string]any)
 	if !isMap {
 		cmdStr := commandToString(cmd)
 		if cmdStr == "" {
 			return nil
 		}
-		logger.Write(fmt.Sprintf("Running %s: %s", phase, cmdStr), log.LevelInfo)
+		logger.Write(fmt.Sprintf("Running the %s from %s...", phase, from), log.LevelInfo)
 		if err := executor.Exec(cmdStr); err != nil {
-			return &HookError{Phase: phase, Err: err}
+			he := &HookError{Phase: phase, Origin: origin, Err: err}
+			logFailure(logger, he)
+			return he
 		}
 		return nil
 	}
 
-	// Parallel execution for object syntax, matching TS Promise.allSettled.
-	type result struct {
-		name string
-		err  error
-	}
+	logger.Write(fmt.Sprintf("Running the %s from %s...", phase, from), log.LevelInfo)
+	names := slices.Sorted(maps.Keys(m))
+	errs := make([]error, len(names))
 	var wg sync.WaitGroup
-	results := make(chan result, len(m))
-
-	for name, val := range m {
-		cmdStr := commandToString(val)
+	for i, name := range names {
+		cmdStr := commandToString(m[name])
 		if cmdStr == "" {
 			continue
 		}
-		wg.Add(1)
-		go func(name, cmdStr string) {
-			defer wg.Done()
-			logger.Write(fmt.Sprintf("Running %s (%s): %s", phase, name, cmdStr), log.LevelInfo)
-			results <- result{name: name, err: executor.Exec(cmdStr)}
-		}(name, cmdStr)
+		wg.Go(func() {
+			// TS prints a parallel command's header with its output once it succeeded.
+			if errs[i] = executor.Exec(cmdStr); errs[i] == nil {
+				logger.Write(fmt.Sprintf("Running %s of %s from %s...", name, phase, from), log.LevelInfo)
+			}
+		})
 	}
-
 	wg.Wait()
-	close(results)
-
-	var errs []error
-	for r := range results {
-		if r.err != nil {
-			// Wrap with %w (not %v) so the underlying *CommandError chain survives:
-			// errors.Join exposes Unwrap() []error, which errors.As walks, letting
-			// run_user_commands reach the CommandError just like the sequential path.
-			errs = append(errs, fmt.Errorf("%s: %w", r.name, r.err))
+	for i, err := range errs {
+		if err != nil {
+			he := &HookError{Phase: phase, Name: names[i], Origin: origin, Err: err}
+			logFailure(logger, he)
+			return he
 		}
 	}
-	if len(errs) > 0 {
-		return &HookError{Phase: phase, Err: errors.Join(errs...)}
-	}
 	return nil
+}
+
+// logFailure writes TS's line for a command that exited non-zero.
+func logFailure(logger log.Logger, he *HookError) {
+	if ce, ok := errors.AsType[*CommandError](he.Err); ok && ce.ExitCode != 0 {
+		logger.Write(fmt.Sprintf("%s from %s failed with exit code %d. Skipping any further user-provided commands.", he.label(), displayOrigin(he.Origin), ce.ExitCode), log.LevelError)
+	}
 }
 
 // commandToString converts a lifecycle command value to a shell string.

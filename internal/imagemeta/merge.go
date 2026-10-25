@@ -1,6 +1,8 @@
 package imagemeta
 
 import (
+	"cmp"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -15,39 +17,44 @@ type MergedConfig struct {
 	// Image is part of the mergedConfiguration output (spread from the config in
 	// TS), but NOT part of the devcontainer.metadata label entry — it is set by the
 	// caller from the config, not derived from metadata entries.
-	Image                 string             `json:"image,omitempty"`
-	RemoteUser            string             `json:"remoteUser,omitempty"`
-	ContainerUser         string             `json:"containerUser,omitempty"`
-	UserEnvProbe          string             `json:"userEnvProbe,omitempty"`
-	OverrideCommand       *bool              `json:"overrideCommand,omitempty"`
-	Init                  *bool              `json:"init"`
-	Privileged            *bool              `json:"privileged"`
-	WaitFor               string             `json:"waitFor,omitempty"`
-	ShutdownAction        string             `json:"shutdownAction,omitempty"`
-	HostRequirements      any                `json:"hostRequirements,omitempty"`
-	UpdateRemoteUserUID   *bool              `json:"updateRemoteUserUID,omitempty"`
-	CapAdd                []string           `json:"capAdd,omitempty"`
-	SecurityOpt           []string           `json:"securityOpt,omitempty"`
-	PortsAttributes       map[string]any     `json:"portsAttributes"`
-	OtherPortsAttributes  any                `json:"otherPortsAttributes,omitempty"`
-	ForwardPorts          []any              `json:"forwardPorts,omitempty"`
-	RunArgs               []string           `json:"runArgs,omitempty"`
-	ContainerEnv          map[string]string  `json:"containerEnv"`
-	RemoteEnv             map[string]*string `json:"remoteEnv"`
-	Customizations        map[string][]any   `json:"customizations,omitempty"`
-	Mounts                []any              `json:"mounts,omitempty"`
-	Entrypoints           []string           `json:"entrypoints,omitempty"`
-	OnCreateCommands      []any              `json:"onCreateCommands"`
-	UpdateContentCommands []any              `json:"updateContentCommands"`
-	PostCreateCommands    []any              `json:"postCreateCommands"`
-	PostStartCommands     []any              `json:"postStartCommands"`
-	PostAttachCommands    []any              `json:"postAttachCommands"`
+	Image                string             `json:"image,omitempty"`
+	RemoteUser           string             `json:"remoteUser,omitempty"`
+	ContainerUser        string             `json:"containerUser,omitempty"`
+	UserEnvProbe         string             `json:"userEnvProbe,omitempty"`
+	OverrideCommand      *bool              `json:"overrideCommand,omitempty"`
+	Init                 *bool              `json:"init"`
+	Privileged           *bool              `json:"privileged"`
+	WaitFor              string             `json:"waitFor,omitempty"`
+	ShutdownAction       string             `json:"shutdownAction,omitempty"`
+	HostRequirements     any                `json:"hostRequirements,omitempty"`
+	UpdateRemoteUserUID  *bool              `json:"updateRemoteUserUID,omitempty"`
+	CapAdd               []string           `json:"capAdd,omitempty"`
+	SecurityOpt          []string           `json:"securityOpt,omitempty"`
+	PortsAttributes      map[string]any     `json:"portsAttributes"`
+	OtherPortsAttributes any                `json:"otherPortsAttributes,omitempty"`
+	ForwardPorts         []any              `json:"forwardPorts,omitempty"`
+	RunArgs              []string           `json:"runArgs,omitempty"`
+	ContainerEnv         map[string]string  `json:"containerEnv"`
+	RemoteEnv            map[string]*string `json:"remoteEnv"`
+	Customizations       map[string][]any   `json:"customizations,omitempty"`
+	Mounts               []any              `json:"mounts,omitempty"`
+	Entrypoints          []string           `json:"entrypoints,omitempty"`
+	OnCreateCommands     []any              `json:"onCreateCommands"`
+	// CommandOrigins is, per hook name, where each of its commands comes from -
+	// a Feature's id or "devcontainer.json" - in the order of the commands, as
+	// TS lifecycleCommandOriginMapFromMetadata records it for error messages.
+	CommandOrigins        map[string][]string `json:"-"`
+	UpdateContentCommands []any               `json:"updateContentCommands"`
+	PostCreateCommands    []any               `json:"postCreateCommands"`
+	PostStartCommands     []any               `json:"postStartCommands"`
+	PostAttachCommands    []any               `json:"postAttachCommands"`
 }
 
 // MergeConfiguration merges image metadata entries with the devcontainer config.
 // Entries are processed in order; the last entry has highest priority for scalars.
 // This matches the TS mergeConfiguration() in imageMetadata.ts.
 func MergeConfiguration(entries []Entry) *MergedConfig {
+	entries = nonEmptyEntries(entries)
 	m := &MergedConfig{
 		ContainerEnv:          make(map[string]string),
 		RemoteEnv:             make(map[string]*string),
@@ -58,6 +65,7 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		PostCreateCommands:    []any{},
 		PostStartCommands:     []any{},
 		PostAttachCommands:    []any{},
+		CommandOrigins:        map[string][]string{},
 	}
 
 	// Process entries in order. For lifecycle hooks, iterate all.
@@ -65,21 +73,18 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 	for _, e := range entries {
 		// Lifecycle hooks — collect every truthy command (TS `if (command)`), so an
 		// empty-string command is skipped rather than emitted as a spurious "" entry.
-		if isNonEmptyCommand(e.OnCreateCommand) {
-			m.OnCreateCommands = append(m.OnCreateCommands, e.OnCreateCommand)
+		origin := cmp.Or(e.ID, "devcontainer.json") // only Features have ids in the metadata
+		collect := func(hook string, list *[]any, command any) {
+			if isNonEmptyCommand(command) {
+				*list = append(*list, command)
+				m.CommandOrigins[hook] = append(m.CommandOrigins[hook], origin)
+			}
 		}
-		if isNonEmptyCommand(e.UpdateContentCommand) {
-			m.UpdateContentCommands = append(m.UpdateContentCommands, e.UpdateContentCommand)
-		}
-		if isNonEmptyCommand(e.PostCreateCommand) {
-			m.PostCreateCommands = append(m.PostCreateCommands, e.PostCreateCommand)
-		}
-		if isNonEmptyCommand(e.PostStartCommand) {
-			m.PostStartCommands = append(m.PostStartCommands, e.PostStartCommand)
-		}
-		if isNonEmptyCommand(e.PostAttachCommand) {
-			m.PostAttachCommands = append(m.PostAttachCommands, e.PostAttachCommand)
-		}
+		collect("onCreateCommand", &m.OnCreateCommands, e.OnCreateCommand)
+		collect("updateContentCommand", &m.UpdateContentCommands, e.UpdateContentCommand)
+		collect("postCreateCommand", &m.PostCreateCommands, e.PostCreateCommand)
+		collect("postStartCommand", &m.PostStartCommands, e.PostStartCommand)
+		collect("postAttachCommand", &m.PostAttachCommands, e.PostAttachCommand)
 
 		// Entrypoints — collect ALL non-empty entrypoints (TS collectOrUndefined has
 		// NO de-dup): two features that register the same entrypoint script must both
@@ -331,6 +336,11 @@ func hrString(v any) string {
 // gpu across all entries, matching TS mergeHostRequirements. Returns nil when no
 // entry sets any requirement.
 func mergeHostRequirements(entries []Entry) any {
+	if len(entries) == 0 {
+		// TS takes Math.max() of no values, -Infinity, which is truthy: cpus
+		// serializes as null and memory/storage as the string "-Infinity".
+		return map[string]any{"cpus": nil, "memory": "-Infinity", "storage": "-Infinity"}
+	}
 	var cpus float64
 	var memory, storage int64
 	var gpu any
@@ -412,4 +422,17 @@ func appendUnique(dst, src []string) []string {
 		}
 	}
 	return dst
+}
+
+// nonEmptyEntries drops the entries that set no property, as TS
+// getDevcontainerMetadata does (`.filter(config => Object.keys(config).length)`):
+// a config with nothing to contribute adds no entry to the merge or the label.
+func nonEmptyEntries(entries []Entry) []Entry {
+	out := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if data, err := json.Marshal(e); err != nil || string(data) != "{}" {
+			out = append(out, e)
+		}
+	}
+	return out
 }

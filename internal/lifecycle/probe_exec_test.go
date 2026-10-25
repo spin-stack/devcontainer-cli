@@ -54,7 +54,7 @@ func TestProbeRemoteEnv_None(t *testing.T) {
 		t.Fatal("Exec must not be called for ProbeNone")
 		return "", 0, nil
 	}}
-	env, err := ProbeRemoteEnv(log.Null, fs, ProbeNone, "root")
+	env, err := ProbeRemoteEnv(log.Null, fs, ProbeNone, "root", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestProbeRemoteEnv_None(t *testing.T) {
 		t.Errorf("expected empty env, got %v", env)
 	}
 	// Empty strategy behaves like ProbeNone.
-	if env, _ = ProbeRemoteEnv(log.Null, fs, "", "root"); len(env) != 0 {
+	if env, _ = ProbeRemoteEnv(log.Null, fs, "", "root", ""); len(env) != 0 {
 		t.Errorf("empty strategy: expected empty env, got %v", env)
 	}
 }
@@ -110,7 +110,7 @@ func TestProbeRemoteEnv_TimeoutFallback(t *testing.T) {
 		return "", 0, nil
 	}}
 	lg := newCaptureLog()
-	env, err := ProbeRemoteEnv(lg, fs, ProbeLoginInteractiveShell, "root")
+	env, err := ProbeRemoteEnv(lg, fs, ProbeLoginInteractiveShell, "root", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 func TestIsGitHubTarballURI(t *testing.T) {
@@ -130,5 +133,37 @@ func TestDownloadFeatureTarball_2xxAccepted(t *testing.T) {
 
 	if _, _, err := downloadFeatureTarball(context.Background(), nil, srv.URL, nil); err != nil {
 		t.Errorf("204 should be accepted as success, got %v", err)
+	}
+}
+
+// A direct tarball whose digest is not the lockfile's fails while resolving its
+// metadata - what resolve-dependencies and the graph TS builds before installing
+// read - with TS fetchContentsAtTarballUri's error, unwrapped. A tarball the
+// lockfile does not pin, or pins to its digest, resolves.
+func TestDirectTarballDigestCheckedAgainstTheLockfile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not-a-real-tarball"))
+	}))
+	defer srv.Close()
+	uri := srv.URL + "/feature.tgz"
+	sum := sha256.Sum256([]byte("not-a-real-tarball"))
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+
+	resolve := func(lf *features.Lockfile) error {
+		_, err := newMetadataProcessFeature(nil, log.Null, "", lf)(&features.FNode{UserFeatureID: uri})
+		return err
+	}
+	wrong := &features.Lockfile{Features: map[string]features.LockfileEntry{uri: {Integrity: "sha256:" + strings.Repeat("0", 64)}}}
+	if err := resolve(wrong); err == nil || err.Error() != "Digest did not match for "+uri+"." {
+		t.Errorf("wrong integrity: err = %v, want %q", err, "Digest did not match for "+uri+".")
+	}
+	right := &features.Lockfile{Features: map[string]features.LockfileEntry{uri: {Integrity: digest}}}
+	for name, lf := range map[string]*features.Lockfile{"no lockfile": nil, "matching integrity": right} {
+		if err := resolve(lf); err != nil && strings.Contains(err.Error(), "Digest did not match") {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	if err := verifyTarballDigest(wrong, uri, digest); err == nil || err.Error() != "Digest did not match for "+uri+"." {
+		t.Errorf("install path: err = %v", err)
 	}
 }

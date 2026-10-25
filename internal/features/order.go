@@ -2,8 +2,8 @@ package features
 
 import (
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -23,13 +23,13 @@ type FNode struct {
 
 // ComputeInstallationOrder takes resolved feature sets and computes the
 // topological installation order respecting dependsOn (hard) and
-// installsAfter (soft) constraints, plus overrideFeatureInstallOrder priority.
+// installsAfter (soft) constraints, plus the overrideFeatureInstallOrder
+// priority BuildDependencyGraph stored in each node's RoundPriority.
 //
 // This is the Go port of computeDependsOnInstallationOrder from containerFeaturesOrder.ts.
 func ComputeInstallationOrder(
 	logger log.Logger,
 	nodes []*FNode,
-	overrideOrder []string,
 ) ([]*Set, error) {
 
 	if len(nodes) == 0 {
@@ -43,17 +43,12 @@ func ComputeInstallationOrder(
 		}
 	}
 
-	// Apply override install order priorities
-	if len(overrideOrder) > 0 {
-		applyOverridePriority(logger, nodes, overrideOrder)
-	}
-
 	// Prune irrelevant soft dependencies:
 	// Remove installsAfter edges where the soft dep doesn't match any node in the worklist.
 	for _, node := range nodes {
 		pruned := make([]*FNode, 0, len(node.InstallsAfter))
 		for _, softDep := range node.InstallsAfter {
-			if anyNodeSatisfiesSoftDep(nodes, softDep) {
+			if satisfiesSoftDep(nodes, softDep) {
 				pruned = append(pruned, softDep)
 			} else {
 				logger.Write(fmt.Sprintf("Soft-dependency %q is not required. Removing.", softDep.UserFeatureID), log.LevelInfo)
@@ -105,10 +100,9 @@ func ComputeInstallationOrder(
 		// Remove round nodes from worklist
 		worklist = removeNodes(worklist, round)
 
-		// Sort round lexicographically
-		sort.Slice(round, func(i, j int) bool {
-			return compareNodes(round[i], round[j]) < 0
-		})
+		// Sort round lexicographically, keeping equal nodes in place as the TS
+		// Array.prototype.sort (stable) does.
+		slices.SortStableFunc(round, compareNodes)
 
 		installOrder = append(installOrder, round...)
 	}
@@ -121,67 +115,27 @@ func ComputeInstallationOrder(
 	return result, nil
 }
 
-// --- Override priority ---
-
-func applyOverridePriority(logger log.Logger, nodes []*FNode, overrideOrder []string) {
-	for i, overrideID := range slices.Backward(overrideOrder) {
-
-		priority := len(overrideOrder) - i
-
-		for _, node := range nodes {
-			if matchesSoftDep(node, overrideID) {
-				if priority > node.RoundPriority {
-					logger.Write(fmt.Sprintf("[override]: %q gets priority %d", node.UserFeatureID, priority), log.LevelTrace)
-					node.RoundPriority = priority
-				}
-			}
-		}
-	}
-}
-
 // --- Dependency checks ---
 
 func canInstall(node *FNode, installed []*FNode) bool {
 	// All hard deps must be installed
 	for _, dep := range node.DependsOn {
-		if !isInstalled(dep, installed) {
+		if !slices.ContainsFunc(installed, func(n *FNode) bool { return nodesEqual(n, dep) }) {
 			return false
 		}
 	}
 	// All soft deps must be installed (if they are in the worklist)
 	for _, dep := range node.InstallsAfter {
-		if !isSoftDepSatisfied(dep, installed) {
+		if !satisfiesSoftDep(installed, dep) {
 			return false
 		}
 	}
 	return true
 }
 
-func isInstalled(dep *FNode, installed []*FNode) bool {
-	for _, n := range installed {
-		if nodesEqual(n, dep) {
-			return true
-		}
-	}
-	return false
-}
-
-func isSoftDepSatisfied(dep *FNode, installed []*FNode) bool {
-	for _, n := range installed {
-		if nodeSatisfiesSoftDep(n, dep) {
-			return true
-		}
-	}
-	return false
-}
-
-func anyNodeSatisfiesSoftDep(nodes []*FNode, softDep *FNode) bool {
-	for _, n := range nodes {
-		if nodeSatisfiesSoftDep(n, softDep) {
-			return true
-		}
-	}
-	return false
+// satisfiesSoftDep reports whether one of nodes satisfies softDep.
+func satisfiesSoftDep(nodes []*FNode, softDep *FNode) bool {
+	return slices.ContainsFunc(nodes, func(n *FNode) bool { return nodeSatisfiesSoftDep(n, softDep) })
 }
 
 // nodeSatisfiesSoftDep checks if `node` satisfies `softDep` as a soft dependency.
@@ -318,16 +272,7 @@ func optionsCompareTo(a, b any) int {
 		if len(am) != len(bm) {
 			return len(am) - len(bm)
 		}
-		aKeys := make([]string, 0, len(am))
-		for k := range am {
-			aKeys = append(aKeys, k)
-		}
-		bKeys := make([]string, 0, len(bm))
-		for k := range bm {
-			bKeys = append(bKeys, k)
-		}
-		sort.Strings(aKeys)
-		sort.Strings(bKeys)
+		aKeys, bKeys := slices.Sorted(maps.Keys(am)), slices.Sorted(maps.Keys(bm))
 		for i := range aKeys {
 			if aKeys[i] != bKeys[i] {
 				return strings.Compare(aKeys[i], bKeys[i])
@@ -395,32 +340,8 @@ func typeName(v any) string {
 	}
 }
 
-func matchesSoftDep(node *FNode, overrideID string) bool {
-	if node.Set == nil {
-		return false
-	}
-	src := node.Set.SourceInfo
-	if src == nil {
-		return false
-	}
-	strippedOverride := StripVersionFromID(overrideID)
-	strippedNode := StripVersionFromID(src.UserFeatureID())
-	return strippedOverride == strippedNode
-}
-
 func removeNodes(worklist []*FNode, toRemove []*FNode) []*FNode {
-	result := make([]*FNode, 0, len(worklist))
-	for _, n := range worklist {
-		remove := false
-		for _, r := range toRemove {
-			if nodesEqual(n, r) {
-				remove = true
-				break
-			}
-		}
-		if !remove {
-			result = append(result, n)
-		}
-	}
-	return result
+	return slices.DeleteFunc(slices.Clone(worklist), func(n *FNode) bool {
+		return slices.ContainsFunc(toRemove, func(r *FNode) bool { return nodesEqual(n, r) })
+	})
 }

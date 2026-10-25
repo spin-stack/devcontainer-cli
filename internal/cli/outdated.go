@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -20,28 +21,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// isBareVersion reports whether s is a bare semver-ish target: x / x.y / x.y.z
+// bareVersion is a bare semver-ish target: x / x.y / x.y.z
 // (TS: /^\d+(\.\d+(\.\d+)?)?$/ in upgradeCommand.ts).
-func isBareVersion(s string) bool {
-	if s == "" {
-		return false
-	}
-	parts := strings.Split(s, ".")
-	if len(parts) > 3 {
-		return false
-	}
-	for _, p := range parts {
-		if p == "" {
-			return false
-		}
-		for i := 0; i < len(p); i++ {
-			if p[i] < '0' || p[i] > '9' {
-				return false
-			}
-		}
-	}
-	return true
-}
+var bareVersion = regexp.MustCompile(`^\d+(\.\d+(\.\d+)?)?$`)
+
+// isBareVersion reports whether s is a bare semver-ish target.
+func isBareVersion(s string) bool { return bareVersion.MatchString(s) }
 
 // getFeatureIdWithoutVersion strips the trailing ":tag" or "@digest" from a user
 // feature id, leaving the full id path (TS getFeatureIdWithoutVersion, /[:@][^/]*$/).

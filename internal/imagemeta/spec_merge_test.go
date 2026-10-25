@@ -4,12 +4,6 @@ import "slices"
 
 import "testing"
 
-//go:fix inline
-func specBool(b bool) *bool { return new(b) }
-
-//go:fix inline
-func specStr(s string) *string { return new(s) }
-
 // TestSpecMetadataMergeRules locks the dev container specification's normative
 // metadata merge rules (containers.dev/implementors/spec, "Merge logic"):
 // entries are merged in order with devcontainer.json considered LAST, and each

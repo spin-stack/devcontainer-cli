@@ -270,7 +270,7 @@ func (c *Client) FindDockerDriverBuilder(ctx context.Context) string {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && !strings.HasPrefix(fields[0], " ") {
+		if len(fields) >= 2 {
 			name := strings.TrimSuffix(fields[0], "*")
 			driver := fields[1]
 			if driver == "docker" {

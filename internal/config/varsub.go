@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"path"
 	"runtime"
-	"sort"
 	"strings"
 )
 
@@ -45,15 +44,6 @@ func (r *VariableResolver) Resolve(ctx SubstitutionContext, phase SubstitutionPh
 	return r.resolveRecursive(ctx, phase, value)
 }
 
-// BeforeContainer always applies both pre-container phases in canonical order.
-func (r *VariableResolver) BeforeContainer(ctx SubstitutionContext, value any) (any, error) {
-	value, err := r.Resolve(ctx, PhaseHost, value)
-	if err != nil {
-		return nil, err
-	}
-	return r.Resolve(ctx, PhaseIdentity, value)
-}
-
 func (r *VariableResolver) AfterContainer(ctx SubstitutionContext, value any) (any, error) {
 	return r.Resolve(ctx, PhaseContainer, value)
 }
@@ -63,10 +53,6 @@ func (r *VariableResolver) BeforeContainerInto(ctx SubstitutionContext, target a
 		return err
 	}
 	return r.ResolveInto(ctx, PhaseIdentity, target)
-}
-
-func (r *VariableResolver) AfterContainerInto(ctx SubstitutionContext, target any) error {
-	return r.ResolveInto(ctx, PhaseContainer, target)
 }
 
 // ResolveInto applies a phase to any JSON-serializable configuration value and
@@ -263,14 +249,9 @@ type HostSubContext struct {
 // ComputeDevContainerID produces a deterministic ID from id-labels,
 // matching the TS implementation exactly: SHA256 → BigInt → base32 padded to 52.
 func ComputeDevContainerID(idLabels map[string]string) string {
-	// Sort keys for determinism (matches JSON.stringify with sorted keys)
-	keys := make([]string, 0, len(idLabels))
-	for k := range idLabels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	data, _ := json.Marshal(sortedMap(keys, idLabels))
+	// encoding/json writes a map's keys sorted, as the TS JSON.stringify of the
+	// sorted labels does.
+	data, _ := json.Marshal(idLabels)
 	hash := sha256.Sum256(data)
 
 	// Convert hash to BigInt, then to base32 string, padded to 52 chars
@@ -291,22 +272,8 @@ func normalizeEnvKeys(env map[string]string) map[string]string {
 }
 
 func winBasename(p string) string {
-	// Handle both / and \ separators on Windows
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' || p[i] == '\\' {
-			return p[i+1:]
-		}
-	}
-	return p
-}
-
-func sortedMap(keys []string, m map[string]string) map[string]string {
-	// json.Marshal on map[string]string sorts keys by default in Go
-	result := make(map[string]string, len(keys))
-	for _, k := range keys {
-		result[k] = m[k]
-	}
-	return result
+	// Both / and \ separate on Windows; no separator leaves p whole.
+	return p[strings.LastIndexAny(p, "/\\")+1:]
 }
 
 // IsWindows returns true if the current platform is Windows.

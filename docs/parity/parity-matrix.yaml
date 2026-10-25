@@ -381,6 +381,481 @@ initial_cases:
     current_status: match
     notes: "publishes the template collection (alpine, cpp, mytemplate, node-mongo) to a LOCAL registry:3, one per side started in setup_cmd with host 'localhost' (not 127.0.0.1) so that the TS OCI client uses plain HTTP. The random host port is captured via echo REGISTRY=localhost:PORT (the harness reSetupEnv injects it into the ts_cmd env). stdout = result-map JSON { id: {publishedTags:[1,1.0,1.0.0,latest], digest, version} }; the tarball digest differs between sides (Go tar vs node-tar) but is scrubbed to sha256:<HASH>, and the keys are ordered by normalizeValue. Each side uses its own fresh registry -> deterministic publishedTags."
 
+  - id: features-publish.legacy-ids-single-segment-namespace-success
+    lane: runtime
+    command: features-publish
+    priority: p1
+    docker_required: true
+    setup_cmd: "REG_NAME=parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE}; docker rm -f $REG_NAME >/dev/null 2>&1; docker run -d --name $REG_NAME -p 127.0.0.1::5000 registry:3 >/dev/null; PORT=$(docker port $REG_NAME 5000/tcp | head -1 | sed s/.*://); curl -s --retry 30 --retry-delay 1 --retry-connrefused http://localhost:$PORT/v2/ >/dev/null 2>&1; echo REGISTRY=localhost:$PORT"
+    verify_cmd: "curl -s http://${REGISTRY}/v2/myorg/tags/list"
+    cleanup_cmd: "docker rm -f parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    ts_cmd: "features publish reference/src/test/container-features/example-v2-features-sets/renaming-feature/src -r ${REGISTRY} -n myorg"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "renaming-feature publishes hello and new-color; new-color's legacyIds (color, old-color) are republished and reported inside the item as publishedLegacyIds (featuresCLI/publish.ts), not as items of their own. The one-segment namespace is a valid collection (getCollectionRef): verify_cmd lists the collection's tags (latest). Go used to report the aliases as items and to skip the collection metadata for a one-segment namespace."
+
+  - id: features-publish.already-published-success
+    lane: runtime
+    command: features-publish
+    priority: p1
+    docker_required: true
+    setup_cmd: "REG_NAME=parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE}; docker rm -f $REG_NAME >/dev/null 2>&1; docker run -d --name $REG_NAME -p 127.0.0.1::5000 registry:3 >/dev/null; PORT=$(docker port $REG_NAME 5000/tcp | head -1 | sed s/.*://); curl -s --retry 30 --retry-delay 1 --retry-connrefused http://localhost:$PORT/v2/ >/dev/null 2>&1; ${PARITY_CLI_TS} features publish reference/src/test/container-features/example-v2-features-sets/renaming-feature/src -r localhost:$PORT -n myorg >/dev/null 2>&1; echo REGISTRY=localhost:$PORT"
+    cleanup_cmd: "docker rm -f parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    ts_cmd: "features publish reference/src/test/container-features/example-v2-features-sets/renaming-feature/src -r ${REGISTRY} -n myorg"
+    asserts: [exit_code, stdout_normalized]
+    class: features-runtime
+    current_status: match
+    notes: "setup_cmd publishes the collection once (with the oracle); publishing the same versions again skips each item, which TS reports as an empty object: {hello:{}, new-color:{}}. Go used to report {digest:'', publishedTags:[]}."
+
+  - id: build.disallowed-feature-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/node:1\":{},\"ghcr.io/devcontainers/features/disallowed-feature:1\":{},\"ghcr.io/chrmarti/test-features/test-disallowed-feature\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    compare_nulls: true
+    notes: "The containers.dev control manifest disallows ghcr.io/devcontainers/features/disallowed-feature. The first disallowed feature in the config's key order is reported (TS Object.keys), and build's error envelope carries only outcome/message/description (devContainersSpecCLI.ts build)."
+
+  - id: up.disallowed-feature-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/node:1\":{},\"ghcr.io/devcontainers/features/disallowed-feature:1\":{},\"ghcr.io/chrmarti/test-features/test-disallowed-feature\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    compare_nulls: true
+    notes: "up reports disallowedFeatureId, didStopContainer (false: no container) and learnMoreUrl (disallowedFeatures.ts, doProvision). Go used to emit only the description, and to report a random one of two disallowed features."
+
+  - id: up.disallowed-feature-stops-running-container
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/node:1\":{},\"ghcr.io/devcontainers/features/disallowed-feature:1\":{},\"ghcr.io/chrmarti/test-features/test-disallowed-feature\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; docker run -d --label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} alpine:3 sleep infinity >/dev/null; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker inspect -f '{{.State.Status}}' $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE})"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    compare_nulls: true
+    notes: "A running container with the workspace's id labels is stopped (docker stop -t 0), the description says so and didStopContainer is true; verify_cmd shows it exited. Go used to take the --id-label shortcut, reuse the container and report success without reading the config."
+
+  - id: up.id-label-only-existing-container-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "docker run -d --label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} alpine:3 sleep infinity >/dev/null"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; true"
+    ts_cmd: "up --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "TS reads the config before looking for a container (configContainer.ts): with no workspace and no config it fails with 'No dev container config and no workspace found.' even though --id-label finds a container. Go used to reuse the container and report success with an empty remoteWorkspaceFolder."
+
+  - id: up.config-without-workspace-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\"}' > $WORKSPACE/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker inspect -f 'mounts=[{{range .Mounts}}{{.Destination}} {{end}}] wd={{.Config.WorkingDir}}' $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE})"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --config ${WORKSPACE}/devcontainer.json --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "With --config and no --workspace-folder there is no workspace: nothing is mounted and remoteWorkspaceFolder is left out (getWorkspaceConfiguration with an undefined workspace). Go used to mount '' at /workspaces/. and report remoteWorkspaceFolder '/workspaces/.'."
+
+  - id: up.feature-hook-failure-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/myfeat; printf '%s' '{\"id\":\"myfeat\",\"version\":\"1.0.0\",\"postCreateCommand\":\"exit 3\"}' > $WORKSPACE/.devcontainer/myfeat/devcontainer-feature.json; printf '#!/bin/sh\necho installed\n' > $WORKSPACE/.devcontainer/myfeat/install.sh; chmod +x $WORKSPACE/.devcontainer/myfeat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./myfeat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "A Feature's failing postCreateCommand: description 'postCreateCommand from Feature ./myfeat failed.', message the command's error, and the containerId (injectHeadless.ts runLifecycleCommand, ContainerError message = originalError.message). Go used to say 'from devcontainer.json' and leave the container out."
+
+  - id: up.parallel-hook-failure-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/myfeat; printf '%s' '{\"image\":\"alpine:3\",\"postCreateCommand\":{\"a\":\"true\",\"b\":\"exit 4\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "An object postCreateCommand whose b command fails: 'b of postCreateCommand from devcontainer.json failed.'. Go used to drop the command's name."
+
+  - id: run-user-commands.hook-failure-error
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/myfeat; printf '%s' '{\"id\":\"myfeat\",\"version\":\"1.0.0\",\"postCreateCommand\":\"exit 3\"}' > $WORKSPACE/.devcontainer/myfeat/devcontainer-feature.json; printf '#!/bin/sh\necho installed\n' > $WORKSPACE/.devcontainer/myfeat/install.sh; chmod +x $WORKSPACE/.devcontainer/myfeat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./myfeat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; ${PARITY_CLI_TS} up --workspace-folder $WORKSPACE --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --skip-post-create >/dev/null 2>&1; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "run-user-commands --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "The container was created with --skip-post-create, so postCreateCommand runs here and fails: TS run-user-commands reports only message and description, with the Feature origin. Go used to say 'from devcontainer.json'."
+
+  - id: run-user-commands.after-failed-post-create-success
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/myfeat; printf '%s' '{\"id\":\"myfeat\",\"version\":\"1.0.0\",\"postCreateCommand\":\"exit 3\"}' > $WORKSPACE/.devcontainer/myfeat/devcontainer-feature.json; printf '#!/bin/sh\necho installed\n' > $WORKSPACE/.devcontainer/myfeat/install.sh; chmod +x $WORKSPACE/.devcontainer/myfeat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./myfeat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; ${PARITY_CLI_TS} up --workspace-folder $WORKSPACE --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "run-user-commands --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "up already ran (and failed) postCreateCommand; its marker was written before it ran (updateMarkerFile), so run-user-commands does not run it again and succeeds with result done. Go used no markers in run-user-commands and failed again."
+
+  - id: set-up.after-failed-post-create-success
+    lane: runtime
+    command: set-up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/myfeat; printf '%s' '{\"id\":\"myfeat\",\"version\":\"1.0.0\",\"postCreateCommand\":\"exit 3\"}' > $WORKSPACE/.devcontainer/myfeat/devcontainer-feature.json; printf '#!/bin/sh\necho installed\n' > $WORKSPACE/.devcontainer/myfeat/install.sh; chmod +x $WORKSPACE/.devcontainer/myfeat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./myfeat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; ${PARITY_CLI_TS} up --workspace-folder $WORKSPACE --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; CONTAINER=$(docker ps -q --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); echo CONTAINER=$CONTAINER; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "set-up --container-id ${CONTAINER}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "set-up shares runLifecycleHooks with up: the marker up wrote keeps the failed postCreateCommand from running again. Go used no markers in set-up and reported 'An error occurred running user commands: ...'."
+
+  - id: up.container-entrypoint-and-command-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker inspect -f '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE})"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "The container's keep-alive script is TS spawnDevContainer's byte for byte: with no Feature entrypoint, an empty line stands between trap and exec. Go used to drop that line, so the containers' Cmd differed."
+
+  - id: templates.publish-template-metadata-success
+    lane: runtime
+    command: templates
+    priority: p1
+    docker_required: true
+    setup_cmd: "REG_NAME=parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE}; docker rm -f $REG_NAME >/dev/null 2>&1; docker run -d --name $REG_NAME -p 127.0.0.1::5000 registry:3 >/dev/null; PORT=$(docker port $REG_NAME 5000/tcp | head -1 | sed s/.*://); curl -s --retry 30 --retry-delay 1 --retry-connrefused http://localhost:$PORT/v2/ >/dev/null 2>&1; echo REGISTRY=localhost:$PORT"
+    verify_cmd: "for t in alpine node-mongo; do ${PARITY_CLI_TS} templates metadata ${REGISTRY}/octocat/templates/$t 2>/dev/null | tail -1 | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{const o=JSON.parse(s);o.files.sort();console.log(JSON.stringify(o))})'; done"
+    cleanup_cmd: "docker rm -f parity-reg-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    ts_cmd: "templates publish reference/src/test/container-templates/example-templates-sets/simple/src -r ${REGISTRY} -n octocat/templates"
+    asserts: [exit_code, stdout_normalized]
+    class: templates-runtime
+    current_status: match
+    notes: "The published dev.containers.metadata annotation carries what TS addsAdditionalTemplateProps adds while packaging: type, files, fileCount and featureIds. verify_cmd reads each side's annotation with the oracle and sorts files: TS recursive-readdir lists them in the order their asynchronous stat calls complete, which is not defined. Go used to publish the template JSON without them."
+
+  - id: features-package.legacy-ids-current-id-success
+    lane: contract
+    command: features-package
+    priority: p1
+    docker_required: false
+    setup_cmd: "OUT=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $OUT; echo OUT=$OUT"
+    verify_cmd: "cat ${OUT}/devcontainer-collection.json; tar -xOf ${OUT}/devcontainer-feature-new-color.tgz ./devcontainer-feature.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "features package reference/src/test/container-features/example-v2-features-sets/renaming-feature/src -o ${OUT}"
+    asserts: [exit_code]
+    class: features-package
+    current_status: match
+    notes: "new-color lists legacyIds, so TS addsAdditionalFeatureProps adds currentId to its metadata and rewrites the packaged devcontainer-feature.json as JSON.stringify(…, null, 4). Go used to package the file untouched and leave currentId out."
+
+  - id: features-package.parent-of-src-error
+    lane: contract
+    command: features-package
+    priority: p1
+    docker_required: false
+    setup_cmd: "OUT=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $OUT; echo OUT=$OUT"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "features package reference/src/test/container-features/example-v2-features-sets/renaming-feature -o ${OUT}"
+    asserts: [exit_code, stderr_normalized]
+    class: features-package
+    current_status: match
+    notes: "TS does not descend into src/: the only entry, src, has no devcontainer-feature.json, so it is skipped with a warning and the package fails (exit 1). Go used to descend into src/ and succeed."
+
+  - id: features-package.missing-install-sh-error
+    lane: contract
+    command: features-package
+    priority: p1
+    docker_required: false
+    setup_cmd: "OUT=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $OUT; mkdir -p $OUT/src/a; printf '%s' '{\"id\":\"a\",\"version\":\"1.0.0\",\"name\":\"A\"}' > $OUT/src/a/devcontainer-feature.json; echo OUT=$OUT"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "features package ${OUT}/src -o ${OUT}/out"
+    asserts: [exit_code, stderr_normalized]
+    class: features-package
+    current_status: match
+    notes: "A Feature without install.sh fails the package: 'Feature a is missing an install.sh', then 'Failed to package features', exit 1. Go used to package it."
+
+  - id: features-package.existing-output-error
+    lane: contract
+    command: features-package
+    priority: p1
+    docker_required: false
+    setup_cmd: "OUT=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $OUT; mkdir -p $OUT/out; echo OUT=$OUT"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "features package reference/src/test/container-features/example-v2-features-sets/renaming-feature/src -o ${OUT}/out"
+    asserts: [exit_code, stderr_normalized]
+    class: features-package
+    current_status: match
+    notes: "An output folder that exists is an error unless -f is passed: '(!) ERR: Output directory ... already exists. Manually delete, or pass -f to continue.', exit 1. Go used to package into it."
+
+  - id: features-package.missing-target
+    lane: contract
+    command: features-package
+    priority: p1
+    docker_required: false
+    ts_cmd: "features package"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+    notes: "TS declares <target> as a required positional: yargs stops with 'Not enough non-option arguments: got 0, need at least 1' (exit 1). Go used to default it to the current folder."
+
+  - id: features-publish.missing-target
+    lane: contract
+    command: features-publish
+    priority: p1
+    docker_required: false
+    ts_cmd: "features publish -n x"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+    notes: "TS declares <target> as a required positional: yargs stops with 'Not enough non-option arguments: got 0, need at least 1' (exit 1). Go used to default it to the current folder."
+
+  - id: templates.publish-missing-target
+    lane: contract
+    command: templates
+    priority: p1
+    docker_required: false
+    ts_cmd: "templates publish -n x"
+    asserts: [exit_code, stderr_normalized]
+    class: required-args
+    current_status: match
+    notes: "TS declares <target> as a required positional: yargs stops with 'Not enough non-option arguments: got 0, need at least 1' (exit 1). Go used to default it to the current folder."
+
+  - id: up.compose-image-without-features-wraps-entrypoint-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder src/test/configs/compose-image-without-features --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "docker inspect -f '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' ${CONTAINER_ID}"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f src/test/configs/compose-image-without-features/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "TS startContainer always writes the containerFeatures override (dockerCompose.ts generateFeaturesComposeOverrideContent), with or without Features: the service entrypoint becomes the keep-alive script followed by the image's entrypoint, and the compose command is kept. Go only wrote it with Features, so the container ran the bare image entrypoint."
+
+  - id: up.compose-merged-runtime-properties-without-features-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/\",\"updateRemoteUserUID\":false,\"capAdd\":[\"SYS_PTRACE\"],\"securityOpt\":[\"seccomp=unconfined\"],\"privileged\":true,\"init\":true,\"containerUser\":\"nobody\",\"containerEnv\":{\"FOO\":\"a$b c\"},\"mounts\":[\"type=volume,source=paritydata,target=/data\"]}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker inspect -f '{{json .HostConfig.CapAdd}} {{json .HostConfig.SecurityOpt}} {{.HostConfig.Privileged}} {{json .HostConfig.Init}} {{.Config.User}} {{range .Mounts}}{{.Type}}:{{.Name}}:{{.Destination}} {{end}}' ${CONTAINER_ID}; docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ${CONTAINER_ID} | grep '^FOO='"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 --volumes >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Without Features TS still applies the merged capAdd, securityOpt, privileged, init, containerUser, containerEnv and mounts through the containerFeatures override (dockerCompose.ts generateFeaturesComposeOverrideContent). Go applied only containerEnv and mounts, in separate overrides."
+
+  - id: up.compose-dockerfile-without-features-update-uid-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s\\n' 'FROM alpine:3' 'RUN adduser -D -u 4321 dev' > $WORKSPACE/.devcontainer/Dockerfile; printf '%s\\n' 'services:' '  app:' '    build: .' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/\",\"remoteUser\":\"dev\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "printf 'uid=%s ' \"$(docker exec ${CONTAINER_ID} id -u dev)\"; I=$(docker inspect -f '{{.Image}}' ${CONTAINER_ID}); test -n \"$(docker image inspect -f '{{index .Config.Labels \"devcontainer.metadata\"}}' $I)\" && printf 'image-metadata=ok'"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "TS builds a Dockerfile service through a build override even without Features (getImageBuildOptions adds the devcontainer.metadata label to the image) and then runs updateRemoteUserUID on the built image (dockerCompose.ts startContainer). Go built the service unchanged and never remapped the remote user's UID for compose."
+
+  - id: up.compose-image-with-local-feature-image-name-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/myfeature; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"id\":\"myfeature\",\"version\":\"1.0.0\",\"name\":\"myfeature\"}' > $WORKSPACE/.devcontainer/myfeature/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'touch /feature-marker' > $WORKSPACE/.devcontainer/myfeature/install.sh; chmod +x $WORKSPACE/.devcontainer/myfeature/install.sh; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/\",\"features\":{\"./myfeature\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker inspect -f '{{.Config.Image}}' ${CONTAINER_ID}; docker exec ${CONTAINER_ID} test -f /feature-marker && printf ok"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "An image-only service with Features is built by `docker compose build` through a build override that tags the folder image name (TS buildAndExtendDockerCompose: `image: getFolderImageName`, `FROM <image> AS dev_container_auto_added_stage_label`, Features content from the temp image without BuildKit). Go built it with a separate docker build tagged <image>-features. The workspace path is side-independent so both sides compute the same folder image name."
+
+  - id: read-configuration.legacy-feature-id-error
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder reference/src/test/configs/image-with-local-feature --include-merged-configuration"
+    asserts: [exit_code, stderr_normalized]
+    class: features
+    current_status: match
+    notes: "A bare Feature id ('myfeature') is a legacy id TS rejects ('Legacy feature myfeature not supported...'), exit 1 with no result. Go used to drop the Feature error silently and print a configuration without the Feature."
+
+  - id: up.update-uid-remote-user-from-image-metadata-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; IMG=parity-uid-meta-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/img $WORKSPACE/.devcontainer; printf 'FROM debian:latest\\nRUN groupadd --gid 4321 foo && useradd --uid 1234 --gid 4321 --create-home foo\\nLABEL devcontainer.metadata=\\047[{\\042remoteUser\\042:\\042foo\\042}]\\047\\n' > $WORKSPACE/img/Dockerfile; docker build -q -t $IMG $WORKSPACE/img >/dev/null; printf '{\\042image\\042:\\042%s\\042}' $IMG > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker exec -u foo ${CONTAINER_ID} sh -c 'printf %s:%s $(id -u) $(id -g)'"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; docker rmi -f parity-uid-meta-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code]
+    class: up-runtime
+    current_status: match
+    notes: "The remote user comes from the image's devcontainer.metadata label, not the config: TS updateRemoteUserUID decides on the merged configuration, so foo is remapped to the host UID/GID. Go used to read only the config's remoteUser and left foo at 1234:4321."
+
+  - id: read-configuration.merged-dockerfile-registry-base-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    network_required: true
+    serial: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; docker rmi -f mcr.microsoft.com/devcontainers/base:alpine-3.19 >/dev/null 2>&1; printf 'ARG VARIANT=3.18\\nFROM mcr.microsoft.com/devcontainers/base:alpine-${VARIANT}\\n' > $WORKSPACE/.devcontainer/Dockerfile; printf '%s' '{\"build\":{\"dockerfile\":\"Dockerfile\",\"args\":{\"VARIANT\":\"3.19\"}},\"remoteEnv\":{\"A\":\"b\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker image inspect mcr.microsoft.com/devcontainers/base:alpine-3.19 >/dev/null 2>&1 && echo base-image-pulled || echo base-image-not-pulled"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: merged-configuration
+    current_status: match
+    notes: "Without a container, mergedConfiguration starts from the Dockerfile's base image (getImageBuildInfo -> internalGetImageBuildInfoFromDockerfile, imageMetadata.ts): the FROM is resolved with the build args (VARIANT=3.19) and the image, absent locally, is read from its registry (inspectDockerImage -> inspectImageInRegistry, utils.ts) without pulling it, so its devcontainer.metadata gives remoteUser vscode. The verify_cmd checks the image was not pulled. Go used to skip the base image and leave remoteUser out. serial: the image must stay absent locally."
+
+  - id: read-configuration.merged-image-registry-features-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    network_required: true
+    serial: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; docker rmi -f mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm >/dev/null 2>&1; printf '%s' '{\"image\":\"mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm\",\"features\":{\"ghcr.io/devcontainers/features/github-cli:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker image inspect mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm >/dev/null 2>&1 && echo image-pulled || echo image-not-pulled"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: merged-configuration
+    current_status: match
+    notes: "An image config whose image is not present locally: getImageBuildInfoFromImage reads the config from the registry (image index entry for the host platform), so mergedConfiguration carries the image's remoteUser node and its customizations (dbaeumer.vscode-eslint) plus the Feature's metadata (getDevcontainerMetadata). Go used to inspect only the local image and lose the image metadata. serial: the image must stay absent locally."
+
+  - id: read-configuration.merged-compose-build-registry-base-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    network_required: true
+    serial: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; docker rmi -f mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm >/dev/null 2>&1; printf 'FROM mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm\\nUSER root\\n' > $WORKSPACE/.devcontainer/Dockerfile; printf 'services:\\n  app:\\n    build:\\n      context: .\\n      dockerfile: Dockerfile\\n    command: sleep infinity\\n' > $WORKSPACE/.devcontainer/compose.yml; printf '%s' '{\"dockerComposeFile\":\"compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/workspace\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "docker image inspect mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm >/dev/null 2>&1 && echo base-image-pulled || echo base-image-not-pulled"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: merged-configuration
+    current_status: match
+    notes: "A compose service built from a Dockerfile: getImageBuildInfo reads `docker compose config`, takes the service's build (getBuildInfoForService) and reads the Dockerfile's base image from its registry, so mergedConfiguration has remoteUser node and the image's customizations. Go used to skip compose configs. serial: the image must stay absent locally."
+
+  - id: read-configuration.merged-dockerfile-not-found
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"build\":{\"dockerfile\":\"missing.Dockerfile\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: merged-configuration
+    current_status: match
+    notes: "getImageBuildInfo throws 'Dockerfile (<path>) not found.' when the configured Dockerfile is missing: exit 1 and no result on stdout. Go used to print a merged configuration without the image metadata."
+
+  - id: read-configuration.merged-image-missing
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"remoteUser\":\"me\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: merged-configuration
+    current_status: match
+    notes: "A config with no image, Dockerfile or compose file: getImageBuildInfo throws 'No image information specified in devcontainer.json.', exit 1 and no result on stdout. Go used to print a merged configuration."
+
+  - id: build.features-staging-layout-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; IMG=parity-feat-base-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/img $WORKSPACE/.devcontainer/hello; printf 'FROM alpine:3\\nLABEL devcontainer.metadata=\\047[{\"remoteUser\":\"nobody\"}]\\047\\n' > $WORKSPACE/img/Dockerfile; docker build -q -t $IMG $WORKSPACE/img >/dev/null; printf '%s' '{\"id\":\"hello\",\"version\":\"1.0.0\",\"name\":\"Hello\",\"options\":{\"zeta\":{\"type\":\"string\",\"default\":\"z\"},\"greeting\":{\"type\":\"string\",\"default\":\"hi\"},\"alpha\":{\"type\":\"boolean\",\"default\":true}},\"containerEnv\":{\"HELLO_HOME\":\"/opt/hello\"}}' > $WORKSPACE/.devcontainer/hello/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'set -e' '{ pwd; ls -A; cat ../devcontainer-features.builtin.env; env | grep -E \"^(_CONTAINER_USER|_REMOTE_USER|_CONTAINER_USER_HOME|_REMOTE_USER_HOME|ZETA|GREETING|ALPHA|HELLO_HOME)=\" | sort; } > /feature-out.txt' > $WORKSPACE/.devcontainer/hello/install.sh; chmod +x $WORKSPACE/.devcontainer/hello/install.sh; printf '{\"image\":\"%s\",\"containerEnv\":{\"CFG_VAR\":\"a$b\"},\"features\":{\"./hello\":{\"greeting\":\"yo\"}}}' $IMG > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm ${IMAGE_NAME} sh -c 'cat /feature-out.txt; echo ---; ls -A /tmp/dev-container-features; cat /tmp/dev-container-features/devcontainer-features.builtin.env'; docker image inspect -f '{{.Config.User}} {{json .Config.Env}}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} parity-feat-base-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "BuildKit Features build (TS getFeaturesBuildOptions + getFeatureLayers, containerFeaturesConfiguration.ts): the Feature is staged at its consecutiveId (hello_0), bind-mounted from the dev_containers_feature_content_source build context, copied to /tmp/dev-container-features/hello_0 and installed through devcontainer-features-install.sh, which sources ../devcontainer-features.builtin.env (_CONTAINER_USER/_REMOTE_USER plus the _*_HOME lines the first RUN appends) and devcontainer-features.env (options in devcontainer-feature.json order); the folder is removed afterwards, the builtin env stays. The Feature's containerEnv and the config's containerEnv are ENV lines and the image keeps its own user (USER $_DEV_CONTAINERS_IMAGE_USER). Go used to copy _dev_container_feature_0 to /tmp/build-features and run install.sh with inline env prefixes, so ../devcontainer-features.builtin.env did not exist."
+
+  - id: build.features-staging-layout-no-buildkit-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; IMG=parity-feat-base-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/img $WORKSPACE/.devcontainer/hello; printf 'FROM alpine:3\\nLABEL devcontainer.metadata=\\047[{\"remoteUser\":\"nobody\"}]\\047\\n' > $WORKSPACE/img/Dockerfile; docker build -q -t $IMG $WORKSPACE/img >/dev/null; printf '%s' '{\"id\":\"hello\",\"version\":\"1.0.0\",\"name\":\"Hello\",\"options\":{\"zeta\":{\"type\":\"string\",\"default\":\"z\"},\"greeting\":{\"type\":\"string\",\"default\":\"hi\"},\"alpha\":{\"type\":\"boolean\",\"default\":true}},\"containerEnv\":{\"HELLO_HOME\":\"/opt/hello\"}}' > $WORKSPACE/.devcontainer/hello/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'set -e' '{ pwd; ls -A; cat ../devcontainer-features.builtin.env; env | grep -E \"^(_CONTAINER_USER|_REMOTE_USER|_CONTAINER_USER_HOME|_REMOTE_USER_HOME|ZETA|GREETING|ALPHA|HELLO_HOME)=\" | sort; } > /feature-out.txt' > $WORKSPACE/.devcontainer/hello/install.sh; chmod +x $WORKSPACE/.devcontainer/hello/install.sh; printf '{\"image\":\"%s\",\"containerEnv\":{\"CFG_VAR\":\"a$b\"},\"features\":{\"./hello\":{\"greeting\":\"yo\"}}}' $IMG > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm ${IMAGE_NAME} sh -c 'cat /feature-out.txt; echo ---; ls -A /tmp/dev-container-features /tmp/dev-container-features/hello_0; cd /tmp/dev-container-features/hello_0 && cat devcontainer-features.env && echo && cat devcontainer-features-install.sh'; docker image inspect -f '{{.Config.User}} {{json .Config.Env}}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} parity-feat-base-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Without BuildKit, TS builds the dev_container_feature_content_temp image from the features folder and COPYs /tmp/build-features/hello_0 to /tmp/dev-container-features/hello_0 (kept in the image), so verify_cmd also compares the staged devcontainer-features.env and the devcontainer-features-install.sh banner (getFeatureInstallWrapperScript). Go used to copy from the build context to /tmp/build-features/_dev_container_feature_0."
+
+  - id: up.compose-features-staging-layout-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; IMG=parity-feat-base-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/img $WORKSPACE/.devcontainer/hello; printf 'FROM alpine:3\\nLABEL devcontainer.metadata=\\047[{\"remoteUser\":\"nobody\"}]\\047\\n' > $WORKSPACE/img/Dockerfile; docker build -q -t $IMG $WORKSPACE/img >/dev/null; printf '%s' '{\"id\":\"hello\",\"version\":\"1.0.0\",\"name\":\"Hello\",\"options\":{\"zeta\":{\"type\":\"string\",\"default\":\"z\"},\"greeting\":{\"type\":\"string\",\"default\":\"hi\"},\"alpha\":{\"type\":\"boolean\",\"default\":true}},\"containerEnv\":{\"HELLO_HOME\":\"/opt/hello\"}}' > $WORKSPACE/.devcontainer/hello/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'set -e' '{ pwd; ls -A; cat ../devcontainer-features.builtin.env; env | grep -E \"^(_CONTAINER_USER|_REMOTE_USER|_CONTAINER_USER_HOME|_REMOTE_USER_HOME|ZETA|GREETING|ALPHA|HELLO_HOME)=\" | sort; } > /feature-out.txt' > $WORKSPACE/.devcontainer/hello/install.sh; chmod +x $WORKSPACE/.devcontainer/hello/install.sh; printf 'services:\\n  app:\\n    image: %s\\n    command: sleep infinity\\n' $IMG > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/\",\"containerEnv\":{\"CFG_VAR\":\"a$b\"},\"features\":{\"./hello\":{\"greeting\":\"yo\"}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --skip-post-create --update-remote-user-uid-default never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker exec ${CONTAINER_ID} sh -c 'cat /feature-out.txt; echo ---; ls -A /tmp/dev-container-features; cat /tmp/dev-container-features/devcontainer-features.builtin.env'; docker image inspect -f '{{.Config.User}} {{json .Config.Env}}' $(docker inspect -f '{{.Image}}' ${CONTAINER_ID})"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; docker rmi -f parity-feat-base-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code]
+    class: up-runtime
+    current_status: match
+    notes: "The compose service's Features Dockerfile (appended to `FROM <image> AS dev_container_auto_added_stage_label`) has the same structure as the image build's: builtin env, consecutiveId folders, install wrapper, the Feature's containerEnv and, like TS getFeaturesBuildOptions, the config's containerEnv as ENV lines (CFG_VAR). Go used the _dev_container_feature_<i> layout and left the config's containerEnv out of the compose image."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

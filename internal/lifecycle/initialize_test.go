@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
@@ -65,5 +67,25 @@ func TestRunInitializeCommandSubstitutesLocalWorkspaceFolder(t *testing.T) {
 	cmd := cmdFromJSON(t, `"test -d ${localWorkspaceFolder}"`)
 	if err := RunInitializeCommand(context.Background(), log.Null, cmd, hostSub); err != nil {
 		t.Fatalf("substitution not applied to command: %v", err)
+	}
+}
+
+// Every parallel initializeCommand runs to completion, and with several failing
+// the error names the first in name order - the same every run, not whichever
+// goroutine finished first.
+func TestRunInitializeCommandParallelFirstFailureByName(t *testing.T) {
+	dir := t.TempDir()
+	var cmd config.LifecycleCommand
+	if err := json.Unmarshal([]byte(`{"zz": "exit 3", "bb": "sleep 0.2; exit 2", "aa": "touch `+dir+`/ran"}`), &cmd); err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		err := RunInitializeCommand(t.Context(), log.Null, &cmd, config.HostSubContext{LocalWorkspaceFolder: dir})
+		if err == nil || !strings.HasPrefix(err.Error(), "bb: ") {
+			t.Fatalf("err = %v, want the failure of bb (first failing name)", err)
+		}
+	}
+	if _, err := os.Stat(dir + "/ran"); err != nil {
+		t.Errorf("aa did not run: %v", err)
 	}
 }

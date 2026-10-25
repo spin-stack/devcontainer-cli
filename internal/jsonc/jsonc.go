@@ -26,17 +26,38 @@ func Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(std, v)
 }
 
-// Parse parses JSONC into a generic map.
-func Parse(data []byte) (map[string]any, error) {
-	var m map[string]any
-	if err := Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // StripComments removes JSONC comments and trailing commas,
 // returning valid standard JSON bytes.
 func StripComments(data []byte) ([]byte, error) {
 	return hujson.Standardize(stripBOM(data))
+}
+
+// MemberNames returns the names of the members of the object at field of the
+// top-level JSONC object, in the order the document lists them; nil when the
+// document or the field is not an object.
+func MemberNames(data []byte, field string) []string {
+	v, err := hujson.Parse(stripBOM(data))
+	if err != nil {
+		return nil
+	}
+	top, ok := v.Value.(*hujson.Object)
+	if !ok {
+		return nil
+	}
+	for _, m := range top.Members {
+		if lit, ok := m.Name.Value.(hujson.Literal); ok && lit.String() == field {
+			obj, ok := m.Value.Value.(*hujson.Object)
+			if !ok {
+				return nil
+			}
+			names := make([]string, 0, len(obj.Members))
+			for _, f := range obj.Members {
+				if lit, ok := f.Name.Value.(hujson.Literal); ok {
+					names = append(names, lit.String())
+				}
+			}
+			return names
+		}
+	}
+	return nil
 }

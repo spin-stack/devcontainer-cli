@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/imagemeta"
-	"github.com/devcontainers/cli/internal/log"
 )
 
 func TestRootCommand(t *testing.T) {
@@ -211,33 +209,6 @@ func TestConfigToMetadataEntry_IncludesMountsAndUIDSetting(t *testing.T) {
 	}
 }
 
-func TestDockerfileBuildMetadataEntries_PreservesBaseAndConfigMetadata(t *testing.T) {
-	cfg := &config.DevContainer{
-		PostCreateCommand: lifecycleCommand("touch /tmp/postCreateCommand.testmarker"),
-		PostStartCommand:  lifecycleCommand("touch /tmp/postStartCommand.testmarker"),
-		PostAttachCommand: lifecycleCommand("touch /tmp/postAttachCommand.testmarker"),
-	}
-
-	baseLabel := `[{"remoteUser":"node"}]`
-	entries := dockerfileBuildMetadataEntries(cfg, map[string]string{
-		"devcontainer.metadata": baseLabel,
-	}, log.Null)
-	merged := imagemeta.MergeConfiguration(entries)
-
-	if merged.RemoteUser != "node" {
-		t.Fatalf("remoteUser = %q, want %q", merged.RemoteUser, "node")
-	}
-	if len(merged.PostCreateCommands) != 1 {
-		t.Fatalf("postCreateCommands len = %d, want 1", len(merged.PostCreateCommands))
-	}
-	if len(merged.PostStartCommands) != 1 {
-		t.Fatalf("postStartCommands len = %d, want 1", len(merged.PostStartCommands))
-	}
-	if len(merged.PostAttachCommands) != 1 {
-		t.Fatalf("postAttachCommands len = %d, want 1", len(merged.PostAttachCommands))
-	}
-}
-
 func mountString(spec string) config.MountOrString {
 	var value config.MountOrString
 	payload, _ := json.Marshal(spec)
@@ -248,13 +219,6 @@ func mountString(spec string) config.MountOrString {
 func mountObject(mount config.Mount) config.MountOrString {
 	var value config.MountOrString
 	payload, _ := json.Marshal(mount)
-	_ = value.UnmarshalJSON(payload)
-	return value
-}
-
-func lifecycleCommand(command string) config.LifecycleCommand {
-	var value config.LifecycleCommand
-	payload, _ := json.Marshal(command)
 	_ = value.UnmarshalJSON(payload)
 	return value
 }

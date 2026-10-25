@@ -132,27 +132,6 @@ func TestParseRef(t *testing.T) {
 	}
 }
 
-func TestParseRef_URLs(t *testing.T) {
-	ref, err := ParseRef("ghcr.io/devcontainers/features/go:1.2.3")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := ref.ManifestURL(); got != "https://ghcr.io/v2/devcontainers/features/go/manifests/1.2.3" {
-		t.Errorf("manifest url = %q", got)
-	}
-	if got := ref.BlobURL("sha256:abc"); got != "https://ghcr.io/v2/devcontainers/features/go/blobs/sha256:abc" {
-		t.Errorf("blob url = %q", got)
-	}
-	if got := ref.TagsURL(); got != "https://ghcr.io/v2/devcontainers/features/go/tags/list" {
-		t.Errorf("tags url = %q", got)
-	}
-	// A digest ref pins the manifest by digest instead of tag.
-	digestRef := &Ref{Registry: "ghcr.io", Path: "devcontainers/features/go", Version: "sha256:abc123", Digest: "sha256:abc123"}
-	if got := digestRef.ManifestURL(); got != "https://ghcr.io/v2/devcontainers/features/go/manifests/sha256:abc123" {
-		t.Errorf("digest manifest url = %q", got)
-	}
-}
-
 func TestParseCollectionRef(t *testing.T) {
 	tests := []struct {
 		name              string

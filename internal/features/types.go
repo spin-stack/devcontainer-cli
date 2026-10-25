@@ -1,6 +1,8 @@
 // Package features resolves, orders, installs and locks dev container Features.
 package features
 
+import "encoding/json"
+
 // Set represents a resolved feature with its source and metadata.
 type Set struct {
 	SourceInfo      SourceInfo `json:"sourceInformation"`
@@ -74,6 +76,16 @@ type TarballSource struct {
 func (s *TarballSource) SourceType() string    { return "direct-tarball" }
 func (s *TarballSource) UserFeatureID() string { return s.UserID }
 
+// MarshalJSON writes TS DirectTarballSourceInformation, as read-configuration
+// reports it in featuresConfiguration.
+func (s *TarballSource) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Type          string `json:"type"`
+		TarballURI    string `json:"tarballUri"`
+		UserFeatureID string `json:"userFeatureId"`
+	}{s.SourceType(), s.TarballURI, s.UserID})
+}
+
 // LocalSource is a feature from a local file path.
 type LocalSource struct {
 	LocalPath    string
@@ -83,6 +95,16 @@ type LocalSource struct {
 
 func (s *LocalSource) SourceType() string    { return "file-path" }
 func (s *LocalSource) UserFeatureID() string { return s.UserID }
+
+// MarshalJSON writes TS FilePathSourceInformation, as read-configuration
+// reports it in featuresConfiguration.
+func (s *LocalSource) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Type             string `json:"type"`
+		ResolvedFilePath string `json:"resolvedFilePath"`
+		UserFeatureID    string `json:"userFeatureId"`
+	}{s.SourceType(), s.ResolvedPath, s.UserID})
+}
 
 // Config holds the fully resolved features configuration.
 type Config struct {

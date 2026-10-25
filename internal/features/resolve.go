@@ -128,18 +128,3 @@ func ResolveID(id string, skipAutoMapping bool) (string, bool) {
 	}
 	return fmt.Sprintf("%s/%s%s", newFeaturePath, target, tag), true
 }
-
-// StripVersionFromID removes the version portion (:tag or @digest) from a feature ID.
-func StripVersionFromID(id string) string {
-	// Check for digest first
-	if idx := strings.LastIndex(id, "@"); idx > 0 {
-		return id[:idx]
-	}
-	// Then tag (colon after last slash)
-	lastSlash := strings.LastIndex(id, "/")
-	lastColon := strings.LastIndex(id, ":")
-	if lastColon > lastSlash {
-		return id[:lastColon]
-	}
-	return id
-}

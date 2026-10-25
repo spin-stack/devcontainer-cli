@@ -2,7 +2,8 @@ package features
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -29,7 +30,7 @@ type ProcessFeature func(node *FNode) (*Set, error)
 // are baked into each node's RoundPriority.
 //
 // The returned worklist is the "precomputed graph" accepted by
-// ComputeInstallationOrder (pass a nil override there — priorities are already
+// ComputeInstallationOrder (priorities are already
 // applied here) and by GenerateMermaidDiagram.
 func BuildDependencyGraph(
 	logger log.Logger,
@@ -97,7 +98,7 @@ func resolveDependencyGraph(
 
 		// Already in the accumulator? Skip. This stops cycles from looping here;
 		// they are reported by the round-based order calculation instead.
-		if containsEqual(acc, current) {
+		if slices.ContainsFunc(acc, func(n *FNode) bool { return nodesEqual(n, current) }) {
 			continue
 		}
 
@@ -111,12 +112,7 @@ func resolveDependencyGraph(
 			// they are resolved recursively. Iterate in a deterministic order (Go
 			// maps are unordered) — the round sort makes the final order stable, but
 			// dedup "first wins" and mermaid edge order depend on this.
-			depIDs := make([]string, 0, len(feat.DependsOn))
-			for id := range feat.DependsOn {
-				depIDs = append(depIDs, id)
-			}
-			sort.Strings(depIDs)
-			for _, depID := range depIDs {
+			for _, depID := range slices.Sorted(maps.Keys(feat.DependsOn)) {
 				dep := &FNode{
 					Type:          "resolved",
 					UserFeatureID: depID,
@@ -218,13 +214,4 @@ func aliasesFor(feat Feature) []string {
 	}
 	aliases = append(aliases, feat.LegacyIds...)
 	return aliases
-}
-
-func containsEqual(nodes []*FNode, n *FNode) bool {
-	for _, existing := range nodes {
-		if nodesEqual(existing, n) {
-			return true
-		}
-	}
-	return false
 }

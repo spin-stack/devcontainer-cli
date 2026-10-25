@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,7 +65,10 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath 
 			}, nil
 
 		case features.SourceDirectTarball:
-			meta, err := readTarballFeatureMetadata(logger, id)
+			meta, err := readTarballFeatureMetadata(logger, id, lockfile)
+			if _, ok := errors.AsType[*digestMismatchError](err); ok {
+				return nil, err
+			}
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
@@ -133,23 +137,30 @@ func readOCIFeatureMetadata(client oci.Registry, ref *oci.Ref, manifest *oci.Man
 	if err != nil {
 		return features.Feature{}
 	}
+	meta, _ := featureMetadataFromTarball(blobData)
+	return meta
+}
+
+// featureMetadataFromTarball extracts a Feature tarball and reads its
+// devcontainer-feature.json; a tarball without one has empty metadata.
+func featureMetadataFromTarball(blob []byte) (features.Feature, error) {
 	tmp, err := os.MkdirTemp("", "devcontainer-feature-meta-")
 	if err != nil {
-		return features.Feature{}
+		return features.Feature{}, err
 	}
 	defer os.RemoveAll(tmp)
 	tgz := filepath.Join(tmp, "feature.tgz")
-	if err := os.WriteFile(tgz, blobData, 0644); err != nil {
-		return features.Feature{}
+	if err := os.WriteFile(tgz, blob, 0o644); err != nil {
+		return features.Feature{}, err
 	}
 	if err := extractTarGz(tgz, tmp); err != nil {
-		return features.Feature{}
+		return features.Feature{}, err
 	}
 	var meta features.Feature
 	if data, err := os.ReadFile(filepath.Join(tmp, "devcontainer-feature.json")); err == nil {
 		json.Unmarshal(data, &meta)
 	}
-	return meta
+	return meta, nil
 }
 
 func ociAnnotationID(manifest *oci.ManifestContainer) string {
@@ -178,26 +189,16 @@ func readLocalFeatureMetadata(dir string) (features.Feature, error) {
 	return meta, nil
 }
 
-func readTarballFeatureMetadata(logger log.Logger, tarballURL string) (features.Feature, error) {
-	blobData, _, err := downloadFeatureTarball(context.Background(), logger, tarballURL, osEnvMap())
+// readTarballFeatureMetadata downloads a direct tarball, checks it against the
+// lockfile as TS getTgzFeatureMetadata does while building the graph, and reads
+// its devcontainer-feature.json.
+func readTarballFeatureMetadata(logger log.Logger, tarballURL string, lockfile *features.Lockfile) (features.Feature, error) {
+	blobData, digest, err := downloadFeatureTarball(context.Background(), logger, tarballURL, osEnvMap())
 	if err != nil {
 		return features.Feature{}, err
 	}
-	tmp, err := os.MkdirTemp("", "devcontainer-feature-meta-")
-	if err != nil {
+	if err := verifyTarballDigest(lockfile, tarballURL, digest); err != nil {
 		return features.Feature{}, err
 	}
-	defer os.RemoveAll(tmp)
-	tgz := filepath.Join(tmp, "feature.tgz")
-	if err := os.WriteFile(tgz, blobData, 0644); err != nil {
-		return features.Feature{}, err
-	}
-	if err := extractTarGz(tgz, tmp); err != nil {
-		return features.Feature{}, err
-	}
-	var meta features.Feature
-	if data, err := os.ReadFile(filepath.Join(tmp, "devcontainer-feature.json")); err == nil {
-		json.Unmarshal(data, &meta)
-	}
-	return meta, nil
+	return featureMetadataFromTarball(blobData)
 }

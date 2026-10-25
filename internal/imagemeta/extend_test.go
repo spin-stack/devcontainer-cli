@@ -1,181 +1,14 @@
 package imagemeta
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/features"
 )
-
-func TestGenerateExtendImageBuild(t *testing.T) {
-	tests := []struct {
-		name          string
-		baseImage     string
-		featureSets   []*features.Set
-		metadata      []Entry
-		containerUser string
-		remoteUser    string
-		useBuildKit   bool
-		check         func(t *testing.T, info *ExtendImageBuildInfo)
-	}{
-		{
-			name:          "NoFeatures",
-			baseImage:     "ubuntu:22.04",
-			featureSets:   nil,
-			metadata:      []Entry{{ID: "test", RemoteUser: "vscode"}},
-			containerUser: "vscode",
-			remoteUser:    "vscode",
-			useBuildKit:   false,
-			check: func(t *testing.T, info *ExtendImageBuildInfo) {
-				if info.OverrideTarget != "dev_containers_target_stage" {
-					t.Errorf("target = %q", info.OverrideTarget)
-				}
-				if info.BuildArgs["_DEV_CONTAINERS_BASE_IMAGE"] != "ubuntu:22.04" {
-					t.Errorf("build arg = %q", info.BuildArgs["_DEV_CONTAINERS_BASE_IMAGE"])
-				}
-				if !strings.Contains(info.DockerfileContent, "devcontainer.metadata") {
-					t.Error("should contain metadata label")
-				}
-				if !strings.Contains(info.DockerfileContent, "dev_containers_target_stage") {
-					t.Error("should contain target stage")
-				}
-			},
-		},
-		{
-			name:      "WithFeatures",
-			baseImage: "ubuntu:22.04",
-			featureSets: []*features.Set{
-				{
-					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
-					Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
-				},
-				{
-					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/node:1"},
-					Features:   []features.Feature{{ID: "node", Version: "18", Value: "18"}},
-				},
-			},
-			metadata:      []Entry{{ID: "go"}, {ID: "node"}},
-			containerUser: "vscode",
-			remoteUser:    "vscode",
-			useBuildKit:   true,
-			check: func(t *testing.T, info *ExtendImageBuildInfo) {
-				df := info.DockerfileContent
-
-				// Should have install scripts for both features
-				if !strings.Contains(df, "_dev_container_feature_0/install.sh") {
-					t.Error("missing feature 0 install")
-				}
-				if !strings.Contains(df, "_dev_container_feature_1/install.sh") {
-					t.Error("missing feature 1 install")
-				}
-
-				// Should have USER root
-				if !strings.Contains(df, "USER root") {
-					t.Error("should switch to root for install")
-				}
-
-				// Should restore user
-				if !strings.Contains(df, "USER vscode") {
-					t.Error("should restore user after install")
-				}
-
-				// Build-only env vars should be scoped to RUN, not persisted as final ENV.
-				if strings.Contains(df, "\nENV _CONTAINER_USER=") {
-					t.Error("should not persist _CONTAINER_USER as ENV")
-				}
-				if strings.Contains(df, "\nENV _REMOTE_USER=") {
-					t.Error("should not persist _REMOTE_USER as ENV")
-				}
-				if !strings.Contains(df, "_CONTAINER_USER='vscode' _REMOTE_USER='vscode'") {
-					t.Error("missing scoped feature install env vars")
-				}
-				// upstream #331: _REMOTE_USER_HOME must be resolved per-RUN from
-				// /etc/passwd (not omitted), so common-utils-created users resolve.
-				if !strings.Contains(df, `_REMOTE_USER_HOME="$(`) || !strings.Contains(df, "getent passwd 'vscode'") {
-					t.Errorf("missing per-RUN _REMOTE_USER_HOME getent resolution:\n%s", df)
-				}
-
-				// Should have metadata label
-				if !strings.Contains(df, "devcontainer.metadata") {
-					t.Error("missing metadata label")
-				}
-
-				// BuildKit context
-				if _, ok := info.BuildKitContexts["dev_containers_feature_content_source"]; !ok {
-					t.Error("missing BuildKit context")
-				}
-			},
-		},
-		{
-			name: "FeatureEnvScopedToInstall",
-			// Regression: feature option env vars (and _REMOTE_USER/_CONTAINER_USER)
-			// must apply to install.sh, not to the preceding chmod. In POSIX sh,
-			// `KEY=v chmod ... && install.sh` scopes KEY to chmod only, so the options
-			// never reach install.sh.
-			baseImage: "ubuntu:22.04",
-			featureSets: []*features.Set{
-				{
-					SourceInfo: &features.OCISource{UserID: "ghcr.io/devcontainers/features/go:1"},
-					Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
-				},
-			},
-			metadata:      []Entry{{ID: "go"}},
-			containerUser: "vscode",
-			remoteUser:    "node",
-			useBuildKit:   true,
-			check: func(t *testing.T, info *ExtendImageBuildInfo) {
-				df := info.DockerfileContent
-
-				// Env assignments must sit between "&&" and install.sh (applied to install.sh).
-				if !strings.Contains(df, "&& _CONTAINER_USER='vscode' _REMOTE_USER='node'") {
-					t.Errorf("feature env not applied to install.sh:\n%s", df)
-				}
-				// And must NOT prefix the chmod (the original bug).
-				if strings.Contains(df, "_REMOTE_USER='node' chmod") {
-					t.Errorf("feature env wrongly scoped to chmod:\n%s", df)
-				}
-			},
-		},
-		{
-			name:      "RootUser",
-			baseImage: "ubuntu",
-			featureSets: []*features.Set{
-				{
-					SourceInfo: &features.OCISource{UserID: "feat"},
-					Features:   []features.Feature{{ID: "feat"}},
-				},
-			},
-			metadata:      nil,
-			containerUser: "root",
-			remoteUser:    "root",
-			useBuildKit:   false,
-			check: func(t *testing.T, info *ExtendImageBuildInfo) {
-				df := info.DockerfileContent
-
-				// Should NOT have USER root → USER root (redundant)
-				// Already root, so no "USER root" restore needed
-				lines := strings.Split(df, "\n")
-				userCount := 0
-				for _, l := range lines {
-					if strings.HasPrefix(strings.TrimSpace(l), "USER ") {
-						userCount++
-					}
-				}
-				// Should have exactly 1 USER root (for the install), and NOT restore
-				if userCount != 1 {
-					t.Errorf("expected 1 USER statement, got %d", userCount)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			info := GenerateExtendImageBuild(tt.baseImage, tt.featureSets, tt.metadata, tt.containerUser, tt.remoteUser, tt.useBuildKit, nil, nil)
-			tt.check(t, info)
-		})
-	}
-}
 
 func TestGetSafeID(t *testing.T) {
 	tests := []struct {
@@ -197,112 +30,163 @@ func TestGetSafeID(t *testing.T) {
 	}
 }
 
-func TestGenerateFeatureBuildEnvVars(t *testing.T) {
-	feat := features.Feature{
-		ID:    "go",
-		Value: true,
-		ContainerEnv: map[string]string{
-			"GOPATH": "/go",
-		},
-	}
+// tsFeaturesBuildCase is testdata/ts-features-build/<case>/input.json: the
+// arguments the TS functions were called with. The expected files next to it
+// were produced by the TS getContainerFeaturesBaseDockerFile, getFeatureLayers,
+// getDevcontainerMetadataLabel, generateContainerEnvs,
+// getFeatureInstallWrapperScript and getFeatureEnvVariables (internalVersion 2)
+// through testdata/ts-features-build/gen.ts:
+//
+//	cd reference && ./node_modules/.bin/esbuild ../internal/imagemeta/testdata/ts-features-build/gen.ts \
+//	  --bundle --platform=node --main-fields=module,main --outfile=/tmp/gen.js
+//	node /tmp/gen.js < ../internal/imagemeta/testdata/ts-features-build/<case>/input.json
+type tsFeaturesBuildCase struct {
+	UseBuildKit        bool              `json:"useBuildKit"`
+	ContainerUser      string            `json:"containerUser"`
+	RemoteUser         string            `json:"remoteUser"`
+	Metadata           []Entry           `json:"metadata"`
+	ConfigContainerEnv map[string]string `json:"configContainerEnv"`
+	FeatureSets        []struct {
+		SourceInformation struct {
+			Type                        string `json:"type"`
+			UserFeatureID               string `json:"userFeatureId"`
+			UserFeatureIDWithoutVersion string `json:"userFeatureIdWithoutVersion"`
+		} `json:"sourceInformation"`
+		Features []json.RawMessage `json:"features"`
+	} `json:"featureSets"`
+}
 
-	envs := generateFeatureBuildEnvVars(feat, "vscode", "node")
+func loadTSFeaturesBuildCase(t *testing.T, name string) (tsFeaturesBuildCase, []*features.Set, map[string]FeatureFileInfo) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "ts-features-build", name, "input.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c tsFeaturesBuildCase
+	if err := json.Unmarshal(data, &c); err != nil {
+		t.Fatal(err)
+	}
+	infos := map[string]FeatureFileInfo{}
+	var sets []*features.Set
+	for _, s := range c.FeatureSets {
+		set := &features.Set{InternalVersion: "2"}
+		switch s.SourceInformation.Type {
+		case "oci":
+			set.SourceInfo = &features.OCISource{Type: "oci", UserID: s.SourceInformation.UserFeatureID, UserFeatureIdWithoutVersion: s.SourceInformation.UserFeatureIDWithoutVersion}
+		case "file-path":
+			set.SourceInfo = &features.LocalSource{LocalPath: s.SourceInformation.UserFeatureID, UserID: s.SourceInformation.UserFeatureID}
+		default:
+			t.Fatalf("unsupported source type %q", s.SourceInformation.Type)
+		}
+		for _, raw := range s.Features {
+			var f features.Feature
+			if err := json.Unmarshal(raw, &f); err != nil {
+				t.Fatal(err)
+			}
+			info, err := ParseFeatureFileInfo(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			infos[f.ConsecutiveId] = info
+			set.Features = append(set.Features, f)
+		}
+		sets = append(sets, set)
+	}
+	return c, sets, infos
+}
 
-	foundBuildArg := false
-	foundGopath := false
-	foundContainerUser := false
-	for _, e := range envs {
-		if strings.HasPrefix(e, "_BUILD_ARG_GO=") {
-			foundBuildArg = true
-		}
-		if strings.HasPrefix(e, "GOPATH=") {
-			foundGopath = true
-		}
-		if strings.HasPrefix(e, "_CONTAINER_USER=") {
-			foundContainerUser = true
-		}
+func readGolden(t *testing.T, parts ...string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(append([]string{"testdata", "ts-features-build"}, parts...)...))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !foundBuildArg {
-		t.Error("missing _BUILD_ARG_GO")
-	}
-	if !foundContainerUser {
-		t.Error("missing _CONTAINER_USER")
-	}
-	// containerEnv must NOT be inlined into the build env vars — it is emitted as
-	// an ENV instruction before the install RUN so Docker expands ${VAR} refs.
-	if foundGopath {
-		t.Error("containerEnv (GOPATH) should not be in the inline build env vars")
-	}
-	// ...it is emitted via the persistent-ENV path instead.
-	persist := generatePersistentContainerEnvVars(feat)
-	foundGopathEnv := false
-	for _, e := range persist {
-		if strings.HasPrefix(e, "GOPATH=") {
-			foundGopathEnv = true
-		}
-	}
-	if !foundGopathEnv {
-		t.Error("containerEnv (GOPATH) should be emitted as a persistent ENV")
+	return string(data)
+}
+
+// TestGenerateFeaturesBuildOptions_MatchesTS compares the generated features
+// Dockerfile, each Feature's devcontainer-features.env and its
+// devcontainer-features-install.sh with the TS output for the same inputs, with
+// BuildKit build contexts and with the temporary content image.
+func TestGenerateFeaturesBuildOptions_MatchesTS(t *testing.T) {
+	for _, name := range []string{"buildkit", "no-buildkit"} {
+		t.Run(name, func(t *testing.T) {
+			c, sets, infos := loadTSFeaturesBuildCase(t, name)
+			info := GenerateFeaturesBuildOptions(FeaturesBuildParams{
+				BaseName:            "base",
+				FeatureSets:         sets,
+				Metadata:            c.Metadata,
+				ContainerUser:       c.ContainerUser,
+				RemoteUser:          c.RemoteUser,
+				ImageUser:           "imguser",
+				UseBuildKitContexts: c.UseBuildKit,
+				ConfigContainerEnv:  c.ConfigContainerEnv,
+			})
+			if want := readGolden(t, name, "Dockerfile"); info.DockerfileContent != want {
+				t.Errorf("Dockerfile differs from TS:\n--- got\n%s\n--- want\n%s", info.DockerfileContent, want)
+			}
+			for _, set := range sets {
+				for _, f := range set.Features {
+					vars := FeatureEnvVariables(f, infos[f.ConsecutiveId])
+					if got, want := strings.Join(vars, "\n"), readGolden(t, name, f.ConsecutiveId, FeatureEnvFile); got != want {
+						t.Errorf("%s env differs from TS:\n--- got\n%s\n--- want\n%s", f.ConsecutiveId, got, want)
+					}
+					got := FeatureInstallWrapperScript(f, set, infos[f.ConsecutiveId], vars)
+					if want := readGolden(t, name, f.ConsecutiveId, FeatureInstallWrapperFile); got != want {
+						t.Errorf("%s install wrapper differs from TS:\n--- got\n%s\n--- want\n%s", f.ConsecutiveId, got, want)
+					}
+				}
+			}
+			wantArgs := map[string]string{
+				"_DEV_CONTAINERS_BASE_IMAGE":             "base",
+				"_DEV_CONTAINERS_IMAGE_USER":             "imguser",
+				"_DEV_CONTAINERS_FEATURE_CONTENT_SOURCE": ComposeFeatureContentImage,
+			}
+			if len(info.BuildArgs) != len(wantArgs) {
+				t.Errorf("build args = %v, want %v", info.BuildArgs, wantArgs)
+			}
+			for k, v := range wantArgs {
+				if info.BuildArgs[k] != v {
+					t.Errorf("build arg %s = %q, want %q", k, info.BuildArgs[k], v)
+				}
+			}
+			_, hasCtx := info.BuildKitContexts["dev_containers_feature_content_source"]
+			if hasCtx != c.UseBuildKit {
+				t.Errorf("build contexts = %v with BuildKit %v", info.BuildKitContexts, c.UseBuildKit)
+			}
+			if info.OverrideTarget != "dev_containers_target_stage" {
+				t.Errorf("target = %q", info.OverrideTarget)
+			}
+		})
 	}
 }
 
-func TestGenerateFeatureBuildEnvVars_MapValueNormalizesToTrue(t *testing.T) {
-	feat := features.Feature{
-		ID: "hello",
-		Value: map[string]any{
-			"greeting": "howdy",
-		},
-		Options: map[string]any{
-			"greeting": map[string]any{
-				"type":    "string",
-				"default": "hello",
-			},
-		},
-		UserOptions: map[string]any{
-			"greeting": "howdy",
-		},
+// TS getFeaturesBuildOptions dockerfilePrefixContent: the syntax line (if any)
+// followed by a newline and the global ARG.
+func TestGenerateFeaturesBuildOptions_Prefix(t *testing.T) {
+	fss := []*features.Set{{SourceInfo: &features.OCISource{}, Features: []features.Feature{{ID: "go", ConsecutiveId: "go_0"}}}}
+	if got := GenerateFeaturesBuildOptions(FeaturesBuildParams{FeatureSets: fss, Syntax: "docker/dockerfile:1.4"}).DockerfilePrefixContent; got != "# syntax=docker/dockerfile:1.4\nARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n" {
+		t.Errorf("prefix with syntax = %q", got)
 	}
-
-	envs := generateFeatureBuildEnvVars(feat, "vscode", "node")
-	all := strings.Join(envs, "\n")
-
-	if !strings.Contains(all, "_BUILD_ARG_HELLO='true'") {
-		t.Fatalf("expected normalized main build arg, got %q", all)
+	if got := GenerateFeaturesBuildOptions(FeaturesBuildParams{FeatureSets: fss}).DockerfilePrefixContent; got != "\nARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n" {
+		t.Errorf("prefix without syntax = %q", got)
 	}
-	if !strings.Contains(all, "GREETING='howdy'") {
-		t.Fatalf("expected option env var, got %q", all)
-	}
-	if strings.Contains(all, `{"greeting":"howdy"}`) {
-		t.Fatalf("unexpected raw JSON map in env vars: %q", all)
+	// The image user defaults to root, as TS imageBuildInfo.user does.
+	if got := GenerateFeaturesBuildOptions(FeaturesBuildParams{FeatureSets: fss}).BuildArgs["_DEV_CONTAINERS_IMAGE_USER"]; got != "root" {
+		t.Errorf("image user = %q", got)
 	}
 }
 
-func TestGeneratePersistentContainerEnvVars(t *testing.T) {
-	envs := generatePersistentContainerEnvVars(features.Feature{
-		ContainerEnv: map[string]string{
-			"DOCKER_BUILDKIT": "1",
-		},
-	})
-
-	if len(envs) != 1 {
-		t.Fatalf("envs len = %d, want 1", len(envs))
-	}
-	if envs[0] != `DOCKER_BUILDKIT="1"` {
-		t.Fatalf("envs[0] = %q", envs[0])
-	}
-}
-
-// TestExtend_SyntaxDirectiveForBuildContexts verifies the fix: when the feature
-// build uses --build-context (useBuildKitContexts), the generated Dockerfile must
-// declare a frontend that supports build contexts (docker/dockerfile >= 1.4) as
-// its first line, or the build fails on an older default frontend.
+// TestExtend_SyntaxDirectiveForBuildContexts: the syntax the caller chose is
+// the first line, and a build-context build declares the feature-content
+// context; without a syntax no directive is forced.
 func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
 	fss := []*features.Set{{
 		SourceInfo: &features.OCISource{ID: "go"},
-		Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+		Features:   []features.Feature{{ID: "go", ConsecutiveId: "go_0", Version: "1.21", Value: true}},
 	}}
 
-	withCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil, nil)
+	withCtx := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", UseBuildKitContexts: true, Syntax: "docker/dockerfile:1.4"})
 	full := withCtx.DockerfilePrefixContent + withCtx.DockerfileContent
 	if !strings.HasPrefix(full, "# syntax=docker/dockerfile:1.4\n") {
 		t.Errorf("build-context build must start with the syntax directive, got:\n%s", full)
@@ -311,36 +195,81 @@ func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
 		t.Error("expected the feature-content build context to be declared")
 	}
 
-	// Without build contexts, no syntax directive is forced.
-	noCtx := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", false, nil, nil)
+	noCtx := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root"})
 	if strings.Contains(noCtx.DockerfilePrefixContent, "syntax=") {
 		t.Errorf("non-context build must not force a syntax directive: %q", noCtx.DockerfilePrefixContent)
 	}
 }
 
-// TestExtend_BuildSecretsMountedIntoInstall guards #1078: build-secret ids are
-// mounted into each feature-install RUN as --mount=type=secret,id=<id>, and
-// absent when no secrets are provided.
+// TestExtend_BuildSecretsMountedIntoInstall guards #1078 (no TS equivalent):
+// build-secret ids are mounted into each feature-install RUN as
+// --mount=type=secret,id=<id>, and absent when no secrets are provided.
 func TestExtend_BuildSecretsMountedIntoInstall(t *testing.T) {
 	fss := []*features.Set{{
 		SourceInfo: &features.OCISource{ID: "go"},
-		Features:   []features.Feature{{ID: "go", Version: "1.21", Value: true}},
+		Features:   []features.Feature{{ID: "go", ConsecutiveId: "go_0", Version: "1.21", Value: true}},
 	}}
 
-	withSecrets := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil, []string{"NPM_TOKEN", "GH_TOKEN"})
-	df := withSecrets.DockerfileContent
-	if !strings.Contains(df, "RUN --mount=type=secret,id=NPM_TOKEN --mount=type=secret,id=GH_TOKEN ") {
-		t.Errorf("feature install RUN missing secret mounts:\n%s", df)
+	withSecrets := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", UseBuildKitContexts: true, SecretIDs: []string{"NPM_TOKEN", "GH_TOKEN"}})
+	if want := "RUN --mount=type=bind,from=dev_containers_feature_content_source,source=go_0,target=/tmp/build-features-src/go_0 --mount=type=secret,id=NPM_TOKEN --mount=type=secret,id=GH_TOKEN \\\n"; !strings.Contains(withSecrets.DockerfileContent, want) {
+		t.Errorf("BuildKit feature install RUN missing secret mounts:\n%s", withSecrets.DockerfileContent)
+	}
+	noCtx := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", SecretIDs: []string{"NPM_TOKEN"}})
+	if want := "RUN --mount=type=secret,id=NPM_TOKEN chmod -R 0755 /tmp/dev-container-features/go_0 \\\n"; !strings.Contains(noCtx.DockerfileContent, want) {
+		t.Errorf("content-image feature install RUN missing secret mounts:\n%s", noCtx.DockerfileContent)
 	}
 
-	noSecrets := GenerateExtendImageBuild("base:img", fss, nil, "root", "root", true, nil, nil)
+	noSecrets := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", UseBuildKitContexts: true})
 	if strings.Contains(noSecrets.DockerfileContent, "type=secret") {
 		t.Errorf("no secrets provided, but a secret mount leaked in:\n%s", noSecrets.DockerfileContent)
 	}
+}
 
-	// Compose variant mounts secrets too.
-	compose := GenerateExtendImageBuildForCompose("base_stage", fss, nil, "root", "root", nil, []string{"TOK"})
-	if !strings.Contains(compose, "RUN --mount=type=secret,id=TOK ") {
-		t.Errorf("compose feature install RUN missing secret mount:\n%s", compose)
+// TS getFeatureValueObject: option defaults in document order, overlaid with
+// the user's object; a string or boolean value sets "version" only when the
+// Feature declares that option.
+func TestFeatureEnvVariables(t *testing.T) {
+	opts := map[string]any{
+		"version": map[string]any{"type": "string", "default": "lts"},
+		"install": map[string]any{"type": "boolean", "default": true},
+		"noDef":   map[string]any{"type": "string"},
+		"list":    map[string]any{"type": "string", "default": nil},
+	}
+	info := FeatureFileInfo{OptionOrder: []string{"version", "install", "noDef", "list"}}
+	tests := []struct {
+		name  string
+		value any
+		opts  map[string]any
+		want  []string
+	}{
+		{"object", map[string]any{"install": false, "extra-opt": 1.5}, opts, []string{`VERSION="lts"`, `INSTALL="false"`, `LIST="null"`, `EXTRA_OPT="1.5"`}},
+		{"string", "18", opts, []string{`VERSION="18"`, `INSTALL="true"`, `LIST="null"`}},
+		{"true with version", true, opts, []string{`VERSION="true"`, `INSTALL="true"`, `LIST="null"`}},
+		{"string without version", "18", map[string]any{"a": map[string]any{"default": "x"}}, []string{`A="x"`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			order := info
+			if _, ok := tt.opts["version"]; !ok {
+				order = FeatureFileInfo{OptionOrder: []string{"a"}}
+			}
+			got := FeatureEnvVariables(features.Feature{ID: "x", Value: tt.value, Options: tt.opts}, order)
+			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseFeatureFileInfo(t *testing.T) {
+	info, err := ParseFeatureFileInfo([]byte(`{"id":"x","deprecated":true,"currentId":"y","options":{"zeta":{},"alpha":{"default":1},"mid":{}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(info.OptionOrder, ",") != "zeta,alpha,mid" || !info.Deprecated || info.CurrentID != "y" {
+		t.Errorf("info = %+v", info)
+	}
+	if _, err := ParseFeatureFileInfo([]byte(`[]`)); err == nil {
+		t.Error("a non-object document must be an error")
 	}
 }

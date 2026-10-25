@@ -121,7 +121,6 @@ func structJSONTags(t reflect.Type) map[string]bool {
 		}
 		seen[t] = true
 		for f := range t.Fields() {
-			f := f
 			if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name != "" && name != "-" {
 				out[name] = true
 			}

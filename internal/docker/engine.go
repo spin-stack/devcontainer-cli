@@ -36,7 +36,6 @@ type API interface {
 	ExecInspect(ctx context.Context, execID string, options mobyclient.ExecInspectOptions) (mobyclient.ExecInspectResult, error)
 	ImageInspect(ctx context.Context, imageID string, options ...mobyclient.ImageInspectOption) (mobyclient.ImageInspectResult, error)
 	ImagePull(ctx context.Context, refStr string, options mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error)
-	ImageTag(ctx context.Context, options mobyclient.ImageTagOptions) (mobyclient.ImageTagResult, error)
 	ServerVersion(ctx context.Context, options mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error)
 }
 
@@ -85,19 +84,6 @@ func (e *EngineClient) InspectContainer(ctx context.Context, id string) (contain
 		return container.InspectResponse{}, err
 	}
 	return res.Container, nil
-}
-
-// InspectContainers returns inspect responses for multiple containers.
-func (e *EngineClient) InspectContainers(ctx context.Context, ids ...string) ([]container.InspectResponse, error) {
-	results := make([]container.InspectResponse, 0, len(ids))
-	for _, id := range ids {
-		res, err := e.API.ContainerInspect(ctx, id, mobyclient.ContainerInspectOptions{})
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, res.Container)
-	}
-	return results, nil
 }
 
 // InspectImage returns the full inspect response for an image.
@@ -192,31 +178,6 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 	return nil
 }
 
-// Events streams Docker events filtered by the given map (e.g. {"container": ["id"], "event": ["destroy"]}).
-// Cancel the context to stop streaming.
-func (e *EngineClient) Events(ctx context.Context, eventFilters map[string][]string) (<-chan events.Message, <-chan error) {
-	f := mobyclient.Filters{}
-	for key, values := range eventFilters {
-		f.Add(key, values...)
-	}
-	res := e.API.Events(ctx, mobyclient.EventsListOptions{Filters: f})
-	return res.Messages, res.Err
-}
-
-// IsPodman returns true if the daemon identifies itself as Podman.
-func (e *EngineClient) IsPodman(ctx context.Context) bool {
-	ver, err := e.API.ServerVersion(ctx, mobyclient.ServerVersionOptions{})
-	if err != nil {
-		return false
-	}
-	for _, comp := range ver.Components {
-		if strings.EqualFold(comp.Name, "podman") {
-			return true
-		}
-	}
-	return false
-}
-
 // PullImage pulls an image from a registry, consuming the output stream to
 // completion. It uses no authentication by default (public images).
 func (e *EngineClient) PullImage(ctx context.Context, ref string) error {
@@ -286,6 +247,12 @@ func (e *EngineClient) StopContainer(ctx context.Context, id string) error {
 	return err
 }
 
+// StopContainerNow stops a container with no grace period (`docker stop -t 0`).
+func (e *EngineClient) StopContainerNow(ctx context.Context, id string) error {
+	_, err := e.API.ContainerStop(ctx, id, mobyclient.ContainerStopOptions{Timeout: new(0)})
+	return err
+}
+
 // CreateContainer creates a new container and returns its ID.
 func (e *EngineClient) CreateContainer(ctx context.Context, config *container.Config, hostConfig *container.HostConfig) (string, error) {
 	res, err := e.API.ContainerCreate(ctx, mobyclient.ContainerCreateOptions{Config: config, HostConfig: hostConfig})
@@ -293,12 +260,6 @@ func (e *EngineClient) CreateContainer(ctx context.Context, config *container.Co
 		return "", err
 	}
 	return res.ID, nil
-}
-
-// ImageTag tags an image.
-func (e *EngineClient) ImageTag(ctx context.Context, source, target string) error {
-	_, err := e.API.ImageTag(ctx, mobyclient.ImageTagOptions{Source: source, Target: target})
-	return err
 }
 
 // --- Utility functions (no daemon required) ---

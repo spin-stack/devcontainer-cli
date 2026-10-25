@@ -20,11 +20,10 @@ func TestVariableResolverBeforeContainerPhases(t *testing.T) {
 		"id":        "${devcontainerId}",
 		"later":     "${containerEnv:PATH}",
 	}
-	resolved, err := resolver.BeforeContainer(ctx, input)
-	if err != nil {
+	if err := resolver.BeforeContainerInto(ctx, &input); err != nil {
 		t.Fatal(err)
 	}
-	got := resolved.(map[string]any)
+	got := input
 	if got["workspace"] != "/work/project" {
 		t.Errorf("workspace = %q", got["workspace"])
 	}

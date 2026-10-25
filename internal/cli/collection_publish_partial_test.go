@@ -2,10 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"oras.land/oras-go/v2/registry/remote/errcode"
 )
 
@@ -27,9 +31,9 @@ func TestPublishCollection_AbortsOnTagListError(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info")
-	if err == nil || !strings.Contains(err.Error(), "publish operation(s) failed") {
-		t.Fatalf("err = %v, want a publish failure from the tag-list error", err)
+	err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features", "feature", "info")
+	if exit, ok := errors.AsType[*coreerrors.ExitCodeError](err); !ok || exit.Code != 1 {
+		t.Fatalf("err = %v, want exit code 1 from the tag-list error (TS getPublishedTags -> process.exit(1))", err)
 	}
 	// The artifact must NOT have been pushed — we aborted before computing tags.
 	if len(reg.pushed) != 0 {
@@ -54,7 +58,7 @@ func TestPublishCollection_TreatsNotFoundAsFirstPublish(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	if err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
+	if err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features", "feature", "info"); err != nil {
 		t.Fatalf("404 tag listing should be a clean first publish, got: %v", err)
 	}
 	if len(reg.pushed) != 1 || !strings.HasSuffix(reg.pushed[0], "/good") {
@@ -62,13 +66,11 @@ func TestPublishCollection_TreatsNotFoundAsFirstPublish(t *testing.T) {
 	}
 }
 
-// TestPublishCollection_CollectionMetadataFailureCounts complements the
-// item-level partial-failure test (seams_test.go): here every ITEM publishes
-// fine but the SEPARATE collection-metadata push fails. That failure must be
-// counted and surfaced as the command error, while the successfully published
-// items still appear in the result JSON. This exercises the distinct
-// "collection-metadata push" failure path, separate from item-level failures.
-func TestPublishCollection_CollectionMetadataFailureCounts(t *testing.T) {
+// TestPublishCollection_CollectionMetadataFailureExits: every item publishes but
+// the collection-metadata push fails, and publish exits 1 without printing the
+// result, as TS doPublishMetadata's caller does ("(!) ERR: Failed to publish
+// '<registry>/<namespace>'", process.exit(1) before console.log).
+func TestPublishCollection_CollectionMetadataFailureExits(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
 	writeSeamFeature(t, src, "good", "1.0.0")
@@ -80,30 +82,58 @@ func TestPublishCollection_CollectionMetadataFailureCounts(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info")
-	if err == nil || !strings.Contains(err.Error(), "publish operation(s) failed") {
-		t.Fatalf("err = %v, want a partial-publish failure from the collection push", err)
+	err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features", "feature", "info")
+	if exit, ok := errors.AsType[*coreerrors.ExitCodeError](err); !ok || exit.Code != 1 {
+		t.Fatalf("err = %v, want exit code 1 from the collection push", err)
 	}
 	if reg.collectionPush != 1 {
 		t.Fatalf("collection metadata push attempts = %d, want 1", reg.collectionPush)
 	}
-	// The item still published and is reported despite the collection failure.
 	if len(reg.pushed) != 1 || !strings.HasSuffix(reg.pushed[0], "/good") {
 		t.Fatalf("pushed = %v, want [.../good]", reg.pushed)
 	}
-	var result map[string]any
-	if jerr := json.Unmarshal(out.out.Bytes(), &result); jerr != nil {
-		t.Fatalf("stdout not JSON: %v", jerr)
+	if out.out.Len() != 0 {
+		t.Fatalf("stdout = %q, want no result after the collection push failed", out.out.String())
 	}
-	if _, ok := result["good"]; !ok {
-		t.Fatalf("result missing 'good': %v", result)
+}
+
+// A namespace of one segment is a valid collection (TS getCollectionRef takes
+// the namespace as the whole path), so its metadata is published to
+// <registry>/<namespace>. Go used to parse it as an item reference, fail, and
+// skip the collection metadata silently.
+func TestPublishCollection_SingleSegmentNamespacePublishesMetadata(t *testing.T) {
+	target := t.TempDir()
+	writeSeamFeature(t, filepath.Join(target, "src"), "good", "1.0.0")
+	reg := &fakeRegistry{published: map[string][]string{}, failIDs: map[string]bool{}}
+	out := &captureOutput{}
+	if err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "myorg", "feature", "info"); err != nil {
+		t.Fatalf("publish failed: %v", err)
+	}
+	if reg.collectionPush != 1 || reg.collectionRef != "ghcr.io/myorg" {
+		t.Fatalf("collection pushes = %d to %q, want 1 to ghcr.io/myorg", reg.collectionPush, reg.collectionRef)
+	}
+}
+
+// A namespace that is no valid repository path cannot name a collection: TS
+// exits 1 with "(!) Could not parse provided collection identifier".
+func TestPublishCollection_InvalidCollectionNamespaceExits(t *testing.T) {
+	target := t.TempDir()
+	writeSeamFeature(t, filepath.Join(target, "src"), "good", "1.0.0")
+	reg := &fakeRegistry{published: map[string][]string{}, failIDs: map[string]bool{}}
+	out := &captureOutput{}
+	err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features/", "feature", "info")
+	if exit, ok := errors.AsType[*coreerrors.ExitCodeError](err); !ok || exit.Code != 1 {
+		t.Fatalf("err = %v, want exit code 1", err)
+	}
+	if reg.collectionPush != 0 || out.out.Len() != 0 {
+		t.Fatalf("collection pushes = %d, stdout = %q: nothing is published for an unparsable collection", reg.collectionPush, out.out.String())
 	}
 }
 
 // TestPublishCollection_SkipsAlreadyPublishedVersion covers the skip branch:
 // when the exact version already exists in the registry, publishOne must NOT push
 // the artifact again, must NOT count a failure, and must still report the item
-// (with empty tags), matching the TS CLI's "already exists, skipping" path.
+// (as {}), matching the TS CLI's "already exists, skipping" path.
 func TestPublishCollection_SkipsAlreadyPublishedVersion(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
@@ -116,25 +146,16 @@ func TestPublishCollection_SkipsAlreadyPublishedVersion(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	if err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
+	if err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features", "feature", "info"); err != nil {
 		t.Fatalf("skip path should not error: %v", err)
 	}
 	if len(reg.pushed) != 0 {
 		t.Fatalf("artifact was pushed despite the version already existing: %v", reg.pushed)
 	}
 
-	var result map[string]struct {
-		PublishedTags []string `json:"publishedTags"`
-	}
-	if err := json.Unmarshal(out.out.Bytes(), &result); err != nil {
-		t.Fatalf("stdout not JSON: %v", err)
-	}
-	good, ok := result["good"]
-	if !ok {
-		t.Fatalf("skipped item should still be reported: %v", result)
-	}
-	if len(good.PublishedTags) != 0 {
-		t.Fatalf("skipped item should report no published tags, got %v", good.PublishedTags)
+	// TS reports an item it skipped as an empty object.
+	if got := strings.TrimSpace(out.out.String()); got != `{"good":{}}` {
+		t.Fatalf("stdout = %s, want {\"good\":{}}", got)
 	}
 }
 
@@ -145,6 +166,7 @@ func TestPublishCollection_RepublishesLegacyIds(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
 	writeFeature(t, src, "modern", `{"id":"modern","version":"2.0.0","name":"Modern","legacyIds":["old-a","old-b"]}`)
+	os.WriteFile(filepath.Join(src, "modern", "install.sh"), []byte("#!/bin/sh\n"), 0o755)
 
 	reg := &fakeRegistry{
 		published:  map[string][]string{},
@@ -153,7 +175,7 @@ func TestPublishCollection_RepublishesLegacyIds(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	if err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info"); err != nil {
+	if err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features", "feature", "info"); err != nil {
 		t.Fatalf("publish failed: %v", err)
 	}
 
@@ -171,14 +193,15 @@ func TestPublishCollection_RepublishesLegacyIds(t *testing.T) {
 		t.Errorf("pushed %d resources, want %d: %v", len(reg.pushed), len(want), reg.pushed)
 	}
 
-	// The result JSON is keyed by both the modern id and each legacy alias.
-	var result map[string]any
+	// TS reports the aliases inside the item as publishedLegacyIds, not as items.
+	var result map[string]map[string]any
 	if err := json.Unmarshal(out.out.Bytes(), &result); err != nil {
 		t.Fatalf("stdout not JSON: %v", err)
 	}
-	for _, id := range []string{"modern", "old-a", "old-b"} {
-		if _, ok := result[id]; !ok {
-			t.Errorf("result missing %q: %v", id, result)
-		}
+	if len(result) != 1 {
+		t.Fatalf("result = %v, want only the modern id", result)
+	}
+	if got := fmt.Sprint(result["modern"]["publishedLegacyIds"]); got != "[old-a old-b]" {
+		t.Errorf("publishedLegacyIds = %s, want [old-a old-b]", got)
 	}
 }

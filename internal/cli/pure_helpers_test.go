@@ -10,7 +10,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/doctor"
 	"github.com/devcontainers/cli/internal/oci"
 )
 
@@ -133,7 +132,7 @@ func TestFolderImageName(t *testing.T) {
 }
 
 func TestEnvSliceToMap(t *testing.T) {
-	got := envSliceToMap([]string{
+	got := config.EnvMap([]string{
 		"FOO=bar",
 		"EMPTY=",
 		"HAS=eq=in=value",
@@ -337,18 +336,6 @@ func TestOCIAnnotationID(t *testing.T) {
 	}
 	if id := ociAnnotationID(mk(nil)); id != "" {
 		t.Errorf("no annotations must yield empty id, got %q", id)
-	}
-}
-
-func TestAppliedAny(t *testing.T) {
-	if appliedAny(nil) {
-		t.Error("nil actions -> false")
-	}
-	if appliedAny([]doctor.Action{{Applied: false}, {Applied: false}}) {
-		t.Error("no applied action -> false")
-	}
-	if !appliedAny([]doctor.Action{{Applied: false}, {Applied: true}}) {
-		t.Error("one applied action -> true")
 	}
 }
 

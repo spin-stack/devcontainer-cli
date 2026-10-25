@@ -53,12 +53,12 @@ func TestMetadataMounts_ReadonlyObject(t *testing.T) {
 	}
 
 	// compose path: the volume spec must end in :ro.
-	specs, _, err := composeVolumeSpecsFromMetadata(entries, "devid")
+	composeMounts, err := composeMountsFromMetadata(entries, func(s string) (string, error) { return s, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 1 || !strings.HasSuffix(specs[0], ":ro") {
-		t.Errorf("#881 compose spec missing :ro: %v", specs)
+	if len(composeMounts) != 1 || !strings.HasSuffix(composeVolumeSpec(composeMounts[0]), ":ro") {
+		t.Errorf("#881 compose spec missing :ro: %v", composeMounts)
 	}
 }
 

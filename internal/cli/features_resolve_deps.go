@@ -71,7 +71,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				return err
 			}
 
-			order, err := features.ComputeInstallationOrder(logger, graph, nil)
+			order, err := features.ComputeInstallationOrder(logger, graph)
 			if err != nil {
 				return err
 			}

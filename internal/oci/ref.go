@@ -138,7 +138,13 @@ func ParseRef(input string) (*Ref, error) {
 	}, nil
 }
 
-// ParseCollectionRef parses registry + namespace into a CollectionRef.
+// Ref is the collection as the repository the registry client pushes to.
+func (r *CollectionRef) Ref() *Ref {
+	return &Ref{Registry: r.Registry, Path: r.Path, Resource: r.Resource, Tag: r.Tag, Version: r.Version}
+}
+
+// ParseCollectionRef parses registry + namespace into a CollectionRef, as TS
+// getCollectionRef does: the namespace, lowercased, is the whole path.
 func ParseCollectionRef(registry, namespace string) (*CollectionRef, error) {
 	registry = strings.ToLower(registry)
 	namespace = strings.ToLower(namespace)
@@ -156,25 +162,4 @@ func ParseCollectionRef(registry, namespace string) (*CollectionRef, error) {
 		Tag:      "latest",
 		Version:  "latest",
 	}, nil
-}
-
-// ManifestURL returns the URL for fetching the manifest.
-func (r *Ref) ManifestURL() string {
-	ref := r.Version
-	return fmt.Sprintf("https://%s/v2/%s/manifests/%s", r.Registry, r.Path, ref)
-}
-
-// BlobURL returns the URL for fetching a blob by digest.
-func (r *Ref) BlobURL(digest string) string {
-	return fmt.Sprintf("https://%s/v2/%s/blobs/%s", r.Registry, r.Path, digest)
-}
-
-// TagsURL returns the URL for listing tags.
-func (r *Ref) TagsURL() string {
-	return fmt.Sprintf("https://%s/v2/%s/%s/tags/list", r.Registry, r.Namespace, r.ID)
-}
-
-// ManifestURL returns the URL for fetching the collection manifest.
-func (r *CollectionRef) ManifestURL() string {
-	return fmt.Sprintf("https://%s/v2/%s/manifests/%s", r.Registry, r.Path, r.Tag)
 }

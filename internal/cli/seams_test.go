@@ -3,14 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/oci"
 )
 
@@ -34,6 +34,7 @@ type fakeRegistry struct {
 	pushed         []string            // resources successfully pushed (for assertions)
 	pushedTags     map[string][]string // resource -> tags requested on push
 	collectionPush int                 // times PushCollectionMetadata was called
+	collectionRef  string              // the resource of the last collection push
 	failCollection bool                // when true, PushCollectionMetadata errors
 }
 
@@ -71,6 +72,7 @@ func (f *fakeRegistry) PushArtifact(ctx context.Context, ref *oci.Ref, tgzPath s
 
 func (f *fakeRegistry) PushCollectionMetadata(ctx context.Context, ref *oci.Ref, collectionJSONPath string) (*oci.PushResult, error) {
 	f.collectionPush++
+	f.collectionRef = ref.Resource
 	if f.failCollection {
 		return nil, fmt.Errorf("simulated collection metadata push failure")
 	}
@@ -87,11 +89,12 @@ func writeSeamFeature(t *testing.T, srcDir, id, version string) {
 	}
 }
 
-// TestPublishCollectionPartialFailure proves the oci.Registry and cli.Output
-// seams work together: a fake registry drives a partial-publish (one feature
-// pushes, one fails), and the captured stdout carries the result JSON — no real
-// registry, no global os.Stdout swap.
-func TestPublishCollectionPartialFailure(t *testing.T) {
+// TestPublishCollectionStopsAtTheFirstFailure proves the oci.Registry and
+// cli.Output seams work together: a fake registry fails one feature's push, and
+// publish ends there with exit 1 and no result JSON, as TS featuresCLI/publish.ts
+// does (`process.exit(1)` after "(!) ERR: Failed to publish"). The features are
+// published in collection order, so "bad" stops it before "good".
+func TestPublishCollectionStopsAtTheFirstFailure(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
 	writeSeamFeature(t, src, "good", "1.0.0")
@@ -103,28 +106,14 @@ func TestPublishCollectionPartialFailure(t *testing.T) {
 	}
 	out := &captureOutput{}
 
-	err := publishCollectionWith(t.Context(), out, reg, target, "ghcr.io", "me/features", "feature", "info")
-	if err == nil {
-		t.Fatal("expected a partial-publish error, got nil")
+	err := publishCollectionWith(t.Context(), out, reg, filepath.Join(target, "src"), "ghcr.io", "me/features", "feature", "info")
+	if exit, ok := errors.AsType[*coreerrors.ExitCodeError](err); !ok || exit.Code != 1 {
+		t.Fatalf("err = %v, want exit code 1", err)
 	}
-	if !strings.Contains(err.Error(), "publish operation(s) failed") {
-		t.Fatalf("error = %v, want partial-publish failure", err)
+	if len(reg.pushed) != 0 || reg.collectionPush != 0 {
+		t.Fatalf("pushed = %v, collection pushes = %d: publish must stop at the first failure", reg.pushed, reg.collectionPush)
 	}
-
-	// The good feature was pushed; the bad one was not.
-	if len(reg.pushed) != 1 || !strings.HasSuffix(reg.pushed[0], "/good") {
-		t.Fatalf("pushed = %v, want exactly [.../good]", reg.pushed)
-	}
-
-	// stdout carries the result JSON keyed by the published feature id.
-	var result map[string]any
-	if jerr := json.Unmarshal(out.out.Bytes(), &result); jerr != nil {
-		t.Fatalf("stdout is not valid JSON: %v (%q)", jerr, out.out.String())
-	}
-	if _, ok := result["good"]; !ok {
-		t.Fatalf("result missing 'good': %v", result)
-	}
-	if _, ok := result["bad"]; ok {
-		t.Fatalf("result should not contain failed 'bad': %v", result)
+	if out.out.Len() != 0 {
+		t.Fatalf("stdout = %q, want no result after a failure", out.out.String())
 	}
 }

@@ -76,29 +76,6 @@ func ExtractTarGz(archivePath, destDir string) error {
 	return nil
 }
 
-// ReadFile reads the contents of the file at path.
-func ReadFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
-}
-
-// WriteFile writes data to path, creating or truncating it.
-func WriteFile(path string, data []byte) error {
-	return os.WriteFile(path, data, 0644)
-}
-
-// MkdirAll creates a directory path and all parents.
-func MkdirAll(path string) error {
-	return os.MkdirAll(path, 0755)
-}
-
-// Remove removes path. If recursive, removes all children.
-func Remove(path string, recursive bool) error {
-	if recursive {
-		return os.RemoveAll(path)
-	}
-	return os.Remove(path)
-}
-
 // IsFile returns true if path exists and is a regular file.
 func IsFile(path string) bool {
 	info, err := os.Stat(path)
@@ -115,12 +92,6 @@ func IsDir(path string) bool {
 		return false
 	}
 	return info.IsDir()
-}
-
-// Exists returns true if path exists.
-func Exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 // Resolve resolves a relative path against a base.

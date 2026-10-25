@@ -3,8 +3,10 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 
@@ -42,7 +44,7 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 			return err
 		}
 		logger.Write(fmt.Sprintf("Running initializeCommand: %s", resolved), log.LevelInfo)
-		return runHostCommand(ctx, resolved, workspaceFolder)
+		return runHostExec(ctx, []string{"/bin/sh", "-c", resolved}, workspaceFolder)
 	}
 
 	// Array form
@@ -61,48 +63,38 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 	// Object form (parallel commands)
 	if m, ok := cmd.AsMap(); ok {
 		logger.Write(fmt.Sprintf("Running %d parallel initializeCommand(s)...", len(m)), log.LevelInfo)
+		// All commands run to completion; the error is the first failure in name
+		// order, as executeCommand reports a parallel hook's.
+		names := slices.Sorted(maps.Keys(m))
+		errs := make([]error, len(names))
 		var wg sync.WaitGroup
-		var errs []error
-		var mu sync.Mutex
-		for name, c := range m {
-			cmdStr, ok := c.(string)
+		for i, name := range names {
+			cmdStr, ok := m[name].(string)
 			if !ok {
 				continue
 			}
-			wg.Add(1)
-			go func(name, cmdStr string) {
-				defer wg.Done()
+			wg.Go(func() {
 				resolved, err := resolve(cmdStr)
 				if err != nil {
-					mu.Lock()
-					errs = append(errs, fmt.Errorf("%s: %w", name, err))
-					mu.Unlock()
+					errs[i] = fmt.Errorf("%s: %w", name, err)
 					return
 				}
 				logger.Write(fmt.Sprintf("  [%s] %s", name, resolved), log.LevelInfo)
-				if err := runHostCommand(ctx, resolved, workspaceFolder); err != nil {
-					mu.Lock()
-					errs = append(errs, fmt.Errorf("%s: %w", name, err))
-					mu.Unlock()
+				if err := runHostExec(ctx, []string{"/bin/sh", "-c", resolved}, workspaceFolder); err != nil {
+					errs[i] = fmt.Errorf("%s: %w", name, err)
 				}
-			}(name, cmdStr)
+			})
 		}
 		wg.Wait()
-		if len(errs) > 0 {
-			return errs[0]
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	}
 
 	return nil
-}
-
-func runHostCommand(ctx context.Context, command string, workDir string) error {
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir = workDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 func runHostExec(ctx context.Context, args []string, workDir string) error {

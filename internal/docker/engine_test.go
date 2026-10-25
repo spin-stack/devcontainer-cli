@@ -32,7 +32,6 @@ type mockAPI struct {
 	eventsFn           func(ctx context.Context, opts mobyclient.EventsListOptions) (<-chan events.Message, <-chan error)
 	imageInspectFn     func(ctx context.Context, id string, opts ...mobyclient.ImageInspectOption) (image.InspectResponse, error)
 	imagePullFn        func(ctx context.Context, ref string, opts mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error)
-	imageTagFn         func(ctx context.Context, opts mobyclient.ImageTagOptions) error
 	serverVersionFn    func(ctx context.Context, opts mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error)
 	execCreateFn       func(ctx context.Context, containerID string, opts mobyclient.ExecCreateOptions) (mobyclient.ExecCreateResult, error)
 	execAttachFn       func(ctx context.Context, execID string, opts mobyclient.ExecAttachOptions) (mobyclient.ExecAttachResult, error)
@@ -132,13 +131,6 @@ func (m *mockAPI) ImageInspect(ctx context.Context, id string, opts ...mobyclien
 	return mobyclient.ImageInspectResult{}, errors.New("not implemented")
 }
 
-func (m *mockAPI) ImageTag(ctx context.Context, opts mobyclient.ImageTagOptions) (mobyclient.ImageTagResult, error) {
-	if m.imageTagFn != nil {
-		return mobyclient.ImageTagResult{}, m.imageTagFn(ctx, opts)
-	}
-	return mobyclient.ImageTagResult{}, errors.New("not implemented")
-}
-
 func (m *mockAPI) ServerVersion(ctx context.Context, opts mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error) {
 	if m.serverVersionFn != nil {
 		return m.serverVersionFn(ctx, opts)
@@ -168,27 +160,6 @@ func TestInspectContainer(t *testing.T) {
 	}
 	if resp.Name != "/my-container" {
 		t.Errorf("Name = %q, want /my-container", resp.Name)
-	}
-}
-
-func TestInspectContainers(t *testing.T) {
-	calls := 0
-	api := &mockAPI{
-		containerInspectFn: func(_ context.Context, id string) (container.InspectResponse, error) {
-			calls++
-			return container.InspectResponse{ID: id}, nil
-		},
-	}
-	e := newTestEngine(api)
-	results, err := e.InspectContainers(t.Context(), "a", "b", "c")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(results) != 3 {
-		t.Fatalf("got %d results, want 3", len(results))
-	}
-	if calls != 3 {
-		t.Errorf("API called %d times, want 3", calls)
 	}
 }
 
@@ -327,26 +298,6 @@ func TestRemoveContainer(t *testing.T) {
 	}
 }
 
-func TestImageTag(t *testing.T) {
-	tagged := false
-	api := &mockAPI{
-		imageTagFn: func(_ context.Context, opts mobyclient.ImageTagOptions) error {
-			if opts.Source != "src:v1" || opts.Target != "dst:v2" {
-				t.Errorf("tag(%q, %q)", opts.Source, opts.Target)
-			}
-			tagged = true
-			return nil
-		},
-	}
-	e := newTestEngine(api)
-	if err := e.ImageTag(t.Context(), "src:v1", "dst:v2"); err != nil {
-		t.Fatal(err)
-	}
-	if !tagged {
-		t.Error("ImageTag not called")
-	}
-}
-
 func TestToDockerImageName(t *testing.T) {
 	tests := []struct {
 		input string
@@ -368,34 +319,6 @@ func TestToDockerImageName(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("ToImageName(%q) = %q, want %q", tt.input, got, tt.want)
 		}
-	}
-}
-
-func TestEvents(t *testing.T) {
-	api := &mockAPI{
-		eventsFn: func(_ context.Context, _ mobyclient.EventsListOptions) (<-chan events.Message, <-chan error) {
-			ch := make(chan events.Message, 2)
-			errCh := make(chan error, 1)
-			ch <- events.Message{Action: events.ActionStart}
-			ch <- events.Message{Action: events.ActionDie}
-			close(ch)
-			return ch, errCh
-		},
-	}
-	e := newTestEngine(api)
-	ctx := t.Context()
-	msgCh, errCh := e.Events(ctx, map[string][]string{"container": {"abc"}})
-	var msgs []events.Message
-	for msg := range msgCh {
-		msgs = append(msgs, msg)
-	}
-	select {
-	case err := <-errCh:
-		t.Fatalf("unexpected error: %v", err)
-	default:
-	}
-	if len(msgs) != 2 {
-		t.Errorf("got %d messages, want 2", len(msgs))
 	}
 }
 

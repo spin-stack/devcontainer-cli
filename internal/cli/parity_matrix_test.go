@@ -399,8 +399,10 @@ func TestParityMatrix(t *testing.T) {
 					}
 				}
 				if asserts["stderr_normalized"] {
-					tsReason := extractErrorReason(tsRes.Stdout, tsRes.Stderr)
-					goReason := extractErrorReason(goRes.Stdout, goRes.Stderr)
+					// Normalized as stdout is: a reason that names a per-side temporary
+					// path (an output folder, a workspace) differs only by that path.
+					tsReason := normalizeStringOpts(extractErrorReason(tsRes.Stdout, tsRes.Stderr), scrubHashes)
+					goReason := normalizeStringOpts(extractErrorReason(goRes.Stdout, goRes.Stderr), scrubHashes)
 					if tsReason != goReason {
 						t.Errorf("error reason differs:\n  TS: %s\n  Go: %s", tsReason, goReason)
 					}

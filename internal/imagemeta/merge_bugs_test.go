@@ -84,8 +84,18 @@ func TestMerge_HostRequirementsPerFieldMax(t *testing.T) {
 	}
 
 	// No entry sets hostRequirements -> nil.
-	if got := MergeConfiguration([]Entry{{}}).HostRequirements; got != nil {
+	if got := MergeConfiguration([]Entry{{RemoteUser: "x"}}).HostRequirements; got != nil {
 		t.Errorf("hostRequirements = %v, want nil", got)
+	}
+	// No entry at all - an empty one is dropped, as TS getDevcontainerMetadata
+	// drops it - and TS takes Math.max() of nothing, -Infinity: cpus null,
+	// memory and storage "-Infinity".
+	want := map[string]any{"cpus": nil, "memory": "-Infinity", "storage": "-Infinity"}
+	if got := MergeConfiguration([]Entry{{}}).HostRequirements; !reflect.DeepEqual(got, want) {
+		t.Errorf("hostRequirements = %v, want %v", got, want)
+	}
+	if got := GenerateMetadataLabel([]Entry{{}, {RemoteUser: "x"}}); got != `[{"remoteUser":"x"}]` {
+		t.Errorf("label = %s, want the empty entry dropped", got)
 	}
 }
 

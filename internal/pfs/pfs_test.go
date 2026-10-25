@@ -6,45 +6,15 @@ import (
 	"testing"
 )
 
-func TestReadWriteFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "test.txt")
-
-	err := WriteFile(path, []byte("hello"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	data, err := ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "hello" {
-		t.Errorf("got %q", string(data))
-	}
-}
-
-func TestMkdirAll(t *testing.T) {
-	dir := t.TempDir()
-	nested := filepath.Join(dir, "a", "b", "c")
-
-	if err := MkdirAll(nested); err != nil {
-		t.Fatal(err)
-	}
-	if !IsDir(nested) {
-		t.Error("directory not created")
-	}
-}
-
 func TestRemove(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "file.txt")
 	os.WriteFile(path, []byte("x"), 0644)
 
-	if err := Remove(path, false); err != nil {
+	if err := (OSFS{}).Remove(path, false); err != nil {
 		t.Fatal(err)
 	}
-	if Exists(path) {
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Error("file still exists")
 	}
 }
@@ -55,10 +25,10 @@ func TestRemoveRecursive(t *testing.T) {
 	os.MkdirAll(filepath.Join(nested, "deep"), 0755)
 	os.WriteFile(filepath.Join(nested, "deep", "f.txt"), []byte("x"), 0644)
 
-	if err := Remove(nested, true); err != nil {
+	if err := (OSFS{}).Remove(nested, true); err != nil {
 		t.Fatal(err)
 	}
-	if Exists(nested) {
+	if _, err := os.Stat(nested); !os.IsNotExist(err) {
 		t.Error("directory still exists")
 	}
 }

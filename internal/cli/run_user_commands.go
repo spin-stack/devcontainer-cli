@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,17 +98,12 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
-	for _, v := range []struct {
-		flag, val string
-		choices   []string
-	}{
-		{"log-level", opts.logLevel, []string{"info", "debug", "trace"}},
-		{"log-format", opts.logFormat, []string{"text", "json"}},
-		{"default-user-env-probe", opts.defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
-	} {
-		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return writeValidationError(out, err.Error())
-		}
+	if err := validateEnums(
+		enumFlag{"log-level", opts.logLevel, logLevels},
+		enumFlag{"log-format", opts.logFormat, logFormats},
+		enumFlag{"default-user-env-probe", opts.defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
+	); err != nil {
+		return writeValidationError(out, err.Error())
 	}
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return writeValidationError(out, err.Error())
@@ -122,12 +116,11 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	defer closeLog()
 
 	logger := log.New(log.Options{
-		Version:    cliVersion(),
-		Level:      log.ParseLevel(opts.logLevel),
-		Format:     opts.logFormat,
-		Writer:     logDst,
-		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
-		Secrets:    secretValuesFromFile(opts.secretsFile),
+		Version: cliVersion(),
+		Level:   log.ParseLevel(opts.logLevel),
+		Format:  opts.logFormat,
+		Writer:  logDst,
+		Secrets: secretValuesFromFile(opts.secretsFile),
 	})
 
 	var (
@@ -229,15 +222,8 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	}
 
 	var mergedRemoteEnv []string
-	if probeStrategy != lifecycle.ProbeNone {
-		probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
-		if probeErr == nil {
-			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, opts.containerSessionDataFolder)
-			probeServer.Close()
-			for k, v := range probedEnv {
-				mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
-			}
-		}
+	for k, v := range lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, opts.containerSessionDataFolder) {
+		mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
 	}
 	if opts.secretsFile != "" {
 		if secretEnvs, secErr := readSecretsFile(opts.secretsFile); secErr == nil {
@@ -253,10 +239,7 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 		}
 	}
 
-	shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
-	if err != nil {
-		return writeErrorResult(out, fmt.Sprintf("Failed to start shell server: %v", err))
-	}
+	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, mergedRemoteEnv...)
 	defer shellServer.Close()
 
 	workDir := ""
@@ -265,36 +248,21 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	}
 	executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger, WorkDir: workDir}
 
-	// Install dotfiles
-	if opts.dotfilesRepo != "" {
-		_ = lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
-			Repository:     opts.dotfilesRepo,
-			InstallCommand: opts.dotfilesCommand,
-			TargetPath:     opts.dotfilesTarget,
-		})
-	}
-
-	// Run lifecycle hooks
+	applyLifecycleMarkers(shellServer, merged, inspect, opts.prebuild)
 	hookErr := lifecycle.RunHooks(logger, executor, merged, lifecycle.RunOptions{
 		SkipNonBlocking: opts.skipNonBlocking,
 		SkipPostAttach:  opts.skipPostAttach,
 		Prebuild:        opts.prebuild,
+		AfterPostCreate: dotfilesAfterPostCreate(logger, executor, lifecycle.DotfilesConfig{
+			Repository:     opts.dotfilesRepo,
+			InstallCommand: opts.dotfilesCommand,
+			TargetPath:     opts.dotfilesTarget,
+		}),
 	})
 
 	if hookErr != nil {
-		var hook *lifecycle.HookError
-		var cmdErr *lifecycle.CommandError
-		if errors.As(hookErr, &hook) && errors.As(hookErr, &cmdErr) {
-			description := fmt.Sprintf("%s from devcontainer.json failed.", hook.Phase)
-			return writeErrorJSON(out, coreerrors.ErrorOutput{
-				Outcome:     "error",
-				Message:     cmdErr.Error(),
-				Description: description,
-			})
-		}
-		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
-			Description: fmt.Sprintf("An error occurred running user commands: %v", hookErr),
-		}))
+		// TS run-user-commands reports only the message and description.
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(hookContainerError(hookErr, "", "An error occurred running user commands in the container.")))
 	}
 
 	return writeSuccessJSON(out, map[string]any{

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,12 +11,13 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
 	dockermount "github.com/moby/moby/api/types/mount"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
 	coreerrors "github.com/devcontainers/cli/internal/errors"
-	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/lifecycle"
 	"github.com/devcontainers/cli/internal/log"
@@ -181,21 +183,16 @@ func validateUpOpts(opts *upOpts) error {
 	if err := validateMounts(opts.mounts); err != nil {
 		return err
 	}
-	for _, v := range []struct {
-		flag, val string
-		choices   []string
-	}{
-		{"log-level", opts.logLevel, []string{"info", "debug", "trace"}},
-		{"log-format", opts.logFormat, []string{"text", "json"}},
-		{"buildkit", opts.buildkit, []string{"auto", "never"}},
-		{"workspace-mount-consistency", opts.workspaceMountConsistency, []string{"consistent", "cached", "delegated"}},
-		{"gpu-availability", opts.gpuAvailability, []string{"all", "detect", "none"}},
-		{"default-user-env-probe", opts.defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
-		{"update-remote-user-uid-default", opts.updateRemoteUserUIDDefault, []string{"on", "off", "never"}},
-	} {
-		if err := validateEnum(v.flag, v.val, v.choices); err != nil {
-			return err
-		}
+	if err := validateEnums(
+		enumFlag{"log-level", opts.logLevel, logLevels},
+		enumFlag{"log-format", opts.logFormat, logFormats},
+		enumFlag{"buildkit", opts.buildkit, []string{"auto", "never"}},
+		enumFlag{"workspace-mount-consistency", opts.workspaceMountConsistency, []string{"consistent", "cached", "delegated"}},
+		enumFlag{"gpu-availability", opts.gpuAvailability, []string{"all", "detect", "none"}},
+		enumFlag{"default-user-env-probe", opts.defaultUserEnvProbe, []string{"none", "loginShell", "interactiveShell", "loginInteractiveShell"}},
+		enumFlag{"update-remote-user-uid-default", opts.updateRemoteUserUIDDefault, []string{"on", "off", "never"}},
+	); err != nil {
+		return err
 	}
 	return validateTerminalImplications(opts.terminalColumns, opts.terminalRows)
 }
@@ -251,12 +248,11 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	defer closeLog()
 
 	logger := log.New(log.Options{
-		Version:    cliVersion(),
-		Level:      log.ParseLevel(opts.logLevel),
-		Format:     opts.logFormat,
-		Writer:     logDst,
-		Dimensions: logDimensions(opts.terminalColumns, opts.terminalRows),
-		Secrets:    secretValuesFromFile(opts.secretsFile),
+		Version: cliVersion(),
+		Level:   log.ParseLevel(opts.logLevel),
+		Format:  opts.logFormat,
+		Writer:  logDst,
+		Secrets: secretValuesFromFile(opts.secretsFile),
 	})
 	// Route the OCI auth diagnostic lines at this command's logger.
 	ociAuthPolicy(ctx).SetLogger(logger)
@@ -274,52 +270,14 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// Otherwise, derive labels from workspace folder + config file path.
 	idLabels := opts.idLabels
 
-	// Look for existing container early — needed for --expect-existing-container
-	// and for the --id-label-only path (no workspace-folder).
-	if len(idLabels) > 0 {
-		existingIDs, _ := engine.ListContainers(ctx, true, idLabels)
-
-		if len(existingIDs) > 0 && opts.removeExisting {
-			logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
-			_ = engine.RemoveContainer(ctx, existingIDs[0])
-			existingIDs = nil
-		}
-
-		if len(existingIDs) > 0 {
-			containerID := existingIDs[0]
-			logger.Write(fmt.Sprintf("Using existing container %s", containerID), log.LevelInfo)
-
-			inspectResp, inspErr := engine.InspectContainer(ctx, containerID)
-			if inspErr == nil && inspectResp.State != nil && !inspectResp.State.Running {
-				logger.Write("Starting existing container...", log.LevelInfo)
-				if startErr := engine.StartContainer(ctx, containerID); startErr != nil {
-					return writeErrorResult(out, fmt.Sprintf("Failed to start container: %v", startErr))
-				}
-			}
-
-			// Run lifecycle hooks on reattach: postAttach every time,
-			// postStart when restarted; onCreate/updateContent/postCreate are gated
-			// by markers. Hooks come from the container's baked metadata.
-			if !opts.skipPostCreate {
-				run.runReattachLifecycle(ctx, containerID)
-			}
-
-			return run.finishUp(ctx, containerID, nil, nil)
-		}
-
-		if opts.expectExistingContainer {
-			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
-				Description: "The expected container does not exist.",
-			}))
-		}
-
-		// No existing container found with --id-label, fall through to config-based creation.
-		if workspaceFolder == "" {
-			return writeErrorResult(out, "No dev container config and no workspace found.")
-		}
+	// TS reads the config before it looks for a container (configContainer.ts
+	// resolveWithLocalFolder): with neither a workspace nor a config there is
+	// nothing to read, even when --id-label finds a container.
+	if workspaceFolder == "" && configPath == "" && overridePath == "" {
+		return writeErrorResult(out, "No dev container config and no workspace found.")
 	}
 
-	// Load config — requires workspaceFolder (guaranteed non-empty at this point)
+	// Load config
 	loadResult, err := config.LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overridePath, config.MountOptions{
 		MountWorkspaceGitRoot:     opts.mountWorkspaceGitRoot,
 		MountGitWorktreeCommonDir: opts.mountGitWorktreeCommonDir,
@@ -349,7 +307,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 	idCtx := config.SubstitutionContext{
 		HostSubContext: loadResult.HostSub,
-		DevContainerID: config.ComputeDevContainerID(idLabelsMap(idLabels)),
+		DevContainerID: config.ComputeDevContainerID(config.EnvMap(idLabels)),
 	}
 	resolver := config.NewVariableResolver()
 	if err := resolver.BeforeContainerInto(idCtx, cfg); err != nil {
@@ -359,18 +317,19 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		return writeErrorResult(out, fmt.Sprintf("apply workspace pre-container substitutions: %v", err))
 	}
 
-	if derr := enforceDisallowedFeatures(ctx, cfg, logger); derr != nil {
-		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
-	}
-
 	// Apply --remove-existing-container up-front, BEFORE initializeCommand, so a
 	// failed initializeCommand (or rebuild) does not leave the old container
-	// running — matching the VS Code extension (upstream #844).
+	// running — matching the VS Code extension (upstream #844). TS removes it while
+	// finding the id labels, before the disallowed-Feature check.
 	existingIDs, _ := engine.ListContainers(ctx, true, idLabels)
 	if len(existingIDs) > 0 && opts.removeExisting {
 		logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
 		_ = engine.RemoveContainer(ctx, existingIDs[0])
 		existingIDs = nil
+	}
+
+	if derr := enforceDisallowedFeatures(ctx, cfg, opts.additionalFeatures, logger, stopRunningContainer(engine, idLabels)); derr != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(derr))
 	}
 
 	// Run initializeCommand on the host (before container creation).
@@ -492,11 +451,15 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 
 	result := map[string]any{
-		"outcome":               "success",
-		"containerId":           containerID,
-		"remoteUser":            remoteUser,
-		"remoteWorkspaceFolder": remoteWorkspaceFolder,
-		"ociAuthDiagnostics":    ociAuthDiagnostics(ctx),
+		"outcome":            "success",
+		"containerId":        containerID,
+		"remoteUser":         remoteUser,
+		"ociAuthDiagnostics": ociAuthDiagnostics(ctx),
+	}
+	// TS leaves remoteWorkspaceFolder out when there is none (up --config with no
+	// workspace and no workspaceFolder in the config).
+	if remoteWorkspaceFolder != "" {
+		result["remoteWorkspaceFolder"] = remoteWorkspaceFolder
 	}
 	if opts.composeProjectName != "" {
 		result["composeProjectName"] = opts.composeProjectName
@@ -506,11 +469,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		// Reuse inspectResp from above — no need to re-inspect the same container.
 		containerEnv := map[string]string{}
 		if inspectResp.Config != nil {
-			for _, e := range inspectResp.Config.Env {
-				if before, after, ok := strings.Cut(e, "="); ok {
-					containerEnv[before] = after
-				}
-			}
+			containerEnv = config.EnvMap(inspectResp.Config.Env)
 		}
 
 		if opts.includeConfig {
@@ -582,12 +541,12 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			if subErr != nil {
 				return writeErrorResult(out, fmt.Sprintf("resolve merged container variables: %v", subErr))
 			}
-			// Carry over config-only properties spread into mergedConfiguration by
-			// the TS CLI that the typed MergedConfig does not model.
+			// Every config property TS mergeConfiguration does not set itself is
+			// spread into mergedConfiguration ({...config}).
 			if mm, ok := mergedSub.(map[string]any); ok {
 				if cfgResult, ok := result["configuration"].(map[string]any); ok {
-					for _, k := range mergedPassthroughKeys {
-						if v, ok := cfgResult[k]; ok {
+					for k, v := range cfgResult {
+						if !mergedOwnKeys[k] {
 							mm[k] = v
 						}
 					}
@@ -598,151 +557,6 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 
 	return writeSuccessJSON(out, result)
-}
-
-func idLabelsMap(labels []string) map[string]string {
-	result := make(map[string]string, len(labels))
-	for _, label := range labels {
-		if before, after, ok := strings.Cut(label, "="); ok {
-			result[before] = after
-		}
-	}
-	return result
-}
-
-// finishUp produces the JSON result for an existing container found via --id-label
-// (no config/loadResult available). cfg and loadResult may be nil.
-func (r *upRunner) finishUp(ctx context.Context, containerID string, cfg *config.DevContainer, loadResult *config.LoadResult) error {
-	out, logger, engine := r.out, r.log, r.engine
-	inspectResp, err := engine.InspectContainer(ctx, containerID)
-	if err != nil {
-		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
-	}
-
-	remoteUser := ""
-	if cfg != nil {
-		remoteUser = cfg.RemoteUser
-	}
-	if remoteUser == "" && inspectResp.Config != nil {
-		metaEntries := imagemeta.ReadMetadataFromLabels(inspectResp.Config.Labels, logger)
-		if len(metaEntries) > 0 {
-			metaMerged := imagemeta.MergeConfiguration(metaEntries)
-			if metaMerged.RemoteUser != "" {
-				remoteUser = metaMerged.RemoteUser
-			}
-		}
-	}
-	if remoteUser == "" {
-		if inspectResp.Config != nil {
-			remoteUser = inspectResp.Config.User
-		}
-		if remoteUser == "" {
-			remoteUser = "root"
-		}
-	}
-
-	remoteWorkspaceFolder := ""
-	if loadResult != nil {
-		remoteWorkspaceFolder = loadResult.WorkspaceConfig.WorkspaceFolder
-	}
-
-	result := map[string]any{
-		"outcome":               "success",
-		"containerId":           containerID,
-		"remoteUser":            remoteUser,
-		"remoteWorkspaceFolder": remoteWorkspaceFolder,
-		"ociAuthDiagnostics":    ociAuthDiagnostics(ctx),
-	}
-
-	return writeSuccessJSON(out, result)
-}
-
-// runReattachLifecycle runs lifecycle hooks when reattaching to an existing
-// container (found via --id-label, no config loaded). Hooks come from the
-// container's baked devcontainer.metadata; markers gate onCreate/updateContent/
-// postCreate (already ran) and postStart (per startedAt), while postAttach runs
-// every attach — matching the TS reattach path. Best-effort: probe
-// or shell failures degrade to a warning.
-func (r *upRunner) runReattachLifecycle(ctx context.Context, containerID string) {
-	logger, engine, opts := r.log, r.engine, r.opts
-	inspectResp, err := engine.InspectContainer(ctx, containerID)
-	if err != nil || inspectResp.Config == nil {
-		return
-	}
-	entries := imagemeta.ReadMetadataFromLabels(inspectResp.Config.Labels, logger)
-	merged := imagemeta.MergeConfiguration(entries)
-	if len(merged.OnCreateCommands)+len(merged.UpdateContentCommands)+len(merged.PostCreateCommands)+len(merged.PostStartCommands)+len(merged.PostAttachCommands) == 0 {
-		return
-	}
-
-	remoteUser := merged.RemoteUser
-	if remoteUser == "" {
-		remoteUser = inspectResp.Config.User
-	}
-
-	// Probe remote env + secrets. The config's remoteEnv is already baked into the
-	// container metadata (merged.RemoteEnv), so it is not re-added here.
-	var mergedRemoteEnv []string
-	probeStrategy := lifecycle.UserEnvProbeStrategy(opts.defaultUserEnvProbe)
-	if merged.UserEnvProbe != "" {
-		probeStrategy = lifecycle.UserEnvProbeStrategy(merged.UserEnvProbe)
-	}
-	if probeStrategy != lifecycle.ProbeNone {
-		if probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger); probeErr == nil {
-			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, opts.containerSessionDataFolder)
-			probeServer.Close()
-			for k, v := range probedEnv {
-				mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
-			}
-		}
-	}
-	if opts.secretsFile != "" {
-		if secretEnvs, sErr := readSecretsFile(opts.secretsFile); sErr == nil {
-			mergedRemoteEnv = append(mergedRemoteEnv, secretEnvs...)
-		}
-	}
-	mergedRemoteEnv = append(mergedRemoteEnv, opts.remoteEnvs...)
-	for k, v := range merged.RemoteEnv {
-		if v != nil {
-			mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, *v))
-		}
-	}
-
-	shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
-	if err != nil {
-		logger.Write(fmt.Sprintf("Could not start shell server for reattach hooks: %v", err), log.LevelWarning)
-		return
-	}
-	defer shellServer.Close()
-	executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger}
-
-	if markerFolder := resolveContainerUserDataFolder(shellServer); markerFolder != "" {
-		createdAt := inspectResp.Created
-		startedAt := ""
-		if inspectResp.State != nil {
-			startedAt = inspectResp.State.StartedAt
-		}
-		if !markerShouldRun(shellServer, markerFolder, "onCreateCommand", createdAt) {
-			merged.OnCreateCommands = nil
-		}
-		if !markerShouldRun(shellServer, markerFolder, "updateContentCommand", createdAt) {
-			merged.UpdateContentCommands = nil
-		}
-		if !markerShouldRun(shellServer, markerFolder, "postCreateCommand", createdAt) {
-			merged.PostCreateCommands = nil
-		}
-		if !markerShouldRun(shellServer, markerFolder, "postStartCommand", startedAt) {
-			merged.PostStartCommands = nil
-		}
-	}
-
-	if hookErr := lifecycle.RunHooks(logger, executor, merged, lifecycle.RunOptions{
-		SkipNonBlocking: opts.skipNonBlocking,
-		SkipPostAttach:  opts.skipPostAttach,
-		Prebuild:        opts.prebuild,
-	}); hookErr != nil {
-		logger.Write(fmt.Sprintf("Lifecycle hooks failed: %v", hookErr), log.LevelWarning)
-	}
 }
 
 func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
@@ -819,18 +633,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 
 	// Extend with features if any
 	if len(cfg.Features) > 0 {
-		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, imageName, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
-			Secrets:                     buildSecretsFromFile(opts.secretsFile),
-			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-			Lockfile:                    opts.experimentalLockfile,
-			FrozenLockfile:              opts.experimentalFrozenLockfile,
-			NoLockfile:                  opts.noLockfile,
-			ConfigPath:                  cfg.ConfigFilePath,
-			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-			HostSub:                     &loadResult.HostSub,
-		})
+		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, imageName, cfg.Features, useBuildx, nil, r.featureBuildOptions(cfg, loadResult, ""))
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
 		}
@@ -839,7 +642,10 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 		}
 	}
 
-	imageName = r.maybeUpdateRemoteUserUID(ctx, imageName, cfg.RemoteUser, cfg)
+	imageName, err = r.singleContainerRemoteUserUID(ctx, imageName, cfg, workspaceFolder)
+	if err != nil {
+		return "", err
+	}
 
 	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
 }
@@ -870,19 +676,7 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 	// Extend with features if any
 	imageName := cfg.Image
 	if len(cfg.Features) > 0 {
-		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
-			Platform:                    platform,
-			Secrets:                     buildSecretsFromFile(opts.secretsFile),
-			OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-			FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-			SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-			Lockfile:                    opts.experimentalLockfile,
-			FrozenLockfile:              opts.experimentalFrozenLockfile,
-			NoLockfile:                  opts.noLockfile,
-			ConfigPath:                  cfg.ConfigFilePath,
-			LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-			HostSub:                     &loadResult.HostSub,
-		})
+		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, nil, r.featureBuildOptions(cfg, loadResult, platform))
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
 		}
@@ -891,7 +685,10 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 		}
 	}
 
-	imageName = r.maybeUpdateRemoteUserUID(ctx, imageName, cfg.RemoteUser, cfg)
+	imageName, err = r.singleContainerRemoteUserUID(ctx, imageName, cfg, workspaceFolder)
+	if err != nil {
+		return "", err
+	}
 
 	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
 }
@@ -914,38 +711,41 @@ func (r *upRunner) fromCacheImage(ctx context.Context, cfg *config.DevContainer,
 	}
 	logger.Write(fmt.Sprintf("Using prebuilt cache image %s; skipping build and feature install", image), log.LevelInfo)
 
-	image = r.maybeUpdateRemoteUserUID(ctx, image, cfg.RemoteUser, cfg)
+	image, err := r.singleContainerRemoteUserUID(ctx, image, cfg, workspaceFolder)
+	if err != nil {
+		return "", err
+	}
 	return r.runContainer(ctx, image, cfg, loadResult, workspaceFolder, idLabels)
 }
 
-// maybeUpdateRemoteUserUID rebuilds imageName with the remote user's UID/GID
-// remapped to the host user's, matching the TS updateRemoteUserUID. Returns the
-// (possibly new) image name; a no-op when disabled, when remoteUser is empty or
-// root, or when the host UID is not a regular user. Applies to both the image
-// and Dockerfile paths of up (previously only the image path called it, so
-// Dockerfile-based configs with a remoteUser had broken bind-mount permissions
-// on Linux).
-func (r *upRunner) maybeUpdateRemoteUserUID(ctx context.Context, imageName, remoteUser string, cfg *config.DevContainer) string {
-	logger, dockerClient, opts := r.log, r.docker, r.opts
-	shouldUpdateUID := opts.updateRemoteUserUIDDefault == "on"
-	if cfg.UpdateRemoteUserUID != nil {
-		shouldUpdateUID = *cfg.UpdateRemoteUserUID
+// singleContainerRemoteUserUID is TS singleContainer's updateRemoteUserUID call:
+// the merged configuration is the image's metadata and the config's, and the
+// user is the runArgs' --user, else the merged containerUser.
+func (r *upRunner) singleContainerRemoteUserUID(ctx context.Context, imageName string, cfg *config.DevContainer, workspaceFolder string) (string, error) {
+	imageDetails := func() (image.InspectResponse, error) { return r.engine.InspectImage(ctx, imageName) }
+	var entries []imagemeta.Entry
+	if details, err := imageDetails(); err == nil && details.Config != nil {
+		entries = imagemeta.ReadMetadataFromLabels(details.Config.Labels, r.log)
 	}
-	if !shouldUpdateUID || remoteUser == "" || remoteUser == "root" {
-		return imageName
+	merged := imagemeta.MergeConfiguration(append(entries, configMetadataEntry(cfg, r.opts.omitConfigRemoteEnvFromMeta)))
+	user := cmp.Or(findUserArg(cfg.RunArgs), merged.ContainerUser)
+	return r.updateRemoteUserUID(ctx, merged, imageName, imageDetails, user, workspaceFolder, r.persistedFolder())
+}
+
+// findUserArg is TS findUserArg: the last -u/--user of runArgs.
+func findUserArg(runArgs []string) string {
+	for i := len(runArgs) - 1; i >= 0; i-- {
+		arg := runArgs[i]
+		if (arg == "-u" || arg == "--user") && i+1 < len(runArgs) {
+			return runArgs[i+1]
+		}
+		for _, p := range []string{"-u=", "--user="} {
+			if v, ok := strings.CutPrefix(arg, p); ok {
+				return v
+			}
+		}
 	}
-	hostUID := os.Getuid()
-	hostGID := os.Getgid()
-	if hostUID <= 0 {
-		return imageName
-	}
-	bkInfo := dockerClient.DetectBuildKit(ctx)
-	updatedImage, err := docker.UpdateRemoteUserUID(ctx, dockerClient, logger, imageName, remoteUser, hostUID, hostGID, bkInfo.Available)
-	if err != nil {
-		logger.Write(fmt.Sprintf("UID update failed: %v", err), log.LevelWarning)
-		return imageName
-	}
-	return updatedImage
+	return ""
 }
 
 func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
@@ -969,12 +769,7 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	containerWorkspace := loadResult.WorkspaceConfig.WorkspaceFolder
 
 	// Build CMD script with feature entrypoints
-	var cmdScript strings.Builder
-	cmdScript.WriteString("echo Container started\ntrap \"exit 0\" 15\n")
-	for _, ep := range merged.Entrypoints {
-		cmdScript.WriteString(ep + "\n")
-	}
-	cmdScript.WriteString("exec \"$@\"\nwhile sleep 1 & wait $!; do :; done")
+	cmdScript := docker.BuildEntrypointScript(merged.Entrypoints)
 
 	// User: merged containerUser → image USER → omit (docker default)
 	containerUser := merged.ContainerUser
@@ -996,20 +791,22 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	// Mounts. Use the computed workspaceMount (which honors a custom
 	// `workspaceMount` in the config and the git-root source folder) rather than
 	// always binding the workspace folder. Fall back to a bind if unset.
-	var wsMount dockermount.Mount
-	if spec := loadResult.WorkspaceConfig.WorkspaceMount; spec != "" {
-		parsed, parseErr := docker.ParseMountSpec(spec)
-		if parseErr != nil {
-			return "", fmt.Errorf("invalid workspaceMount %q: %w", spec, parseErr)
+	// With no workspace and no workspaceMount (up --config alone) TS mounts nothing.
+	var mounts []dockermount.Mount
+	if spec := loadResult.WorkspaceConfig.WorkspaceMount; spec != "" || workspaceFolder != "" {
+		wsMount := dockermount.Mount{Type: dockermount.TypeBind, Source: workspaceFolder, Target: containerWorkspace}
+		if spec != "" {
+			parsed, parseErr := docker.ParseMountSpec(spec)
+			if parseErr != nil {
+				return "", fmt.Errorf("invalid workspaceMount %q: %w", spec, parseErr)
+			}
+			wsMount = parsed
 		}
-		wsMount = parsed
-	} else {
-		wsMount = dockermount.Mount{Type: dockermount.TypeBind, Source: workspaceFolder, Target: containerWorkspace}
+		if opts.workspaceMountConsistency != "" {
+			wsMount.Consistency = dockermount.Consistency(opts.workspaceMountConsistency)
+		}
+		mounts = append(mounts, wsMount)
 	}
-	if opts.workspaceMountConsistency != "" {
-		wsMount.Consistency = dockermount.Consistency(opts.workspaceMountConsistency)
-	}
-	mounts := []dockermount.Mount{wsMount}
 	// Extra workspace-derived mounts (currently the Git worktree common dir from
 	// --mount-git-worktree-common-dir) so Git works inside the container.
 	for _, spec := range loadResult.WorkspaceConfig.AdditionalMounts {
@@ -1022,13 +819,7 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 		}
 		mounts = append(mounts, parsed)
 	}
-	idLabelMap := map[string]string{}
-	for _, label := range idLabels {
-		if before, after, ok := strings.Cut(label, "="); ok {
-			idLabelMap[before] = after
-		}
-	}
-	devcontainerID := config.ComputeDevContainerID(idLabelMap)
+	devcontainerID := config.ComputeDevContainerID(config.EnvMap(idLabels))
 	if len(merged.Mounts) > 0 {
 		metadataMounts, err := mountsFromMetadata(merged.Mounts, devcontainerID)
 		if err != nil {
@@ -1065,7 +856,7 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	// overrideCommand is false, append the image's own entrypoint+cmd so the
 	// script's `exec "$@"` runs them (e.g. dind, databases) instead of just
 	// sleeping — matching the TS CLI. Default (nil/true) keeps the sleep loop.
-	cmdArgs := []string{"-c", cmdScript.String(), "-"}
+	cmdArgs := []string{"-c", cmdScript, "-"}
 	if merged.OverrideCommand != nil && !*merged.OverrideCommand && imageInspect.Config != nil {
 		cmdArgs = append(cmdArgs, imageInspect.Config.Entrypoint...)
 		cmdArgs = append(cmdArgs, imageInspect.Config.Cmd...)
@@ -1157,25 +948,6 @@ func resolveComposeProjectName(ctx context.Context, cfg *config.DevContainer, en
 	return docker.ToProjectName(filepath.Base(workingDir), newNames)
 }
 
-// overrideDirFor returns the directory that compose override files are written
-// to. When userDataFolder is set the overrides live in a stable subdir so a
-// container can be restarted without re-injecting them; otherwise a temp dir is
-// used and the returned cleanup removes it. cleanup is always non-nil.
-func overrideDirFor(userDataFolder, tmpPattern string) (dir string, cleanup func(), err error) {
-	if userDataFolder != "" {
-		dir = filepath.Join(userDataFolder, "docker-compose")
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return "", func() {}, fmt.Errorf("create override dir: %w", err)
-		}
-		return dir, func() {}, nil
-	}
-	dir, err = os.MkdirTemp("", tmpPattern)
-	if err != nil {
-		return "", func() {}, fmt.Errorf("create temp override dir: %w", err)
-	}
-	return dir, func() { os.RemoveAll(dir) }, nil
-}
-
 // composeServiceBuild captures the image and `build:` fields of a compose
 // service that fromCompose needs, parsed once from `docker compose config`
 // output instead of re-walking the untyped map at each use.
@@ -1245,440 +1017,57 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 	// Stream compose build/up progress to the same destination as docker builds.
 	composeClient.ProgressWriter = dockerClient.ProgressWriter
 
+	composeConfig, err := composeClient.Config(ctx, composeFiles, "")
+	if err != nil {
+		return "", err
+	}
 	projectName := resolveComposeProjectName(ctx, cfg, env, composeFiles, composeClient)
 	logger.Write(fmt.Sprintf("Compose project: %s, service: %s", projectName, cfg.Service), log.LevelInfo)
+	opts.composeProjectName = projectName
 
-	// Check for existing compose container (skip build if it exists)
-	existingComposeIDs, _ := engine.ListContainers(ctx, true, []string{
+	existingComposeIDs, err := engine.ListContainers(ctx, true, []string{
 		fmt.Sprintf("com.docker.compose.project=%s", projectName),
 		fmt.Sprintf("com.docker.compose.service=%s", cfg.Service),
 	})
-
+	if err != nil {
+		return "", fmt.Errorf("list compose containers: %w", err)
+	}
 	if opts.expectExistingContainer && len(existingComposeIDs) == 0 {
 		return "", fmt.Errorf("the expected container does not exist")
 	}
-
-	noComposeBuild := len(existingComposeIDs) > 0
-	featureImageName := ""
-	if len(cfg.Features) > 0 {
-		// Read compose config to determine service setup
-		composeConfig, configErr := composeClient.Config(ctx, composeFiles, "")
-		var svcBuild composeServiceBuild
-		if configErr == nil {
-			svcBuild = parseComposeServiceBuild(composeConfig, cfg.Service)
-		}
-		serviceHasBuild := svcBuild.HasBuild
-		serviceImage := svcBuild.Image
-		serviceDockerfile := svcBuild.Dockerfile
-		serviceBuildContext := svcBuild.Context
-		serviceBuildTarget := svcBuild.Target
-
-		// Fetch and resolve features
-		fetchResult, fetchErr := fetchFeatureSets(ctx, logger, nil, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, nil)
-		if fetchErr != nil {
-			return "", fetchErr
-		}
-
-		featureSets := []*features.Set{}
-		tmpDir := ""
-		if fetchResult != nil {
-			featureSets = fetchResult.FeatureSets
-			tmpDir = fetchResult.TmpDir
-			defer os.RemoveAll(tmpDir)
-		}
-
-		if serviceHasBuild && serviceDockerfile != "" {
-			// TS CLI approach: inject features into the Dockerfile
-			// Read the original Dockerfile
-			configDir := filepath.Dir(cfg.ConfigFilePath)
-			originalDockerfilePath := serviceDockerfile
-			if !filepath.IsAbs(originalDockerfilePath) {
-				if serviceBuildContext != "" {
-					originalDockerfilePath = filepath.Join(serviceBuildContext, originalDockerfilePath)
-				}
-				if !filepath.IsAbs(originalDockerfilePath) {
-					originalDockerfilePath = filepath.Join(configDir, originalDockerfilePath)
-				}
-			}
-
-			dockerfileContent, readErr := os.ReadFile(originalDockerfilePath)
-			if readErr != nil {
-				return "", fmt.Errorf("read Dockerfile for compose service: %w", readErr)
-			}
-
-			// Find base image for metadata — pass compose build args for variable resolution
-			df := docker.ExtractDockerfile(string(dockerfileContent))
-			baseImage := docker.FindBaseImage(df, svcBuild.Args, serviceBuildTarget)
-
-			// Inspect base image once for metadata and user resolution.
-			baseImageInspect, _ := engine.InspectImage(ctx, baseImage)
-
-			metadata := []imagemeta.Entry{}
-			var baseEntries []imagemeta.Entry
-			if baseImageInspect.Config != nil {
-				baseEntries = imagemeta.ReadMetadataFromLabels(baseImageInspect.Config.Labels, logger)
-				metadata = append(metadata, baseEntries...)
-			}
-			for _, fs := range featureSets {
-				if len(fs.Features) > 0 {
-					feat := fs.Features[0]
-					metadata = append(metadata, imagemeta.Entry{
-						ID: feat.ID, Init: feat.Init, Privileged: feat.Privileged,
-						CapAdd: feat.CapAdd, SecurityOpt: feat.SecurityOpt,
-						ContainerEnv: feat.ContainerEnv, Mounts: feat.Mounts,
-						Customizations: feat.Customizations, Entrypoint: feat.Entrypoint,
-					})
-				}
-			}
-			metadata = append(metadata, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
-
-			containerUser := "root"
-			remoteUser := "root"
-			if baseImageInspect.Config != nil {
-				if baseImageInspect.Config.User != "" {
-					containerUser = baseImageInspect.Config.User
-				}
-				if len(baseEntries) > 0 {
-					baseMerged := imagemeta.MergeConfiguration(baseEntries)
-					if baseMerged.ContainerUser != "" {
-						containerUser = baseMerged.ContainerUser
-					}
-					if baseMerged.RemoteUser != "" {
-						remoteUser = baseMerged.RemoteUser
-					}
-				}
-			}
-			if remoteUser == "root" {
-				remoteUser = containerUser
-			}
-
-			// When a build target is set, features must extend that stage.
-			// Otherwise, add a synthetic name to the final stage so the injected
-			// Dockerfile can reference it safely.
-			baseStageName := serviceBuildTarget
-			if baseStageName == "" {
-				baseStageName = "dev_containers_auto_added_stage_label"
-				_, modifiedDF := docker.EnsureFinalStageName(string(dockerfileContent), baseStageName)
-				if modifiedDF != "" {
-					dockerfileContent = []byte(modifiedDF)
-				}
-			}
-
-			// Generate feature Dockerfile content for compose injection
-			// No build secrets here: `docker compose build` does not forward
-			// --secret to the injected feature stage, so mounting them would break
-			// the build. Compose feature build secrets remain unsupported for now.
-			featureContent := imagemeta.GenerateExtendImageBuildForCompose(
-				baseStageName, featureSets, metadata, containerUser, remoteUser, nil, nil,
-			)
-			combinedDockerfile := string(dockerfileContent) + "\n" + featureContent
-
-			// Copy feature content to compose build context so COPY works
-			buildCtx := serviceBuildContext
-			if !filepath.IsAbs(buildCtx) {
-				buildCtx = filepath.Join(filepath.Dir(cfg.ConfigFilePath), buildCtx)
-			}
-			for i := range featureSets {
-				srcDir := filepath.Join(tmpDir, fmt.Sprintf("_dev_container_feature_%d", i))
-				dstDir := filepath.Join(buildCtx, fmt.Sprintf("_dev_container_feature_%d", i))
-				os.RemoveAll(dstDir)
-				if cpErr := copyDir(srcDir, dstDir); cpErr != nil {
-					return "", fmt.Errorf("copy feature %d to build context: %w", i, cpErr)
-				}
-				defer os.RemoveAll(dstDir)
-			}
-
-			// Write combined Dockerfile to the build context
-			combinedPath := filepath.Join(buildCtx, "Dockerfile-with-features")
-			if err := os.WriteFile(combinedPath, []byte(combinedDockerfile), 0644); err != nil {
-				return "", fmt.Errorf("write combined Dockerfile: %w", err)
-			}
-			defer os.Remove(combinedPath)
-			// Preserve the service Dockerfile's sibling .dockerignore (upstream #969).
-			copyDockerignore(originalDockerfilePath, combinedPath)
-			defer os.Remove(combinedPath + ".dockerignore")
-
-			// Persist the build override when possible so a stopped compose container
-			// can be restarted without re-injecting features or losing the override.
-			overrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-build-")
-			if err != nil {
-				return "", err
-			}
-			defer cleanup()
-
-			buildOverride := docker.NewComposeOverride()
-			svc := buildOverride.Service(cfg.Service)
-			svc.Build = &docker.BuildOverride{
-				Dockerfile: combinedPath,
-				Target:     "dev_containers_target_stage",
-			}
-			if !serviceHasBuild || serviceBuildContext == "" {
-				svc.Build.Context = configDir
-			}
-
-			buildOverridePath := filepath.Join(overrideDir, fmt.Sprintf("docker-compose.devcontainer.build-%s.json", projectName))
-			if wErr := buildOverride.WriteFile(buildOverridePath); wErr != nil {
-				return "", fmt.Errorf("write compose build override: %w", wErr)
-			}
-			composeFiles = append(composeFiles, buildOverridePath)
-
-			logger.Write("Injected features into compose Dockerfile", log.LevelInfo)
-		} else {
-			// Image-only service: build features as separate image
-			if !noComposeBuild {
-				buildErr := composeClient.Build(ctx, composeFiles, "", nil, []string{cfg.Service}, opts.buildNoCache)
-				if buildErr != nil {
-					return "", fmt.Errorf("compose build: %w", buildErr)
-				}
-
-				baseImageName := serviceImage
-				if baseImageName == "" {
-					baseImageName = fmt.Sprintf("%s-%s", projectName, cfg.Service)
-				}
-
-				logger.Write(fmt.Sprintf("Installing features on compose service %s...", cfg.Service), log.LevelInfo)
-				names, extErr := extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, nil, &FeatureBuildOptions{
-					Secrets:                     buildSecretsFromFile(opts.secretsFile),
-					OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
-					FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
-					SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-					Lockfile:                    opts.experimentalLockfile,
-					FrozenLockfile:              opts.experimentalFrozenLockfile,
-					NoLockfile:                  opts.noLockfile,
-					ConfigPath:                  cfg.ConfigFilePath,
-					LockfileExcludeIDs:          opts.lockfileExcludeIDs,
-					HostSub:                     &loadResult.HostSub,
-				})
-				if extErr != nil {
-					return "", fmt.Errorf("install features on compose service: %w", extErr)
-				}
-				if len(names) > 0 {
-					featureImageName = names[0]
-				}
-			}
-		}
-	}
-
-	// Generate containerEnv override if containerEnv is set
-	if len(cfg.ContainerEnv) > 0 {
-		envOverrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-env-")
+	var existing *container.InspectResponse
+	if len(existingComposeIDs) > 0 {
+		inspect, err := engine.InspectContainer(ctx, existingComposeIDs[0])
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("inspect compose container: %w", err)
 		}
-		defer cleanup()
-
-		envOverride := docker.NewComposeOverride()
-		envSvc := envOverride.Service(cfg.Service)
-		for k, v := range cfg.ContainerEnv {
-			envSvc.AddEnv(k, v) // escaping handled by ComposeOverride
-		}
-		envOverridePath := filepath.Join(envOverrideDir, fmt.Sprintf("docker-compose.devcontainer.env-%s.json", projectName))
-		if wErr := envOverride.WriteFile(envOverridePath); wErr != nil {
-			return "", fmt.Errorf("write compose env override: %w", wErr)
-		}
-		composeFiles = append(composeFiles, envOverridePath)
+		existing = &inspect
+	}
+	// TS openDockerComposeDevContainer only starts the project when the service
+	// container is missing or not running.
+	if existing != nil && existing.State != nil && existing.State.Running {
+		return existing.ID, nil
+	}
+	if _, ok := composeService(composeConfig, cfg.Service); !ok {
+		return "", fmt.Errorf("Service '%s' configured in devcontainer.json not found in Docker Compose configuration.", cfg.Service)
 	}
 
-	if len(cfg.Mounts) > 0 {
-		mountOverrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-mounts-")
-		if err != nil {
-			return "", err
-		}
-		defer cleanup()
-
-		idLabelMap := map[string]string{}
-		for _, label := range idLabels {
-			if before, after, ok := strings.Cut(label, "="); ok {
-				idLabelMap[before] = after
-			}
-		}
-		devcontainerID := config.ComputeDevContainerID(idLabelMap)
-		volumeSpecs, namedVolumes, err := composeVolumeSpecsFromMetadata(metadataMounts(cfg), devcontainerID)
-		if err != nil {
-			return "", fmt.Errorf("resolve compose mounts: %w", err)
-		}
-
-		mountOverride := docker.NewComposeOverride()
-		mountSvc := mountOverride.Service(cfg.Service)
-		for _, spec := range volumeSpecs {
-			mountSvc.AddVolume(spec)
-		}
-		for _, volumeName := range namedVolumes {
-			mountOverride.AddVolume(volumeName)
-		}
-
-		mountOverridePath := filepath.Join(mountOverrideDir, fmt.Sprintf("docker-compose.devcontainer.mounts-%s.json", projectName))
-		if wErr := mountOverride.WriteFile(mountOverridePath); wErr != nil {
-			return "", fmt.Errorf("write compose mounts override: %w", wErr)
-		}
-		composeFiles = append(composeFiles, mountOverridePath)
-	}
-
-	// Always create a compose override for the target service to attach the
-	// devcontainer.* labels (id-labels + metadata) so the container is
-	// discoverable by exec and VS Code — matching the TS CLI, which sets
-	// additionalLabels on the compose service. When features were installed
-	// we also add the runtime settings (image, entrypoint, env, mounts).
-	{
-		overrideDir, cleanup, err := overrideDirFor(opts.userDataFolder, "devcontainer-compose-features-")
-		if err != nil {
-			return "", err
-		}
-		defer cleanup()
-
-		override := docker.NewComposeOverride()
-		svc := override.Service(cfg.Service)
-
-		withFeatures := featureImageName != "" || len(cfg.Features) > 0
-		if featureImageName != "" {
-			svc.Image = featureImageName
-		}
-
-		// Read metadata from the feature image (or the service's base image) for
-		// both the runtime settings and the devcontainer.metadata label. Resolve
-		// the service's declared image via `docker compose config` rather than
-		// guessing "<project>-<service>": with a generic project name (e.g.
-		// "devcontainer") that guess can match a stale image left by another
-		// fixture and poison the metadata (e.g. a wrong remoteUser).
-		inspectImage := featureImageName
-		if inspectImage == "" {
-			if composeConfig, cfgErr := composeClient.Config(ctx, composeFiles, ""); cfgErr == nil {
-				inspectImage = composeServiceImage(composeConfig, cfg.Service)
-			}
-			if inspectImage == "" {
-				inspectImage = fmt.Sprintf("%s-%s", projectName, cfg.Service)
-			}
-		}
-		var metaEntries []imagemeta.Entry
-		if imageInspect, inspErr := engine.InspectImage(ctx, inspectImage); inspErr == nil && imageInspect.Config != nil {
-			metaEntries = imagemeta.ReadMetadataFromLabels(imageInspect.Config.Labels, logger)
-		}
-		metaEntries = append(metaEntries, configMetadataEntry(cfg, opts.omitConfigRemoteEnvFromMeta))
-
-		// Feature runtime settings — only when features were installed (unchanged).
-		if withFeatures {
-			merged := imagemeta.MergeConfiguration(metaEntries)
-
-			if merged.Privileged != nil && *merged.Privileged {
-				svc.SetPrivileged(true)
-			}
-			svc.CapAdd = merged.CapAdd
-			svc.SecurityOpt = merged.SecurityOpt
-
-			// Entrypoint — chain feature entrypoints via BuildEntrypointScriptCompose
-			script := docker.BuildEntrypointScriptCompose(merged.Entrypoints)
-			svc.Entrypoint = []string{"/bin/sh", "-c", script, "-"}
-			svc.Command = []string{}
-
-			if merged.Init != nil && *merged.Init {
-				svc.SetInit(true)
-			}
-			if merged.ContainerUser != "" {
-				svc.User = merged.ContainerUser
-			}
-			for k, v := range merged.ContainerEnv {
-				svc.AddEnv(k, v) // escaping handled by ComposeOverride
-			}
-
-			// Volumes with ${devcontainerId} substitution
-			if len(merged.Mounts) > 0 {
-				idLabelMap := map[string]string{}
-				for _, l := range idLabels {
-					if before, after, ok := strings.Cut(l, "="); ok {
-						idLabelMap[before] = after
-					}
-				}
-				devcontainerID := config.ComputeDevContainerID(idLabelMap)
-
-				volumeSpecs, namedVolumes, err := composeVolumeSpecsFromMetadata(merged.Mounts, devcontainerID)
-				if err != nil {
-					return "", fmt.Errorf("resolve compose feature mounts: %w", err)
-				}
-				for _, spec := range volumeSpecs {
-					svc.AddVolume(spec)
-				}
-				for _, volumeName := range namedVolumes {
-					override.AddVolume(volumeName)
-				}
-			}
-		}
-
-		// Labels (always): id-labels (local_folder, config_file, --id-label) plus
-		// the merged devcontainer.metadata label.
-		for _, l := range idLabels {
-			svc.AddLabel(l)
-		}
-		if metaLabel := imagemeta.GenerateMetadataLabel(metaEntries); metaLabel != "" {
-			svc.AddLabel(imagemeta.MetadataLabel + "=" + metaLabel)
-		}
-
-		// Build override (persisted for container reuse) — only when there's a feature image
-		if featureImageName != "" {
-			buildOverride := docker.NewComposeOverride()
-			buildSvc := buildOverride.Service(cfg.Service)
-			buildSvc.Image = featureImageName
-			buildOverridePath := filepath.Join(overrideDir, fmt.Sprintf("docker-compose.devcontainer.build-%s.json", projectName))
-			if wErr := buildOverride.WriteFile(buildOverridePath); wErr != nil {
-				return "", fmt.Errorf("write compose feature build override: %w", wErr)
-			}
-			composeFiles = append(composeFiles, buildOverridePath)
-		}
-
-		featOverridePath := filepath.Join(overrideDir, fmt.Sprintf("docker-compose.devcontainer.containerFeatures-%s.json", projectName))
-		if wErr := override.WriteFile(featOverridePath); wErr != nil {
-			return "", fmt.Errorf("write compose features override: %w", wErr)
-		}
-		composeFiles = append(composeFiles, featOverridePath)
-	}
-
-	// Build (skip if features already built the base)
-	if featureImageName == "" && !noComposeBuild {
-		if opts.buildNoCache {
-			logger.Write("Building with --no-cache...", log.LevelInfo)
-		}
-		buildErr := composeClient.Build(ctx, composeFiles, "", nil, []string{cfg.Service}, opts.buildNoCache)
-		if buildErr != nil {
-			return "", fmt.Errorf("compose build: %w", buildErr)
-		}
-	}
-
-	// Up. Match the TS CLI: when runServices is empty, pass NO service filter so
-	// `compose up` brings up the whole project (all services and their
-	// dependencies, e.g. a db that the app shares a network namespace with via
-	// `network_mode: service:db`). Only when runServices is set do we limit to
-	// those services (plus the main service). Filtering to just the app service
-	// breaks reuse of a stopped project: `up --no-recreate app` does not reliably
-	// restart the stopped db, so the app fails to join its network namespace.
-	var services []string
-	if len(cfg.RunServices) > 0 {
-		services = append(services, cfg.RunServices...)
-		hasService := slices.Contains(services, cfg.Service)
-		if !hasService {
-			services = append(services, cfg.Service)
-		}
-	}
-
-	noRecreate := len(existingComposeIDs) > 0 || opts.expectExistingContainer
-	upErr := composeClient.Up(ctx, composeFiles, "", nil, projectName, services, noRecreate)
-	if upErr != nil {
-		return "", fmt.Errorf("compose up: %w", upErr)
-	}
-
-	// Find the container for the target service (all=true to include just-started containers)
-	containerIDs, err := engine.ListContainers(ctx, true, []string{
-		fmt.Sprintf("com.docker.compose.project=%s", projectName),
-		fmt.Sprintf("com.docker.compose.service=%s", cfg.Service),
+	containerID, err := r.startComposeContainer(ctx, composeStart{
+		cfg:             cfg,
+		loadResult:      loadResult,
+		workspaceFolder: workspaceFolder,
+		idLabels:        idLabels,
+		useBuildx:       useBuildx,
+		projectName:     projectName,
+		composeFiles:    composeFiles,
+		composeConfig:   composeConfig,
+		client:          composeClient,
+		container:       existing,
 	})
-	if err != nil || len(containerIDs) == 0 {
-		return "", fmt.Errorf("could not find container for service %q in project %q", cfg.Service, projectName)
+	if err != nil {
+		return "", err
 	}
-
-	containerID := containerIDs[0]
 	logger.Write(fmt.Sprintf("Compose container: %s", containerID[:12]), log.LevelInfo)
-
-	// Store for JSON result
-	opts.composeProjectName = projectName
-
 	return containerID, nil
 }
 
@@ -1696,15 +1085,8 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 	var mergedRemoteEnv []string
 
 	// Probe user environment inside the container (with caching)
-	if probeStrategy != lifecycle.ProbeNone {
-		probeServer, probeErr := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger)
-		if probeErr == nil {
-			probedEnv, _ := lifecycle.ProbeRemoteEnv(logger, probeServer, probeStrategy, remoteUser, opts.containerSessionDataFolder)
-			probeServer.Close()
-			for k, v := range probedEnv {
-				mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
-			}
-		}
+	for k, v := range lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, opts.containerSessionDataFolder) {
+		mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
 	}
 
 	// Secrets override probed env and are visible to lifecycle hooks.
@@ -1725,11 +1107,7 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 		}
 	}
 
-	shellServer, err := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, logger, mergedRemoteEnv...)
-	if err != nil {
-		logger.Write(fmt.Sprintf("Could not start shell server for lifecycle hooks: %v", err), log.LevelWarning)
-		return nil
-	}
+	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, mergedRemoteEnv...)
 	defer shellServer.Close()
 
 	executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger, WorkDir: workDir}
@@ -1767,30 +1145,7 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 		merged.PostAttachCommands = append(merged.PostAttachCommands, cfg.PostAttachCommand.Raw())
 	}
 
-	// Marker files: make hooks idempotent across repeated `up`s and
-	// editor reconnections. onCreate/updateContent/postCreate run only when their
-	// marker does not already record this container's createdAt; postStart runs
-	// only when the marker does not record its startedAt. postAttach always runs.
-	// Matches the TS runPostCreateCommand/runPostStartCommand + updateMarkerFile.
-	if markerFolder := resolveContainerUserDataFolder(shellServer); markerFolder != "" {
-		createdAt := inspectResp.Created
-		startedAt := ""
-		if inspectResp.State != nil {
-			startedAt = inspectResp.State.StartedAt
-		}
-		if !markerShouldRun(shellServer, markerFolder, "onCreateCommand", createdAt) {
-			merged.OnCreateCommands = nil
-		}
-		if !markerShouldRun(shellServer, markerFolder, "updateContentCommand", createdAt) {
-			merged.UpdateContentCommands = nil
-		}
-		if !markerShouldRun(shellServer, markerFolder, "postCreateCommand", createdAt) {
-			merged.PostCreateCommands = nil
-		}
-		if !markerShouldRun(shellServer, markerFolder, "postStartCommand", startedAt) {
-			merged.PostStartCommands = nil
-		}
-	}
+	applyLifecycleMarkers(shellServer, merged, inspectResp, opts.prebuild)
 
 	hookErr := lifecycle.RunHooks(logger, executor, merged, lifecycle.RunOptions{
 		SkipNonBlocking: opts.skipNonBlocking,
@@ -1798,28 +1153,71 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 		Prebuild:        opts.prebuild,
 		// Dotfiles install after postCreateCommand (before postStart), as remoteUser
 		// (executor runs docker exec -u) and with secrets in the env, matching TS.
-		AfterPostCreate: func() {
-			if opts.dotfilesRepo != "" {
-				if dfErr := lifecycle.InstallDotfiles(logger, executor, lifecycle.DotfilesConfig{
-					Repository:     opts.dotfilesRepo,
-					InstallCommand: opts.dotfilesCommand,
-					TargetPath:     opts.dotfilesTarget,
-				}); dfErr != nil {
-					logger.Write(fmt.Sprintf("Dotfiles installation failed: %v", dfErr), log.LevelWarning)
-				}
-			}
-		},
+		AfterPostCreate: dotfilesAfterPostCreate(logger, executor, lifecycle.DotfilesConfig{
+			Repository:     opts.dotfilesRepo,
+			InstallCommand: opts.dotfilesCommand,
+			TargetPath:     opts.dotfilesTarget,
+		}),
 	})
 	if hookErr != nil {
-		phase := "postCreateCommand"
-		if he, ok := errors.AsType[*lifecycle.HookError](hookErr); ok {
-			phase = string(he.Phase)
-		}
-		return &coreerrors.ContainerError{
-			Description: fmt.Sprintf("%s from devcontainer.json failed.", phase),
-		}
+		return hookContainerError(hookErr, containerID, "An error occurred setting up the container.")
 	}
 	return nil
+}
+
+// hookContainerError is TS runLifecycleCommand's ContainerError for a failed
+// lifecycle command: the description names the command and where it comes from,
+// the message is the command's own error, and up reports the container. Any
+// other error gets the command's generic description (fallback).
+func hookContainerError(hookErr error, containerID, fallback string) *coreerrors.ContainerError {
+	he, ok := errors.AsType[*lifecycle.HookError](hookErr)
+	if !ok {
+		return &coreerrors.ContainerError{Description: fallback, OriginalError: hookErr, ContainerID: containerID}
+	}
+	return &coreerrors.ContainerError{Description: he.Description(), OriginalError: he.Err, ContainerID: containerID}
+}
+
+// applyLifecycleMarkers drops the hooks a previous run already ran, as TS
+// runPostCreateCommand/runPostStartCommand do with updateMarkerFile for up,
+// set-up and run-user-commands alike: onCreate, updateContent and postCreate run
+// once per container (createdAt), postStart once per start (startedAt), and
+// postAttach always. The marker is written before the hook runs, so a hook that
+// failed is not run again. --prebuild reruns updateContentCommand.
+func applyLifecycleMarkers(server *lifecycle.ShellServer, merged *imagemeta.MergedConfig, inspect container.InspectResponse, prebuild bool) {
+	folder := resolveContainerUserDataFolder(server)
+	if folder == "" {
+		return
+	}
+	startedAt := ""
+	if inspect.State != nil {
+		startedAt = inspect.State.StartedAt
+	}
+	if !markerShouldRun(server, folder, "onCreateCommand", inspect.Created) {
+		merged.OnCreateCommands = nil
+	}
+	if !markerShouldRun(server, folder, "updateContentCommand", inspect.Created) && !prebuild {
+		merged.UpdateContentCommands = nil
+	}
+	if !markerShouldRun(server, folder, "postCreateCommand", inspect.Created) {
+		merged.PostCreateCommands = nil
+	}
+	if !markerShouldRun(server, folder, "postStartCommand", startedAt) {
+		merged.PostStartCommands = nil
+	}
+}
+
+// dotfilesAfterPostCreate installs the dotfiles repository where TS
+// runLifecycleHooks does: after postCreateCommand, before postStartCommand. A
+// failure is logged and not fatal.
+func dotfilesAfterPostCreate(logger log.Logger, executor lifecycle.CommandExecutor, cfg lifecycle.DotfilesConfig) func() {
+	return func() {
+		if cfg.Repository == "" {
+			return
+		}
+		if err := lifecycle.InstallDotfiles(logger, executor, cfg); err != nil {
+			logger.Write(fmt.Sprintf("Dotfiles installation failed: %v", err), log.LevelWarning)
+		}
+	}
 }
 
 // resolveContainerUserDataFolder returns the in-container folder where lifecycle
@@ -1849,4 +1247,23 @@ func markerShouldRun(server *lifecycle.ShellServer, folder, hookName, content st
 		q(folder), q(marker), content, q(content), q(content), q(marker))
 	_, code, err := server.Exec(cmd)
 	return err == nil && code == 0
+}
+
+// featureBuildOptions are the Feature install options of up's image builds;
+// platform is the target platform ("" for the daemon's).
+func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *config.LoadResult, platform string) *FeatureBuildOptions {
+	opts := r.opts
+	return &FeatureBuildOptions{
+		Platform:                    platform,
+		Secrets:                     buildSecretsFromFile(opts.secretsFile),
+		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
+		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
+		Lockfile:                    opts.experimentalLockfile,
+		FrozenLockfile:              opts.experimentalFrozenLockfile,
+		NoLockfile:                  opts.noLockfile,
+		ConfigPath:                  cfg.ConfigFilePath,
+		LockfileExcludeIDs:          opts.lockfileExcludeIDs,
+		HostSub:                     &loadResult.HostSub,
+	}
 }
