@@ -27,7 +27,7 @@ import (
 func cacheFolder() string {
 	base := "devcontainercli"
 	if runtime.GOOS == "linux" {
-		if u, err := user.Current(); err == nil && u.Username != "" {
+		if u, err := user.Current(); err == nil {
 			base = "devcontainercli-" + u.Username
 		}
 	}
