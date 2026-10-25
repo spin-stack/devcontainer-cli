@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -133,5 +134,26 @@ func TestBuildGlobalArgs_NoEnvFile(t *testing.T) {
 	args := c.buildGlobalArgs([]string{"compose.yml"}, "")
 	if len(args) != 2 {
 		t.Errorf("args = %v", args)
+	}
+}
+
+// The compose processes get BUILDX_BAKE_ENTITLEMENTS_FS=0 so bake reads the
+// Features Dockerfile outside the build context, unless the user set it.
+func TestWithBakeFSEntitlement(t *testing.T) {
+	unset := func(string) (string, bool) { return "", false }
+	if got := withBakeFSEntitlement([]string{"A=1"}, unset); !slices.Equal(got, []string{"A=1", "BUILDX_BAKE_ENTITLEMENTS_FS=0"}) {
+		t.Errorf("unset: %q", got)
+	}
+	if got := withBakeFSEntitlement(nil, func(k string) (string, bool) { return "1", k == "BUILDX_BAKE_ENTITLEMENTS_FS" }); len(got) != 0 {
+		t.Errorf("set in the process: %q, want it left alone", got)
+	}
+	if got := withBakeFSEntitlement([]string{"BUILDX_BAKE_ENTITLEMENTS_FS=1"}, unset); !slices.Equal(got, []string{"BUILDX_BAKE_ENTITLEMENTS_FS=1"}) {
+		t.Errorf("set in env: %q", got)
+	}
+	env := make([]string, 1, 4)
+	env[0] = "A=1"
+	withBakeFSEntitlement(env, unset)
+	if env[:2][1] != "" {
+		t.Error("the caller's env was written to")
 	}
 }

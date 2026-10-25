@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	osexec "os/exec"
 	"slices"
 	"strconv"
@@ -45,7 +46,7 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 		return &ComposeClient{
 			Command: []string{dockerPath, "compose"},
 			Version: parseComposeVersion(strings.TrimSpace(string(out))),
-			Env:     env,
+			Env:     withBakeFSEntitlement(env, os.LookupEnv),
 			Log:     logger,
 		}, nil
 	}
@@ -53,6 +54,24 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 		return nil, fmt.Errorf("'docker compose' (v2) not found; --docker-compose-path %q is Compose v1, which is unsupported", composePath)
 	}
 	return nil, fmt.Errorf("'docker compose' (v2) not found")
+}
+
+// bakeFSEntitlement turns off bake's filesystem entitlement check for the
+// compose processes this CLI starts. Compose builds through bake, and bake on
+// buildx 0.38 and later refuses to read a Dockerfile outside the build context
+// unless the caller passes --allow=fs.read, which `docker compose build` cannot;
+// the Features Dockerfile this CLI writes lives in its cache folder, outside the
+// context. The reference passes nothing and fails there ("additional privileges
+// requested"); docs/DIVERGENCES.md records the difference.
+const bakeFSEntitlement = "BUILDX_BAKE_ENTITLEMENTS_FS"
+
+// withBakeFSEntitlement is env plus BUILDX_BAKE_ENTITLEMENTS_FS=0, unless env or
+// the process environment (lookup) already sets it.
+func withBakeFSEntitlement(env []string, lookup func(string) (string, bool)) []string {
+	if _, ok := lookup(bakeFSEntitlement); ok || slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, bakeFSEntitlement+"=") }) {
+		return env
+	}
+	return append(slices.Clone(env), bakeFSEntitlement+"=0")
 }
 
 // Run executes a compose command and captures output (no live streaming).
