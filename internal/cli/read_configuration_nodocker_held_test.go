@@ -11,8 +11,9 @@ import (
 // A legacy property TS updateFromOldProperties leaves in place stays in the
 // configuration read-configuration prints: a devPort whose
 // customizations.vscode already has one, and a falsy settings. The TS CLI
-// prints both (reference read-configuration of this config); a null devPort,
-// which TS moves into customizations.vscode, is never printed at the top level.
+// prints both (reference read-configuration of this config). A null devPort
+// moves into customizations.vscode when that has none, and otherwise stays at
+// the top level and is printed as null, as TS prints it.
 func TestConfigurationOutputKeepsUnmigratedLegacyProperties(t *testing.T) {
 	_, result := loadFixtureConfig(t, `{
 		"image": "img:1",
@@ -35,6 +36,12 @@ func TestConfigurationOutputKeepsUnmigratedLegacyProperties(t *testing.T) {
 	}
 	if v, ok := got["x-null"]; !ok || v != nil {
 		t.Errorf("x-null = %v (%v), want an unknown null property kept", v, ok)
+	}
+
+	_, result = loadFixtureConfig(t, `{"image": "img:1", "devPort": null, "customizations": {"vscode": {"devPort": 1}}}`, nil)
+	got = configurationOutput(result, &readConfigOpts{})
+	if v, ok := got["devPort"]; !ok || v != nil {
+		t.Errorf("devPort = %v (%v), want null kept beside customizations.vscode's own", v, ok)
 	}
 }
 
