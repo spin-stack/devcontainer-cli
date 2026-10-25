@@ -93,16 +93,16 @@ func getCredentialFromDockerConfig(env map[string]string, registry string, logge
 
 	hasAuth := len(config.CredHelpers) > 0 || config.CredsStore != "" || len(config.Auths) > 0
 
-	// credHelpers for specific registry
-	if helper, ok := config.CredHelpers[registry]; ok {
+	// credHelpers for the registry, else credsStore (the global helper). As in
+	// TS getCredentialFromDockerConfigOrCredentialHelper (httpOCIRegistry.ts),
+	// a registry's own helper that finds nothing does not fall back to
+	// credsStore, and an empty helper name counts as no helper.
+	if helper := config.CredHelpers[registry]; helper != "" {
 		logger.Write(fmt.Sprintf("[httpOci] Found credential helper %q for registry %q", helper, registry), log.LevelTrace)
 		if cred := getCredentialFromHelper(registry, helper, logger); cred != nil {
 			return cred
 		}
-	}
-
-	// credsStore (global helper)
-	if config.CredsStore != "" {
+	} else if config.CredsStore != "" {
 		logger.Write(fmt.Sprintf("[httpOci] Invoking credsStore credential helper %q", config.CredsStore), log.LevelTrace)
 		if cred := getCredentialFromHelper(registry, config.CredsStore, logger); cred != nil {
 			return cred
