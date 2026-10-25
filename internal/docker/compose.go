@@ -194,34 +194,19 @@ func (c *ComposeClient) Down(ctx context.Context, composeFiles []string, project
 	return nil
 }
 
-// SupportsAdditionalContexts returns true if compose version >= 2.17.0.
+// SupportsAdditionalContexts returns true if compose version >= 2.17.0, which
+// added additional_contexts (TS buildAndExtendDockerCompose: `version &&
+// !isEarlierVersion(version, [2, 17, 0])`). An unknown (empty) version is
+// earlier than 2.17.0, so it reports false like TS.
 func (c *ComposeClient) SupportsAdditionalContexts() bool {
-	if len(c.Version) < 2 {
-		return false
-	}
-	// 2.17.0 added additional_contexts
-	if c.Version[0] > 2 {
-		return true
-	}
-	if c.Version[0] == 2 && c.Version[1] >= 17 {
-		return true
-	}
-	return false
+	return !isEarlierVersion(c.Version, []int{2, 17, 0})
 }
 
-// UsesNewProjectNames returns true if compose version >= 1.21.0
-// (allowed hyphens and underscores in project names).
+// UsesNewProjectNames returns true if compose version >= 1.21.0 (allowed
+// hyphens and underscores in project names), or when the version is unknown
+// (TS useNewProjectName: optimistic default).
 func (c *ComposeClient) UsesNewProjectNames() bool {
-	if len(c.Version) < 2 {
-		return true // optimistic default
-	}
-	if c.Version[0] > 1 {
-		return true
-	}
-	if c.Version[0] == 1 && c.Version[1] >= 21 {
-		return true
-	}
-	return false
+	return len(c.Version) == 0 || !isEarlierVersion(c.Version, []int{1, 21, 0})
 }
 
 func (c *ComposeClient) buildGlobalArgs(composeFiles []string, envFile string) []string {
@@ -235,15 +220,15 @@ func (c *ComposeClient) buildGlobalArgs(composeFiles []string, envFile string) [
 	return args
 }
 
-// parseComposeVersion extracts the first N[.N[.N]] version found in s (e.g. from
-// "Docker Compose version v2.15.1"), up to three numeric components.
+// parseComposeVersion extracts the first N[.N]* version found in s (e.g. from
+// "Docker Compose version v2.15.1"), every numeric component like TS parseVersion.
 func parseComposeVersion(s string) []int {
 	i := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
 	if i < 0 {
 		return nil
 	}
 	var version []int
-	for len(version) < 3 {
+	for {
 		j := i
 		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
 			j++
@@ -269,7 +254,7 @@ func ToProjectName(basename string, newProjectName bool) string {
 		case newProjectName && (r == '_' || r == '-'):
 			return r
 		}
-		return -1
+		return -1 // mutate-exempt: strings.Map drops the rune for any negative value
 	}, strings.ToLower(basename))
 }
 
