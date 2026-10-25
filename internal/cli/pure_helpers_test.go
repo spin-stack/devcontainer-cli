@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -264,12 +265,20 @@ func TestBuildArgsAndOptionsFromConfig(t *testing.T) {
 	}
 }
 
-func TestIsUserFacingBuildError(t *testing.T) {
-	if !isUserFacingBuildError(errorString(legacyFeaturePrefix + "foo' ...")) {
-		t.Error("a legacy-feature error must be user-facing")
+// up and build report a ContainerError as it is, as TS does for the errors it
+// throws with their own description (a legacy Feature id, a failing compose
+// config), wherever it is wrapped; any other error gets the command's
+// description with the error appended.
+func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
+	legacy := checkLegacyFeatures(map[string]any{"myfeature": true})
+	out := commandErrorOutput(fmt.Errorf("install features: %w", legacy), "An error occurred setting up the container")
+	want := fmt.Sprintf(msgLegacyFeature, "myfeature")
+	if out.Description != want || out.Message != want {
+		t.Errorf("legacy Feature error = %+v", out)
 	}
-	if isUserFacingBuildError(errorString("some internal failure")) {
-		t.Error("an arbitrary error must not be user-facing")
+	out = commandErrorOutput(errorString("some internal failure"), "An error occurred building the container")
+	if want := "An error occurred building the container: some internal failure"; out.Description != want || out.Message != want {
+		t.Errorf("other error = %+v", out)
 	}
 }
 

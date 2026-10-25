@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	osexec "os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/exec"
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -90,24 +94,81 @@ func (c *ComposeClient) run(ctx context.Context, stream bool, args ...string) (*
 	}, nil
 }
 
-// Config runs `docker compose config` and returns parsed YAML.
+// Config runs `docker compose config` with every profile and returns the
+// parsed project, as TS readDockerComposeConfig does (it reads the YAML output,
+// a missing document being an empty project). A failure is TS's ContainerError:
+// "An error occurred retrieving the Docker Compose configuration.", the
+// message naming the command that failed. Compose's own output is logged.
 func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFile string) (map[string]any, error) {
 	args := c.buildGlobalArgs(composeFiles, envFile)
-	args = append(args, "config", "--format", "json")
+	args = append(args, "--profile", "*", "config")
 
 	res, err := c.Run(ctx, args...)
-	if err != nil {
-		return nil, fmt.Errorf("compose config: %w", err)
+	if err == nil && res.ExitCode != 0 {
+		c.Log.Write(string(res.Stdout)+string(res.Stderr), log.LevelError)
+		err = &CommandFailedError{Command: strings.Join(append(slices.Clone(c.Command), args...), " "), ExitCode: res.ExitCode}
 	}
-	if res.ExitCode != 0 {
-		return nil, fmt.Errorf("compose config failed (exit %d): %s", res.ExitCode, string(res.Stderr))
-	}
-
 	var config map[string]any
-	if err := json.Unmarshal(res.Stdout, &config); err != nil {
-		return nil, fmt.Errorf("parse compose config: %w", err)
+	if err == nil {
+		config, err = parseComposeConfig(res.Stdout)
+	}
+	if err != nil {
+		return nil, &coreerrors.ContainerError{Description: "An error occurred retrieving the Docker Compose configuration.", OriginalError: err}
 	}
 	return config, nil
+}
+
+// parseComposeConfig reads `docker compose config`'s YAML into the JSON value
+// types (float64 numbers, map[string]any objects) the callers read.
+func parseComposeConfig(out []byte) (map[string]any, error) {
+	var doc any
+	if err := yaml.Unmarshal(out, &doc); err != nil {
+		return nil, fmt.Errorf("parse compose config: %w", err)
+	}
+	data, err := json.Marshal(stringKeys(doc))
+	if err != nil {
+		return nil, fmt.Errorf("parse compose config: %w", err)
+	}
+	config := map[string]any{}
+	if doc != nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("parse compose config: %w", err)
+		}
+	}
+	return config, nil
+}
+
+// stringKeys turns the map[any]any YAML gives a mapping with a non-string key
+// into a map[string]any, which JSON can represent.
+func stringKeys(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, e := range v {
+			v[k] = stringKeys(e)
+		}
+	case map[any]any:
+		m := make(map[string]any, len(v))
+		for k, e := range v {
+			m[fmt.Sprint(k)] = stringKeys(e)
+		}
+		return m
+	case []any:
+		for i, e := range v {
+			v[i] = stringKeys(e)
+		}
+	}
+	return v
+}
+
+// CommandFailedError is a command that exited non-zero; its message is TS
+// runCommandNoPty's, "Command failed: <command line>".
+type CommandFailedError struct {
+	Command  string
+	ExitCode int
+}
+
+func (e *CommandFailedError) Error() string {
+	return "Command failed: " + e.Command
 }
 
 // Build runs `docker compose build`.

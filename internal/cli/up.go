@@ -409,9 +409,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			containerID, err = run.fromImage(ctx, cfg, loadResult, workspaceFolder, idLabels, useBuildx)
 		}
 		if err != nil {
-			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
-				Description: fmt.Sprintf("An error occurred setting up the container: %v", err),
-			}))
+			return writeErrorJSON(out, commandErrorOutput(err, "An error occurred setting up the container"))
 		}
 	}
 

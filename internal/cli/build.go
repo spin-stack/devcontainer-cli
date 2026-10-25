@@ -210,12 +210,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	}
 
 	if err != nil {
-		if isUserFacingBuildError(err) {
-			return writeErrorResult(out, err.Error())
-		}
-		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{
-			Description: fmt.Sprintf("An error occurred building the container: %v", err),
-		}))
+		return writeErrorJSON(out, commandErrorOutput(err, "An error occurred building the container"))
 	}
 
 	return writeSuccessJSON(out, map[string]any{
@@ -606,7 +601,7 @@ func checkLegacyFeatures(feats map[string]any) error {
 			name = id[:i]
 		}
 		if !features.IsKnownLegacyFeature(name) {
-			return fmt.Errorf(msgLegacyFeature, id)
+			return &coreerrors.ContainerError{Description: fmt.Sprintf(msgLegacyFeature, id)}
 		}
 	}
 	return nil
@@ -727,9 +722,14 @@ func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
 	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(errOutput.Description)}
 }
 
-func isUserFacingBuildError(err error) bool {
-	msg := err.Error()
-	return strings.HasPrefix(msg, legacyFeaturePrefix)
+// commandErrorOutput is the error result of up and build: a ContainerError (TS
+// throws one with its own description, which the commands report as it is)
+// as it is, any other error described as "<description>: <error>".
+func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
+	if ce, ok := coreerrors.AsContainerError(err); ok {
+		return coreerrors.ToErrorOutput(ce)
+	}
+	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: fmt.Sprintf("%s: %v", description, err)})
 }
 
 // buildCompose builds a compose config's service image, then its Features on
