@@ -318,6 +318,7 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 		prep.StageName = stageName
 		if modified != "" {
 			tmpDockerfile := dockerfilePath + ".devcontainer.build"
+			// mutate-exempt: only the docker build this process starts reads the file, as its owner, and Cleanup removes it
 			if err := os.WriteFile(tmpDockerfile, []byte(modified), 0644); err != nil {
 				return nil, fmt.Errorf("write build dockerfile: %w", err)
 			}

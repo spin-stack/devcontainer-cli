@@ -62,6 +62,9 @@ func TestValidateTerminalImplications(t *testing.T) {
 		{80, 24, ""},
 		{80, 0, "Implications failed:\n terminal-columns -> terminal-rows"},
 		{0, 24, "Implications failed:\n terminal-rows -> terminal-columns"},
+		{1, 0, "Implications failed:\n terminal-columns -> terminal-rows"},
+		{0, 1, "Implications failed:\n terminal-rows -> terminal-columns"},
+		{1, 1, ""},
 	}
 	for _, c := range cases {
 		err := validateTerminalImplications(c.cols, c.rows)
