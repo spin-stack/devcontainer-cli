@@ -198,8 +198,13 @@ func validateUpOpts(opts *upOpts) error {
 }
 
 // resolveUpPaths resolves the workspace/config/override paths to absolute form.
-// Each result is empty when its corresponding flag was not set.
+// Each result is empty when its corresponding flag was not set, except the
+// workspace: 0.88 defaults --workspace-folder to the current directory when
+// neither --workspace-folder, --id-label nor --override-config is given.
 func resolveUpPaths(opts *upOpts) (workspaceFolder, configPath, overridePath string) {
+	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.overrideConfig == "" {
+		opts.workspaceFolder, _ = os.Getwd()
+	}
 	if opts.workspaceFolder != "" {
 		workspaceFolder = resolvePath(opts.workspaceFolder)
 	}
@@ -212,6 +217,24 @@ func resolveUpPaths(opts *upOpts) (workspaceFolder, configPath, overridePath str
 	return
 }
 
+// upHasNothingToRead reports whether up was given neither a workspace nor a
+// config. TS reads the config before it looks for a container (configContainer.ts
+// resolveWithLocalFolder), so there is nothing to read even when --id-label
+// finds a container.
+func upHasNothingToRead(workspaceFolder, configPath, overridePath string) bool {
+	return workspaceFolder == "" && configPath == "" && overridePath == ""
+}
+
+// runUp drives the whole `up` flow against the engine; its pure decisions live
+// in resolveUpPaths, upHasNothingToRead, upRemoteUser and addUpConfiguration.
+//
+// mutate-lane: TestParityMatrix - every `up` case of docs/parity/parity-matrix.yaml
+// runs it, e.g. up.image-success, up.compose-with-name-success,
+// up.id-label-only-existing-container-error, up.config-without-workspace-success,
+// up.compose-dockerfile-with-features-reuse-stopped-container-with-persisted-overrides-success
+// and up.image-post-create-remote-env-success; also TestE2E_UpReusesStoppedContainer
+// (restarts a stopped single container), TestE2E_BuildUpExec_Image and
+// TestE2E_RemoveExistingBeforeInitialize.
 func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := validateUpOpts(opts); err != nil {
 		return writeValidationError(out, err.Error())
@@ -233,11 +256,6 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// Non-blocking hint (interactive TTY only) if the host was never checked or a
 	// previous `devcontainer check` found a failing configuration.
 	warnUncheckedHost(out)
-	// 0.88: default --workspace-folder to the current directory when neither
-	// --workspace-folder, --id-label nor --override-config is given.
-	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.overrideConfig == "" {
-		opts.workspaceFolder, _ = os.Getwd()
-	}
 
 	workspaceFolder, configPath, overridePath := resolveUpPaths(opts)
 
@@ -270,10 +288,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	// Otherwise, derive labels from workspace folder + config file path.
 	idLabels := opts.idLabels
 
-	// TS reads the config before it looks for a container (configContainer.ts
-	// resolveWithLocalFolder): with neither a workspace nor a config there is
-	// nothing to read, even when --id-label finds a container.
-	if workspaceFolder == "" && configPath == "" && overridePath == "" {
+	if upHasNothingToRead(workspaceFolder, configPath, overridePath) {
 		return writeErrorResult(out, "No dev container config and no workspace found.")
 	}
 
@@ -406,39 +421,8 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
 	}
 
-	// Determine remote user: config → container metadata → image metadata →
-	// container USER → root
-	remoteUser := cfg.RemoteUser
-	if remoteUser == "" && inspectResp.Config != nil {
-		// Check the container's metadata label for remoteUser.
-		metaEntries := imagemeta.ReadMetadataFromLabels(inspectResp.Config.Labels, logger)
-		if len(metaEntries) > 0 {
-			metaMerged := imagemeta.MergeConfiguration(metaEntries)
-			if metaMerged.RemoteUser != "" {
-				remoteUser = metaMerged.RemoteUser
-			}
-		}
-	}
-	if remoteUser == "" && inspectResp.Image != "" {
-		// Fall back to the base image's baked metadata. For compose services the
-		// container's own devcontainer.metadata label is a config-derived override
-		// that may lack remoteUser, while the base image (e.g. a devcontainers/*
-		// image) still carries it in its metadata label.
-		if img, imgErr := engine.InspectImage(ctx, inspectResp.Image); imgErr == nil && img.Config != nil {
-			metaMerged := imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(img.Config.Labels, logger))
-			if metaMerged.RemoteUser != "" {
-				remoteUser = metaMerged.RemoteUser
-			}
-		}
-	}
-	if remoteUser == "" {
-		if inspectResp.Config != nil {
-			remoteUser = inspectResp.Config.User
-		}
-		if remoteUser == "" {
-			remoteUser = "root"
-		}
-	}
+	imageLabels := func(ref string) map[string]string { return run.imageLabels(ctx, ref) }
+	remoteUser := upRemoteUser(cfg.RemoteUser, inspectResp, imageLabels, logger)
 
 	remoteWorkspaceFolder := loadResult.WorkspaceConfig.WorkspaceFolder
 
@@ -465,100 +449,151 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		result["composeProjectName"] = opts.composeProjectName
 	}
 
-	if opts.includeConfig || opts.includeMergedConfig {
-		// Reuse inspectResp from above — no need to re-inspect the same container.
-		containerEnv := map[string]string{}
-		if inspectResp.Config != nil {
-			containerEnv = config.EnvMap(inspectResp.Config.Env)
-		}
-
-		if opts.includeConfig {
-			cfgJSON, _ := json.Marshal(cfg)
-			var cfgGeneric any
-			json.Unmarshal(cfgJSON, &cfgGeneric)
-			substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
-			if subErr != nil {
-				return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
-			}
-			if subMap, ok := substituted.(map[string]any); ok {
-				for k, v := range subMap {
-					if v == nil {
-						delete(subMap, k)
-					}
-				}
-				if cfp, ok := subMap["configFilePath"].(string); ok && cfp != "" {
-					scheme := "vscode-fileHost"
-					if opts.configPath != "" || opts.overrideConfig != "" {
-						scheme = "file"
-					}
-					subMap["configFilePath"] = map[string]any{
-						"$mid":   1,
-						"path":   cfp,
-						"scheme": scheme,
-					}
-				} else {
-					delete(subMap, "configFilePath")
-				}
-				delete(subMap, "extensions")
-				delete(subMap, "settings")
-				delete(subMap, "devPort")
-				result["configuration"] = subMap
-			} else {
-				result["configuration"] = substituted
-			}
-		}
-
-		if opts.includeMergedConfig {
-			// Read the image's metadata (features are baked into the image), not the
-			// container's — the container now carries the full config metadata as a
-			// label, so reading it here and re-adding the config entry would double
-			// the lifecycle commands. The output entry uses the config's
-			// remoteEnv regardless of --omit-config-remote-env-from-metadata (that
-			// flag only affects the persisted label).
-			var entries []imagemeta.Entry
-			if inspectResp.Image != "" {
-				if img, imgErr := engine.InspectImage(ctx, inspectResp.Image); imgErr == nil && img.Config != nil {
-					entries = imagemeta.ReadMetadataFromLabels(img.Config.Labels, logger)
-				}
-			}
-			configEntry := configToMetadataEntry(cfg)
-			entries = append(entries, configEntry)
-			merged := imagemeta.MergeConfiguration(entries)
-			// image is spread from the config into mergedConfiguration (TS); it is
-			// not part of the metadata entries.
-			merged.Image = cfg.Image
-			if cfgResult, ok := result["configuration"].(map[string]any); ok {
-				if cfpURI, ok := cfgResult["configFilePath"]; ok {
-					merged.ConfigFilePath = cfpURI
-				}
-			}
-
-			// Substitute containerEnv into merged config
-			mergedJSON, _ := json.Marshal(merged)
-			var mergedGeneric any
-			json.Unmarshal(mergedJSON, &mergedGeneric)
-			mergedSub, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
-			if subErr != nil {
-				return writeErrorResult(out, fmt.Sprintf("resolve merged container variables: %v", subErr))
-			}
-			// Every config property TS mergeConfiguration does not set itself is
-			// spread into mergedConfiguration ({...config}).
-			if mm, ok := mergedSub.(map[string]any); ok {
-				if cfgResult, ok := result["configuration"].(map[string]any); ok {
-					for k, v := range cfgResult {
-						if !mergedOwnKeys[k] {
-							mm[k] = v
-						}
-					}
-				}
-			}
-			result["mergedConfiguration"] = mergedSub
-		}
+	if err := addUpConfiguration(result, opts, cfg, inspectResp, imageLabels, logger); err != nil {
+		return writeErrorResult(out, err.Error())
 	}
 
 	return writeSuccessJSON(out, result)
 }
 
+// imageLabels are the labels of the image ref names, nil when there is no ref
+// or the engine cannot inspect it.
+//
+// mutate-lane: TestParityMatrix - up.update-uid-remote-user-from-image-metadata-success,
+// up.compose-features-staging-layout-success and up.image-post-create-remote-env-success
+// read the remote user and the merged configuration through it.
+func (r *upRunner) imageLabels(ctx context.Context, ref string) map[string]string {
+	if ref == "" {
+		return nil
+	}
+	img, err := r.engine.InspectImage(ctx, ref)
+	if err != nil || img.Config == nil {
+		return nil
+	}
+	return img.Config.Labels
+}
+
+// upRemoteUser is the user up reports and runs the lifecycle as: the config's
+// remoteUser, else the container's metadata label, else the base image's
+// metadata, else the container's USER, else root. The base image matters for
+// compose services: their container's devcontainer.metadata label is a
+// config-derived override that may lack remoteUser, while the base image (e.g.
+// a devcontainers/* image) still carries it. imageLabels is only called when the
+// earlier sources name no user.
+func upRemoteUser(cfgUser string, ctr container.InspectResponse, imageLabels func(ref string) map[string]string, logger log.Logger) string {
+	metadataUser := func(labels map[string]string) string {
+		return imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(labels, logger)).RemoteUser
+	}
+	if cfgUser != "" {
+		return cfgUser
+	}
+	var ctrLabels map[string]string
+	ctrUser := ""
+	if ctr.Config != nil {
+		ctrLabels, ctrUser = ctr.Config.Labels, ctr.Config.User
+	}
+	if user := metadataUser(ctrLabels); user != "" {
+		return user
+	}
+	if user := metadataUser(imageLabels(ctr.Image)); user != "" {
+		return user
+	}
+	return cmp.Or(ctrUser, "root")
+}
+
+// addUpConfiguration adds the configuration (--include-configuration) and the
+// mergedConfiguration (--include-merged-configuration) to up's result, with
+// ${containerEnv:…} resolved from the container's environment as TS does.
+//
+// mergedConfiguration reads the image's metadata (features are baked into the
+// image), not the container's: the container carries the full config metadata
+// as a label, so reading it and re-adding the config entry would double the
+// lifecycle commands. Its config entry uses the config's remoteEnv regardless of
+// --omit-config-remote-env-from-metadata (that flag only affects the persisted
+// label).
+func addUpConfiguration(result map[string]any, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, imageLabels func(ref string) map[string]string, logger log.Logger) error {
+	if !opts.includeConfig && !opts.includeMergedConfig {
+		return nil
+	}
+	var containerEnv map[string]string
+	if ctr.Config != nil {
+		containerEnv = config.EnvMap(ctr.Config.Env)
+	}
+
+	if opts.includeConfig {
+		cfgJSON, _ := json.Marshal(cfg)
+		var cfgGeneric any
+		json.Unmarshal(cfgJSON, &cfgGeneric)
+		substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
+		if subErr != nil {
+			return fmt.Errorf("resolve configuration container variables: %w", subErr)
+		}
+		if subMap, ok := substituted.(map[string]any); ok {
+			for k, v := range subMap {
+				if v == nil {
+					delete(subMap, k)
+				}
+			}
+			if cfp, ok := subMap["configFilePath"].(string); ok && cfp != "" {
+				scheme := "vscode-fileHost"
+				if opts.configPath != "" || opts.overrideConfig != "" {
+					scheme = "file"
+				}
+				subMap["configFilePath"] = map[string]any{
+					"$mid":   1,
+					"path":   cfp,
+					"scheme": scheme,
+				}
+			} else {
+				delete(subMap, "configFilePath")
+			}
+			delete(subMap, "extensions")
+			delete(subMap, "settings")
+			delete(subMap, "devPort")
+			result["configuration"] = subMap
+		} else {
+			result["configuration"] = substituted
+		}
+	}
+
+	if opts.includeMergedConfig {
+		entries := imagemeta.ReadMetadataFromLabels(imageLabels(ctr.Image), logger)
+		merged := imagemeta.MergeConfiguration(append(entries, configToMetadataEntry(cfg)))
+		// image is spread from the config into mergedConfiguration (TS); it is
+		// not part of the metadata entries.
+		merged.Image = cfg.Image
+
+		// Substitute containerEnv into merged config
+		mergedJSON, _ := json.Marshal(merged)
+		var mergedGeneric any
+		json.Unmarshal(mergedJSON, &mergedGeneric)
+		mergedSub, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
+		if subErr != nil {
+			return fmt.Errorf("resolve merged container variables: %w", subErr)
+		}
+		// Every config property TS mergeConfiguration does not set itself is
+		// spread into mergedConfiguration ({...config}), the configFilePath URI
+		// among them.
+		cfgResult, _ := result["configuration"].(map[string]any)
+		if mm, ok := mergedSub.(map[string]any); ok {
+			for k, v := range cfgResult {
+				if !mergedOwnKeys[k] {
+					mm[k] = v
+				}
+			}
+		}
+		result["mergedConfiguration"] = mergedSub
+	}
+	return nil
+}
+
+// fromDockerfile builds the config's Dockerfile, installs its Features and
+// starts the container.
+//
+// mutate-lane: TestParityMatrix - up.update-uid-remote-user-from-image-metadata-success,
+// up.dockerfile-without-features-omit-config-remote-env-from-metadata-success,
+// up.dockerfile-with-parallel-commands-success and up.update-uid-amd64-dockerfile-platform-success
+// build through it; also TestE2E_BuildUpExec_Dockerfile.
 func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 
@@ -576,7 +611,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	// Base-image resolution uses only an explicit config target (not the
 	// auto-added final-stage name), then reads its metadata (remoteUser, etc.).
 	findTarget := ""
-	if cfg.Build != nil && cfg.Build.Target != "" {
+	if cfg.Build != nil {
 		findTarget = cfg.Build.Target
 	}
 	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget)
@@ -593,10 +628,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	metadata = append(metadata, imagemeta.Entry{RemoteUser: cfg.RemoteUser, ContainerUser: cfg.ContainerUser})
 	metadataLabel := imagemeta.GenerateMetadataLabel(metadata)
 
-	contextPath := configDir
-	if cfg.BuildContext() != "" {
-		contextPath = filepath.Join(configDir, cfg.BuildContext())
-	}
+	contextPath := filepath.Join(configDir, cfg.BuildContext())
 
 	upCacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
 	// Bridge the CLI credential chain to the build subprocess via a temporary
@@ -650,6 +682,12 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	return r.runContainer(ctx, imageName, cfg, loadResult, workspaceFolder, idLabels)
 }
 
+// fromImage pulls the config's image when it is missing, installs its
+// Features and starts the container.
+//
+// mutate-lane: TestParityMatrix - up.image-success, up.image-with-features-success,
+// up.image-with-git-feature-success and up.update-uid-amd64-platform-option-success
+// start through it; also TestE2E_BuildUpExec_Image and TestE2E_FeatureUserHomeAndLocalEnv.
 func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Image == "" {
@@ -699,6 +737,10 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 // (produced by an earlier build of the same configuration), so the merged
 // configuration is recovered from that label the same way as a plain image-based
 // config. remoteUser/mounts/lifecycle still come from devcontainer.json.
+//
+// mutate-lane: TestE2E_UpCacheImage - starts a container from a local prebuilt
+// image and fails to pull a missing one (--cache-image is Go-only, so no parity
+// case covers it).
 func (r *upRunner) fromCacheImage(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
 	logger, engine := r.log, r.engine
 	image := r.opts.cacheImage
@@ -748,6 +790,13 @@ func findUserArg(runArgs []string) string {
 	return ""
 }
 
+// runContainer creates and starts the single container of an image or
+// Dockerfile config.
+//
+// mutate-lane: TestParityMatrix - up.image-success, up.app-port-success,
+// up.override-command-false-success, up.workspace-mount-custom-success,
+// up.image-with-mounts-success and up.config-without-workspace-success create
+// their container through it; also TestE2E_ReadonlyMountObject.
 func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	// Inspect image once — used for metadata and containerUser resolution.
@@ -766,16 +815,10 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	// what the TS CLI adds with `-l`.
 	containerMetadataLabel := imagemeta.GenerateMetadataLabel(metaEntries)
 
-	containerWorkspace := loadResult.WorkspaceConfig.WorkspaceFolder
-
 	// Build CMD script with feature entrypoints
 	cmdScript := docker.BuildEntrypointScript(merged.Entrypoints)
 
-	// User: merged containerUser → image USER → omit (docker default)
-	containerUser := merged.ContainerUser
-	if containerUser == "" && imageInspect.Config != nil && imageInspect.Config.User != "" {
-		containerUser = imageInspect.Config.User
-	}
+	containerUser := containerRunUser(merged.ContainerUser, imageInspect)
 
 	// Container env from the merged metadata (image + config), NOT remote-env
 	// (applied at exec/lifecycle time). The merged containerEnv now applies the
@@ -788,36 +831,9 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 		envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	// Mounts. Use the computed workspaceMount (which honors a custom
-	// `workspaceMount` in the config and the git-root source folder) rather than
-	// always binding the workspace folder. Fall back to a bind if unset.
-	// With no workspace and no workspaceMount (up --config alone) TS mounts nothing.
-	var mounts []dockermount.Mount
-	if spec := loadResult.WorkspaceConfig.WorkspaceMount; spec != "" || workspaceFolder != "" {
-		wsMount := dockermount.Mount{Type: dockermount.TypeBind, Source: workspaceFolder, Target: containerWorkspace}
-		if spec != "" {
-			parsed, parseErr := docker.ParseMountSpec(spec)
-			if parseErr != nil {
-				return "", fmt.Errorf("invalid workspaceMount %q: %w", spec, parseErr)
-			}
-			wsMount = parsed
-		}
-		if opts.workspaceMountConsistency != "" {
-			wsMount.Consistency = dockermount.Consistency(opts.workspaceMountConsistency)
-		}
-		mounts = append(mounts, wsMount)
-	}
-	// Extra workspace-derived mounts (currently the Git worktree common dir from
-	// --mount-git-worktree-common-dir) so Git works inside the container.
-	for _, spec := range loadResult.WorkspaceConfig.AdditionalMounts {
-		parsed, parseErr := docker.ParseMountSpec(spec)
-		if parseErr != nil {
-			return "", fmt.Errorf("invalid additional mount %q: %w", spec, parseErr)
-		}
-		if opts.workspaceMountConsistency != "" {
-			parsed.Consistency = dockermount.Consistency(opts.workspaceMountConsistency)
-		}
-		mounts = append(mounts, parsed)
+	mounts, err := upWorkspaceMounts(loadResult.WorkspaceConfig, workspaceFolder, opts.workspaceMountConsistency)
+	if err != nil {
+		return "", err
 	}
 	devcontainerID := config.ComputeDevContainerID(config.EnvMap(idLabels))
 	if len(merged.Mounts) > 0 {
@@ -827,13 +843,11 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 		}
 		mounts = append(mounts, metadataMounts...)
 	}
-	for _, m := range opts.mounts {
-		parsed, parseErr := docker.ParseMountSpec(m)
-		if parseErr != nil {
-			return "", fmt.Errorf("invalid --mount %q: %w", m, parseErr)
-		}
-		mounts = append(mounts, parsed)
+	flagMounts, err := parseFlagMounts(opts.mounts)
+	if err != nil {
+		return "", err
 	}
+	mounts = append(mounts, flagMounts...)
 
 	// GPU support: add --gpus all if config requests GPU and availability allows it.
 	// gpu:false must NOT enable GPUs (a raw-length check treated "false" as truthy).
@@ -895,6 +909,64 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 
 	logger.Write(fmt.Sprintf("Container started: %s", containerID[:12]), log.LevelInfo)
 	return containerID, nil
+}
+
+// containerRunUser is the user the container runs as: the merged
+// containerUser, else the image's USER, else "" (docker's default).
+func containerRunUser(metadataUser string, img image.InspectResponse) string {
+	imageUser := ""
+	if img.Config != nil {
+		imageUser = img.Config.User
+	}
+	return cmp.Or(metadataUser, imageUser)
+}
+
+// upWorkspaceMounts are the container's workspace mounts. The workspace mount is
+// the computed workspaceMount (which honors a custom `workspaceMount` in the
+// config and the git-root source folder), else a bind of the workspace folder;
+// with no workspace and no workspaceMount (up --config alone) TS mounts nothing.
+// The extra workspace-derived mounts (currently the Git worktree common dir from
+// --mount-git-worktree-common-dir) follow so Git works inside the container.
+// --workspace-mount-consistency, when set, applies to all of them.
+func upWorkspaceMounts(wc *config.WorkspaceConfig, workspaceFolder, consistency string) ([]dockermount.Mount, error) {
+	var mounts []dockermount.Mount
+	if spec := wc.WorkspaceMount; spec != "" || workspaceFolder != "" {
+		wsMount := dockermount.Mount{Type: dockermount.TypeBind, Source: workspaceFolder, Target: wc.WorkspaceFolder}
+		if spec != "" {
+			parsed, parseErr := docker.ParseMountSpec(spec)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid workspaceMount %q: %w", spec, parseErr)
+			}
+			wsMount = parsed
+		}
+		mounts = append(mounts, wsMount)
+	}
+	for _, spec := range wc.AdditionalMounts {
+		parsed, parseErr := docker.ParseMountSpec(spec)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid additional mount %q: %w", spec, parseErr)
+		}
+		mounts = append(mounts, parsed)
+	}
+	if consistency != "" {
+		for i := range mounts {
+			mounts[i].Consistency = dockermount.Consistency(consistency)
+		}
+	}
+	return mounts, nil
+}
+
+// parseFlagMounts parses the --mount flags.
+func parseFlagMounts(specs []string) ([]dockermount.Mount, error) {
+	var mounts []dockermount.Mount
+	for _, m := range specs {
+		parsed, parseErr := docker.ParseMountSpec(m)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid --mount %q: %w", m, parseErr)
+		}
+		mounts = append(mounts, parsed)
+	}
+	return mounts, nil
 }
 
 // resolveComposeProjectName computes the compose project name following the TS
@@ -996,6 +1068,13 @@ func parseComposeServiceBuild(composeConfig map[string]any, service string) comp
 	return out
 }
 
+// fromCompose starts (or reuses) the service container of a Docker Compose
+// config.
+//
+// mutate-lane: TestParityMatrix - up.compose-with-name-success,
+// up.compose-image-without-features-success, up.compose-dockerfile-with-features-success,
+// up.compose-dockerfile-with-features-reuse-stopped-container-with-persisted-overrides-success
+// and up.compose-image-with-mounts-success start their project through it.
 func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Service == "" {
@@ -1074,38 +1153,18 @@ func (r *upRunner) fromCompose(ctx context.Context, cfg *config.DevContainer, lo
 // runLifecycleForUp runs lifecycle hooks on a newly created container. It returns
 // a non-nil error (a *coreerrors.ContainerError with a TS-compatible description)
 // only when a lifecycle hook fails; probe/dotfiles issues stay non-fatal warnings.
+//
+// mutate-lane: TestParityMatrix - up.image-post-create-remote-env-success,
+// up.dockerfile-with-parallel-commands-success, up.feature-hook-failure-error,
+// up.parallel-hook-failure-error, up.workspace-secrets-success and the
+// up.dotfiles-local-* cases run their hooks through it.
 func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cfg *config.DevContainer, workDir string, remoteUser string) error {
 	logger, engine, opts := r.log, r.engine, r.opts
-	// Build merged remote env: probed shell env → CLI --remote-env → config remoteEnv
-	probeStrategy := lifecycle.UserEnvProbeStrategy(opts.defaultUserEnvProbe)
-	if cfg.UserEnvProbe != "" {
-		probeStrategy = lifecycle.UserEnvProbeStrategy(cfg.UserEnvProbe)
-	}
-
-	var mergedRemoteEnv []string
-
-	// Probe user environment inside the container (with caching)
-	for k, v := range lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, opts.containerSessionDataFolder) {
-		mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Secrets override probed env and are visible to lifecycle hooks.
-	if opts.secretsFile != "" {
-		if secretEnvs, err := readSecretsFile(opts.secretsFile); err == nil {
-			mergedRemoteEnv = append(mergedRemoteEnv, secretEnvs...)
-		} else {
-			logger.Write(fmt.Sprintf("Warning: secrets file: %v", err), log.LevelWarning)
-		}
-	}
-
-	// CLI --remote-env overrides probed/secrets
-	mergedRemoteEnv = append(mergedRemoteEnv, opts.remoteEnvs...)
-	// Config remoteEnv overrides everything
-	for k, v := range cfg.RemoteEnv {
-		if v != nil {
-			mergedRemoteEnv = append(mergedRemoteEnv, fmt.Sprintf("%s=%s", k, *v))
-		}
-	}
+	probeStrategy := lifecycle.UserEnvProbeStrategy(cmp.Or(cfg.UserEnvProbe, opts.defaultUserEnvProbe))
+	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, opts.containerSessionDataFolder)
+	// Secrets override the probed env and are visible to lifecycle hooks.
+	extra := append(secretsRemoteEnv(opts.secretsFile, logger), opts.remoteEnvs...)
+	mergedRemoteEnv := hookRemoteEnv(probed, extra, cfg.RemoteEnv)
 
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, mergedRemoteEnv...)
 	defer shellServer.Close()
@@ -1116,34 +1175,11 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 	// the image), NOT the container: the container now carries the config metadata
 	// as a label, so reading it and then re-adding the config commands below would
 	// run every hook twice.
-	inspectResp, inspErr := engine.InspectContainer(ctx, containerID)
-	var merged *imagemeta.MergedConfig
-	if inspErr == nil && inspectResp.Image != "" {
-		if img, imgErr := engine.InspectImage(ctx, inspectResp.Image); imgErr == nil && img.Config != nil {
-			merged = imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(img.Config.Labels, logger))
-		}
-	}
-	if merged == nil {
-		merged = imagemeta.MergeConfiguration(nil)
-	}
-
-	// Add commands from config. Preserve the raw value so object-form commands
-	// continue to run in parallel like the TS CLI.
-	if !cfg.OnCreateCommand.IsEmpty() {
-		merged.OnCreateCommands = append(merged.OnCreateCommands, cfg.OnCreateCommand.Raw())
-	}
-	if !cfg.UpdateContentCommand.IsEmpty() {
-		merged.UpdateContentCommands = append(merged.UpdateContentCommands, cfg.UpdateContentCommand.Raw())
-	}
-	if !cfg.PostCreateCommand.IsEmpty() {
-		merged.PostCreateCommands = append(merged.PostCreateCommands, cfg.PostCreateCommand.Raw())
-	}
-	if !cfg.PostStartCommand.IsEmpty() {
-		merged.PostStartCommands = append(merged.PostStartCommands, cfg.PostStartCommand.Raw())
-	}
-	if !cfg.PostAttachCommand.IsEmpty() {
-		merged.PostAttachCommands = append(merged.PostAttachCommands, cfg.PostAttachCommand.Raw())
-	}
+	// A container the engine cannot inspect has no image: its hooks are the
+	// config's alone.
+	inspectResp, _ := engine.InspectContainer(ctx, containerID)
+	merged := imagemeta.MergeConfiguration(imagemeta.ReadMetadataFromLabels(r.imageLabels(ctx, inspectResp.Image), logger))
+	appendConfigHooks(merged, cfg)
 
 	applyLifecycleMarkers(shellServer, merged, inspectResp, opts.prebuild)
 
@@ -1165,6 +1201,58 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 	return nil
 }
 
+// secretsRemoteEnv are the --secrets-file variables (NAME=value) for the
+// lifecycle hooks. A file that cannot be read or parsed is a warning, not an
+// error, and contributes nothing.
+func secretsRemoteEnv(path string, logger log.Logger) []string {
+	if path == "" {
+		return nil
+	}
+	envs, err := readSecretsFile(path)
+	if err != nil {
+		logger.Write(fmt.Sprintf("Warning: secrets file: %v", err), log.LevelWarning)
+		return nil
+	}
+	return envs
+}
+
+// hookRemoteEnv is the remote env lifecycle hooks run with, a later entry
+// overriding an earlier one: the probed shell env, then extra (secrets,
+// --remote-env), then the config's remoteEnv, whose null values add nothing.
+func hookRemoteEnv(probed map[string]string, extra []string, cfgRemoteEnv map[string]*string) []string {
+	var env []string
+	for k, v := range probed {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	env = append(env, extra...)
+	for k, v := range cfgRemoteEnv {
+		if v != nil {
+			env = append(env, fmt.Sprintf("%s=%s", k, *v))
+		}
+	}
+	return env
+}
+
+// appendConfigHooks adds the config's lifecycle commands after the image
+// metadata's. It keeps each raw value so object-form commands still run in
+// parallel like the TS CLI.
+func appendConfigHooks(merged *imagemeta.MergedConfig, cfg *config.DevContainer) {
+	for _, h := range []struct {
+		list *[]any
+		cmd  *config.LifecycleCommand
+	}{
+		{&merged.OnCreateCommands, &cfg.OnCreateCommand},
+		{&merged.UpdateContentCommands, &cfg.UpdateContentCommand},
+		{&merged.PostCreateCommands, &cfg.PostCreateCommand},
+		{&merged.PostStartCommands, &cfg.PostStartCommand},
+		{&merged.PostAttachCommands, &cfg.PostAttachCommand},
+	} {
+		if !h.cmd.IsEmpty() {
+			*h.list = append(*h.list, h.cmd.Raw())
+		}
+	}
+}
+
 // hookContainerError is TS runLifecycleCommand's ContainerError for a failed
 // lifecycle command: the description names the command and where it comes from,
 // the message is the command's own error, and up reports the container. Any
@@ -1183,37 +1271,51 @@ func hookContainerError(hookErr error, containerID, fallback string) *coreerrors
 // once per container (createdAt), postStart once per start (startedAt), and
 // postAttach always. The marker is written before the hook runs, so a hook that
 // failed is not run again. --prebuild reruns updateContentCommand.
+//
+// mutate-lane: TestParityMatrix - set-up.after-failed-post-create-success (set-up
+// after a failed postCreateCommand does not rerun the hooks whose marker was
+// written) and up.dockerfile-with-parallel-commands-success run it against a
+// real container; dropRanHooks holds its decisions.
 func applyLifecycleMarkers(server *lifecycle.ShellServer, merged *imagemeta.MergedConfig, inspect container.InspectResponse, prebuild bool) {
 	folder := resolveContainerUserDataFolder(server)
 	if folder == "" {
 		return
 	}
+	dropRanHooks(merged, inspect, prebuild, func(hook, timestamp string) bool {
+		return markerShouldRun(server, folder, hook, timestamp)
+	})
+}
+
+// dropRanHooks drops from merged the hooks whose marker says they already ran.
+// shouldRun is asked about every marked hook, in TS order, with the container's
+// createdAt for onCreate, updateContent and postCreate and its startedAt for
+// postStart; asking also updates the marker, so it is asked even when
+// --prebuild keeps updateContentCommand regardless.
+func dropRanHooks(merged *imagemeta.MergedConfig, inspect container.InspectResponse, prebuild bool, shouldRun func(hook, timestamp string) bool) {
 	startedAt := ""
 	if inspect.State != nil {
 		startedAt = inspect.State.StartedAt
 	}
-	if !markerShouldRun(server, folder, "onCreateCommand", inspect.Created) {
+	if !shouldRun("onCreateCommand", inspect.Created) {
 		merged.OnCreateCommands = nil
 	}
-	if !markerShouldRun(server, folder, "updateContentCommand", inspect.Created) && !prebuild {
+	if !shouldRun("updateContentCommand", inspect.Created) && !prebuild {
 		merged.UpdateContentCommands = nil
 	}
-	if !markerShouldRun(server, folder, "postCreateCommand", inspect.Created) {
+	if !shouldRun("postCreateCommand", inspect.Created) {
 		merged.PostCreateCommands = nil
 	}
-	if !markerShouldRun(server, folder, "postStartCommand", startedAt) {
+	if !shouldRun("postStartCommand", startedAt) {
 		merged.PostStartCommands = nil
 	}
 }
 
 // dotfilesAfterPostCreate installs the dotfiles repository where TS
 // runLifecycleHooks does: after postCreateCommand, before postStartCommand. A
-// failure is logged and not fatal.
+// failure is logged and not fatal; with no repository InstallDotfiles does
+// nothing.
 func dotfilesAfterPostCreate(logger log.Logger, executor lifecycle.CommandExecutor, cfg lifecycle.DotfilesConfig) func() {
 	return func() {
-		if cfg.Repository == "" {
-			return
-		}
 		if err := lifecycle.InstallDotfiles(logger, executor, cfg); err != nil {
 			logger.Write(fmt.Sprintf("Dotfiles installation failed: %v", err), log.LevelWarning)
 		}
