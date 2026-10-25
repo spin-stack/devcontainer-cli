@@ -78,7 +78,12 @@ jobs:
 
   # Runtime lane (real Docker containers). ubuntu-latest ships Docker.
   gate-runtime:
-    runs-on: ubuntu-latest
+    # A tag push or a dispatch: this repository's own code, so spin-stack's docker8 fleet (see
+    # go-cli.yml), where the whole runtime matrix is one job.
+    runs-on: runs-on/fleet=docker8/env=production
+    # e2e, the whole runtime matrix and publish parity in one job; the matrix alone is about 45
+    # min on a 4-vCPU runner.
+    timeout-minutes: 90
     needs: prepare
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

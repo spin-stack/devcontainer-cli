@@ -306,15 +306,23 @@ func laneDirs(root, out string) ([]string, error) {
 
 func ciPrepareRunner() error {
 	printDisk("disk before:")
-	// Free ~25-30GB of preinstalled SDKs; ignore failures (|| true in the script).
-	bloat := []string{
-		"/usr/share/dotnet", "/opt/ghc", "/usr/local/lib/android",
-		"/opt/hostedtoolcache/CodeQL", "/usr/share/swift",
-		"/usr/local/share/boost", "/usr/lib/jvm",
+	free, err := devtools.FreeDisk("/")
+	if err != nil {
+		return fmt.Errorf("free disk: %w", err)
 	}
-	_ = run("sudo", append([]string{"rm", "-rf"}, bloat...)...)
-	_ = run("sudo", "docker", "image", "prune", "-af")
-	printDisk("disk after:")
+	if devtools.NeedsDiskFreeing(free) {
+		// Free ~25-30GB of preinstalled SDKs; ignore failures (|| true in the script).
+		bloat := []string{
+			"/usr/share/dotnet", "/opt/ghc", "/usr/local/lib/android",
+			"/opt/hostedtoolcache/CodeQL", "/usr/share/swift",
+			"/usr/local/share/boost", "/usr/lib/jvm",
+		}
+		_ = run("sudo", append([]string{"rm", "-rf"}, bloat...)...)
+		_ = run("sudo", "docker", "image", "prune", "-af")
+		printDisk("disk after:")
+	} else {
+		fmt.Printf("%d GB free: the runner has room, nothing deleted\n", free>>30)
+	}
 
 	// Enable the containerd image store (build-cache export + --platform).
 	tee := exec.Command("sudo", "tee", "/etc/docker/daemon.json")
