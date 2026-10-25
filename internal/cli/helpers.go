@@ -43,10 +43,7 @@ func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON st
 // `docker create` publish flags, matching the TS CLI: a number N publishes
 // 127.0.0.1:N:N, a string is used verbatim (e.g. "8080:80").
 func appPortPublishArgs(raw json.RawMessage) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	var v any
+	var v any // an absent appPort (no bytes) fails to decode and publishes nothing
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil
 	}

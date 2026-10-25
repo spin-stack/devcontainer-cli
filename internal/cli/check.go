@@ -105,11 +105,22 @@ func runSetup(ctx context.Context, out Output, opts *setupOpts) error {
 	// Re-run diagnostics after remediation so the persisted state reflects the
 	// fixed system (skip when nothing was applied or in dry-run).
 	final := report
-	if !opts.dryRun && slices.ContainsFunc(actions, func(a doctor.Action) bool { return a.Applied }) {
+	if setupNeedsRecheck(opts.dryRun, actions) {
 		final = doctor.Run(ctx, env)
 	}
-	saveErr := doctor.Save(final)
+	return writeSetupResult(out, opts, actions, final, doctor.Save(final))
+}
 
+// setupNeedsRecheck reports whether setup changed the system, so the
+// diagnostics must run again before their state is saved and shown.
+func setupNeedsRecheck(dryRun bool, actions []doctor.Action) bool {
+	return !dryRun && slices.ContainsFunc(actions, func(a doctor.Action) bool { return a.Applied })
+}
+
+// writeSetupResult prints what setup did and the final report, as JSON or as
+// text (with a note when the check state could not be saved), and fails the
+// command with exit code 1 when a remediation failed.
+func writeSetupResult(out Output, opts *setupOpts, actions []doctor.Action, final doctor.Report, saveErr error) error {
 	if opts.json {
 		payload := struct {
 			DryRun  bool            `json:"dry_run"`
