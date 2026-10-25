@@ -101,3 +101,14 @@ func TestStageLabelsDevcontainerMetadata(t *testing.T) {
 		t.Errorf("unexpected devcontainer.metadata = %q", v)
 	}
 }
+
+// A named stage's labels are its own, not the final stage's.
+func TestStageLabelsOfANamedStage(t *testing.T) {
+	df := ExtractDockerfile("FROM alpine AS base\nLABEL a=base\nFROM base\nLABEL a=final\n")
+	if got := df.StageLabels("base")["a"]; got != "base" {
+		t.Errorf("base stage label a = %q, want base", got)
+	}
+	if got := df.StageLabels("")["a"]; got != "final" {
+		t.Errorf("final stage label a = %q, want final", got)
+	}
+}
