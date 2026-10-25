@@ -278,8 +278,26 @@ func ToProjectName(basename string, newProjectName bool) string {
 // Compose 2.8.0.
 func (c *ComposeClient) DefaultImageName(projectName, service string) string {
 	sep := "-"
-	if len(c.Version) > 0 && (c.Version[0] < 2 || (c.Version[0] == 2 && len(c.Version) > 1 && c.Version[1] < 8)) {
+	if len(c.Version) > 0 && isEarlierVersion(c.Version, []int{2, 8, 0}) {
 		sep = "_"
 	}
 	return projectName + sep + service
+}
+
+// isEarlierVersion is TS commonUtils.isEarlierVersion: left precedes right,
+// a missing component counting as 0.
+func isEarlierVersion(left, right []int) bool {
+	for i := range max(len(left), len(right)) {
+		var l, r int
+		if i < len(left) {
+			l = left[i]
+		}
+		if i < len(right) {
+			r = right[i]
+		}
+		if l != r {
+			return l < r
+		}
+	}
+	return false
 }
