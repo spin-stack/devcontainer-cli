@@ -51,6 +51,10 @@ func TestOutdatedReportsVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// stdout is no terminal: TS's JSON.stringify writes it on one line.
+	if strings.Count(got, "\n") != 1 || strings.Contains(got, "  ") {
+		t.Errorf("json output = %q, want one unindented line", got)
+	}
 	var doc struct {
 		Features map[string]outdatedEntry `json:"features"`
 	}
