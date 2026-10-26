@@ -8,6 +8,7 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf16"
 )
 
@@ -56,29 +57,27 @@ func (o *jsObject) spread(src *jsObject) *jsObject {
 	return out
 }
 
-// arrayIndex reports whether k is an array index, which JS orders first.
-func arrayIndex(k string) (uint64, bool) {
+// isArrayIndex reports whether k is an array index (a canonical integer
+// below 2^32-1), which JS orders first.
+func isArrayIndex(k string) bool {
 	n, err := strconv.ParseUint(k, 10, 32)
-	if err != nil || n == 1<<32-1 || strconv.FormatUint(n, 10) != k {
-		return 0, false
-	}
-	return n, true
+	return err == nil && n != 1<<32-1 && strconv.FormatUint(n, 10) == k
 }
 
 // order is the order JSON.stringify writes o's properties in.
 func (o *jsObject) order() []string {
 	var idx, rest []string
 	for _, k := range o.keys {
-		if _, ok := arrayIndex(k); ok {
+		if isArrayIndex(k) {
 			idx = append(idx, k)
 		} else {
 			rest = append(rest, k)
 		}
 	}
+	// Array indexes are canonical: shorter is smaller, equal lengths compare
+	// as strings.
 	slices.SortFunc(idx, func(a, b string) int {
-		x, _ := arrayIndex(a)
-		y, _ := arrayIndex(b)
-		return cmp.Compare(x, y)
+		return cmp.Or(cmp.Compare(len(a), len(b)), strings.Compare(a, b))
 	})
 	return append(idx, rest...)
 }

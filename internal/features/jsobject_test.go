@@ -7,15 +7,15 @@ import (
 
 // JSON.parse then JSON.stringify: a repeated property keeps its first
 // position and its last value, array-index properties come first, ascending
-// (4294967295, "01" and "-1" are not indexes), the rest in insertion order.
+// (4294967295 and above, "01" and "-1" are not indexes), the rest in insertion order.
 func TestJSObjectRoundTripsAsJavaScript(t *testing.T) {
-	src := `{"b":1,"4294967295":2,"10":3,"01":4,"2":5,"b":6,"-1":7,"a":[{"z":1,"y":[]}],"n":1.50,"e":1e21}`
+	src := `{"b":1,"4294967295":2,"10":3,"01":4,"2":5,"b":6,"-1":7,"4294967296":8,"9":9,"4294967294":10,"a":[{"z":1,"y":[]}],"n":1.50,"e":1e21}`
 	v, err := parseJS([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := json.Marshal(v)
-	want := `{"2":5,"10":3,"b":6,"4294967295":2,"01":4,"-1":7,"a":[{"z":1,"y":[]}],"n":1.5,"e":1e+21}`
+	want := `{"2":5,"9":9,"10":3,"4294967294":10,"b":6,"4294967295":2,"01":4,"-1":7,"4294967296":8,"a":[{"z":1,"y":[]}],"n":1.5,"e":1e+21}`
 	if err != nil || string(got) != want {
 		t.Errorf("got  %s, %v\nwant %s", got, err, want)
 	}
