@@ -274,3 +274,13 @@ func TestUpgradeLogLevelChoices(t *testing.T) {
 		t.Errorf("--log-level error: err = %v, want the --feature/--target-version check", err)
 	}
 }
+
+// A --config file that does not exist is TS getConfig's "not found" error,
+// naming the resolved path.
+func TestUpgradeMissingConfigIsNotFound(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope.json")
+	want := "Dev container config (" + missing + ") not found."
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", t.TempDir(), "--config", missing); err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
