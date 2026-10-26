@@ -137,6 +137,11 @@ func TestConfigurationOutput(t *testing.T) {
 		"--config":          {readConfigOpts{configPath: cfp}, "file"},
 		"--override-config": {readConfigOpts{overrideConfig: cfp}, "vscode-fileHost"},
 		"--container-id":    {readConfigOpts{containerID: "abc"}, "vscode-fileHost"},
+		// Without a workspace the override is the configuration, a file URI
+		// (configPath = overrideConfigFile).
+		"--override-config, --container-id":                     {readConfigOpts{overrideConfig: cfp, containerID: "abc"}, "file"},
+		"--override-config, --id-label":                         {readConfigOpts{overrideConfig: cfp, idLabels: []string{"a=b"}}, "file"},
+		"--override-config, --container-id, --workspace-folder": {readConfigOpts{overrideConfig: cfp, containerID: "abc", workspaceFolder: "/p"}, "vscode-fileHost"},
 	} {
 		got := configurationOutput(result, &tc.opts)
 		if scheme := got["configFilePath"].(map[string]any)["scheme"]; scheme != tc.scheme {
@@ -470,6 +475,29 @@ func TestReadConfigurationCommandContainerIDWithoutWorkspace(t *testing.T) {
 	wantExitCode(t, err, 1)
 	if !strings.Contains(err.Error(), "inspect container devcontainer-cli-test-no-such-container") {
 		t.Errorf("err = %v, want the inspect failure (no configuration is loaded)", err)
+	}
+}
+
+// Without a workspace folder (--id-label, no --workspace-folder), TS reads
+// --override-config as the configuration (configPath = overrideConfigFile):
+// it is printed, its configFilePath the override's file URI. Go printed an
+// empty configuration.
+func TestReadConfigurationCommandOverrideConfigWithoutWorkspace(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "override.json")
+	if err := os.WriteFile(override, []byte(`{"image":"img:1","name":"${localWorkspaceFolderBasename}"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runReadConfigurationCmd(t, "--id-label", "devcontainer-cli-test=override-without-workspace", "--override-config", override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := out["configuration"].(map[string]any)
+	if cfg["image"] != "img:1" || cfg["name"] != "${localWorkspaceFolderBasename}" {
+		t.Errorf("configuration = %v, want the override's with no workspace to substitute", cfg)
+	}
+	want := map[string]any{"$mid": float64(1), "fsPath": override, "path": override, "scheme": "file"}
+	if !reflect.DeepEqual(cfg["configFilePath"], want) {
+		t.Errorf("configFilePath = %v, want %v", cfg["configFilePath"], want)
 	}
 }
 
