@@ -142,22 +142,28 @@ func ParseCrossOriginAuthHosts(entries []string) (map[string]map[string]bool, er
 	return out, nil
 }
 
-// normalizeHTTPSAuthority validates that authority is a bare host[:port] and
-// returns it lower-cased.
+// normalizeHTTPSAuthority is TS normalizeHttpsAuthority (httpOCIRegistry.ts):
+// the WHATWG URL `host` of https://<authority>, lower-cased, refused when the
+// URL carries userinfo, a path other than "/", a query or a fragment.
 func normalizeHTTPSAuthority(authority string) (string, error) {
-	invalid := fmt.Errorf("Invalid authority '%s'.", authority)
-	parsed, err := url.Parse("https://" + authority)
-	if err != nil || parsed.Host == "" {
-		return "", invalid
+	host, err := parseHTTPSAuthority(authority)
+	if err != nil {
+		return "", fmt.Errorf("Invalid authority '%s'.", authority)
 	}
-	// url.Parse keeps the host as written, so userinfo, a path, a query or a
-	// fragment leaves Host short of the authority: TS normalizeHttpsAuthority's
-	// username/pathname/search/hash checks (httpOCIRegistry.ts) all reject
-	// through this one comparison.
-	if parsed.Host != authority {
-		return "", invalid
+	return strings.ToLower(host), nil
+}
+
+// urlHost is the WHATWG URL `host` of u (the default port of its scheme
+// dropped), the form TS compares registry and realm authorities in.
+func urlHost(u *url.URL) (string, error) {
+	defaultPort := ""
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		defaultPort = "443"
+	case "http":
+		defaultPort = "80"
 	}
-	return strings.ToLower(parsed.Host), nil
+	return whatwgHost(u.Host, defaultPort)
 }
 
 // isRegistryOrigin reports whether u addresses the registry of ociRef, treating
@@ -193,21 +199,35 @@ func canonicalAuthority(u *url.URL) string {
 // to realm: the same authority over HTTPS (or HTTP on localhost), or an HTTPS auth
 // host explicitly mapped to that registry.
 func (p *AuthPolicy) allowsTokenServiceRealm(realm, registry *url.URL) bool {
-	if isAllowedSameAuthorityRealm(realm, registry) {
+	realmHost, err := urlHost(realm)
+	if err != nil {
+		return false
+	}
+	registryHost, err := urlHost(registry)
+	if err != nil {
+		return false
+	}
+	if isAllowedSameAuthorityRealm(realm.Scheme, realmHost, registryHost) {
 		return true
 	}
 	if !strings.EqualFold(realm.Scheme, "https") {
 		return false
 	}
-	return p.crossOrigin[strings.ToLower(registry.Host)][strings.ToLower(realm.Host)]
+	return p.crossOrigin[registryHost][realmHost]
 }
 
-func isAllowedSameAuthorityRealm(realm, registry *url.URL) bool {
-	if !strings.EqualFold(realm.Host, registry.Host) {
+// isAllowedSameAuthorityRealm is TS isAllowedSameAuthorityRealm over WHATWG
+// hosts: the realm shares the registry's host and is HTTPS, or HTTP on
+// localhost.
+func isAllowedSameAuthorityRealm(realmScheme, realmHost, registryHost string) bool {
+	if realmHost != registryHost {
 		return false
 	}
-	return strings.EqualFold(realm.Scheme, "https") ||
-		(strings.EqualFold(realm.Scheme, "http") && strings.EqualFold(realm.Hostname(), "localhost"))
+	if strings.EqualFold(realmScheme, "https") {
+		return true
+	}
+	hostname, _, _ := strings.Cut(realmHost, ":")
+	return strings.EqualFold(realmScheme, "http") && hostname == "localhost"
 }
 
 // authPolicyTransport applies the OCI auth policy to one repository's traffic.

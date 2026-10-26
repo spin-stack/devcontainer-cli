@@ -20,6 +20,7 @@ import { replaceTemplatedValues } from '../../reference/src/spec-configuration/c
 import { readVersionPrefix, convertMountToVolume, convertMountToVolumeTopLevelElement } from '../../reference/src/spec-node/dockerCompose';
 import { qualifyImageName, isBuildxCacheToInline } from '../../reference/src/spec-node/utils';
 import { logEventToTerminalText, createPlainLog } from '../../reference/src/spec-utils/log';
+import { parseCrossOriginAuthHosts, isAllowedTokenServiceRealm } from '../../reference/src/spec-configuration/httpOCIRegistry';
 
 // escapeQuotesForShell, convertMountToVolume, convertMountToVolumeTopLevelElement
 // and replaceTemplatedValues are module-private in the reference; build.mjs exports them for this bundle.
@@ -91,6 +92,12 @@ const fns: Record<string, (...args: any[]) => any> = {
 		createPlainLog(t => { text = t; }, () => logLevel).event(e);
 		return text;
 	},
+	// spec-configuration/httpOCIRegistry.ts: the registry → auth-hosts Map as an
+	// object of sorted arrays, so the golden is order-independent.
+	parseCrossOriginAuthHosts: (entries: string[]) => Object.fromEntries(
+		[...parseCrossOriginAuthHosts(entries)].map(([registry, hosts]) => [registry, [...hosts].sort()])),
+	isAllowedTokenServiceRealm: (realm: string, registryUrl: string, entries: string[]) =>
+		isAllowedTokenServiceRealm(realm, registryUrl, entries),
 };
 
 async function main() {
