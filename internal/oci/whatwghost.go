@@ -138,7 +138,7 @@ var whatwgIDNA = idna.New(
 	idna.VerifyDNSLength(false),
 )
 
-// domainToASCII is WHATWG domain to ASCII (beStrict false) as Node.js 26 (the
+// domainToASCII is WHATWG domain to ASCII (beStrict false) as Node.js 24 (the
 // version versions.yaml pins for the oracle) runs it: a pure-ASCII domain is
 // only lower-cased, its "xn--" labels not checked as Punycode.
 func domainToASCII(domain string) (string, error) {
