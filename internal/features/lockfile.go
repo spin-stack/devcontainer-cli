@@ -149,11 +149,21 @@ func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 	return &lf, false, nil
 }
 
-// The errors a frozen WriteLockfile fails with, TS writeLockfile's own text.
+// The errors a frozen WriteLockfile fails with, TS writeLockfile's own text:
+// plain JavaScript errors, so they carry the reference's own message
+// (internal/errors.ReferenceError).
 var (
-	ErrLockfileMissing  = errors.New("Lockfile does not exist.")
-	ErrLockfileMismatch = errors.New("Lockfile does not match.")
+	ErrLockfileMissing  error = &frozenLockfileError{"Lockfile does not exist."}
+	ErrLockfileMismatch error = &frozenLockfileError{"Lockfile does not match."}
 )
+
+// frozenLockfileError is a message TS writeLockfile throws as a plain Error.
+type frozenLockfileError struct{ msg string }
+
+func (e *frozenLockfileError) Error() string { return e.msg }
+
+// ReferenceError marks the message as the reference's own.
+func (e *frozenLockfileError) ReferenceError() {}
 
 // jsonTruthy is the truthiness of JSON.parse(data), valid JSON: TS reads the
 // parsed lockfile through `lockfile?.` and `if (lockfile)`, so null, false, 0
