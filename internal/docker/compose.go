@@ -83,13 +83,13 @@ func withBakeFSEntitlement(env []string, lookup func(string) (string, bool)) []s
 
 // Run executes a compose command and captures output (no live streaming).
 func (c *ComposeClient) Run(ctx context.Context, args ...string) (*ExecResult, error) {
-	return c.run(ctx, false, args...)
+	return c.run(ctx, log.LevelDebug, false, args...)
 }
 
-// run executes a compose command. When stream is true and ProgressWriter is set,
-// the child's output is also forwarded live through the runner. ctx cancels the
-// subprocess.
-func (c *ComposeClient) run(ctx context.Context, stream bool, args ...string) (*ExecResult, error) {
+// run executes a compose command, its "Run:" lines logged at level. When
+// stream is true and ProgressWriter is set, the child's output is also
+// forwarded live through the runner. ctx cancels the subprocess.
+func (c *ComposeClient) run(ctx context.Context, level log.Level, stream bool, args ...string) (*ExecResult, error) {
 	fullArgs := append(c.Command[1:], args...)
 
 	// Emit a "Run:" start/stop pair around the subprocess, like the TS CLI wraps
@@ -97,7 +97,7 @@ func (c *ComposeClient) run(ctx context.Context, stream bool, args ...string) (*
 	// subprocess, so they don't produce "Run:" events — a deliberate difference
 	// from the TS CLI, which shells out to the docker CLI for everything.)
 	runLine := fmt.Sprintf("Run: %s %s", c.Command[0], strings.Join(fullArgs, " "))
-	startTS := c.Log.Start(runLine, log.LevelDebug)
+	startTS := c.Log.Start(runLine, level)
 
 	var runner exec.Runner = exec.OSRunner{Env: c.Env}
 	if c.Runner != nil {
@@ -108,7 +108,7 @@ func (c *ComposeClient) run(ctx context.Context, stream bool, args ...string) (*
 		live = c.ProgressWriter
 	}
 	stdout, stderr, exitCode, err := runner.Run(ctx, live, c.Command[0], fullArgs...)
-	c.Log.Stop(runLine, startTS, log.LevelDebug)
+	c.Log.Stop(runLine, startTS, level)
 	if err != nil {
 		return nil, fmt.Errorf("exec compose: %w", err)
 	}
@@ -129,7 +129,12 @@ func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFi
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	args = append(args, "--profile", "*", "config")
 
-	res, err := c.Run(ctx, args...)
+	// TS readDockerComposeConfig runs the command with an info-level log and
+	// writes its output to the log.
+	res, err := c.run(ctx, log.LevelInfo, false, args...)
+	if err == nil && res.ExitCode == 0 {
+		c.Log.Write(string(res.Stdout))
+	}
 	if err == nil && res.ExitCode != 0 {
 		c.Log.Write(string(res.Stdout)+string(res.Stderr), log.LevelError)
 		err = &CommandFailedError{Command: strings.Join(append(slices.Clone(c.Command), args...), " "), ExitCode: res.ExitCode}
@@ -207,7 +212,7 @@ func (c *ComposeClient) Build(ctx context.Context, composeFiles []string, envFil
 	}
 	args = append(args, services...)
 
-	res, err := c.run(ctx, true, args...)
+	res, err := c.run(ctx, log.LevelDebug, true, args...)
 	if err != nil {
 		return err
 	}
@@ -230,7 +235,7 @@ func (c *ComposeClient) Up(ctx context.Context, composeFiles []string, envFile s
 	}
 	args = append(args, services...)
 
-	res, err := c.run(ctx, true, args...)
+	res, err := c.run(ctx, log.LevelDebug, true, args...)
 	if err != nil {
 		return err
 	}

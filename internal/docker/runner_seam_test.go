@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -211,5 +212,36 @@ func TestComposeConfigFailureIsTheReferenceContainerError(t *testing.T) {
 	fr.code, fr.stdout = 0, []byte("services: [")
 	if _, err := c.Config(t.Context(), []string{"/ws/a.yml"}, ""); err == nil || !strings.Contains(coreerrors.ToErrorOutput(err).Message, "parse compose config") {
 		t.Errorf("malformed output: err = %v", err)
+	}
+}
+
+// compose config runs at info and its output is logged, as TS
+// readDockerComposeConfig does.
+func TestComposeConfigLogsTheCommandAtInfoAndItsOutput(t *testing.T) {
+	fr := &fakeRunner{stdout: []byte("services:\n  app:\n    image: alpine\n")}
+	lgr, events := jsonLog()
+	c := &ComposeClient{Command: []string{"docker", "compose"}, Log: lgr, Runner: fr}
+	if _, err := c.Config(t.Context(), []string{"/ws/a.yml"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	run := "Run: docker compose -f /ws/a.yml --profile * config"
+	want := []string{"start info: " + run, "stop info: " + run, "text debug: services:\n  app:\n    image: alpine\n"}
+	if got := events(); !slices.Equal(got, want) {
+		t.Errorf("log = %q, want %q", got, want)
+	}
+}
+
+// A failing compose config logs its output once, as the error.
+func TestComposeConfigLogsAFailureOnce(t *testing.T) {
+	fr := &fakeRunner{stdout: []byte("out"), stderr: []byte("err"), code: 1}
+	lgr, events := jsonLog()
+	c := &ComposeClient{Command: []string{"docker", "compose"}, Log: lgr, Runner: fr}
+	if _, err := c.Config(t.Context(), []string{"/ws/a.yml"}, ""); err == nil {
+		t.Fatal("Config succeeded")
+	}
+	run := "Run: docker compose -f /ws/a.yml --profile * config"
+	want := []string{"start info: " + run, "stop info: " + run, "text error: outerr"}
+	if got := events(); !slices.Equal(got, want) {
+		t.Errorf("log = %q, want %q", got, want)
 	}
 }
