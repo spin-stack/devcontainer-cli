@@ -761,6 +761,13 @@ func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
 	if ce, ok := coreerrors.AsContainerError(err); ok {
 		return coreerrors.ToErrorOutput(ce)
 	}
+	// TS wraps a plain Error it throws as its originalError, so the message is
+	// that error's own text (a frozen lockfile's "Lockfile does not match.").
+	for _, plain := range []error{features.ErrLockfileMissing, features.ErrLockfileMismatch} {
+		if errors.Is(err, plain) {
+			return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: description + ".", OriginalError: plain})
+		}
+	}
 	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: fmt.Sprintf("%s: %v", description, err)})
 }
 

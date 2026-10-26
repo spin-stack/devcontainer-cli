@@ -11,6 +11,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 
 	"github.com/devcontainers/cli/internal/config"
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/oci"
 )
 
@@ -268,13 +269,23 @@ func TestBuildArgsAndOptionsFromConfig(t *testing.T) {
 // up and build report a ContainerError as it is, as TS does for the errors it
 // throws with their own description (a legacy Feature id, a failing compose
 // config), wherever it is wrapped; any other error gets the command's
-// description with the error appended.
+// description with the error appended, except a frozen lockfile's error.
 func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
 	legacy := checkLegacyFeatures(map[string]any{"myfeature": true})
 	out := commandErrorOutput(fmt.Errorf("install features: %w", legacy), "An error occurred setting up the container")
 	want := fmt.Sprintf(msgLegacyFeature, "myfeature")
 	if out.Description != want || out.Message != want {
 		t.Errorf("legacy Feature error = %+v", out)
+	}
+	// A frozen lockfile's plain error is TS's originalError: its text is the
+	// message, the command's sentence the description.
+	out = commandErrorOutput(fmt.Errorf("install features: lockfile: %w", features.ErrLockfileMismatch), "An error occurred setting up the container")
+	if out.Message != "Lockfile does not match." || out.Description != "An error occurred setting up the container." {
+		t.Errorf("frozen lockfile error = %+v", out)
+	}
+	out = commandErrorOutput(fmt.Errorf("lockfile: %w", features.ErrLockfileMissing), "An error occurred building the container")
+	if out.Message != "Lockfile does not exist." || out.Description != "An error occurred building the container." {
+		t.Errorf("missing lockfile error = %+v", out)
 	}
 	out = commandErrorOutput(errorString("some internal failure"), "An error occurred building the container")
 	if want := "An error occurred building the container: some internal failure"; out.Description != want || out.Message != want {
