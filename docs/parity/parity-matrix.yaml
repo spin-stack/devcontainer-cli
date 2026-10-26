@@ -1273,6 +1273,18 @@ initial_cases:
     current_status: match
     notes: "An OCI Feature set as TS writes it: sourceInformation in tryGetOCIFeatureSet's order (type, manifest, manifestDigest, featureRef, userFeatureId, userFeatureIdWithoutVersion), the manifest as the registry served it (JSON.parse of its body), featureRef in getRef's order, then internalVersion before computedDigest (applyFeatureConfigToFeature). The Feature is the annotation's metadata spread over {id, included, value} and that over the layer's devcontainer-feature.json, so its options keep the published order. Go used to re-serialize the manifest and featureRef with sorted keys and write the Feature in the struct's order."
 
+  - id: read-configuration.features-configuration-oci-feature-pinned-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    network_required: true
+    ts_cmd: "read-configuration --workspace-folder reference/src/test/container-features/configs/lockfile-frozen --include-features-configuration"
+    key_order: ["featuresConfiguration.featureSets.0.sourceInformation.featureRef", "featuresConfiguration.featureSets.0.features.0", "featuresConfiguration.featureSets.1.sourceInformation.featureRef"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "Both Features are pinned by the fixture's lockfile. featureRef is parsed from the reference as written (tryGetOCIFeatureSet), so it keeps tag and version 1 though the manifest is fetched by the lockfile's digest. color's published metadata names it new-color: the Feature's id, and so its consecutiveId and cachePath (new-color_0), are the metadata's (buildDependencyGraph spreads it over the Feature). Go used to report the pinned digest in featureRef, without the tag, and name the folder after the reference's id (color_0)."
+
   - id: read-configuration.features-configuration-oci-feature-digest-success
     lane: runtime
     command: read-configuration
