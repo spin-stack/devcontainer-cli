@@ -171,6 +171,8 @@ runs the official CLI is unaffected:
   (`{"features":{...}}`) followed by a newline; earlier releases always indented it
   with two spaces. A script that parses the JSON is unaffected; one that matches
   lines or greps the indented text should parse the JSON instead (with `jq`, say).
+- `outdated` on a configuration without Features prints its table header alone
+  (`Feature  Current  Wanted  Latest`) instead of `No features configured.`.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.

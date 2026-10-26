@@ -348,6 +348,19 @@ initial_cases:
     current_status: match
     notes: "outdated writes JSON.stringify(outdated, undefined, process.stdout.isTTY ? '  ' : undefined): with stdout not a terminal, as here, the result is one unindented line ({\"features\":{}}, a local Feature having no versions). Go used to indent it always."
 
+  - id: outdated.text-without-features-success
+    lane: contract
+    command: outdated
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "outdated --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_text]
+    class: outdated
+    current_status: match
+    notes: "Without Features, loadVersionInfo returns no Features and outdated writes its text table with no rows: the header alone ('Feature  Current  Wanted  Latest'). Go used to print 'No features configured.'."
+
   - id: outdated.malformed-lockfile-error
     lane: contract
     command: outdated
