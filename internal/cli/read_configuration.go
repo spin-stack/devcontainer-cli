@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -171,6 +172,14 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 
 	// Include features configuration if requested (or needed for merged config without container)
 	var featResult *fetchFeatureResult
+	if featuresWanted(opts, containerID) {
+		// TS generateFeaturesConfig (containerFeaturesConfiguration.ts) traces
+		// the folder it resolves the Features from, the command's cwd.
+		lgr.Write("workspace root: "+cmp.Or(workspaceFolder, cwd), log.LevelTrace)
+		if result == nil || len(result.Config.Features) == 0 {
+			lgr.Write("No user features to update", log.LevelTrace)
+		}
+	}
 	if needsFeaturesConfiguration(opts, containerID, result) {
 		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 		var featErr error
@@ -425,8 +434,13 @@ func workspaceOutput(result *config.LoadResult, workspaceFolder, containerIDFlag
 // config's Features: for featuresConfiguration, or for a merged configuration
 // without a container, which takes the Features' metadata (TS readConfiguration).
 func needsFeaturesConfiguration(opts *readConfigOpts, containerID string, result *config.LoadResult) bool {
-	wanted := opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
-	return wanted && result != nil && len(result.Config.Features) > 0
+	return featuresWanted(opts, containerID) && result != nil && len(result.Config.Features) > 0
+}
+
+// featuresWanted reports whether TS readConfiguration reads the Features
+// configuration, which it does even for a configuration with no Features.
+func featuresWanted(opts *readConfigOpts, containerID string) bool {
+	return opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 }
 
 // readConfigurationMetadata is the metadata read-configuration merges. With a
