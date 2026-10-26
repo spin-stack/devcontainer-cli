@@ -1218,6 +1218,34 @@ initial_cases:
     current_status: match
     notes: "The compose path checks the frozen lockfile too (TS generateFeaturesConfig -> writeLockfile, wrapped by dockerCompose.ts as 'An error occurred setting up the container.'). Go skipped it when no lockfile existed and started the service."
 
+  - id: read-configuration.features-configuration-local-feature-key-order-success
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f $WORKSPACE/.devcontainer/g; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\",\"name\":\"F\",\"options\":{\"a\":{\"type\":\"string\",\"default\":\"z\"}},\"containerEnv\":{\"K\":\"v\"},\"customizations\":{\"vscode\":{\"extensions\":[\"e\"]}},\"installsAfter\":[\"./g\"]}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"version\":\"2.0.0\",\"id\":\"g\"}' > $WORKSPACE/.devcontainer/g/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/g/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{\"a\":\"b\"},\"./g\":true}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-features-configuration"
+    key_order: ["featuresConfiguration.featureSets.0.features.0", "featuresConfiguration.featureSets.1.features.0"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "A Feature entry is TS's {...featureJson, ...feature} (applyFeatureConfigToFeature): devcontainer-feature.json's properties in its order, then those processFeatureIdentifier and fetchFeatures set that it lacks ({id, name, value, included}, then cachePath and consecutiveId), so value follows the metadata's properties. g's metadata lists version before id and has no name, which then follows it. Go wrote the struct's order (value after consecutiveId, containerEnv and customizations last)."
+
+  - id: read-configuration.features-configuration-oci-feature-key-order-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/github-cli:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-features-configuration"
+    key_order: ["featuresConfiguration.featureSets.0.features.0"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "An OCI Feature entry is the published devcontainer-feature.json's properties in its order, then {id, included, value} (tryGetOCIFeatureSet) and cachePath, consecutiveId: included before value. Go wrote the struct's order. Only the entry's key order is compared: other parts of featuresConfiguration (the manifest, featureRef, options) still differ in key order."
+
   - id: read-configuration.key-order-success
     lane: semantic
     command: read-configuration

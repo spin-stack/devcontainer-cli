@@ -239,6 +239,8 @@ func featureFromMetadata(m features.Feature, id string, opts any, cachePath stri
 		Customizations:       m.Customizations,
 		Included:             true,
 		CachePath:            cachePath,
+		KeyOrder:             m.KeyOrder,
+		SourceKeys:           features.LocalFeatureKeys,
 	}
 }
 
@@ -436,6 +438,8 @@ func processInstallFeature(
 			Customizations:   m.Customizations,
 			Included:         true,
 			CachePath:        featureDir,
+			KeyOrder:         m.KeyOrder,
+			SourceKeys:       features.OCIFeatureKeys,
 		}
 		if feat.Version == "" {
 			feat.Version = ref.Tag

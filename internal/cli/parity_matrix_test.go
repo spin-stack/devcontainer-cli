@@ -1055,11 +1055,22 @@ func normalizeRequired(raw string) string {
 
 // jsonKeyOrder is the keys of the JSON object at path in the document data, in
 // the order data lists them: "" is the document itself, "a.b" the object at
-// property b of property a.
+// property b of property a, and "a.0" the first element of the array a.
 func jsonKeyOrder(data, path string) ([]string, error) {
 	raw := json.RawMessage(data)
 	if path != "" {
 		for name := range strings.SplitSeq(path, ".") {
+			if i, err := strconv.Atoi(name); err == nil {
+				var arr []json.RawMessage
+				if err := json.Unmarshal(raw, &arr); err != nil {
+					return nil, fmt.Errorf("%s: %w", path, err)
+				}
+				if i < 0 || i >= len(arr) {
+					return nil, fmt.Errorf("%s: no element %d", path, i)
+				}
+				raw = arr[i]
+				continue
+			}
 			var obj map[string]json.RawMessage
 			if err := json.Unmarshal(raw, &obj); err != nil {
 				return nil, fmt.Errorf("%s: %w", path, err)
