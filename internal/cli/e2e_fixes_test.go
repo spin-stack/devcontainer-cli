@@ -141,11 +141,11 @@ func TestE2E_ComposeBuildLabel(t *testing.T) {
 
 	buildOut := runCLI(t, "build", "--workspace-folder", ws, "--label", "e2e.compose.label=applied")
 	assertOutcome(t, buildOut, "success")
-	names, _ := parseJSON(t, buildOut)["imageName"].([]any)
-	if len(names) == 0 {
-		t.Fatal("no imageName in build output")
+	// Without --image-name, TS reports a Compose build's image as a string.
+	img, _ := parseJSON(t, buildOut)["imageName"].(string)
+	if img == "" {
+		t.Fatalf("imageName is not the image's name as a string:\n%s", buildOut)
 	}
-	img, _ := names[0].(string)
 	defer exec.Command("docker", "rmi", "-f", img).Run()
 
 	out, err := exec.Command("docker", "inspect", "--format", `{{index .Config.Labels "e2e.compose.label"}}`, img).CombinedOutput()

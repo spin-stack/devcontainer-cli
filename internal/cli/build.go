@@ -222,9 +222,19 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 
 	return writeSuccessJSON(out, map[string]any{
 		"outcome":            "success",
-		"imageName":          imageNameResult,
+		"imageName":          buildResultImageName(cfg.IsComposeConfig(), opts.imageNames, imageNameResult),
 		"ociAuthDiagnostics": ociAuthDiagnostics(ctx),
 	})
+}
+
+// buildResultImageName is the result's imageName: the image names built, except
+// that TS reports the one image a Compose build made without --image-name as a
+// string (doBuild: imageNameResult = originalImageName).
+func buildResultImageName(compose bool, argImageNames, built []string) any {
+	if compose && len(argImageNames) == 0 {
+		return built[0]
+	}
+	return built
 }
 
 // foldFrozenLockfile folds the deprecated --experimental-frozen-lockfile into

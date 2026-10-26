@@ -86,6 +86,10 @@ runs the official CLI is unaffected:
   matching container.
 - Features are staged under `<tmp>/devcontainercli-<user>/container-features/`,
   one folder per build, and that folder is kept as the official CLI keeps it.
+- `build` on a Docker Compose configuration without `--image-name` reports
+  `"imageName"` as the image's name, a string, as the official CLI does. Earlier
+  releases wrapped it in an array. With `--image-name`, and for image and
+  Dockerfile configurations, it stays an array.
 - The text log on stderr follows the official CLI's two formats. With stdout
   redirected or piped, each line starts with its UTC time
   (`[2026-01-02T03:04:05.678Z] text`) and Stop lines appear at `--log-level debug`
