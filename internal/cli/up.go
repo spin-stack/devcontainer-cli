@@ -98,6 +98,9 @@ type upRunner struct {
 	// configLabel is the configuration's entry in the devcontainer.metadata
 	// label: its properties as written (TS pick(config.raw, ...)).
 	configLabel imagemeta.Entry
+	// lockfileRead records that Features were processed with the lockfile on,
+	// which in TS reads the configuration URI's fsPath (getLockfilePath).
+	lockfileRead bool
 }
 
 func newUpCmd() *cobra.Command {
@@ -460,7 +463,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		result["composeProjectName"] = opts.composeProjectName
 	}
 
-	if err := addUpConfiguration(result, opts, cfg, inspectResp, run.metadataOfContainer, logger); err != nil {
+	if err := addUpConfiguration(result, opts, upConfigFileFSPathRead(opts, run.lockfileRead), cfg, inspectResp, run.metadataOfContainer, logger); err != nil {
 		return writeErrorResult(out, err.Error())
 	}
 	orderConfigurations(result, loadResult)
@@ -513,6 +516,16 @@ func upRemoteUser(cfgUser string, ctr container.InspectResponse, imageLabels fun
 	return cmp.Or(ctrUser, "root")
 }
 
+// upConfigFileFSPathRead reports whether TS's up read the configuration URI's
+// fsPath, which decides whether the URI it writes has one: readDocument reads
+// a file URI's (editableFiles.ts), so a --config read without an override;
+// resolveWithLocalFolder passes it to findContainerAndIdLabels without
+// --id-label (configContainer.ts); and getLockfilePath reads it when Features
+// are processed with the lockfile on (lockfile.ts).
+func upConfigFileFSPathRead(opts *upOpts, lockfileRead bool) bool {
+	return opts.configPath != "" && opts.overrideConfig == "" || len(opts.idLabels) == 0 || lockfileRead
+}
+
 // addUpConfiguration adds the configuration (--include-configuration) and the
 // mergedConfiguration (--include-merged-configuration) to up's result, with
 // ${containerEnv:…} resolved from the container's environment as TS does.
@@ -520,7 +533,7 @@ func upRemoteUser(cfgUser string, ctr container.InspectResponse, imageLabels fun
 // mergedConfiguration merges the container's metadata (metadata, TS
 // getImageMetadataFromContainer), which records the configuration's entry, as
 // TS's up does for an existing container.
-func addUpConfiguration(result map[string]any, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, metadata func(ctr container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error), logger log.Logger) error {
+func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cfg *config.DevContainer, ctr container.InspectResponse, metadata func(ctr container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error), logger log.Logger) error {
 	if !opts.includeConfig && !opts.includeMergedConfig {
 		return nil
 	}
@@ -548,11 +561,7 @@ func addUpConfiguration(result map[string]any, opts *upOpts, cfg *config.DevCont
 				if opts.configPath != "" || opts.overrideConfig != "" {
 					scheme = "file"
 				}
-				subMap["configFilePath"] = map[string]any{
-					"$mid":   1,
-					"path":   cfp,
-					"scheme": scheme,
-				}
+				subMap["configFilePath"] = configFileURI(cfp, scheme, fsPathRead)
 			} else {
 				delete(subMap, "configFilePath")
 			}
@@ -673,6 +682,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 
 	// Extend with features if any
 	if len(cfg.Features) > 0 {
+		r.lockfileRead = !opts.noLockfile
 		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, imageName, cfg.Features, useBuildx, nil, r.featureBuildOptions(cfg, loadResult, ""))
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
@@ -722,6 +732,7 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 	// Extend with features if any
 	imageName := cfg.Image
 	if len(cfg.Features) > 0 {
+		r.lockfileRead = !opts.noLockfile
 		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, nil, r.featureBuildOptions(cfg, loadResult, platform))
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)

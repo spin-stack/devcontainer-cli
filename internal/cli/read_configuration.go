@@ -317,14 +317,26 @@ func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[st
 	if opts.containerID != "" || opts.configPath != "" || opts.overrideConfig != "" {
 		scheme = "file"
 	}
-	cfp := result.Config.ConfigFilePath
-	cfgMap["configFilePath"] = map[string]any{
+	// TS findContainerAndIdLabels reads the URI's fsPath (devContainersSpecCLI.ts
+	// readConfiguration), so read-configuration always writes it.
+	cfgMap["configFilePath"] = configFileURI(result.Config.ConfigFilePath, scheme, true)
+	return cfgMap
+}
+
+// configFileURI is how JSON.stringify writes the vscode-uri URI TS keeps as a
+// configuration's configFilePath: its toJSON writes fsPath only once
+// something has read that getter on the instance, so withFSPath says whether
+// the command's TS code path did.
+func configFileURI(path, scheme string, withFSPath bool) map[string]any {
+	uri := map[string]any{
 		"$mid":   1,
-		"fsPath": cfp,
-		"path":   cfp,
+		"path":   path,
 		"scheme": scheme,
 	}
-	return cfgMap
+	if withFSPath {
+		uri["fsPath"] = path
+	}
+	return uri
 }
 
 // readConfigurationContainerID is the container read-configuration reads: the

@@ -125,7 +125,7 @@ func containerMetadata(labels map[string]string) func(container.InspectResponse,
 func upConfigurationJSON(t *testing.T, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, containerLabels map[string]string) map[string]any {
 	t.Helper()
 	result := map[string]any{}
-	if err := addUpConfiguration(result, opts, cfg, ctr, containerMetadata(containerLabels), quietLogger()); err != nil {
+	if err := addUpConfiguration(result, opts, false, cfg, ctr, containerMetadata(containerLabels), quietLogger()); err != nil {
 		t.Fatal(err)
 	}
 	b, err := json.Marshal(result)
@@ -164,6 +164,52 @@ func TestAddUpConfigurationNamesTheConfigFileAsTSDoes(t *testing.T) {
 				t.Errorf("mergedConfiguration.configFilePath = %v, want %v", mc["configFilePath"], want)
 			}
 		})
+	}
+}
+
+// vscode-uri's toJSON writes fsPath once something read it, so up writes it
+// in the configFilePath of both configurations only when TS's up read it.
+func TestAddUpConfigurationWritesFSPathWhenTSReadIt(t *testing.T) {
+	const cfp = "/ws/.devcontainer/devcontainer.json"
+	for _, read := range []bool{false, true} {
+		result := map[string]any{}
+		opts := &upOpts{includeConfig: true, includeMergedConfig: true}
+		if err := addUpConfiguration(result, opts, read, &config.DevContainer{ConfigFilePath: cfp, Image: "alpine:3"}, container.InspectResponse{}, containerMetadata(nil), quietLogger()); err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"$mid": 1, "path": cfp, "scheme": "vscode-fileHost"}
+		if read {
+			want["fsPath"] = cfp
+		}
+		conf, _ := result["configuration"].(map[string]any)
+		if !reflect.DeepEqual(conf["configFilePath"], want) {
+			t.Errorf("read=%v: configuration.configFilePath = %v, want %v", read, conf["configFilePath"], want)
+		}
+		mc, _ := result["mergedConfiguration"].(map[string]any)
+		if !reflect.DeepEqual(mc["configFilePath"], want) {
+			t.Errorf("read=%v: mergedConfiguration.configFilePath = %v, want %v", read, mc["configFilePath"], want)
+		}
+	}
+}
+
+func TestUpConfigFileFSPathReadIsWhereTSUpReadsIt(t *testing.T) {
+	labels := []string{"a=b"}
+	for _, tc := range []struct {
+		name         string
+		opts         upOpts
+		lockfileRead bool
+		want         bool
+	}{
+		{"no --id-label", upOpts{}, false, true},
+		{"--id-label", upOpts{idLabels: labels}, false, false},
+		{"--id-label and --config", upOpts{idLabels: labels, configPath: "c.json"}, false, true},
+		{"--id-label, --config and --override-config", upOpts{idLabels: labels, configPath: "c.json", overrideConfig: "o.json"}, false, false},
+		{"--id-label and --override-config", upOpts{idLabels: labels, overrideConfig: "o.json"}, false, false},
+		{"--id-label and the lockfile read", upOpts{idLabels: labels}, true, true},
+	} {
+		if got := upConfigFileFSPathRead(&tc.opts, tc.lockfileRead); got != tc.want {
+			t.Errorf("%s: upConfigFileFSPathRead = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 
@@ -218,11 +264,11 @@ func TestAddUpConfigurationAddsOnlyWhatWasAskedFor(t *testing.T) {
 func TestAddUpConfigurationReportsAContainerEnvReferenceWithoutAName(t *testing.T) {
 	cfg := &config.DevContainer{RemoteEnv: map[string]*string{"X": strPtr("${containerEnv}")}}
 	labels := containerMetadata(nil)
-	err := addUpConfiguration(map[string]any{}, &upOpts{includeConfig: true}, cfg, container.InspectResponse{}, labels, quietLogger())
+	err := addUpConfiguration(map[string]any{}, &upOpts{includeConfig: true}, false, cfg, container.InspectResponse{}, labels, quietLogger())
 	if err == nil || !strings.HasPrefix(err.Error(), "resolve configuration container variables: ") {
 		t.Errorf("configuration error = %v, want the substitution error", err)
 	}
-	err = addUpConfiguration(map[string]any{}, &upOpts{includeMergedConfig: true}, cfg, container.InspectResponse{}, labels, quietLogger())
+	err = addUpConfiguration(map[string]any{}, &upOpts{includeMergedConfig: true}, false, cfg, container.InspectResponse{}, labels, quietLogger())
 	if err == nil || !strings.HasPrefix(err.Error(), "resolve merged container variables: ") {
 		t.Errorf("merged error = %v, want the substitution error", err)
 	}
