@@ -239,7 +239,7 @@ func featureFromMetadata(m features.Feature, id string, opts any, cachePath stri
 		Customizations:       m.Customizations,
 		Included:             true,
 		CachePath:            cachePath,
-		KeyOrder:             m.KeyOrder,
+		Metadata:             m.Metadata,
 		SourceKeys:           features.LocalFeatureKeys,
 	}
 }
@@ -372,6 +372,9 @@ func processInstallFeature(
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 		}
 
+		// featureRef is the reference as written, even when the lockfile pins
+		// the manifest (TS tryGetOCIFeatureSet parses the user's id).
+		userRef := ref
 		// Pin to the digest recorded in the lockfile (reproducible resolution),
 		// matching the TS CLI which fetches the manifest by the lockfile integrity.
 		if lockfile != nil {
@@ -409,10 +412,11 @@ func processInstallFeature(
 		}
 		logger.Write(fmt.Sprintf("Extracted feature %s (%d bytes)", ref.ID, len(blobData)), log.LevelTrace)
 
-		// Blob-fallback metadata: the extracted devcontainer-feature.json.
+		// Blob-fallback metadata: the extracted devcontainer-feature.json, JSONC
+		// as TS's jsonc.parse reads it.
 		var m features.Feature
 		if metaData, readErr := os.ReadFile(filepath.Join(featureDir, "devcontainer-feature.json")); readErr == nil {
-			json.Unmarshal(metaData, &m)
+			jsonc.Unmarshal(metaData, &m)
 		}
 
 		feat := features.Feature{
@@ -438,7 +442,8 @@ func processInstallFeature(
 			Customizations:   m.Customizations,
 			Included:         true,
 			CachePath:        featureDir,
-			KeyOrder:         m.KeyOrder,
+			Metadata:         m.Metadata,
+			File:             m.Metadata,
 			SourceKeys:       features.OCIFeatureKeys,
 		}
 		if feat.Version == "" {
@@ -446,7 +451,6 @@ func processInstallFeature(
 		}
 
 		userIDNoVer := featureIDWithoutVersion(id)
-		owner, _, _ := strings.Cut(ref.Namespace, "/")
 
 		set := &features.Set{
 			SourceInfo: &features.OCISource{
@@ -455,16 +459,19 @@ func processInstallFeature(
 				ID: ref.ID, Resource: ref.Resource, Tag: ref.Tag,
 				ManifestDigest: manifest.ContentDigest, UserID: id,
 				UserFeatureIdWithoutVersion: userIDNoVer,
-				FeatureRef: map[string]string{
-					"id": ref.ID, "namespace": ref.Namespace,
-					"owner":    owner,
-					"path":     ref.Namespace + "/" + ref.ID,
-					"registry": ref.Registry,
-					"scheme":   ref.Scheme(),
-					"resource": ref.Resource,
-					"tag":      ref.Tag, "version": ref.Tag,
+				FeatureRef: &features.FeatureRef{
+					Scheme:    userRef.Scheme(),
+					ID:        userRef.ID,
+					Owner:     userRef.Owner,
+					Namespace: userRef.Namespace,
+					Registry:  userRef.Registry,
+					Resource:  userRef.Resource,
+					Path:      userRef.Path,
+					Version:   userRef.Version,
+					Tag:       userRef.Tag,
+					Digest:    userRef.Digest,
 				},
-				Manifest: manifest.Manifest,
+				Manifest: features.ManifestJSON(manifest.ManifestBytes, manifest.Manifest),
 			},
 			Features:        []features.Feature{feat},
 			ComputedDigest:  manifest.ContentDigest,
@@ -488,6 +495,9 @@ func processInstallFeature(
 					set.Features[0].Entrypoint = am.Entrypoint
 					set.Features[0].Mounts = am.Mounts
 					set.Features[0].Customizations = am.Customizations
+					// TS reads the dependencies from the annotation and
+					// spreads it over the Feature (buildDependencyGraph).
+					set.Features[0].Metadata = am.Metadata
 				}
 			}
 		}
