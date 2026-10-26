@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -75,6 +76,34 @@ func TestLoadAcceptsWrongTypedLegacyAndCustomizationsProperties(t *testing.T) {
 		}
 		if got := res.Config.Customizations != nil; got != tc.wantCustomizations {
 			t.Errorf("%s: typed customizations = %v, want present %v", tc.content, res.Config.Customizations, tc.wantCustomizations)
+		}
+	}
+}
+
+// Deliberate divergence (docs/DIVERGENCES.md): a devcontainer.json that is not
+// valid JSONC fails to load, naming the file and where it breaks. TS parses it
+// with jsonc-parser's error recovery and silently keeps what it could read
+// ({bad loads as {}, and {"image": , "remoteUser": "u"} drops "image").
+func TestLoadRejectsAConfigThatIsNotValidJSONC(t *testing.T) {
+	for _, content := range []string{
+		`{bad`,
+		`{"image": "a"} garbage`,
+		`{"image": "a" "postCreateCommand": "x"}`,
+		`{"image": , "remoteUser": "u"}`,
+		`{"image": "a", "features": {"x": {}}`,
+	} {
+		ws := t.TempDir()
+		cfg := filepath.Join(ws, ".devcontainer.json")
+		if err := os.WriteFile(cfg, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		res, err := LoadDevContainerConfig(ws, cfg, "")
+		if err == nil {
+			t.Errorf("%s: loaded %v, want a parse error", content, res.Raw)
+			continue
+		}
+		if want := "parse config " + cfg + ": hujson: line 1, column "; !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("%s: error = %q, want it to start with %q", content, err, want)
 		}
 	}
 }

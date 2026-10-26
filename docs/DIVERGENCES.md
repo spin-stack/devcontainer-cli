@@ -34,6 +34,14 @@ touches a compared surface, reflected in the parity matrix.
   "additional privileges requested". This CLI starts its `docker compose` processes with
   `BUILDX_BAKE_ENTITLEMENTS_FS=0` unless the variable is already set
   (`TestWithBakeFSEntitlement`, `TestE2E_ComposeBuildLabel`).
+- **A devcontainer.json that is not valid JSONC fails to load.** TS parses the configuration
+  with jsonc-parser, whose error recovery keeps whatever it could read and reports nothing:
+  `{bad` loads as `{}`, a missing comma or trailing garbage is skipped, and
+  `{"image": , "remoteUser": "u"}` silently loses `image`. This CLI stops with the parse
+  error, naming the file, line and column (`parse config <file>: hujson: line 1, column 2:
+  ...`), because running a configuration with properties silently dropped is worse than
+  refusing it. Valid JSONC (comments, trailing commas) loads as in TS
+  (`TestLoadRejectsAConfigThatIsNotValidJSONC`).
 - **`--override-config` deep-merges** the override onto the base config, whereas TS
   replaces the config wholesale (`readDocument(overrideConfigFile ?? configFile)`). With
   no readable base, the override stands alone — identical to TS. This lets an orchestrator
