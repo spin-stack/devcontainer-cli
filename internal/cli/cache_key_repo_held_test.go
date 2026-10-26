@@ -76,8 +76,8 @@ func TestComputeCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	if err == nil {
 		t.Fatalf("key = %q, want the lockfile parse error", key)
 	}
-	if !strings.Contains(err.Error(), "read features lockfile "+lockPath+": parse lockfile:") {
-		t.Errorf("err = %v, want it to name the lockfile and the parse failure", err)
+	if want := "read features lockfile " + lockPath + ": Unexpected end of JSON input"; err.Error() != want {
+		t.Errorf("err = %v, want %q: the lockfile and the reference's parse error", err, want)
 	}
 }
 

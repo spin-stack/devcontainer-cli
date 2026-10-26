@@ -1,0 +1,1026 @@
+{
+  "comment": "lockfile.ts readLockfile over a devcontainer-lock.json holding each case's text (or base64 bytes, a directory, or nothing); ported in lockfile.go (ReadLockfile) and v8json.go, whose messages are V8 JSON.parse's. The result is none (no lockfile), init (the empty marker) or lockfile.",
+  "cases": [
+    {
+      "fn": "readLockfile",
+      "args": [
+        ""
+      ],
+      "result": "init"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "   \n\t"
+      ],
+      "result": "init"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "﻿"
+      ],
+      "result": "init"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        " \u2028\u2029　\u000b\f"
+      ],
+      "result": "init"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        ""
+      ],
+      "error": "Unexpected token '', \"\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\n  \"features\": {\n    \"ghcr.io/devcontainers/features/node:1\": {\n      \"version\": \"1.6.3\",\n      \"resolved\": \"ghcr.io/devcontainers/features/node@sha256:abc\",\n      \"integrity\": \"sha256:abc\"\n    }\n  }\n}\n"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"features\":{}}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "null"
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "﻿{}"
+      ],
+      "error": "Unexpected token '﻿', \"﻿{}\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "not json"
+      ],
+      "error": "Unexpected token 'o', \"not json\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "x"
+      ],
+      "error": "Unexpected token 'x', \"x\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{"
+      ],
+      "error": "Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "["
+      ],
+      "error": "Unexpected end of JSON input"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\""
+      ],
+      "error": "Expected ':' after property name in JSON at position 4 (line 1 column 5)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":"
+      ],
+      "error": "Unexpected end of JSON input"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1"
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 6 (line 1 column 7)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1,"
+      ],
+      "error": "Expected double-quoted property name in JSON at position 7 (line 1 column 8)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1 \"b\":2}"
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 7 (line 1 column 8)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1 2]"
+      ],
+      "error": "Expected ',' or ']' after array element in JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,]"
+      ],
+      "error": "Unexpected token ']', \"[1,]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1,}"
+      ],
+      "error": "Expected double-quoted property name in JSON at position 7 (line 1 column 8)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{a:1}"
+      ],
+      "error": "Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\" 1}"
+      ],
+      "error": "Expected ':' after property name in JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"abc"
+      ],
+      "error": "Unterminated string in JSON at position 4 (line 1 column 5)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"a\u0001b\""
+      ],
+      "error": "Bad control character in string literal in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\x\""
+      ],
+      "error": "Bad escaped character in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\u12g4\""
+      ],
+      "error": "Bad Unicode escape in JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\u12"
+      ],
+      "error": "Bad Unicode escape in JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\u"
+      ],
+      "error": "Bad Unicode escape in JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\"
+      ],
+      "error": "Unexpected end of JSON input"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\€\""
+      ],
+      "error": "Unexpected token '€', \"\"\\€\"\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\\é\""
+      ],
+      "error": "Bad escaped character in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":\"\\/\\b\\f\\n\\r\\t\\\"\\\\\\u00Af\"}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-"
+      ],
+      "error": "No number after minus sign in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-a"
+      ],
+      "error": "No number after minus sign in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-0"
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-01"
+      ],
+      "error": "Unexpected number in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-0."
+      ],
+      "error": "Unterminated fractional number in JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1."
+      ],
+      "error": "Unterminated fractional number in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1.a"
+      ],
+      "error": "Unterminated fractional number in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1e"
+      ],
+      "error": "Exponent part is missing a number in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1e+"
+      ],
+      "error": "Exponent part is missing a number in JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "0e"
+      ],
+      "error": "Exponent part is missing a number in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "0.1e-"
+      ],
+      "error": "Exponent part is missing a number in JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1E+5}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1e5.5"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "01"
+      ],
+      "error": "Unexpected number in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "0x10"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1.5e5x"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[-]"
+      ],
+      "error": "No number after minus sign in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":-}"
+      ],
+      "error": "No number after minus sign in JSON at position 6 (line 1 column 7)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "+1"
+      ],
+      "error": "Unexpected token '+', \"+1\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        ".5"
+      ],
+      "error": "Unexpected token '.', \".5\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{}x"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{} x"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "nul"
+      ],
+      "error": "Unexpected end of JSON input"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "tru"
+      ],
+      "error": "Unexpected end of JSON input"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "tx"
+      ],
+      "error": "Unexpected token 'x', \"tx\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "t\""
+      ],
+      "error": "Unexpected string in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "t1"
+      ],
+      "error": "Unexpected number in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "f-"
+      ],
+      "error": "Unexpected number in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "nx"
+      ],
+      "error": "Unexpected token 'x', \"nx\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "falsey"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "null null"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,2,3]]"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 7 (line 1 column 8)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":tr}"
+      ],
+      "error": "Unexpected token '}', \"{\"a\":tr}\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":nulll}"
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 9 (line 1 column 10)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":[1,{\"b\":tx}]}"
+      ],
+      "error": "Unexpected token 'x', \"{\"a\":[1,{\"b\":tx}]}\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "Infinity"
+      ],
+      "error": "\"Infinity\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "NaN"
+      ],
+      "error": "\"NaN\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "undefined"
+      ],
+      "error": "\"undefined\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[object Object]"
+      ],
+      "error": "\"[object Object]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        " NaN"
+      ],
+      "error": "Unexpected token 'N', \" NaN\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "NaN "
+      ],
+      "error": "Unexpected token 'N', \"NaN \" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-Infinity"
+      ],
+      "error": "No number after minus sign in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "xyyyyyyyyyyyyyyyyyyy"
+      ],
+      "error": "Unexpected token 'x', \"xyyyyyyyyyyyyyyyyyyy\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "xyyyyyyyyyyyyyyyyyyyy"
+      ],
+      "error": "Unexpected token 'x', \"xyyyyyyyyy\"... is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,2,3,4,5,6,7,8,9,10,x,11,12,13,14,15]"
+      ],
+      "error": "Unexpected token 'x', ...\",7,8,9,10,x,11,12,13\"... is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,x]"
+      ],
+      "error": "Unexpected token 'x', ...\",16,17,18,x]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,2,3,4,5,6,7,8,9,x,11,12,13,14,15,16,17,18,19]"
+      ],
+      "error": "Unexpected token 'x', ...\"5,6,7,8,9,x,11,12,13\"... is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,x2,3,4,5,6,7,8,9,1]"
+      ],
+      "error": "Unexpected token 'x', ...\",17,18,19,x2,3,4,5,6\"... is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":\r\n1,\r\"b\" 2}"
+      ],
+      "error": "Expected ':' after property name in JSON at position 14 (line 3 column 5)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\r\n\r\n\"a\" 1}"
+      ],
+      "error": "Expected ':' after property name in JSON at position 9 (line 3 column 5)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1]\n\n\nx"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 6 (line 4 column 1)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":\"b\"}\n}"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 10 (line 2 column 1)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\r"
+      ],
+      "result": "init"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1\r]x"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 4 (line 2 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[é]"
+      ],
+      "error": "Unexpected token 'é', \"[é]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1,€]"
+      ],
+      "error": "Unexpected token '€', \"[1,€]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"€\" 1}"
+      ],
+      "error": "Expected ':' after property name in JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"😀\" 1}"
+      ],
+      "error": "Expected ':' after property name in JSON at position 6 (line 1 column 7)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"😀\" x"
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 5 (line 1 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[ ]"
+      ],
+      "error": "Unexpected token ' ', \"[ ]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":\"\"}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1}"
+      ],
+      "error": "Expected ',' or ']' after array element in JSON at position 2 (line 1 column 3)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1]"
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 6 (line 1 column 7)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1 "
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 7 (line 1 column 8)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[1 "
+      ],
+      "error": "Expected ',' or ']' after array element in JSON at position 3 (line 1 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\" :"
+      ],
+      "error": "Unexpected end of JSON input"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":[ ]}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{ }"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{,}"
+      ],
+      "error": "Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[,]"
+      ],
+      "error": "Unexpected token ',', \"[,]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":[}]"
+      ],
+      "error": "Unexpected token '}', \"{\"a\":[}]\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1,,\"b\":2}"
+      ],
+      "error": "Expected double-quoted property name in JSON at position 7 (line 1 column 8)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> branch\n"
+      ],
+      "error": "Unexpected token '<', \"<<<<<<< HE\"... is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\n  \"features\": {\n    \"ghcr.io/devcontainers/features/node:1\": {\n      \"version\": \"1.6.3\"\n      \"resolved\": \"ghcr.io/devcontainers/features/node@sha256:abc\",\n      \"integrity\": \"sha256:abc\"\n    }\n  }\n}\n"
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 96 (line 5 column 7)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\n  \"features\": {\n    \"ghcr.io/devcontainers/features/node:1\": {\n      \"version\": \"1.6.3\",\n      \"resolved\": \"ghcr.io/devcontainers/features/node@sha256:abc\",\n      \"integrity\": \"sha256:abc\",\n    }\n  }\n}\n"
+      ],
+      "error": "Expected double-quoted property name in JSON at position 196 (line 7 column 5)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\n  \"features\": {\n    \"ghcr.io/devcontainers/features/node:1\": {\n      \"version\": \"1.6.3\",\n      \"resolved\": \"ghcr.io/devcontainers/features/node@sha256:abc\",\n      \"integrity\": \"sha256:abc\"\n    }\n  }"
+      ],
+      "error": "Expected ',' or '}' after property value in JSON at position 200 (line 8 column 4)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "4oJ7fQ=="
+        }
+      ],
+      "error": "Unexpected token '�', \"�{}\" is not valid JSON"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi4oIifSB4"
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 10 (line 1 column 11)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi//4ifSB4"
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 11 (line 1 column 12)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi7aCAIn0geA=="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 12 (line 1 column 13)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi8J+YIn0geA=="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 10 (line 1 column 11)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoiwK8ifSB4"
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 11 (line 1 column 12)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi9JCAgCJ9IHg="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 13 (line 1 column 14)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi4IAifSB4"
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 11 (line 1 column 12)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoiwyJ9IHg="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 10 (line 1 column 11)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\n{"
+      ],
+      "error": "Expected property name or '}' in JSON at position 2 (line 2 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\r\n{"
+      ],
+      "error": "Expected property name or '}' in JSON at position 3 (line 2 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\n\r{"
+      ],
+      "error": "Expected property name or '}' in JSON at position 3 (line 3 column 2)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\r\n\r\n{\"a\" 1}"
+      ],
+      "error": "Expected ':' after property name in JSON at position 9 (line 3 column 6)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoiw6mpIn0geA=="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 11 (line 1 column 12)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi4oKsgCJ9IHg="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 11 (line 1 column 12)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi8J+YgIAifSB4"
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 12 (line 1 column 13)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "base64": "eyJhIjoi77+9In0geA=="
+        }
+      ],
+      "error": "Unexpected non-whitespace character after JSON at position 10 (line 1 column 11)"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        {
+          "directory": true
+        }
+      ],
+      "error": "EISDIR: illegal operation on a directory, read"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        null
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "[]"
+      ],
+      "divergence": "JSON that is not an object: TS keeps it as a lockfile and looks Features up in it with ?. (an undefined `features` then throws a TypeError); Go refuses JSON that is not shaped like a lockfile",
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"features\":[]}"
+      ],
+      "divergence": "a `features` that is not an object: TS finds no pins in it, Go refuses JSON that is not shaped like a lockfile",
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "5"
+      ],
+      "divergence": "JSON that is not an object: TS keeps it as a lockfile (looking a Feature up in it throws a TypeError), Go refuses JSON that is not shaped like a lockfile",
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "false"
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "0"
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"\""
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "0e5"
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "-0.0"
+      ],
+      "result": "none"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "1e999"
+      ],
+      "divergence": "JSON that is not an object (Infinity to TS): TS keeps it as a lockfile (looking a Feature up in it throws a TypeError), Go refuses JSON that is not shaped like a lockfile",
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "{\"a\":1e999}"
+      ],
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "true"
+      ],
+      "divergence": "JSON that is not an object: TS keeps it as a lockfile (looking a Feature up in it throws a TypeError), Go refuses JSON that is not shaped like a lockfile",
+      "result": "lockfile"
+    },
+    {
+      "fn": "readLockfile",
+      "args": [
+        "\"x\""
+      ],
+      "divergence": "JSON that is not an object: TS keeps it as a lockfile (looking a Feature up in it throws a TypeError), Go refuses JSON that is not shaped like a lockfile",
+      "result": "lockfile"
+    }
+  ]
+}

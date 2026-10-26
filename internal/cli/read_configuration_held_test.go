@@ -476,7 +476,7 @@ func TestReadConfigurationCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	}
 	lockPath := filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")
 	if msg, _ := envelope["message"].(string); envelope["outcome"] != "error" ||
-		!strings.HasPrefix(msg, "compute cache key: read features lockfile "+lockPath+": parse lockfile:") {
+		msg != "compute cache key: read features lockfile "+lockPath+`: Unexpected token 'o', "not json" is not valid JSON` {
 		t.Errorf("stdout = %s, want the error outcome naming %s", stdout.String(), lockPath)
 	}
 }

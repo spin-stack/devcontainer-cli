@@ -21,6 +21,7 @@ import { readVersionPrefix, convertMountToVolume, convertMountToVolumeTopLevelEl
 import { qualifyImageName, isBuildxCacheToInline } from '../../reference/src/spec-node/utils';
 import { logEventToTerminalText, createPlainLog } from '../../reference/src/spec-utils/log';
 import { parseCrossOriginAuthHosts, isAllowedTokenServiceRealm } from '../../reference/src/spec-configuration/httpOCIRegistry';
+import { readLockfile } from '../../reference/src/spec-configuration/lockfile';
 
 // escapeQuotesForShell, convertMountToVolume, convertMountToVolumeTopLevelElement
 // and replaceTemplatedValues are module-private in the reference; build.mjs exports them for this bundle.
@@ -98,6 +99,28 @@ const fns: Record<string, (...args: any[]) => any> = {
 		[...parseCrossOriginAuthHosts(entries)].map(([registry, hosts]) => [registry, [...hosts].sort()])),
 	isAllowedTokenServiceRealm: (realm: string, registryUrl: string, entries: string[]) =>
 		isAllowedTokenServiceRealm(realm, registryUrl, entries),
+	// spec-configuration/lockfile.ts: the devcontainer-lock.json next to a
+	// devcontainer.json in a fresh folder holds the case's text, its base64
+	// bytes, or is a directory or missing. The result is what the reader made of
+	// it: no lockfile (undefined, or null), the empty marker, or a lockfile.
+	readLockfile: async (content: string | { base64?: string; directory?: boolean } | null) => {
+		const fs = require('fs'), os = require('os'), path = require('path');
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-oracle-lockfile-'));
+		try {
+			const lockfilePath = path.join(dir, 'devcontainer-lock.json');
+			if (typeof content === 'string') {
+				fs.writeFileSync(lockfilePath, content);
+			} else if (content?.base64 !== undefined) {
+				fs.writeFileSync(lockfilePath, Buffer.from(content.base64, 'base64'));
+			} else if (content?.directory) {
+				fs.mkdirSync(lockfilePath);
+			}
+			const { lockfile, initLockfile } = await readLockfile({ configFilePath: URI.file(path.join(dir, 'devcontainer.json')) } as any);
+			return initLockfile ? 'init' : lockfile ? 'lockfile' : 'none';
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	},
 };
 
 async function main() {

@@ -86,6 +86,13 @@ touches a compared surface, reflected in the parity matrix.
   inherited function's source text (`function Object() { [native code] }`) in the applied
   template. This CLI treats such a name like every other unknown option
   (`internal/templates/testdata/ts-oracle/templates.json`).
+- **A `devcontainer-lock.json` that parses but is not shaped like a lockfile is an
+  error.** The reference keeps whatever `JSON.parse` returns and looks each Feature up with
+  `lockfile?.features[id]?.…`: an array, a number or a string throws a `TypeError` once a
+  Feature is looked up, and a `features` value that is not an object pins nothing. This CLI
+  refuses such a file when it reads it (`parse lockfile: …`). JSON that does not parse, or a
+  file that cannot be read, fails with the reference's own message, and `null`, `false`, `0`
+  and `""` are no lockfile, as in TS (`internal/features/testdata/ts-oracle/lockfile.json`).
 - **The `devcontainer.metadata` label writes object values with their keys sorted.** The
   label is TS's `JSON.stringify` of the entries: each entry's properties in TS's pick
   order (`pickFeatureProperties` for a Feature, `pickConfigProperties` for the
