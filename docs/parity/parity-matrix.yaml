@@ -915,6 +915,83 @@ initial_cases:
     current_status: match
     notes: "TS reads --config before it looks for the container: 'Dev container config (...) not found.' and exit 1. Go ignored a config that did not load (and reported the missing container first)."
 
+  - id: read-configuration.terminal-rows-zero-implies-columns
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image --terminal-rows 0"
+    asserts: [exit_code, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "yargs .implies() tests whether the implied flag is present (validation.js keyExists: hasOwnProperty), not its value, so a 0 counts as given. Go tested the value (> 0) and let a lone 0 through."
+
+  - id: up.terminal-columns-zero-implies-rows
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --terminal-columns 0"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "yargs .implies() tests whether the implied flag is present (validation.js keyExists: hasOwnProperty), not its value, so a 0 counts as given. Go tested the value (> 0) and let a lone 0 through."
+
+  - id: set-up.terminal-rows-zero-implies-columns
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    ts_cmd: "set-up --container-id fake --terminal-rows 0"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "yargs .implies() tests whether the implied flag is present (validation.js keyExists: hasOwnProperty), not its value, so a 0 counts as given. Go tested the value (> 0) and let a lone 0 through."
+
+  - id: run-user-commands.terminal-columns-zero-implies-rows
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --terminal-columns 0"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "yargs .implies() tests whether the implied flag is present (validation.js keyExists: hasOwnProperty), not its value, so a 0 counts as given. Go tested the value (> 0) and let a lone 0 through."
+
+  - id: exec.terminal-rows-zero-implies-columns
+    lane: contract
+    command: exec
+    priority: p1
+    docker_required: false
+    ts_cmd: "exec --workspace-folder src/test/configs/image --terminal-rows 0 echo hello"
+    asserts: [exit_code, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "yargs .implies() tests whether the implied flag is present (validation.js keyExists: hasOwnProperty), not its value, so a 0 counts as given. Go tested the value (> 0) and let a lone 0 through."
+
+  - id: outdated.terminal-rows-zero-implies-columns
+    lane: contract
+    command: outdated
+    priority: p1
+    docker_required: false
+    ts_cmd: "outdated --workspace-folder src/test/configs/image --terminal-rows 0"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "yargs .implies() tests whether the implied flag is present (validation.js keyExists: hasOwnProperty), not its value, so a 0 counts as given. Go tested the value (> 0) and let a lone 0 through."
+
+  - id: outdated.terminal-columns-implies-rows
+    lane: contract
+    command: outdated
+    priority: p1
+    docker_required: false
+    ts_cmd: "outdated --workspace-folder src/test/configs/image --terminal-columns 80"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: implies-validation
+    current_status: match
+    notes: "TS outdated declares terminal-columns/terminal-rows with implies, as its siblings do (devContainersSpecCLI.ts outdatedOptions); Go outdated did not check the pair at all."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

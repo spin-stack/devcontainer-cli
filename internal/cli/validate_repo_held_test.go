@@ -52,19 +52,23 @@ func TestValidateMounts(t *testing.T) {
 	}
 }
 
-// --terminal-columns and --terminal-rows imply each other, as yargs .implies().
+// --terminal-columns and --terminal-rows imply each other, as yargs .implies():
+// a flag counts when it is given, whatever its value, so a 0 counts too
+// (yargs validation.js keyExists tests hasOwnProperty).
 func TestValidateTerminalImplications(t *testing.T) {
+	absent := givenInt{}
+	given := func(n int) givenInt { return givenInt{value: n, given: true} }
 	cases := []struct {
-		cols, rows int
+		cols, rows givenInt
 		want       string
 	}{
-		{0, 0, ""},
-		{80, 24, ""},
-		{80, 0, "Implications failed:\n terminal-columns -> terminal-rows"},
-		{0, 24, "Implications failed:\n terminal-rows -> terminal-columns"},
-		{1, 0, "Implications failed:\n terminal-columns -> terminal-rows"},
-		{0, 1, "Implications failed:\n terminal-rows -> terminal-columns"},
-		{1, 1, ""},
+		{absent, absent, ""},
+		{given(80), given(24), ""},
+		{given(0), given(0), ""},
+		{given(80), absent, "Implications failed:\n terminal-columns -> terminal-rows"},
+		{absent, given(24), "Implications failed:\n terminal-rows -> terminal-columns"},
+		{given(0), absent, "Implications failed:\n terminal-columns -> terminal-rows"},
+		{absent, given(0), "Implications failed:\n terminal-rows -> terminal-columns"},
 	}
 	for _, c := range cases {
 		err := validateTerminalImplications(c.cols, c.rows)
@@ -73,8 +77,24 @@ func TestValidateTerminalImplications(t *testing.T) {
 			got = err.Error()
 		}
 		if got != c.want {
-			t.Errorf("validateTerminalImplications(%d, %d) = %q, want %q", c.cols, c.rows, got, c.want)
+			t.Errorf("validateTerminalImplications(%+v, %+v) = %q, want %q", c.cols, c.rows, got, c.want)
 		}
+	}
+}
+
+// A givenInt reads its value as pflag's IntVar does and records that it was
+// given; a value that is no number is an error and leaves it not given.
+func TestGivenIntParsesLikeIntVar(t *testing.T) {
+	var g givenInt
+	if g.String() != "0" || g.Type() != "int" {
+		t.Errorf("zero givenInt = %q of type %q, want \"0\" of type \"int\"", g.String(), g.Type())
+	}
+	if err := g.Set("0x10"); err != nil || g.value != 16 || !g.given || g.String() != "16" {
+		t.Errorf("Set(\"0x10\") = %v, givenInt %+v; want 16 and given", err, g)
+	}
+	var bad givenInt
+	if err := bad.Set("abc"); err == nil || bad.given {
+		t.Errorf("Set(\"abc\") = %v, givenInt %+v; want an error and not given", err, bad)
 	}
 }
 

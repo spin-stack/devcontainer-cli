@@ -36,8 +36,8 @@ type execOpts struct {
 	logFile             string
 	terminalLogFile     string
 	remoteEnvs          []string
-	terminalColumns     int
-	terminalRows        int
+	terminalColumns     givenInt
+	terminalRows        givenInt
 	defaultUserEnvProbe string
 }
 
@@ -98,8 +98,8 @@ func newExecCmd() *cobra.Command {
 	f.Bool("skip-feature-auto-mapping", false, "")
 	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
 	f.String("user-data-folder", "", "")
-	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
-	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
+	f.Var(&opts.terminalColumns, "terminal-columns", "")
+	f.Var(&opts.terminalRows, "terminal-rows", "")
 
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
