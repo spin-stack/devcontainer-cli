@@ -20,11 +20,12 @@ type readRegistry struct {
 	host      string
 	tags      map[string][]string // repository -> tags
 	manifests map[string][]byte   // repository -> manifest served for any reference
+	blobs     map[string][]byte   // digest -> blob, from any repository
 }
 
 func newReadRegistry(t *testing.T) *readRegistry {
 	t.Helper()
-	r := &readRegistry{tags: map[string][]string{}, manifests: map[string][]byte{}}
+	r := &readRegistry{tags: map[string][]string{}, manifests: map[string][]byte{}, blobs: map[string][]byte{}}
 	srv := httptest.NewServer(http.HandlerFunc(r.serve))
 	t.Cleanup(srv.Close)
 	// httptest listens on 127.0.0.1, which the OCI client (as the reference)
@@ -55,6 +56,13 @@ func (r *readRegistry) serve(w http.ResponseWriter, req *http.Request) {
 			if req.Method != http.MethodHead {
 				_, _ = w.Write(body)
 			}
+			return
+		}
+	}
+	if i := strings.Index(path, "/blobs/"); i >= 0 {
+		if body, ok := r.blobs[path[i+len("/blobs/"):]]; ok {
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+			_, _ = w.Write(body)
 			return
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -466,24 +467,25 @@ func newUpgradeCmd() *cobra.Command {
 			})
 
 			cfg := loadResult.Config
-			// TS generateFeaturesConfig resolves no Features config for a
-			// configuration without Features, which upgrade reports as a
-			// failure rather than writing an empty lockfile.
-			if len(cfg.Features) == 0 {
-				return &coreerrors.ContainerError{Description: "Failed to update lockfile"}
-			}
 
 			// The lockfile sits next to the configuration, whose path a loaded
 			// configuration always carries.
 			lockfilePath := cfg.ConfigFilePath
 
-			// Generate new lockfile from current features config
-			// This is a simplified version — the full implementation
-			// would resolve all features via OCI and compute digests.
-			ociClient := newOCIClient(cmd.Context(), logger)
-
-			featureSets := resolveFeatureSets(cfg, ociClient, logger)
-			lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, nil)
+			// The Features are resolved as build resolves them, without the
+			// lockfile (TS readFeaturesConfig: generateFeaturesConfig with
+			// noLockfile): dependencies included, and a Feature that cannot be
+			// resolved fails the command. A configuration without Features has
+			// no Features config, which TS reports as a failure rather than
+			// writing an empty lockfile.
+			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, filepath.Dir(lockfilePath), false, nil, nil)
+			if err != nil {
+				return err
+			}
+			if res == nil {
+				return &coreerrors.ContainerError{Description: "Failed to update lockfile"}
+			}
+			lf := features.GenerateLockfile(&features.Config{FeatureSets: res.FeatureSets}, nil)
 
 			if dryRun {
 				data, _ := stringify.JSON(lf, "  ")
@@ -517,63 +519,6 @@ func newUpgradeCmd() *cobra.Command {
 
 	addLogFileFlags(cmd, &logFile, &terminalLogFile)
 	return cmd
-}
-
-func resolveFeatureSets(cfg *config.DevContainer, ociClient oci.Registry, logger log.Logger) []*features.Set {
-	if cfg.Features == nil {
-		return nil
-	}
-
-	var sets []*features.Set
-	for id, opts := range cfg.Features {
-		resolvedID, _ := features.ResolveID(id, false)
-		ref, err := oci.ParseRef(resolvedID)
-		if err != nil {
-			continue
-		}
-
-		manifest, err := ociClient.FetchManifest(ref, "")
-		if err != nil {
-			continue
-		}
-
-		// The lockfile records the concrete feature version, not the tag. Prefer the
-		// manifest's dev.containers.metadata annotation; if absent (some features
-		// don't publish it), resolve the tag to its newest published version — both
-		// match the version TS stores.
-		version := ref.Tag
-		if manifest.Manifest != nil {
-			if meta := manifest.Manifest.Annotations["dev.containers.metadata"]; meta != "" {
-				var m struct {
-					Version string `json:"version"`
-				}
-				if json.Unmarshal([]byte(meta), &m) == nil && m.Version != "" {
-					version = m.Version
-				}
-			}
-		}
-		if version == ref.Tag {
-			if v := highestSatisfyingTag(resolvePublishedVersions(ociClient, ref), ref.Tag); v != "" {
-				version = v
-			}
-		}
-
-		set := &features.Set{
-			SourceInfo: &features.OCISource{
-				Registry:       ref.Registry,
-				Namespace:      ref.Namespace,
-				ID:             ref.ID,
-				Resource:       ref.Resource,
-				Tag:            ref.Tag,
-				ManifestDigest: manifest.ContentDigest,
-				UserID:         id,
-			},
-			Features:       []features.Feature{{ID: ref.ID, Version: version, Value: opts}},
-			ComputedDigest: manifest.ContentDigest,
-		}
-		sets = append(sets, set)
-	}
-	return sets
 }
 
 // errorStack is how the reference logs an error it catches (err.stack, frames

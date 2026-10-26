@@ -133,6 +133,13 @@ runs the official CLI is unaffected:
   `Failed to update lockfile` and writes no lockfile, with or without
   `--dry-run`. Earlier releases wrote or printed `{"features":{}}` and exited 0.
   Skip `upgrade` for configurations that use no Features.
+- `upgrade` resolves Features the way `build` does. A Feature whose manifest or
+  content cannot be fetched fails the command (exit 1,
+  `ERR: Feature '<id>' could not be processed. ...`) instead of being left out
+  of the lockfile. The lockfile also lists the Features that other Features
+  depend on, with each entry's `dependsOn`, so it matches the one `build` and the
+  official CLI write. Make every Feature reachable, with registry credentials
+  where needed, before running `upgrade`.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.

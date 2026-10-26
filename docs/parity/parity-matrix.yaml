@@ -1541,6 +1541,33 @@ initial_cases:
     compare_hashes: true
     notes: "upgrade WITHOUT --dry-run persists the lockfile to disk (.devcontainer-lock.json next to .devcontainer.json, getLockfilePath) and does not emit JSON to stdout; the verify_cmd cats the produced lockfile. Each side works on an isolated tmp copy of the image-with-features fixture. Both resolve the features against ghcr.io to the same digests (sha256 scrubbed by normalization anyway)."
 
+  - id: upgrade.err-unresolvable-feature
+    lane: runtime
+    command: upgrade
+    priority: p1
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/node:1\":{},\"ghcr.io/devcontainers/features/doesnotexist-parity:1\":{}}}' > $WORKSPACE/.devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "test ! -e ${WORKSPACE}/.devcontainer-lock.json"
+    cleanup_cmd: "rm -rf /tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "upgrade --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stderr_normalized]
+    class: upgrade-runtime
+    current_status: match
+    notes: "upgrade resolves the Features through generateFeaturesConfig (readFeaturesConfig), so a Feature whose manifest cannot be fetched fails the command: exit 1 with 'ERR: Feature '<id>' could not be processed. ...' and no lockfile written (verify_cmd). Go skipped the Feature, wrote a lockfile without it and exited 0."
+
+  - id: upgrade.feature-dependencies-success
+    lane: runtime
+    command: upgrade
+    priority: p1
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/lf; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./lf\":{},\"ghcr.io/devcontainers/features/git:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' '{\"id\":\"lf\",\"version\":\"0.1.0\",\"dependsOn\":{\"ghcr.io/devcontainers/features/common-utils:2\":{}}}' > $WORKSPACE/.devcontainer/lf/devcontainer-feature.json; printf 'echo hi\\n' > $WORKSPACE/.devcontainer/lf/install.sh; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "upgrade --workspace-folder ${WORKSPACE} --dry-run"
+    asserts: [exit_code, stdout_normalized]
+    class: upgrade-runtime
+    current_status: match
+    notes: "The lockfile holds every resolved OCI Feature, the dependencies a Feature's dependsOn pulls in among them (generateFeaturesConfig computes the dependency graph): a local Feature depending on common-utils:2 adds common-utils:2 to the lockfile, while the local Feature itself is left out. Go looked up only the configured Features and missed common-utils."
+
   - id: read-configuration.missing-required
     lane: contract
     command: read-configuration

@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -43,35 +45,22 @@ func TestOutdatedCmdWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	}
 }
 
-// manifestWithAnnotations is a Feature manifest carrying the given annotations
-// object (JSON), or none when it is empty.
-func manifestWithAnnotations(annotations string) []byte {
-	m := `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
-		`"config":{"mediaType":"application/vnd.devcontainers","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},` +
-		`"layers":[{"mediaType":"application/vnd.devcontainers.layer.v1+tar","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2}]`
-	if annotations != "" {
-		m += `,"annotations":` + annotations
-	}
-	return []byte(m + `}`)
-}
-
-// upgradeRegistry serves Features whose lockfile version comes from each of
-// the places upgrade looks: the manifest's metadata, else the newest published
-// version the tag wants, else the tag itself.
-func upgradeRegistry(t *testing.T) (*readRegistry, string) {
+// addFeature publishes repo as a Feature whose devcontainer-feature.json is
+// meta (JSON): its manifest carries meta as its metadata annotation and its
+// layer is the Feature's tarball.
+func (r *readRegistry) addFeature(t *testing.T, repo, meta string) {
 	t.Helper()
-	reg := newReadRegistry(t)
-	reg.manifests["ns/annotated"] = featureManifest("annotated")
-	reg.tags["ns/annotated"] = []string{"1.0.0", "1.5.0"}
-	reg.manifests["ns/plain"] = manifestWithAnnotations("")
-	reg.tags["ns/plain"] = []string{"1.0.0", "1.5.0", "2.0.0"}
-	reg.manifests["ns/noversion"] = manifestWithAnnotations(`{"dev.containers.metadata":"{\"id\":\"noversion\"}"}`)
-	reg.tags["ns/noversion"] = []string{"1.2.0"}
-	reg.manifests["ns/untagged"] = manifestWithAnnotations("")
-	h := reg.host
-	features := `{"` + h + `/ns/annotated:1":{}, "` + h + `/ns/plain:1":{}, "` + h + `/ns/noversion:1":{}, "` +
-		h + `/ns/untagged:1":{}, "` + h + `/ns/missing:1":{}, "./local":{}}`
-	return reg, features
+	tgz := featureTgzBytes(t, map[string]string{"devcontainer-feature.json": meta, "install.sh": "#!/bin/sh\n"})
+	digest := sha256Digest(tgz)
+	r.blobs[digest] = tgz
+	annotations, err := json.Marshal(map[string]string{"dev.containers.metadata": meta})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.manifests[repo] = []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+		`"config":{"mediaType":"application/vnd.devcontainers","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},` +
+		`"layers":[{"mediaType":"application/vnd.devcontainers.layer.v1+tar","digest":"` + digest + `","size":` + strconv.Itoa(len(tgz)) + `}],` +
+		`"annotations":` + string(annotations) + `}`)
 }
 
 func parseLockfile(t *testing.T, data string) features.Lockfile {
@@ -83,39 +72,58 @@ func parseLockfile(t *testing.T, data string) features.Lockfile {
 	return lf
 }
 
-// upgrade --dry-run prints the lockfile for every OCI Feature whose manifest
-// resolves, pinned to its manifest digest, at the version TS records; local
-// Features and ones without a manifest are left out.
+// upgrade --dry-run resolves the Features as build does (TS readFeaturesConfig)
+// and prints their lockfile: each OCI Feature at the version its
+// devcontainer-feature.json records, pinned to its manifest digest, the
+// Features it depends on included, local Features left out.
 func TestUpgradeDryRunPrintsLockfile(t *testing.T) {
-	reg, feats := upgradeRegistry(t)
-	ws := writeOutdatedWorkspace(t, feats, "")
+	reg := newReadRegistry(t)
+	h := reg.host
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.2.3","dependsOn":{"`+h+`/ns/dep:2":{}}}`)
+	reg.addFeature(t, "ns/dep", `{"id":"dep","version":"2.0.1"}`)
+	ws := writeOutdatedWorkspace(t, `{"`+h+`/ns/tool:1":{}, "./local":{}}`, "")
+	writeFile(t, filepath.Join(ws, ".devcontainer", "local", "devcontainer-feature.json"), `{"id":"local","version":"0.1.0"}`, 0o644)
 	got, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run")
 	if err != nil {
 		t.Fatal(err)
 	}
-	lf := parseLockfile(t, got)
-	h := reg.host
-	want := map[string]string{
-		h + "/ns/annotated:1": "1.0.0",
-		h + "/ns/plain:1":     "1.5.0",
-		h + "/ns/noversion:1": "1.2.0",
-		h + "/ns/untagged:1":  "1",
+	digest := func(repo string) string {
+		sum := sha256.Sum256(reg.manifests[repo])
+		return "sha256:" + hex.EncodeToString(sum[:])
 	}
-	if len(lf.Features) != len(want) {
-		t.Errorf("lockfile features = %v, want %v", lf.Features, want)
+	want := map[string]features.LockfileEntry{
+		h + "/ns/tool:1": {Version: "1.2.3", Resolved: h + "/ns/tool@" + digest("ns/tool"), Integrity: digest("ns/tool"), DependsOn: []string{h + "/ns/dep:2"}},
+		h + "/ns/dep:2":  {Version: "2.0.1", Resolved: h + "/ns/dep@" + digest("ns/dep"), Integrity: digest("ns/dep")},
 	}
-	for id, version := range want {
-		if e := lf.Features[id]; e.Version != version {
-			t.Errorf("%s version = %q, want %q", id, e.Version, version)
-		}
-	}
-	sum := sha256.Sum256(reg.manifests["ns/annotated"])
-	digest := "sha256:" + hex.EncodeToString(sum[:])
-	if e := lf.Features[h+"/ns/annotated:1"]; e.Integrity != digest || e.Resolved != h+"/ns/annotated@"+digest {
-		t.Errorf("annotated entry = %+v, want it pinned to %s", e, digest)
+	if lf := parseLockfile(t, got); !reflect.DeepEqual(lf.Features, want) {
+		t.Errorf("lockfile features = %+v, want %+v", lf.Features, want)
 	}
 	if _, err := os.Stat(filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")); !os.IsNotExist(err) {
 		t.Errorf("--dry-run wrote a lockfile: %v", err)
+	}
+}
+
+// A Feature that cannot be resolved fails upgrade, as it fails TS
+// generateFeaturesConfig, rather than being left out of the lockfile: nothing
+// is printed or written.
+func TestUpgradeFailsOnAnUnresolvableFeature(t *testing.T) {
+	reg := newReadRegistry(t)
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
+	missing := reg.host + "/ns/missing:1"
+	want := "ERR: Feature '" + missing + "' could not be processed."
+	for _, dryRun := range []bool{false, true} {
+		ws := writeOutdatedWorkspace(t, `{"`+reg.host+`/ns/tool:1":{}, "`+missing+`":{}}`, "")
+		args := []string{"--workspace-folder", ws}
+		if dryRun {
+			args = append(args, "--dry-run")
+		}
+		got, err := executeCmd(t, newUpgradeCmd(), args...)
+		if err == nil || !strings.HasPrefix(err.Error(), want) || got != "" {
+			t.Errorf("dry-run %t: err = %v, stdout = %q, want %q", dryRun, err, got, want)
+		}
+		if _, err := os.Stat(filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")); !os.IsNotExist(err) {
+			t.Errorf("dry-run %t: wrote a lockfile: %v", dryRun, err)
+		}
 	}
 }
 
@@ -123,7 +131,7 @@ func TestUpgradeDryRunPrintsLockfile(t *testing.T) {
 // --config names; one that cannot be written fails the command.
 func TestUpgradeWritesLockfileNextToConfig(t *testing.T) {
 	reg := newReadRegistry(t)
-	reg.manifests["ns/tool"] = featureManifest("tool")
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
 	cfg := filepath.Join(t.TempDir(), "custom.json")
 	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
 	ws := t.TempDir()
@@ -153,7 +161,7 @@ func TestUpgradeWritesLockfileNextToConfig(t *testing.T) {
 // where build and up would leave it alone.
 func TestUpgradeRewritesACosmeticallyDifferentLockfile(t *testing.T) {
 	reg := newReadRegistry(t)
-	reg.manifests["ns/tool"] = featureManifest("tool")
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
 	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
 	ws := t.TempDir()
@@ -185,7 +193,7 @@ func TestUpgradeFailsOnALockfileItCannotReadBack(t *testing.T) {
 		t.Skip("root reads a write-only file")
 	}
 	reg := newReadRegistry(t)
-	reg.manifests["ns/tool"] = featureManifest("tool")
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
 	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
 	writeFile(t, features.LockfilePath(cfg), "{}", 0o200)
@@ -198,7 +206,7 @@ func TestUpgradeFailsOnALockfileItCannotReadBack(t *testing.T) {
 // directory without it.
 func TestUpgradeWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	reg := newReadRegistry(t)
-	reg.manifests["ns/tool"] = featureManifest("tool")
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
 	ws := writeOutdatedWorkspace(t, `{"`+reg.host+`/ns/tool:1":{}}`, "")
 	t.Chdir(t.TempDir())
 	if got, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run"); err != nil || len(parseLockfile(t, got).Features) != 1 {
@@ -314,7 +322,7 @@ func TestUpgradeMissingConfigIsNotFound(t *testing.T) {
 // not, and nothing of its own after writing the lockfile.
 func TestUpgradeLogsAsTheReference(t *testing.T) {
 	reg := newReadRegistry(t)
-	reg.manifests["ns/tool"] = featureManifest("tool")
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
 	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
 	logFile := filepath.Join(t.TempDir(), "upgrade.log")
