@@ -433,3 +433,57 @@ func TestLoadMovesDeprecatedPropertiesAndKeepsRawConfig(t *testing.T) {
 		t.Error("RawConfig keeps the deprecated extensions")
 	}
 }
+
+// TS names a workspace's default config path (getDefaultDevContainerConfigPath)
+// as configFilePath when the workspace has no devcontainer.json and
+// --override-config is given, so relative paths in the override (a Dockerfile,
+// a local Feature, ${localWorkspaceFolder}-relative files) resolve against
+// <workspace>/.devcontainer, not the override's folder.
+func TestLoadDevContainerConfigOverrideWithoutWorkspaceConfig(t *testing.T) {
+	ws := t.TempDir()
+	override := filepath.Join(t.TempDir(), "override.json")
+	if err := os.WriteFile(override, []byte(`{"build":{"dockerfile":"Dockerfile"},"name":"${localWorkspaceFolderBasename}"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := LoadDevContainerConfig(ws, "", override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(ws, ".devcontainer", "devcontainer.json"); result.Config.ConfigFilePath != want {
+		t.Errorf("ConfigFilePath = %q, want %q", result.Config.ConfigFilePath, want)
+	}
+	if result.HostSub.ConfigFilePath != result.Config.ConfigFilePath {
+		t.Errorf("substitution config file = %q, want %q", result.HostSub.ConfigFilePath, result.Config.ConfigFilePath)
+	}
+	if result.Config.Name != filepath.Base(ws) {
+		t.Errorf("name = %q, want the override's, substituted", result.Config.Name)
+	}
+}
+
+// Without a workspace, TS's configuration is the override itself
+// (configPath = overrideConfigFile): a devcontainer.json in the current
+// directory is not discovered.
+func TestLoadDevContainerConfigOverrideWithoutWorkspace(t *testing.T) {
+	cwd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cwd, ".devcontainer"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".devcontainer", "devcontainer.json"), []byte(`{"image":"cwd","remoteUser":"cwd"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cwd)
+	override := filepath.Join(t.TempDir(), "override.json")
+	if err := os.WriteFile(override, []byte(`{"image":"override"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := LoadDevContainerConfig("", "", override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Config.ConfigFilePath != override {
+		t.Errorf("ConfigFilePath = %q, want the override %q", result.Config.ConfigFilePath, override)
+	}
+	if result.Config.Image != "override" || result.Config.RemoteUser != "" {
+		t.Errorf("image, remoteUser = %q, %q; want the override's alone", result.Config.Image, result.Config.RemoteUser)
+	}
+}

@@ -31,10 +31,12 @@ func TestLoadReportsAMissingConfigFile(t *testing.T) {
 	}
 }
 
-// The config file path is the --config file, else the override file (TS
-// readDevContainerConfigFile: overrideConfigFile ?? configFile) - never a
-// "configFilePath" property of the file - and it is what host substitution
-// errors name.
+// The config file path is the --config file, else the one found in the
+// workspace or, with only an override, the workspace's default path, else
+// without a workspace the override file (TS resolveWithLocalFolder's
+// configPath; readDevContainerConfigFile reads overrideConfigFile ??
+// configFile but keeps configFile) - never a "configFilePath" property of the
+// file - and it is what host substitution errors name.
 func TestLoadSetsTheConfigFilePath(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, "base.json")
@@ -49,18 +51,30 @@ func TestLoadSetsTheConfigFilePath(t *testing.T) {
 
 	override := filepath.Join(ws, "override.json")
 	writeFile(t, override, `{"image":"y"}`)
+	defaultPath := filepath.Join(ws, ".devcontainer", "devcontainer.json")
 	res, err = LoadDevContainerConfigWithMounts(ws, "", override, MountOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if res.Config.ConfigFilePath != defaultPath || res.HostSub.ConfigFilePath != defaultPath {
+		t.Errorf("override only: ConfigFilePath = %q, HostSub.ConfigFilePath = %q, want %q", res.Config.ConfigFilePath, res.HostSub.ConfigFilePath, defaultPath)
+	}
+	res, err = LoadDevContainerConfigWithMounts("", "", override, MountOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if res.Config.ConfigFilePath != override || res.HostSub.ConfigFilePath != override {
-		t.Errorf("override only: ConfigFilePath = %q, HostSub.ConfigFilePath = %q, want %q", res.Config.ConfigFilePath, res.HostSub.ConfigFilePath, override)
+		t.Errorf("override without a workspace: ConfigFilePath = %q, HostSub.ConfigFilePath = %q, want %q", res.Config.ConfigFilePath, res.HostSub.ConfigFilePath, override)
 	}
 
 	writeFile(t, override, `{"image":"y","containerEnv":{"A":"${localEnv}"}}`)
 	_, err = LoadDevContainerConfigWithMounts(ws, "", override, MountOptions{})
+	if err == nil || !strings.Contains(err.Error(), "in devcontainer.json") {
+		t.Errorf("substitution error = %v, want it to name the default devcontainer.json", err)
+	}
+	_, err = LoadDevContainerConfigWithMounts("", "", override, MountOptions{})
 	if err == nil || !strings.Contains(err.Error(), "in override.json") {
-		t.Errorf("substitution error = %v, want it to name override.json", err)
+		t.Errorf("substitution error without a workspace = %v, want it to name override.json", err)
 	}
 }
 

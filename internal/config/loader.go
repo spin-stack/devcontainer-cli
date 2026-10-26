@@ -166,9 +166,17 @@ func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath stri
 func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfigPath string, mounts MountOptions) (*LoadResult, error) {
 	workspace := WorkspaceFromPath(workspaceFolder)
 
-	// Discover config path
-	if configPath == "" {
+	// Discover config path. As TS does (getDevContainerConfigPathIn, then
+	// getDefaultDevContainerConfigPath), a workspace without a devcontainer.json
+	// names its default path when --override-config is given: that path is the
+	// configFilePath relative paths in the override resolve against. Without a
+	// workspace, only the override names the configuration (configPath =
+	// overrideConfigFile), so nothing is discovered in the current directory.
+	if configPath == "" && (workspaceFolder != "" || overrideConfigPath == "") {
 		configPath = FindConfigFile(workspace.ConfigFolderPath)
+		if configPath == "" && overrideConfigPath != "" {
+			configPath = filepath.Join(workspace.ConfigFolderPath, ".devcontainer", "devcontainer.json")
+		}
 	}
 	if configPath == "" && overrideConfigPath == "" {
 		defaultPath := filepath.Join(workspaceFolder, ".devcontainer", "devcontainer.json")

@@ -1299,6 +1299,19 @@ initial_cases:
     current_status: match
     notes: "TS makes a file URI of --config only: with --override-config, configFilePath is the configuration found in the workspace (getDevContainerConfigPathIn), with the vscode-fileHost scheme. Go wrote the file scheme whenever --override-config or --container-id was given."
 
+  - id: read-configuration.override-config-without-workspace-config-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{}}}' > $WORKSPACE/override.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --override-config ${WORKSPACE}/override.json --include-features-configuration"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: config-parsing
+    current_status: match
+    notes: "A workspace without a devcontainer.json: TS names its default path, <workspace>/.devcontainer/devcontainer.json, as configFilePath (getDefaultDevContainerConfigPath) and reads the override in its place, so the override's local Feature ./f resolves in .devcontainer. Go named the override as configFilePath and looked for ./f next to it, failing the command."
+
   - id: up.override-config-scheme-success
     lane: runtime
     command: up
