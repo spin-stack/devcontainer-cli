@@ -1164,6 +1164,19 @@ initial_cases:
     current_status: match
     notes: "up's result follows doProvision's literal (outcome, then launch's containerId, composeProjectName, remoteUser, remoteWorkspaceFolder, configuration, mergedConfiguration, ociAuthDiagnostics), its configuration the document's order and its mergedConfiguration mergeConfiguration's. Go wrote sorted keys. Only the order is compared: TS writes configFilePath's fsPath here (vscode-uri toJSON writes it once something read it) and Go does not, a content gap outside this case."
 
+  - id: read-configuration.json-stringify-escapes-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"postCreateCommand\":\"a && b <x> \\u2028\\u2029 \\\\u0026\",\"containerEnv\":{\"<K&>\":\"v\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized, stdout_text]
+    class: output-shape
+    current_status: match
+    notes: "JSON.stringify writes &, <, > and U+2028/U+2029 in strings as they are; encoding/json escapes them (\\u0026, \\u003c, \\u003e, \\u2028, \\u2029), which stdout_normalized's JSON parse cannot see. stdout_text compares the raw bytes. An escaped backslash followed by u0026 stays as written. A lone surrogate escape is not covered: Go's JSON decoder turns it into U+FFFD (docs/DIVERGENCES.md)."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

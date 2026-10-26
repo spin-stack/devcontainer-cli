@@ -168,6 +168,13 @@ oversight.
   config, metadata and merge; `TestHookErrorDescribesTheCommandAndItsOrigin` pins the
   current choice.
 
+- **A lone surrogate in a string is written as U+FFFD.** Command results are written as
+  `JSON.stringify` writes them: `&`, `<`, `>`, U+2028 and U+2029 as they are, not
+  escaped as `encoding/json` would (`read-configuration.json-stringify-escapes-success`).
+  A configuration string holding a lone UTF-16 surrogate escape (`"\ud800"`) is the
+  exception: a Go string cannot carry one, so the JSON decoder replaces it with U+FFFD
+  when the file is read, and the result holds that character where TS writes the
+  escape back.
 - **Byte-for-byte tarball parity is unattainable** because of `mtime` differences; tarball
   contents are compared by parsed structure, not raw bytes.
 - **Cloud registry auth matrix is out of default CI scope.** The hermetic auth paths

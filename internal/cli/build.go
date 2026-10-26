@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -727,7 +726,7 @@ func buildOptionsFromConfig(cfg *config.DevContainer) []string {
 // writeSuccessJSON writes a command's result with its keys in order (see
 // orderedObject).
 func writeSuccessJSON(out Output, data map[string]any, order ...string) error {
-	b, err := json.Marshal(orderedObject{data, order})
+	b, err := stringifyJSON(orderedObject{data, order}, "")
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
 	}
@@ -754,7 +753,7 @@ func writeValidationError(out Output, message string) error {
 }
 
 func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
-	b, _ := json.Marshal(errOutput)
+	b, _ := stringifyJSON(errOutput, "")
 	fmt.Fprintln(out.Stdout(), string(b))
 	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(errOutput.Description)}
 }

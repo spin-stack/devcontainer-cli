@@ -51,7 +51,7 @@ func realTemplatesApplyCmd() *cobra.Command {
 				return err
 			}
 
-			data, _ := json.Marshal(map[string]any{"files": files})
+			data, _ := stringifyJSON(map[string]any{"files": files}, "")
 			fmt.Fprintln(outputFor(cmd).Stdout(), string(data))
 			return nil
 		},
