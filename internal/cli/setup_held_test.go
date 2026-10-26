@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/moby/moby/api/types/container"
@@ -290,13 +291,21 @@ func TestSetUpResultLeavesTheConfigFilePathUnsubstituted(t *testing.T) {
 	}
 }
 
+// A ${containerEnv} without a name is TS's ContainerError, naming the
+// configuration's file, and TS substitutes the configuration and the merged
+// configuration whether or not they are reported.
 func TestSetUpResultReportsAContainerEnvReferenceWithoutAName(t *testing.T) {
 	loaded := loadedConfig(t, "/ws/devcontainer.json", map[string]any{"remoteEnv": map[string]any{"X": "${containerEnv}"}})
-	if _, err := setUpResult(loaded, nil, &container.Config{}, true, false); err == nil || !strings.HasPrefix(err.Error(), "resolve configuration container variables: ") {
-		t.Errorf("configuration error = %v, want the substitution error", err)
+	want := "'${containerEnv}' in devcontainer.json can not be resolved because no environment variable name is given."
+	for _, include := range []bool{true, false} {
+		_, err := setUpResult(loaded, nil, &container.Config{}, include, false)
+		if ce, ok := coreerrors.AsContainerError(err); !ok || ce.Description != want {
+			t.Errorf("configuration (reported %v) error = %v, want the ContainerError %q", include, err, want)
+		}
 	}
 	entries := []imagemeta.Entry{{RemoteEnv: map[string]*string{"X": strPtr("${containerEnv}")}}}
-	if _, err := setUpResult(nil, entries, &container.Config{}, false, true); err == nil || !strings.HasPrefix(err.Error(), "resolve merged container variables: ") {
-		t.Errorf("merged error = %v, want the substitution error", err)
+	want = "'${containerEnv}' can not be resolved because no environment variable name is given."
+	if _, err := setUpResult(nil, entries, &container.Config{}, false, false); err == nil || err.Error() != want {
+		t.Errorf("merged error = %v, want %q", err, want)
 	}
 }

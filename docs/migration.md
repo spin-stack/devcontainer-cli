@@ -95,6 +95,11 @@ runs the official CLI is unaffected:
   target. Earlier releases carried an unreleased upstream change (#1261) instead.
   A configuration that needs Git inside the container this way should add the
   common directory to `mounts` itself.
+- A `${containerEnv}` reference without a variable name fails `up`, `set-up`,
+  `run-user-commands`, `exec` and `read-configuration` with exit 1 and
+  `'${containerEnv}' in <file> can not be resolved because no environment
+  variable name is given.`, as the official CLI does. Earlier releases reported
+  success for most of them. Name the variable, as in `${containerEnv:PATH}`.
 - `exec` reads the configuration `--config` or `--override-config` names, also
   with `--container-id` and no `--workspace-folder`, and exits 1 when it is
   missing (`Dev container config (<path>) not found.`) or cannot be loaded.

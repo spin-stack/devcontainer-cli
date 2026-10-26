@@ -158,6 +158,10 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 	}
 	entries := setUpEntries(inspect.Config.Labels, cfg, logger)
 	merged := imagemeta.MergeConfiguration(entries)
+	result, err := setUpResult(loaded, entries, inspect.Config, opts.includeConfig, opts.includeMerged)
+	if err != nil {
+		return writeErrorJSON(out, setUpErrorOutput(err))
+	}
 
 	var cfgProbe string
 	var cfgRemoteEnv map[string]*string
@@ -190,10 +194,6 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 		}
 	}
 
-	result, err := setUpResult(loaded, entries, inspect.Config, opts.includeConfig, opts.includeMerged)
-	if err != nil {
-		return writeErrorResult(out, err.Error())
-	}
 	orderConfigurations(result, loaded)
 	return writeSuccessJSON(out, result, setUpResultKeys...)
 }
@@ -232,33 +232,37 @@ func setUpEntries(labels map[string]string, cfg *config.DevContainer, logger log
 // merge of entries over it, both with ${containerEnv:...} resolved from the
 // container's environment. configFilePath is the file URI, which TS never
 // substitutes.
+//
+// TS substitutes both before it runs the lifecycle hooks, whether or not they
+// are reported, so set-up computes the result first: a variable that cannot be
+// resolved is the ContainerError it fails with, naming the configuration's
+// file.
 func setUpResult(loaded *config.LoadResult, entries []imagemeta.Entry, containerCfg *container.Config, includeConfig, includeMerged bool) (map[string]any, error) {
-	result := map[string]any{"outcome": "success"}
-	if !includeConfig && !includeMerged {
-		return result, nil
-	}
 	cfgMap := map[string]any{}
 	var configFileURI any
+	configFile := ""
 	if loaded != nil {
-		cfgMap = configurationOutput(loaded, &readConfigOpts{configPath: loaded.Config.ConfigFilePath})
+		configFile = loaded.Config.ConfigFilePath
+		cfgMap = configurationOutput(loaded, &readConfigOpts{configPath: configFile})
 		configFileURI = cfgMap["configFilePath"]
 		delete(cfgMap, "configFilePath")
 	}
-	substituted, err := substituteContainerEnv(containerCfg, cfgMap)
+	substituted, err := substituteContainerEnv(containerCfg, cfgMap, configFile)
 	if err != nil {
-		return nil, fmt.Errorf("resolve configuration container variables: %w", err)
+		return nil, err
 	}
 	if configFileURI != nil {
 		substituted["configFilePath"] = configFileURI
 	}
+	merged, err := mergedConfigurationOutput(entries, containerCfg, substituted, configFile)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{"outcome": "success"}
 	if includeConfig {
 		result["configuration"] = substituted
 	}
 	if includeMerged {
-		merged, err := mergedConfigurationOutput(entries, containerCfg, substituted)
-		if err != nil {
-			return nil, fmt.Errorf("resolve merged container variables: %w", err)
-		}
 		result["mergedConfiguration"] = merged
 	}
 	return result, nil

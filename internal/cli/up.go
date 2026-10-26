@@ -441,6 +441,19 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 	remoteWorkspaceFolder := loadResult.WorkspaceConfig.WorkspaceFolder
 
+	// TS setupInContainer substitutes the container's environment into the
+	// configuration and the merged configuration before the hooks, even with
+	// --skip-post-create: a variable that cannot be resolved fails up, with
+	// the container reported.
+	if subErr := run.checkContainerSubstitution(inspectResp, cfg, loadResult.Raw); subErr != nil {
+		ce, ok := coreerrors.AsContainerError(subErr)
+		if !ok {
+			ce = &coreerrors.ContainerError{Description: "An error occurred setting up the container.", OriginalError: subErr}
+		}
+		ce.ContainerID = containerID
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(ce))
+	}
+
 	// Run lifecycle hooks (unless skipped). A hook failure aborts `up` with an
 	// error outcome (matching the TS CLI), instead of reporting success.
 	if !opts.skipPostCreate {
@@ -558,7 +571,7 @@ func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cf
 		cfgJSON, _ := json.Marshal(cfg)
 		var cfgGeneric any
 		json.Unmarshal(cfgJSON, &cfgGeneric)
-		substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
+		substituted, subErr := resolveContainerVariables(containerEnv, cfg.ConfigFilePath, cfgGeneric)
 		if subErr != nil {
 			return fmt.Errorf("resolve configuration container variables: %w", subErr)
 		}
@@ -600,7 +613,7 @@ func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cf
 		mergedJSON, _ := json.Marshal(merged)
 		var mergedGeneric any
 		json.Unmarshal(mergedJSON, &mergedGeneric)
-		mergedSub, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
+		mergedSub, subErr := resolveContainerVariables(containerEnv, cfg.ConfigFilePath, mergedGeneric)
 		if subErr != nil {
 			return fmt.Errorf("resolve merged container variables: %w", subErr)
 		}
@@ -1236,6 +1249,24 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 		return hookContainerError(hookErr, containerID, "An error occurred setting up the container.")
 	}
 	return nil
+}
+
+// checkContainerSubstitution is TS setupInContainer's containerSubstitute
+// over the configuration (raw) and the merged configuration (the container's
+// metadata), for its failure alone.
+//
+// mutate-lane: TestParityMatrix - up.container-env-without-name-error fails
+// up through it against a real container.
+func (r *upRunner) checkContainerSubstitution(inspectResp container.InspectResponse, cfg *config.DevContainer, raw map[string]any) error {
+	entries, err := r.metadataOfContainer(inspectResp, cfg)
+	if err != nil {
+		return err
+	}
+	var containerEnv map[string]string
+	if inspectResp.Config != nil {
+		containerEnv = config.EnvMap(inspectResp.Config.Env)
+	}
+	return checkContainerSubstitution(containerEnv, cfg.ConfigFilePath, raw, imagemeta.MergeConfiguration(entries))
 }
 
 // secretsRemoteEnv are the --secrets-file variables (NAME=value) for the

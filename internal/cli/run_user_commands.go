@@ -199,6 +199,24 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 		return writeErrorResult(out, err.Error())
 	}
 	merged := imagemeta.MergeConfiguration(allEntries)
+	// TS doRunUserCommands substitutes the container's environment into the
+	// configuration and the merged configuration before it runs anything; a
+	// variable that cannot be resolved is the ContainerError it reports,
+	// naming the configuration's file.
+	var rawConfig any = cfg
+	if loadResult != nil {
+		rawConfig = loadResult.Raw
+	}
+	if cfg != nil {
+		configFile = cfg.ConfigFilePath
+	}
+	var containerEnv map[string]string
+	if inspect.Config != nil {
+		containerEnv = config.EnvMap(inspect.Config.Env)
+	}
+	if err := checkContainerSubstitution(containerEnv, configFile, rawConfig, merged); err != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(err))
+	}
 
 	remoteUser := lifecycleRemoteUser(merged, cfg)
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, lifecycleUserEnvProbe(opts.defaultUserEnvProbe, cfg), opts.containerSessionDataFolder)

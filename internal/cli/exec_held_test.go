@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/lifecycle"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/moby/moby/api/types/container"
@@ -154,6 +155,32 @@ func TestExecRemoteEnv(t *testing.T) {
 	}
 	if _, err := execRemoteEnv(nil, map[string]*string{"X": str("${containerEnv}")}, nil, nil); err == nil {
 		t.Error("an unresolvable ${containerEnv}: want an error")
+	}
+	// TS's ContainerError text, naming the configuration's file.
+	withFile := &config.DevContainer{ConfigFilePath: "/ws/c.json", RemoteEnv: map[string]*string{"X": str("${containerEnv}")}}
+	wantErr := "'${containerEnv}' in c.json can not be resolved because no environment variable name is given."
+	if _, err := execRemoteEnv(nil, nil, withFile, nil); err == nil || err.Error() != wantErr {
+		t.Errorf("unresolvable in the configuration: err = %v, want %q", err, wantErr)
+	}
+}
+
+// TS runs containerSubstitute over the whole configuration and merged
+// configuration: an unnamed ${containerEnv} anywhere is its ContainerError,
+// named ones resolve.
+func TestCheckContainerSubstitution(t *testing.T) {
+	env := map[string]string{"P": "/bin"}
+	ok := map[string]any{"postCreateCommand": "echo ${containerEnv:P}"}
+	bad := map[string]any{"postCreateCommand": []any{"echo", "${containerEnv}"}}
+	if err := checkContainerSubstitution(env, "/ws/c.json", ok, nil); err != nil {
+		t.Errorf("resolvable: err = %v", err)
+	}
+	want := "'${containerEnv}' in c.json can not be resolved because no environment variable name is given."
+	err := checkContainerSubstitution(env, "/ws/c.json", ok, bad)
+	if ce, isCE := coreerrors.AsContainerError(err); !isCE || ce.Description != want {
+		t.Errorf("unresolvable in the second value: err = %v, want the ContainerError %q", err, want)
+	}
+	if err := checkContainerSubstitution(env, "", bad); err == nil || err.Error() != "'${containerEnv}' can not be resolved because no environment variable name is given." {
+		t.Errorf("without a configuration file: err = %v", err)
 	}
 }
 
