@@ -2292,6 +2292,30 @@ initial_cases:
     current_status: match
     notes: "A workspace without a devcontainer.json and a missing override: TS names the workspace's default config path (getDefaultDevContainerConfigPath) as not found. Go named the override in a read error."
 
+  - id: read-configuration.id-label-lookup-failure
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "echo DOCKER_HOST=unix:///nonexistent/devcontainer-cli-parity.sock"
+    ts_cmd: "read-configuration --id-label parity.case=lookup --override-config src/test/configs/image/.devcontainer.json"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "A container lookup that fails fails read-configuration: TS findContainerAndIdLabels runs findDevContainer's `docker ps -q -a --filter label=…`, whose failure throws ('Command failed: docker ps …', logged), so the command exits 1 with nothing on stdout. Go ignored the failed lookup and printed the configuration."
+
+  - id: read-configuration.workspace-lookup-failure
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "echo DOCKER_HOST=unix:///nonexistent/devcontainer-cli-parity.sock"
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "The workspace's container lookup (devcontainer.local_folder and devcontainer.config_file labels) fails the command the same way when Docker cannot answer: exit 1, nothing on stdout."
+
   - id: read-configuration.container-config-success
     lane: runtime
     command: read-configuration

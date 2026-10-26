@@ -136,14 +136,21 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	lgr := log.New(log.Options{Version: cliVersion(), Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 	engine, engineErr := docker.NewEngineClient(lgr)
 	if engineErr != nil {
-		// Non-fatal: container lookup features won't work but config can still be read.
+		// Logged here; a container lookup then fails the command (readConfigurationContainerID).
 		lgr.Write(fmt.Sprintf("Warning: Docker engine: %v", engineErr), log.LevelWarning)
 	}
 	if engine != nil {
 		defer engine.Close()
 	}
 
-	containerID := readConfigurationContainerID(ctx, engine, opts, workspaceFolder, result)
+	var lister containerLister = failingLister{engineErr}
+	if engine != nil {
+		lister = engine
+	}
+	containerID, lookupErr := readConfigurationContainerID(ctx, lister, opts, workspaceFolder, result)
+	if lookupErr != nil {
+		return readConfigurationFailure(lgr, lookupErr)
+	}
 	containerCfg, inspectErr := inspectContainerConfig(ctx, engine, containerID)
 	if inspectErr != nil {
 		return readConfigurationFailure(lgr, inspectErr)
@@ -367,10 +374,12 @@ func configFileURI(path, scheme string, withFSPath bool) map[string]any {
 
 // readConfigurationContainerID is the container read-configuration reads: the
 // --container-id, else the one the id labels or the workspace folder and
-// config file find. Without a Docker engine, only the --container-id.
-func readConfigurationContainerID(ctx context.Context, engine *docker.EngineClient, opts *readConfigOpts, workspaceFolder string, result *config.LoadResult) string {
-	if opts.containerID != "" || engine == nil {
-		return opts.containerID
+// config file find. A lookup that fails, also for want of a Docker engine
+// (lister is then one that fails with engineErr), fails the command, as TS's
+// findContainerAndIdLabels throws.
+func readConfigurationContainerID(ctx context.Context, lister containerLister, opts *readConfigOpts, workspaceFolder string, result *config.LoadResult) (string, error) {
+	if opts.containerID != "" {
+		return opts.containerID, nil
 	}
 	configFile := ""
 	if result != nil {
@@ -378,7 +387,7 @@ func readConfigurationContainerID(ctx context.Context, engine *docker.EngineClie
 	}
 	// [local_folder, config_file] so multiple configs in one project resolve
 	// to the right container (fallback to local_folder for legacy ones).
-	return resolveContainerID(ctx, engine, workspaceFolder, configFile, opts.idLabels)
+	return resolveContainerID(ctx, lister, workspaceFolder, configFile, opts.idLabels)
 }
 
 // inspectContainerConfig is the config of container cid, nil when there is no

@@ -17,6 +17,8 @@ import (
 // --oci-auth-hardening, entries must be '<registry-host>=<auth-host>' pairs of
 // bare authorities, and the error message is the one users see (exit code 1).
 func TestOCIAuthGlobalFlagValidation(t *testing.T) {
+	// read-configuration looks for the container; this engine has none.
+	startFakeEngine(t, nil)
 	tests := []struct {
 		name string
 		args []string
@@ -125,6 +127,8 @@ func TestExecAcceptsGlobalOCIAuthFlags(t *testing.T) {
 // reference CLI emits ociAuthDiagnostics on every read-configuration, even when
 // no registry was contacted.
 func TestReadConfigurationEmitsOCIAuthDiagnostics(t *testing.T) {
+	// read-configuration looks for the container; this engine has none.
+	startFakeEngine(t, nil)
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, ".devcontainer"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)

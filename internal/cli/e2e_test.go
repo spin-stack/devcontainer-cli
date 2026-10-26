@@ -98,6 +98,8 @@ func TestE2E_BuildUpExec_Dockerfile(t *testing.T) {
 }
 
 func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
+	// read-configuration looks for the container; this engine has none.
+	startFakeEngine(t, nil)
 	fixtures := []struct {
 		name    string
 		checkFn func(t *testing.T, cfg map[string]any)

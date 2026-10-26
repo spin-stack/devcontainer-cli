@@ -34,6 +34,9 @@ func readConfigurationResult(t *testing.T, fixtureName string) map[string]any {
 	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
 		t.Skip("fixture not found: " + fixtureName)
 	}
+	// read-configuration looks for the workspace's container, so it needs an
+	// engine to answer; this one has none.
+	startFakeEngine(t, nil)
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()

@@ -95,6 +95,8 @@ func TestReadConfigurationFixtures(t *testing.T) {
 }
 
 func TestReadConfiguration_AllFixtures(t *testing.T) {
+	// read-configuration looks for the container; this engine has none.
+	startFakeEngine(t, nil)
 	fixturesDir := filepath.Join("..", "..", "src", "test", "configs")
 	if _, err := os.Stat(fixturesDir); os.IsNotExist(err) {
 		t.Skip("fixtures not found")

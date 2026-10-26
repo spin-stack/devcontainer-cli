@@ -166,28 +166,34 @@ func TestReadConfigurationContainerID(t *testing.T) {
 	}}
 	engine := &docker.EngineClient{API: api, Log: log.Null}
 
-	if got := readConfigurationContainerID(ctx, engine, &readConfigOpts{}, ws, result); got != "by-config" {
+	if got, err := readConfigurationContainerID(ctx, engine, &readConfigOpts{}, ws, result); err != nil || got != "by-config" {
 		t.Errorf("by workspace and config file = %q, want by-config", got)
 	}
-	if got := readConfigurationContainerID(ctx, engine, &readConfigOpts{idLabels: []string{"a=b"}}, "", nil); got != "by-label" {
+	if got, err := readConfigurationContainerID(ctx, engine, &readConfigOpts{idLabels: []string{"a=b"}}, "", nil); err != nil || got != "by-label" {
 		t.Errorf("by id label = %q, want by-label", got)
 	}
 	api.listed = nil
-	if got := readConfigurationContainerID(ctx, engine, &readConfigOpts{}, ws, nil); got != "" {
+	if got, err := readConfigurationContainerID(ctx, engine, &readConfigOpts{}, ws, nil); err != nil || got != "" {
 		t.Errorf("without a config = %q, want none", got)
 	}
 	if len(api.listed) != 1 || slices.ContainsFunc(api.listed[0], func(l string) bool { return strings.HasPrefix(l, "devcontainer.config_file=") }) {
 		t.Errorf("without a config, listed by %v; want the local folder alone", api.listed)
 	}
 	api.listed = nil
-	if got := readConfigurationContainerID(ctx, engine, &readConfigOpts{containerID: "given"}, ws, result); got != "given" || len(api.listed) != 0 {
+	if got, err := readConfigurationContainerID(ctx, engine, &readConfigOpts{containerID: "given"}, ws, result); err != nil || got != "given" || len(api.listed) != 0 {
 		t.Errorf("--container-id = %q (listed %v), want it as given without a lookup", got, api.listed)
 	}
-	if got := readConfigurationContainerID(ctx, nil, &readConfigOpts{}, ws, result); got != "" {
-		t.Errorf("without an engine = %q, want none", got)
+	// A lookup that fails fails the command, as TS's findContainerAndIdLabels
+	// throws: without an engine too, though --container-id needs no lookup.
+	noEngine := failingLister{errors.New("no engine")}
+	if got, err := readConfigurationContainerID(ctx, noEngine, &readConfigOpts{}, ws, result); got != "" || err == nil || !strings.HasPrefix(err.Error(), "Command failed: docker ps -q -a --filter label=devcontainer.local_folder=/some/workspace") {
+		t.Errorf("without an engine = %q, %v; want the failed lookup", got, err)
 	}
-	if got := readConfigurationContainerID(ctx, nil, &readConfigOpts{containerID: "given"}, ws, result); got != "given" {
-		t.Errorf("--container-id without an engine = %q, want given", got)
+	if got, err := readConfigurationContainerID(ctx, noEngine, &readConfigOpts{idLabels: []string{"a=b"}}, "", nil); got != "" || err == nil || err.Error() != "Command failed: docker ps -q -a --filter label=a=b" {
+		t.Errorf("by id label without an engine = %q, %v; want the failed lookup", got, err)
+	}
+	if got, err := readConfigurationContainerID(ctx, noEngine, &readConfigOpts{containerID: "given"}, ws, result); err != nil || got != "given" {
+		t.Errorf("--container-id without an engine = %q, %v; want given", got, err)
 	}
 }
 
@@ -459,6 +465,10 @@ func TestConfigMetadataEntry(t *testing.T) {
 // stdout parsed, or the command's error.
 func runReadConfigurationCmd(t *testing.T, args ...string) (map[string]any, error) {
 	t.Helper()
+	// read-configuration looks for the container (TS findContainerAndIdLabels),
+	// and a lookup that fails fails the command, so an engine with no
+	// containers answers it.
+	startFakeEngine(t, nil)
 	stdout, err := readConfigurationStdout(args...)
 	if err != nil {
 		return nil, err
@@ -691,23 +701,44 @@ func TestReadConfigurationCommandMergedWithoutImageExitsOne(t *testing.T) {
 }
 
 func TestReadConfigurationCommandWithoutDockerEngine(t *testing.T) {
-	// Without a Docker engine the configuration is still read, with a warning.
+	// Without a Docker engine the container lookup fails, and so does the
+	// command, with nothing on stdout: TS's findContainerAndIdLabels runs
+	// `docker ps`, whose failure exits read-configuration 1.
 	t.Setenv("DOCKER_HOST", "not a docker host")
 	ws := writeConfigFixture(t, map[string]string{".devcontainer/devcontainer.json": `{"image": "img:1"}`})
 	logFile := filepath.Join(t.TempDir(), "log.txt")
-	out, err := runReadConfigurationCmd(t, "--workspace-folder", ws, "--log-file", logFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg, _ := out["configuration"].(map[string]any); cfg["image"] != "img:1" {
-		t.Errorf("configuration = %v", out["configuration"])
+	stdout, err := readConfigurationStdout("--workspace-folder", ws, "--log-file", logFile)
+	wantExitCode(t, err, 1)
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing", stdout)
 	}
 	logged, err := os.ReadFile(logFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(logged), "Warning: Docker engine:") {
-		t.Errorf("log = %q, want the Docker engine warning", logged)
+	for _, want := range []string{"Warning: Docker engine:", "Command failed: docker ps -q -a --filter label=devcontainer.local_folder=" + ws} {
+		if !strings.Contains(string(logged), want) {
+			t.Errorf("log = %q, want %q", logged, want)
+		}
+	}
+}
+
+// A container lookup by --id-label that fails exits 1 with nothing on stdout,
+// as TS's findDevContainer `docker ps` failure does. Go printed the
+// configuration and exited 0.
+func TestReadConfigurationCommandFailedIDLabelLookup(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "unix:///nonexistent/docker.sock")
+	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
+	if err := os.WriteFile(cfg, []byte(`{"image":"img:1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := readConfigurationStdout("--id-label", "devcontainer-cli-test=lookup", "--override-config", cfg)
+	wantExitCode(t, err, 1)
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing", stdout)
+	}
+	if want := "Command failed: docker ps -q -a --filter label=devcontainer-cli-test=lookup"; err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
 	}
 }
 

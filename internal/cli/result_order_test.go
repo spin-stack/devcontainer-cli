@@ -14,6 +14,8 @@ import (
 // configFilePath last, FeaturesConfig's literal), as the TS oracle printed
 // for these documents.
 func TestReadConfigurationWritesTSKeyOrder(t *testing.T) {
+	// read-configuration looks for the container; this engine has none.
+	startFakeEngine(t, nil)
 	files := map[string]string{".devcontainer/devcontainer.json": `{
 		// a comment
 		"name": "ko",

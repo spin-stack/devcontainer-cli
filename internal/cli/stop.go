@@ -147,5 +147,8 @@ func resolveWorkspaceContainer(ctx context.Context, engine *docker.EngineClient,
 	if opts.configPath != "" {
 		configFile = resolvePath(opts.configPath)
 	}
-	return resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
+	// A failed lookup is no container here, as it was before lookups reported
+	// their failure.
+	id, _ := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
+	return id
 }
