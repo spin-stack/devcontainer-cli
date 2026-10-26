@@ -1018,6 +1018,45 @@ initial_cases:
     current_status: match
     notes: "A compose configuration without workspaceFolder works in `/` (TS getWorkspaceConfiguration returns getRemoteWorkspaceFolder, `config.workspaceFolder || '/'`, dockerCompose.ts): up's remoteWorkspaceFolder, ${containerWorkspaceFolder}, the lifecycle commands' cwd and exec's cwd. Go used /workspaces/<basename>, a folder the compose service never mounts."
 
+  - id: build.frozen-lockfile-missing-failure
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --buildkit=never --frozen-lockfile"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile
+    current_status: match
+    notes: "--frozen-lockfile without a lockfile fails with TS writeLockfile's 'Lockfile does not exist.' (lockfile.ts), wrapped as the build's ContainerError: message is that text, description 'An error occurred building the container.'. Go skipped the check when no lockfile existed and built the image."
+
+  - id: up.frozen-lockfile-mismatch-failure
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"features\":{\"stale\":{}}}' > $WORKSPACE/.devcontainer/devcontainer-lock.json; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --frozen-lockfile --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile
+    current_status: match
+    notes: "A stale lockfile with --frozen-lockfile fails with TS's 'Lockfile does not match.' as the message and 'An error occurred setting up the container.' as the description. Go reported 'An error occurred setting up the container: install features: lockfile: lockfile does not match' in both."
+
+  - id: up.compose-frozen-lockfile-missing-failure
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --frozen-lockfile --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile
+    current_status: match
+    notes: "The compose path checks the frozen lockfile too (TS generateFeaturesConfig -> writeLockfile, wrapped by dockerCompose.ts as 'An error occurred setting up the container.'). Go skipped it when no lockfile existed and started the service."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

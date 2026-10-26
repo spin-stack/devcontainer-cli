@@ -133,6 +133,12 @@ func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 	return &lf, false, nil
 }
 
+// The errors a frozen WriteLockfile fails with, TS writeLockfile's own text.
+var (
+	ErrLockfileMissing  = errors.New("Lockfile does not exist.")
+	ErrLockfileMismatch = errors.New("Lockfile does not match.")
+)
+
 // WriteOptions controls how WriteLockfile behaves.
 type WriteOptions struct {
 	// Frozen fails (rather than writing) if the lockfile is missing or would change.
@@ -157,8 +163,12 @@ func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) err
 		return readErr
 	}
 
+	missing := errors.Is(readErr, os.ErrNotExist)
+	if opts.Frozen && missing {
+		return ErrLockfileMissing
+	}
 	// If no old lockfile and not explicitly enabled, skip
-	if !opts.Force && errors.Is(readErr, os.ErrNotExist) {
+	if !opts.Force && missing {
 		return nil
 	}
 
@@ -168,11 +178,8 @@ func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) err
 	unchanged := parsed && oldNormalized == string(newData)
 
 	if opts.Frozen {
-		if errors.Is(readErr, os.ErrNotExist) {
-			return fmt.Errorf("lockfile does not exist")
-		}
 		if !unchanged {
-			return fmt.Errorf("lockfile does not match")
+			return ErrLockfileMismatch
 		}
 		return nil
 	}
