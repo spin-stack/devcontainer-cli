@@ -256,7 +256,14 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	}
 
 	if opts.outputFormat == "json" {
-		writeOutdatedJSON(out.Stdout(), map[string]any{"features": result})
+		// TS reorders resolved.features to the order the configuration lists
+		// the Features in (loadVersionInfo), which JSON.stringify keeps.
+		fields := make(map[string]any, len(result))
+		for id, e := range result {
+			fields[id] = e
+		}
+		ordered := orderedObject{fields: fields, order: orderedFeatureKeys(cfg.ConfigFilePath, cfg.Features)}
+		writeOutdatedJSON(out.Stdout(), map[string]any{"features": ordered})
 	} else {
 		// Text table. Rows follow the order features were declared in the config
 		// (TS reorders resolved.features back to config order), and the Feature

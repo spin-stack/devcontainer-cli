@@ -66,6 +66,11 @@ func TestOutdatedReportsVersions(t *testing.T) {
 		h + "/ns/single:3": {Current: "3.1.0", Wanted: "3.1.0", WantedMajor: "3", Latest: "3.1.0", LatestMajor: "3"},
 		h + "/ns/blank:1":  {Current: "1.0.0", Wanted: "1.0.0", WantedMajor: "1", Latest: "1.0.0", LatestMajor: "1"},
 	}
+	// The Features follow the configuration's order, as TS loadVersionInfo
+	// reorders them, not the ids' sorted order.
+	if keys, err := jsonKeyOrder(got, "features"); err != nil || !slices.Equal(keys, []string{h + "/ns/multi:1", h + "/ns/single:3", h + "/ns/blank:1"}) {
+		t.Errorf("features order = %v, %v; want the configuration's", keys, err)
+	}
 	if len(doc.Features) != len(want) {
 		t.Errorf("features = %v, want %v", doc.Features, want)
 	}
