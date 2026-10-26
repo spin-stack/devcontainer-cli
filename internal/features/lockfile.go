@@ -11,11 +11,48 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
 // Lockfile represents a devcontainer-lock.json.
 type Lockfile struct {
 	Features map[string]LockfileEntry `json:"features"`
+}
+
+// featureIDCollator is the collator of TS's `a.id.localeCompare(b.id)`, which
+// orders a generated lockfile's features: Node's default, en-US.
+var featureIDCollator = collate.New(language.AmericanEnglish)
+
+// MarshalJSON writes the features in the order TS generateLockfile sorts them
+// in, String.prototype.localeCompare of their ids; ids that collate as equal
+// keep byte order.
+func (l Lockfile) MarshalJSON() ([]byte, error) {
+	ids := slices.SortedFunc(maps.Keys(l.Features), func(a, b string) int {
+		if c := featureIDCollator.CompareString(a, b); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	buf.WriteString(`{"features":{`)
+	for i, id := range ids {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		if err := enc.Encode(id); err != nil {
+			return nil, err
+		}
+		buf.WriteByte(':')
+		if err := enc.Encode(l.Features[id]); err != nil {
+			return nil, err
+		}
+	}
+	buf.WriteString(`}}`)
+	return buf.Bytes(), nil
 }
 
 // LockfileEntry records a pinned feature version.
@@ -64,9 +101,8 @@ func GenerateLockfile(config *Config, excludeUserFeatureIDs map[string]bool) *Lo
 			Integrity: fs.ComputedDigest,
 		}
 		if len(feat.DependsOn) > 0 {
-			e.DependsOn = slices.Sorted(maps.Keys(feat.DependsOn))
+			e.DependsOn = feat.DependsOnKeys()
 		}
-		// A map: the file is written with its keys sorted (json.MarshalIndent).
 		lf.Features[src.UserFeatureID()] = e
 	}
 	return lf
