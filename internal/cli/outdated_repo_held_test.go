@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	coreerrors "github.com/devcontainers/cli/internal/errors"
@@ -458,5 +459,26 @@ func TestUpgradeRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")); !os.IsNotExist(err) {
 			t.Errorf("dry-run %t: wrote a lockfile: %v", dryRun, err)
 		}
+	}
+}
+
+// A lockfile upgrade creates gets Node's default mode, 0666 minus the umask,
+// as TS writeLocalFile(lockfilePath, "") gives it before the lockfile is
+// written.
+func TestUpgradeCreatesTheLockfileWithNodesMode(t *testing.T) {
+	old := syscall.Umask(0o002)
+	t.Cleanup(func() { syscall.Umask(old) })
+	reg := newReadRegistry(t)
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
+	ws := writeOutdatedWorkspace(t, `{"`+reg.host+`/ns/tool:1":{}}`, "")
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(ws, ".devcontainer", "devcontainer-lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o664 {
+		t.Errorf("lockfile mode = %v, want 0664", got)
 	}
 }
