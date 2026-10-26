@@ -1245,6 +1245,20 @@ initial_cases:
     current_status: match
     notes: "A Feature entry is TS's {...featureJson, ...feature} (applyFeatureConfigToFeature): devcontainer-feature.json's properties in its order, then those processFeatureIdentifier and fetchFeatures set that it lacks ({id, name, value, included}, then cachePath and consecutiveId), so value follows the metadata's properties. g's metadata lists version before id and has no name, which then follows it. Go wrote the struct's order (value after consecutiveId, containerEnv and customizations last)."
 
+  - id: read-configuration.features-configuration-local-feature-metadata-success
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/h; printf '%s' '{\"version\":\"1.0.0\",\"id\":\"h\",\"keywords\":[\"k\"],\"options\":{\"z\":{\"type\":\"string\",\"default\":\"1\"},\"a\":{\"default\":true,\"type\":\"boolean\"},\"e\":{}},\"x\":1,\"x\":2,\"10\":\"ten\",\"2\":\"two\",\"extensions\":[\"ext1\"],\"settings\":{\"s\":1,\"u\":1},\"customizations\":{\"vscode\":{\"extensions\":[\"e0\"],\"settings\":{\"t\":2,\"s\":3}}},\"num\":1.50,\"empty\":{}}' > $WORKSPACE/.devcontainer/h/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/h/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./h\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-features-configuration"
+    key_order: ["featuresConfiguration", "featuresConfiguration.featureSets.0", "featuresConfiguration.featureSets.0.sourceInformation", "featuresConfiguration.featureSets.0.features.0", "featuresConfiguration.featureSets.0.features.0.options", "featuresConfiguration.featureSets.0.features.0.options.z", "featuresConfiguration.featureSets.0.features.0.options.a", "featuresConfiguration.featureSets.0.features.0.customizations.vscode", "featuresConfiguration.featureSets.0.features.0.customizations.vscode.settings"]
+    asserts: [exit_code, stdout_normalized, stdout_text]
+    class: output-shape
+    current_status: match
+    notes: "A local Feature entry is devcontainer-feature.json as JSON.parse reads it, every property kept (keywords, x, empty, an empty option), a repeated one at its first position with its last value, the array-index properties 2 and 10 first, numbers as JS writes them (1.5), and the options' properties in the file's order; then name, value, included, cachePath and consecutiveId (processFeatureIdentifier, fetchFeatures). updateFromOldProperties (containerFeaturesConfiguration.ts) moves extensions and settings into customizations.vscode, settings spread under vscode's. Go used to write only the properties it has fields for, in the struct's order, with options sorted and the deprecated properties dropped."
+
   - id: read-configuration.features-configuration-oci-feature-key-order-success
     lane: runtime
     command: read-configuration
@@ -1253,11 +1267,23 @@ initial_cases:
     setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/github-cli:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
     cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
     ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-features-configuration"
-    key_order: ["featuresConfiguration.featureSets.0.features.0"]
+    key_order: ["featuresConfiguration.featureSets.0", "featuresConfiguration.featureSets.0.sourceInformation", "featuresConfiguration.featureSets.0.sourceInformation.manifest", "featuresConfiguration.featureSets.0.sourceInformation.manifest.config", "featuresConfiguration.featureSets.0.sourceInformation.manifest.annotations", "featuresConfiguration.featureSets.0.sourceInformation.featureRef", "featuresConfiguration.featureSets.0.features.0", "featuresConfiguration.featureSets.0.features.0.options", "featuresConfiguration.featureSets.0.features.0.options.version"]
+    asserts: [exit_code, stdout_normalized, stdout_text]
+    class: output-shape
+    current_status: match
+    notes: "An OCI Feature set as TS writes it: sourceInformation in tryGetOCIFeatureSet's order (type, manifest, manifestDigest, featureRef, userFeatureId, userFeatureIdWithoutVersion), the manifest as the registry served it (JSON.parse of its body), featureRef in getRef's order, then internalVersion before computedDigest (applyFeatureConfigToFeature). The Feature is the annotation's metadata spread over {id, included, value} and that over the layer's devcontainer-feature.json, so its options keep the published order. Go used to re-serialize the manifest and featureRef with sorted keys and write the Feature in the struct's order."
+
+  - id: read-configuration.features-configuration-oci-feature-digest-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    network_required: true
+    ts_cmd: "read-configuration --workspace-folder reference/src/test/container-features/configs/dockerfile-with-v2-oci-features --include-features-configuration"
+    key_order: ["featuresConfiguration.featureSets.0.sourceInformation.featureRef", "featuresConfiguration.featureSets.1.sourceInformation.featureRef", "featuresConfiguration.featureSets.2.sourceInformation.featureRef", "featuresConfiguration.featureSets.0.features.0", "featuresConfiguration.featureSets.1.features.0", "featuresConfiguration.featureSets.2.features.0"]
     asserts: [exit_code, stdout_normalized]
     class: output-shape
     current_status: match
-    notes: "An OCI Feature entry is the published devcontainer-feature.json's properties in its order, then {id, included, value} (tryGetOCIFeatureSet) and cachePath, consecutiveId: included before value. Go wrote the struct's order. Only the entry's key order is compared: other parts of featuresConfiguration (the manifest, featureRef, options) still differ in key order."
+    notes: "A digest reference's featureRef has digest and version, no tag (getRef), next to the legacy ids terraform and node mapped to their published Features."
 
   - id: read-configuration.key-order-success
     lane: semantic

@@ -180,9 +180,8 @@ func TestProcessInstallFeatureOCI(t *testing.T) {
 		if !ok {
 			t.Fatalf("source = %T", set.SourceInfo)
 		}
-		ref := src.FeatureRef.(map[string]string)
-		if ref["owner"] != "owner" || ref["path"] != "owner/coll/hello" || ref["tag"] != "1" {
-			t.Errorf("featureRef = %v", ref)
+		if ref := src.FeatureRef; ref == nil || ref.Owner != "owner" || ref.Path != "owner/coll/hello" || ref.Tag != "1" || ref.Version != "1" {
+			t.Errorf("featureRef = %+v", ref)
 		}
 		if src.UserFeatureIdWithoutVersion != "ghcr.io/owner/coll/hello" || set.ComputedDigest != manifest.ContentDigest {
 			t.Errorf("userFeatureIdWithoutVersion = %q, computedDigest = %q", src.UserFeatureIdWithoutVersion, set.ComputedDigest)
@@ -925,5 +924,40 @@ func TestRealignFeatureDirsSkipsUnstagedSets(t *testing.T) {
 	}
 	if f := unstaged.Features[0]; f.ConsecutiveId != "" || f.CachePath != "" {
 		t.Errorf("unstaged Feature = %+v, want it untouched", f)
+	}
+}
+
+// An OCI Feature set is written as TS's featuresConfiguration has it: the
+// sourceInformation properties in tryGetOCIFeatureSet's order, the manifest
+// as the registry served it, featureRef parsed from the reference as written
+// even when the lockfile pins the manifest, and the Feature built from the
+// annotation's metadata spread over the layer's devcontainer-feature.json.
+func TestProcessInstallFeatureOCISetJSON(t *testing.T) {
+	const id = "ghcr.io/owner/coll/hello:1"
+	digest := "sha256:" + strings.Repeat("cd", 32)
+	annotation := `{"version":"1.2.0","id":"hello","options":{"b":{"type":"string","default":""},"a":{"default":true,"type":"boolean"}}}`
+	reg := newOCIFeatureRegistry()
+	m := reg.add(t, "ghcr.io/owner/coll/hello@"+digest, map[string]string{"devcontainer-feature.json": "// layer\n{\"name\":\"Hello\",\"id\":\"hello\",\"version\":\"1.0.0\",\"keywords\":[\"k\"],}"}, &annotation)
+	m.ManifestBytes = []byte(`{"schemaVersion":2,"config":{"mediaType":"application/vnd.devcontainers","digest":"sha256:c","size":2},"layers":[]}`)
+	lf := &features.Lockfile{Features: map[string]features.LockfileEntry{id: {Integrity: digest}}}
+	set, err := installFeature(t, reg, id, map[string]any{}, lf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set.Features[0].CachePath, set.Features[0].ConsecutiveId = "/c", "hello_0"
+	got, err := json.Marshal(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"sourceInformation":{"type":"oci",` +
+		`"manifest":{"schemaVersion":2,"config":{"mediaType":"application/vnd.devcontainers","digest":"sha256:c","size":2},"layers":[]},` +
+		`"manifestDigest":"` + m.ContentDigest + `",` +
+		`"featureRef":{"scheme":"https","id":"hello","owner":"owner","namespace":"owner/coll","registry":"ghcr.io","resource":"ghcr.io/owner/coll/hello","path":"owner/coll/hello","version":"1","tag":"1"},` +
+		`"userFeatureId":"` + id + `","userFeatureIdWithoutVersion":"ghcr.io/owner/coll/hello"},` +
+		`"features":[{"name":"Hello","id":"hello","version":"1.2.0","keywords":["k"],"included":true,"value":{},` +
+		`"options":{"b":{"type":"string","default":""},"a":{"default":true,"type":"boolean"}},"cachePath":"/c","consecutiveId":"hello_0"}],` +
+		`"internalVersion":"2","computedDigest":"` + m.ContentDigest + `"}`
+	if string(got) != want {
+		t.Errorf("set JSON:\ngot  %s\nwant %s", got, want)
 	}
 }
