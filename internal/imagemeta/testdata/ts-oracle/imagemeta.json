@@ -766,6 +766,237 @@
       }
     },
     {
+      "name": "forwardPorts localhost: then digits anywhere",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "localhost:3000abc",
+              "localhost:12 ",
+              "localhost:0x10",
+              "localhost:1.5e3",
+              "localhost:99999999999999999999"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          3000,
+          12,
+          16,
+          1,
+          100000000000000000000
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts localhost: not at the start",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "mylocalhost:3000",
+              "xlocalhost:3000",
+              "a localhost:5",
+              "127.0.0.1:localhost:80"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts strings that are no localhost port",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "3000",
+              "LOCALHOST:3000",
+              "localhost:-1",
+              "localhost:",
+              "localhost: 12"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          "3000",
+          "LOCALHOST:3000",
+          "localhost:-1",
+          "localhost:",
+          "localhost: 12"
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts non-integer and large numbers",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              3000.5,
+              3000,
+              1e+21,
+              -5,
+              -0.0,
+              0
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          3000,
+          3000,
+          1,
+          "localhost:-5",
+          0
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts other JSON values",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              true,
+              true,
+              null,
+              null,
+              {
+                "a": 1
+              },
+              {
+                "a": 1
+              },
+              false
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          true,
+          null,
+          {
+            "a": 1
+          },
+          {
+            "a": 1
+          },
+          false
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts number and string forms across entries",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              3000,
+              "localhost:3000abc"
+            ]
+          },
+          {
+            "forwardPorts": [
+              "localhost:3000",
+              3000.0
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          3000,
+          3000
+        ]
+      }
+    },
+    {
       "name": "hostRequirements per-field max",
       "fn": "mergeConfiguration",
       "args": [
