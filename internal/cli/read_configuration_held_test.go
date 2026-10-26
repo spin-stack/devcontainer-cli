@@ -444,6 +444,35 @@ func TestReadConfigurationCommandContainerIDWithoutWorkspace(t *testing.T) {
 	}
 }
 
+// --cache-key over a malformed devcontainer-lock.json is a runtime failure:
+// the error envelope on stdout naming the lockfile, exit 1. Without the flag
+// the command does not read the lockfile, as the reference's
+// read-configuration does not, and succeeds.
+func TestReadConfigurationCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
+	ws := writeConfigFixture(t, map[string]string{
+		".devcontainer/devcontainer.json":      `{"image": "img:1"}`,
+		".devcontainer/devcontainer-lock.json": `not json`,
+	})
+	if _, err := runReadConfigurationCmd(t, "--workspace-folder", ws); err != nil {
+		t.Fatalf("without --cache-key: %v", err)
+	}
+	var stdout bytes.Buffer
+	root := NewRootCommand()
+	root.SetOut(&stdout)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"read-configuration", "--workspace-folder", ws, "--cache-key"})
+	wantExitCode(t, root.Execute(), 1)
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("stdout is not the error envelope: %v\n%s", err, stdout.String())
+	}
+	lockPath := filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")
+	if msg, _ := envelope["message"].(string); envelope["outcome"] != "error" ||
+		!strings.HasPrefix(msg, "compute cache key: read features lockfile "+lockPath+": parse lockfile:") {
+		t.Errorf("stdout = %s, want the error outcome naming %s", stdout.String(), lockPath)
+	}
+}
+
 func TestReadConfigurationCommandFeaturesAndCacheKey(t *testing.T) {
 	files := map[string]string{".devcontainer/devcontainer.json": `{"image": "img:1", "features": {"./feat": {}}}`}
 	for k, v := range localFeatureFiles {

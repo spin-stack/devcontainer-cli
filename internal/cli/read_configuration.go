@@ -159,7 +159,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if opts.cacheKey && result != nil {
 		key, keyErr := computeCacheKey(result, proxyEnvFromEnviron())
 		if keyErr != nil {
-			return fmt.Errorf("compute cache key: %w", keyErr)
+			return writeErrorResult(out, fmt.Sprintf("compute cache key: %v", keyErr))
 		}
 		output["cacheKey"] = key
 	}
