@@ -165,7 +165,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	}
 
 	if ws, ok := workspaceOutput(result, workspaceFolder, opts.containerID); ok {
-		output["workspace"] = ws
+		output["workspace"] = orderedObject{ws, workspaceKeys}
 	}
 
 	// Include features configuration if requested (or needed for merged config without container)
@@ -406,6 +406,11 @@ func workspaceOutput(result *config.LoadResult, workspaceFolder, containerIDFlag
 	}
 	if result.WorkspaceConfig.WorkspaceMount != "" {
 		ws["workspaceMount"] = result.WorkspaceConfig.WorkspaceMount
+	}
+	// The loader's additional mounts are at most the Git worktree common dir's,
+	// TS's additionalMountString (getWorkspaceConfiguration).
+	if mounts := result.WorkspaceConfig.AdditionalMounts; len(mounts) > 0 {
+		ws["additionalMountString"] = mounts[0]
 	}
 	return ws, true
 }

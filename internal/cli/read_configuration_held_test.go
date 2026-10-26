@@ -224,6 +224,7 @@ func TestSubstituteContainerEnv(t *testing.T) {
 func TestWorkspaceOutput(t *testing.T) {
 	withMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p", WorkspaceMount: "type=bind,source=/p,target=/workspaces/p"}}
 	withoutMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p"}}
+	worktree := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/wt", WorkspaceMount: "type=bind,source=/r/wt,target=/workspaces/wt", AdditionalMounts: []string{"type=bind,source=/r/repo/.git,target=/workspaces/repo/.git"}}}
 	for _, tc := range []struct {
 		name          string
 		result        *config.LoadResult
@@ -235,6 +236,7 @@ func TestWorkspaceOutput(t *testing.T) {
 		{"no workspace config", &config.LoadResult{}, "/p", "", nil, false},
 		{"folder and mount", withMount, "/p", "", map[string]any{"workspaceFolder": "/workspaces/p", "workspaceMount": "type=bind,source=/p,target=/workspaces/p"}, true},
 		{"folder only", withoutMount, "/p", "", map[string]any{"workspaceFolder": "/workspaces/p"}, true},
+		{"worktree common dir", worktree, "/r/wt", "", map[string]any{"workspaceFolder": "/workspaces/wt", "workspaceMount": "type=bind,source=/r/wt,target=/workspaces/wt", "additionalMountString": "type=bind,source=/r/repo/.git,target=/workspaces/repo/.git"}, true},
 		{"container id without workspace folder", withMount, "", "abc", map[string]any{}, true},
 		{"container id and workspace folder", withoutMount, "/p", "abc", map[string]any{"workspaceFolder": "/workspaces/p"}, true},
 		{"id label without workspace folder", withoutMount, "", "", map[string]any{"workspaceFolder": "/workspaces/p"}, true},
@@ -245,6 +247,17 @@ func TestWorkspaceOutput(t *testing.T) {
 				t.Fatalf("workspaceOutput = %v, %v; want %v, %v", got, ok, tc.want, tc.ok)
 			}
 		})
+	}
+}
+
+// TS writes the workspace as getWorkspaceConfiguration's literal lists it.
+func TestWorkspaceOutputKeepsTSOrder(t *testing.T) {
+	got, err := stringifyJSON(orderedObject{map[string]any{"additionalMountString": "a", "workspaceMount": "m", "workspaceFolder": "f"}, workspaceKeys}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"workspaceFolder":"f","workspaceMount":"m","additionalMountString":"a"}`; string(got) != want {
+		t.Errorf("workspace = %s, want %s", got, want)
 	}
 }
 
