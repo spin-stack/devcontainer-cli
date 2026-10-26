@@ -228,6 +228,40 @@ func TestSubstituteContainerEnv(t *testing.T) {
 	}
 }
 
+// TS readConfiguration resolves ${devcontainerId} in the configuration from
+// the found container's id labels (beforeContainerSubstitute); without a
+// container it stays as written.
+func TestSubstituteDevContainerID(t *testing.T) {
+	cfgMap := map[string]any{"name": "${devcontainerId}", "remoteEnv": map[string]any{"P": "${containerEnv:PATH}"}}
+	got, err := substituteDevContainerID(nil, cfgMap, nil, "", nil)
+	if err != nil || !reflect.DeepEqual(got, cfgMap) {
+		t.Fatalf("without a container = %v, %v; want the config unchanged", got, err)
+	}
+	result := &config.LoadResult{Config: &config.DevContainer{ConfigFilePath: "/ws/.devcontainer/devcontainer.json"}}
+	labelled := &container.Config{Labels: map[string]string{"devcontainer.config_file": "/other.json"}}
+	for name, tc := range map[string]struct {
+		ctr      *container.Config
+		provided []string
+		ws       string
+		result   *config.LoadResult
+		labels   map[string]string
+	}{
+		"--id-label":           {labelled, []string{"a=b"}, "/ws", result, map[string]string{"a": "b"}},
+		"workspace and config": {labelled, nil, "/ws", result, map[string]string{"devcontainer.local_folder": "/ws", "devcontainer.config_file": "/ws/.devcontainer/devcontainer.json"}},
+		"older container":      {&container.Config{}, nil, "/ws", result, map[string]string{"devcontainer.local_folder": "/ws"}},
+		"--container-id alone": {labelled, nil, "", nil, map[string]string{"devcontainer.local_folder": "undefined", "devcontainer.config_file": "undefined"}},
+	} {
+		got, err := substituteDevContainerID(tc.ctr, cfgMap, tc.provided, tc.ws, tc.result)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want := map[string]any{"name": config.ComputeDevContainerID(tc.labels), "remoteEnv": map[string]any{"P": "${containerEnv:PATH}"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+	}
+}
+
 func TestWorkspaceOutput(t *testing.T) {
 	withMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p", WorkspaceMount: "type=bind,source=/p,target=/workspaces/p"}}
 	withoutMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p"}}

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 
@@ -112,13 +113,15 @@ func imageMetadataFromContainer(labels map[string]string, cfg *config.DevContain
 // found without the CLI's own lookup: the --id-label values, else the
 // workspace folder's and the config file's labels, the config file's only when
 // the container has one (an older container has the workspace folder's alone).
+// A missing workspace folder or config file is written as TS's template
+// literal writes undefined.
 func containerIDLabels(provided []string, containerLabels map[string]string, workspaceFolder, configFile string) []string {
 	if len(provided) > 0 {
 		return provided
 	}
-	labels := []string{"devcontainer.local_folder=" + workspaceFolder}
+	labels := []string{"devcontainer.local_folder=" + cmp.Or(workspaceFolder, "undefined")}
 	if containerLabels["devcontainer.config_file"] != "" {
-		labels = append(labels, "devcontainer.config_file="+configFile)
+		labels = append(labels, "devcontainer.config_file="+cmp.Or(configFile, "undefined"))
 	}
 	return labels
 }
