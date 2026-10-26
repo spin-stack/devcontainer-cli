@@ -76,13 +76,36 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 }
 
 // gitRepo makes an empty repository in a new directory and enters it, with no
-// user or system configuration to sign or hook its commits.
+// user or system configuration to sign or hook its commits. The variables git
+// exports to hooks and `rebase --exec` are cleared, so the tests never write
+// to the repository they run in.
 func gitRepo(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
+	for _, k := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX"} {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	git(t, "init", "-q")
+}
+
+// A repository named by GIT_DIR, as `git rebase --exec` names the one it
+// runs in, is left alone by gitRepo and the commits made after it.
+func TestGitRepoLeavesTheOuterRepositoryAlone(t *testing.T) {
+	outer := t.TempDir()
+	t.Chdir(outer)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	git(t, "init", "-q")
+	t.Setenv("GIT_DIR", filepath.Join(outer, ".git"))
+	t.Setenv("GIT_WORK_TREE", outer)
+
+	gitRepo(t)
+	commit(t, "a.txt", 1_700_000_000)
+	if out, err := exec.Command("git", "-C", outer, "rev-list", "--all").Output(); err != nil || len(out) != 0 {
+		t.Errorf("outer repository commits = %q, err = %v, want none", out, err)
+	}
 }
 
 func git(t *testing.T, args ...string) string {
