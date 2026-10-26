@@ -262,6 +262,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 			return writeValidationError(out, "--no-lockfile and --experimental-lockfile are mutually exclusive.")
 		}
 	}
+	warnDeprecatedLockfileFlags(out.Stderr(), opts.experimentalLockfile, opts.experimentalFrozenLockfile)
 	// TS folds --experimental-frozen-lockfile into --frozen-lockfile.
 	opts.experimentalFrozenLockfile = opts.experimentalFrozenLockfile || opts.frozenLockfile
 	// Non-blocking hint (interactive TTY only) if the host was never checked or a
@@ -1377,7 +1378,6 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
 		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-		Lockfile:                    opts.experimentalLockfile,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,
 		ConfigPath:                  cfg.ConfigFilePath,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -139,6 +140,8 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		}
 	}
 
+	warnDeprecatedLockfileFlags(out.Stderr(), opts.experimentalLockfile, opts.experimentalFrozenLockfile)
+
 	// Non-blocking hint (interactive TTY only) if the host was never checked or a
 	// previous `devcontainer check` found a failing configuration.
 	warnUncheckedHost(out)
@@ -234,6 +237,19 @@ func buildResultImageName(compose bool, argImageNames, built []string) any {
 		return built[0]
 	}
 	return built
+}
+
+// warnDeprecatedLockfileFlags writes the warnings TS up and build write
+// straight to stderr for the deprecated lockfile flags
+// (devContainersSpecCLI.ts warnDeprecatedLockfileFlags): the lockfile is
+// written by default, so --experimental-lockfile does nothing more.
+func warnDeprecatedLockfileFlags(w io.Writer, experimentalLockfile, experimentalFrozenLockfile bool) {
+	if experimentalLockfile {
+		fmt.Fprint(w, "Warning: --experimental-lockfile is deprecated. Lockfiles are now enabled by default.\n")
+	}
+	if experimentalFrozenLockfile {
+		fmt.Fprint(w, "Warning: --experimental-frozen-lockfile is deprecated. Use --frozen-lockfile instead.\n")
+	}
 }
 
 // foldFrozenLockfile folds the deprecated --experimental-frozen-lockfile into
@@ -836,7 +852,6 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 			cacheFrom:                  opts.cacheFrom,
 			buildNoCache:               opts.noCache,
 			skipFeatureAutoMapping:     opts.skipFeatureAutoMapping,
-			experimentalLockfile:       opts.experimentalLockfile,
 			experimentalFrozenLockfile: opts.experimentalFrozenLockfile,
 			noLockfile:                 opts.noLockfile,
 			lockfileExcludeIDs:         opts.lockfileExcludeIDs,
@@ -930,7 +945,6 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		Output:                      opts.output,
 		ContainerEnv:                cfg.ContainerEnv,
 		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
-		Lockfile:                    opts.experimentalLockfile,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,
 		ConfigPath:                  cfg.ConfigFilePath,

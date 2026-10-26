@@ -61,11 +61,11 @@ type FeatureBuildOptions struct {
 	// devcontainer.metadata label, as written (TS getDevcontainerMetadata's raw).
 	AdditionalMetadata []imagemeta.Entry
 	LabelMetadata      []imagemeta.Entry
-	// Lockfile writes devcontainer-lock.json with the resolved feature digests;
+	// devcontainer-lock.json is written with the resolved feature digests
+	// unless NoLockfile is set, as TS generateFeaturesConfig writes it;
 	// FrozenLockfile validates the resolved features against the committed
-	// lockfile and aborts on drift. ConfigPath is the devcontainer.json path
-	// used to locate the lockfile.
-	Lockfile       bool
+	// lockfile instead and aborts on drift. ConfigPath is the devcontainer.json
+	// path used to locate the lockfile.
 	FrozenLockfile bool
 	// NoLockfile disables lockfile reading (pinning-on-read) and writing, matching
 	// TS --no-lockfile ("Disable lockfile generation and verification.").
@@ -678,12 +678,12 @@ func extendImageWithFeatures(
 		}
 	}
 
-	// Write/validate the features lockfile when requested (opt-in via the
-	// --experimental-lockfile / --experimental-frozen-lockfile flags). Writing
-	// records the resolved digests for reproducibility; frozen aborts on drift.
-	if (fbOpts.Lockfile || fbOpts.FrozenLockfile) && fbOpts.ConfigPath != "" {
+	// Write (or, frozen, validate) the features lockfile unless --no-lockfile
+	// is given, as TS generateFeaturesConfig does (containerFeaturesConfiguration.ts
+	// `if (!params.noLockfile) await writeLockfile(...)`).
+	if !fbOpts.NoLockfile && fbOpts.ConfigPath != "" {
 		lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
-		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, features.WriteOptions{Frozen: fbOpts.FrozenLockfile, Force: fbOpts.Lockfile}); err != nil {
+		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, features.WriteOptions{Frozen: fbOpts.FrozenLockfile}); err != nil {
 			return nil, fmt.Errorf("lockfile: %w", err)
 		}
 	}

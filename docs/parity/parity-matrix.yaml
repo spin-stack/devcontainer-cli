@@ -1270,6 +1270,112 @@ initial_cases:
     current_status: match
     notes: "up mounts the additionalMountString read-configuration reports: TS spawnDevContainer passes it as a --mount after the workspace mount (singleContainer.ts), so the container has the worktree and its common dir."
 
+  - id: build.lockfile-written-by-default-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{},\"ghcr.io/devcontainers/feature-starter/hello:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cat ${WORKSPACE}/.devcontainer/devcontainer-lock.json"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    compare_hashes: true
+    notes: "TS writes devcontainer-lock.json on every build with Features unless --no-lockfile is given (containerFeaturesConfiguration.ts generateFeaturesConfig -> writeLockfile, which creates the file); it records the OCI Feature, pinned to its digest, and leaves the local one out. Go wrote it only with --experimental-lockfile or --frozen-lockfile."
+
+  - id: build.no-lockfile-writes-none-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{},\"ghcr.io/devcontainers/feature-starter/hello:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --buildkit=never --no-lockfile --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "ls -A ${WORKSPACE}/.devcontainer"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    notes: "--no-lockfile disables writing the lockfile (generateFeaturesConfig skips writeLockfile): the configuration folder holds no devcontainer-lock.json after the build."
+
+  - id: build.dot-devcontainer-lockfile-path-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./.devcontainer/f\":{}}}' > $WORKSPACE/.devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cd ${WORKSPACE} && ls -A . .devcontainer && cat .devcontainer-lock.json"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    notes: "A .devcontainer.json gets .devcontainer-lock.json next to it (lockfile.ts getLockfilePath); with only a local Feature (under .devcontainer/, where TS requires it) the lockfile's features map is empty, and TS still writes it."
+
+  - id: up.lockfile-rewrites-stale-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"features\":{\"stale\":{}}}' > $WORKSPACE/.devcontainer/devcontainer-lock.json; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{},\"ghcr.io/devcontainers/feature-starter/hello:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cat ${WORKSPACE}/.devcontainer/devcontainer-lock.json"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    compare_hashes: true
+    notes: "up rewrites a stale lockfile with the resolved Features by default (writeLockfile replaces content whose JSON.parse -> JSON.stringify differs). Go left an existing lockfile alone without a lockfile flag."
+
+  - id: up.no-lockfile-leaves-lockfile-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"features\":{\"stale\":{}}}' > $WORKSPACE/.devcontainer/devcontainer-lock.json; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --no-lockfile --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cat ${WORKSPACE}/.devcontainer/devcontainer-lock.json"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    notes: "--no-lockfile neither reads nor writes the lockfile: a stale one is left as it was."
+
+  - id: up.compose-lockfile-written-by-default-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"features\":{\"./f\":{},\"ghcr.io/devcontainers/feature-starter/hello:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cat ${WORKSPACE}/.devcontainer/devcontainer-lock.json"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    compare_hashes: true
+    notes: "The Compose path resolves the Features through the same generateFeaturesConfig (dockerCompose.ts -> getExtendImageBuildInfo) and writes the lockfile by default. Go wrote it only with a lockfile flag."
+
+  - id: build.compose-no-lockfile-writes-none-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"features\":{\"./f\":{},\"ghcr.io/devcontainers/feature-starter/hello:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --buildkit=never --no-lockfile --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "ls -A ${WORKSPACE}/.devcontainer"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: lockfile
+    current_status: match
+    notes: "A Compose build with --no-lockfile writes no lockfile."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

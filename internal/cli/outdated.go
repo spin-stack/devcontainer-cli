@@ -467,8 +467,13 @@ func newUpgradeCmd() *cobra.Command {
 				return nil
 			}
 
-			err = features.WriteLockfile(lockfilePath, lf, features.WriteOptions{Force: true})
-			if err != nil {
+			// TS truncates any existing lockfile before writing it
+			// (upgradeCommand.ts), so the new one is always written in its
+			// canonical form, even over one that differs only cosmetically.
+			if err := os.WriteFile(features.LockfilePath(lockfilePath), nil, 0o644); err != nil {
+				return err
+			}
+			if err := features.WriteLockfile(lockfilePath, lf, features.WriteOptions{}); err != nil {
 				return err
 			}
 

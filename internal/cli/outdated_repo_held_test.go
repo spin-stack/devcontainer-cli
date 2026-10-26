@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -143,6 +144,52 @@ func TestUpgradeWritesLockfileNextToConfig(t *testing.T) {
 	}
 	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--config", blocked); err == nil {
 		t.Error("a lockfile path that is a directory: want an error")
+	}
+}
+
+// upgrade truncates the lockfile before writing it (TS upgradeCommand.ts), so a
+// lockfile with the same content in another layout is rewritten canonically,
+// where build and up would leave it alone.
+func TestUpgradeRewritesACosmeticallyDifferentLockfile(t *testing.T) {
+	reg := newReadRegistry(t)
+	reg.manifests["ns/tool"] = featureManifest("tool")
+	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
+	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
+	ws := t.TempDir()
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--config", cfg); err != nil {
+		t.Fatal(err)
+	}
+	lockPath := features.LockfilePath(cfg)
+	canonical, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, canonical); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, lockPath, compact.String(), 0o644)
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--config", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, lockPath); got != string(canonical) {
+		t.Errorf("lockfile = %q, want it rewritten as %q", got, canonical)
+	}
+}
+
+// A lockfile upgrade can truncate but not read back fails the command, as TS
+// writeLockfile rethrows readLocalFile's EACCES after the truncation.
+func TestUpgradeFailsOnALockfileItCannotReadBack(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a write-only file")
+	}
+	reg := newReadRegistry(t)
+	reg.manifests["ns/tool"] = featureManifest("tool")
+	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
+	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
+	writeFile(t, features.LockfilePath(cfg), "{}", 0o200)
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", t.TempDir(), "--config", cfg); !errors.Is(err, os.ErrPermission) {
+		t.Errorf("err = %v, want the lockfile's permission error", err)
 	}
 }
 

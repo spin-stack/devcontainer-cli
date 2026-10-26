@@ -97,6 +97,19 @@ runs the official CLI is unaffected:
   are colored and end in `\r\n`, and Stop lines appear only at `trace`. Earlier
   releases always wrote `[N ms] text` without color. A script that parses the log
   should read the timestamped form, or use `--log-format json`.
+- `build` and `up` write the Feature lockfile by default whenever the configuration
+  uses Features, as the official CLI does: `devcontainer-lock.json` next to
+  `devcontainer.json` (`.devcontainer-lock.json` next to `.devcontainer.json`) is
+  created when missing and rewritten when the resolved Features change. Earlier
+  releases wrote it only with `--experimental-lockfile` or `--frozen-lockfile`, so
+  the file now appears in projects that never had one. Commit it to pin the
+  Features' versions and digests, or pass `--no-lockfile` to neither read nor write
+  it. `--experimental-lockfile` is accepted but does nothing more and prints
+  `Warning: --experimental-lockfile is deprecated. Lockfiles are now enabled by
+  default.` on stderr; `--experimental-frozen-lockfile` prints a warning to use
+  `--frozen-lockfile` instead.
+- `upgrade` always rewrites the lockfile in its canonical form, even when the
+  existing one differs only in formatting.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
