@@ -605,6 +605,9 @@ func TestComposeFeatureSets(t *testing.T) {
 		if sets != nil || dir != "" || err != nil {
 			t.Errorf("got %v, %q, %v; want nothing", sets, dir, err)
 		}
+		if h.r.lockfileRead {
+			t.Error("lockfileRead with no Features; TS reads the lockfile only to process Features")
+		}
 	})
 	t.Run("local feature", func(t *testing.T) {
 		h := newComposeHarness(t)
@@ -618,6 +621,9 @@ func TestComposeFeatureSets(t *testing.T) {
 		}
 		if got := sets[0].Features[0].ContainerEnv["HELLO"]; got != "from-host" {
 			t.Errorf("containerEnv HELLO = %q, want the host variable substituted", got)
+		}
+		if !h.r.lockfileRead {
+			t.Error("lockfileRead = false; processing Features reads the lockfile (TS getLockfilePath reads configFilePath.fsPath)")
 		}
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			t.Errorf("features folder %q: %v", dir, err)
@@ -641,6 +647,9 @@ func TestComposeFeatureSets(t *testing.T) {
 		cfg := &config.DevContainer{ConfigFilePath: filepath.Join(h.dc, "devcontainer.json"), Features: h.localFeature()}
 		if _, _, err := h.r.composeFeatureSets(ctx, cfg, lr); err != nil {
 			t.Fatal(err)
+		}
+		if h.r.lockfileRead {
+			t.Error("lockfileRead with --no-lockfile")
 		}
 		if _, err := os.Stat(filepath.Join(h.dc, "devcontainer-lock.json")); !os.IsNotExist(err) {
 			t.Errorf("lockfile written with --no-lockfile: %v", err)
