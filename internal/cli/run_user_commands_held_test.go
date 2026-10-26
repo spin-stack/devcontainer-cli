@@ -111,6 +111,32 @@ func TestRunUserCommands_ConfigLoadError_PreDocker(t *testing.T) {
 	}
 }
 
+// A container lookup that fails is TS's error: the failed `docker ps` by the
+// workspace folder's and the configuration's labels as the message, running
+// the user commands as the description. Go reported "Dev container not
+// found.".
+func TestRunUserCommandsFailedContainerLookup(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "unix:///nonexistent/devcontainer-cli-test.sock")
+	opts := validRunUserCommandsOpts()
+	opts.workspaceFolder = t.TempDir()
+	cfg := filepath.Join(opts.workspaceFolder, ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"image":"img"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := &captureOutput{}
+	err := runUserCommands(t.Context(), out, opts)
+	if ece := asExitCode(t, err); ece.Code != 1 {
+		t.Errorf("exit code = %d, want 1", ece.Code)
+	}
+	want := `{"outcome":"error","message":"Command failed: docker ps -q -a --filter label=devcontainer.local_folder=` + opts.workspaceFolder + ` --filter label=devcontainer.config_file=` + cfg + `","description":"An error occurred running user commands in the container."}`
+	if got := strings.TrimSpace(out.out.String()); got != want {
+		t.Errorf("stdout = %s\nwant     %s", got, want)
+	}
+}
+
 func TestConfigFromFlag(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

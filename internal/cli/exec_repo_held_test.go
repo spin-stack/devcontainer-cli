@@ -47,8 +47,20 @@ func TestFindContainerByOptsPrefersTheLabeledContainer(t *testing.T) {
 		"labeled": {"devcontainer.local_folder": ws},
 	})
 	opts := &execOpts{workspaceFolder: ws}
-	if got := findContainerByOpts(t.Context(), fakeEngineClient(t), opts, "", quietLogger()); got != "labeled" {
+	if got, err := findContainerByOpts(t.Context(), fakeEngineClient(t), opts, "", quietLogger()); err != nil || got != "labeled" {
 		t.Errorf("container = %q, want labeled", got)
+	}
+}
+
+// A container lookup that fails fails exec with TS's failed `docker ps`,
+// rather than looking further or reporting no container.
+func TestFindContainerByOptsFailedLookup(t *testing.T) {
+	ws := composeWorkspace(t)
+	t.Setenv("DOCKER_HOST", "unix:///nonexistent/devcontainer-cli-test.sock")
+	opts := &execOpts{workspaceFolder: ws, idLabels: []string{"a=b"}}
+	got, err := findContainerByOpts(t.Context(), fakeEngineClient(t), opts, "", quietLogger())
+	if want := "Command failed: docker ps -q -a --filter label=a=b"; got != "" || err == nil || err.Error() != want {
+		t.Errorf("container, err = %q, %v; want %q", got, err, want)
 	}
 }
 
@@ -63,11 +75,11 @@ func TestFindContainerByOptsFindsTheComposeService(t *testing.T) {
 	})
 	engine := fakeEngineClient(t)
 	opts := &execOpts{workspaceFolder: ws}
-	if got := findContainerByOpts(t.Context(), engine, opts, "", quietLogger()); got != "app" {
+	if got, err := findContainerByOpts(t.Context(), engine, opts, "", quietLogger()); err != nil || got != "app" {
 		t.Errorf("container = %q, want app", got)
 	}
 	t.Setenv("COMPOSE_PROJECT_NAME", "Custom")
-	if got := findContainerByOpts(t.Context(), engine, opts, "", quietLogger()); got != "custom" {
+	if got, err := findContainerByOpts(t.Context(), engine, opts, "", quietLogger()); err != nil || got != "custom" {
 		t.Errorf("container with COMPOSE_PROJECT_NAME = %q, want custom", got)
 	}
 }

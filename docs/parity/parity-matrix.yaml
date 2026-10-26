@@ -2342,6 +2342,30 @@ initial_cases:
     current_status: match
     notes: "set-up reads --config before it looks for the container; the unresolvable variable is a ContainerError, so its description is its own text. Go described it as 'An error occurred running user commands in the container.' and prefixed the message with 'apply host substitutions: '."
 
+  - id: run-user-commands.workspace-lookup-failure
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    setup_cmd: "echo DOCKER_HOST=unix:///nonexistent/devcontainer-cli-parity.sock"
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "A container lookup that fails is TS findContainerAndIdLabels' error: 'Command failed: docker ps -q -a --filter label=devcontainer.local_folder=… --filter label=devcontainer.config_file=…' as the message, 'An error occurred running user commands in the container.' as the description. Go reported 'Dev container not found.' and looked up by the local folder alone."
+
+  - id: run-user-commands.id-label-lookup-failure
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    setup_cmd: "echo DOCKER_HOST=unix:///nonexistent/devcontainer-cli-parity.sock"
+    ts_cmd: "run-user-commands --workspace-folder src/test/configs/image --id-label parity.case=lookup"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "The --id-label lookup fails the same way, its message naming the id label filter."
+
   - id: read-configuration.container-config-success
     lane: runtime
     command: read-configuration

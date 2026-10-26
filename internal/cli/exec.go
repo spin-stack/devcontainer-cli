@@ -173,7 +173,10 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		if loadResult != nil {
 			configFile = loadResult.Config.ConfigFilePath
 		}
-		containerID = findContainerByOpts(ctx, engine, opts, configFile, logger)
+		var lookupErr error
+		if containerID, lookupErr = findContainerByOpts(ctx, engine, opts, configFile, logger); lookupErr != nil {
+			return lookupErr
+		}
 	}
 
 	if containerID == "" {
@@ -422,15 +425,15 @@ func (w *rawLogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, configFile string, logger log.Logger) string {
+func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, configFile string, logger log.Logger) (string, error) {
 	// [local_folder, config_file] disambiguates when a project has multiple
 	// devcontainer.json configs; falls back to local_folder for legacy containers.
-	// A failed lookup is treated as no container, where TS fails on it (not
-	// yet matched).
-	if id, _ := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels); id != "" {
-		return id
+	// A failed lookup fails exec, as TS's findContainerAndIdLabels throws.
+	id, err := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
+	if err != nil || id != "" {
+		return id, err
 	}
-	return findComposeContainer(ctx, engine, opts, logger)
+	return findComposeContainer(ctx, engine, opts, logger), nil
 }
 
 func findComposeContainer(ctx context.Context, engine *docker.EngineClient, opts *execOpts, logger log.Logger) string {
