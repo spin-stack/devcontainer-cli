@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,9 +52,15 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			ociClient := newOCIClient(cmd.Context(), logger)
 
 			// Read the lockfile (if any) so tarball/OCI resolution can pin digests.
+			// One that cannot be read fails the command as an uncaught error does
+			// in TS (runAsyncHandler): console.error(err) on stderr, exit code 1.
 			var lockfile *features.Lockfile
 			if cfg.ConfigFilePath != "" {
-				lockfile, _, _ = features.ReadLockfile(cfg.ConfigFilePath)
+				lockfile, _, err = features.ReadLockfile(cfg.ConfigFilePath)
+				if err != nil {
+					fmt.Fprintln(out.Stderr(), errorInspect(err))
+					return &coreerrors.ExitCodeError{Code: 1, Err: err}
+				}
 			}
 			basePath := filepath.Dir(cfg.ConfigFilePath)
 
@@ -106,4 +113,14 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&logLevel, "log-level", "error", "Log level.")
 
 	return cmd
+}
+
+// errorInspect is what console.error prints for an error the reference
+// throws, frames left out: a lockfile error as Node.js shows the JavaScript
+// error, any other with its message.
+func errorInspect(err error) string {
+	if lerr, ok := errors.AsType[*features.LockfileError](err); ok {
+		return lerr.Inspect()
+	}
+	return err.Error()
 }
