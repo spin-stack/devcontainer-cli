@@ -802,12 +802,8 @@ func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
 		return coreerrors.ToErrorOutput(ce)
 	}
 	// TS wraps a plain Error it throws as its originalError, so the message is
-	// that error's own text (a frozen lockfile's "Lockfile does not match.").
-	for _, plain := range []error{features.ErrLockfileMissing, features.ErrLockfileMismatch} {
-		if errors.Is(err, plain) {
-			return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: description + ".", OriginalError: plain})
-		}
-	}
+	// that error's own text (a frozen lockfile's "Lockfile does not match.", a
+	// lockfile's JSON.parse error).
 	if re, ok := errors.AsType[coreerrors.ReferenceError](err); ok {
 		return coreerrors.ErrorOutput{Outcome: "error", Message: re.Error(), Description: description + "."}
 	}
