@@ -398,16 +398,14 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 	// gitdir still resolves to the mounted common dir inside the container.
 	containerMountFolder := "/workspaces/" + filepath.Base(sourceFolder)
 	var additionalMounts []string
-	if mountWorkspaceGitRoot && mountGitWorktreeCommonDir {
-		// A custom workspaceMount defines where the worktree is actually mounted in
-		// the container; resolve the common dir relative to that (substituted)
-		// target so the relative gitdir still resolves. Otherwise fall back to the
-		// computed container mount folder (#1261).
-		customTarget := ""
-		if config.WorkspaceMount != "" {
-			customTarget = substituteHostString(workspace, mountTarget(config.WorkspaceMount))
-		}
-		if remapped, commonDirMount, ok := gitWorktreeCommonDirMount(sourceFolder, customTarget, consistency); ok {
+	// TS getWorkspaceConfiguration computes the workspace mount, and with it the
+	// worktree common-dir mount, only when the config leaves workspaceFolder or
+	// workspaceMount to it: a config that sets both gets neither. The common dir
+	// lands relative to the computed container mount folder, whatever target a
+	// custom workspaceMount names.
+	computed := config.WorkspaceFolder == "" || config.WorkspaceMount == ""
+	if computed && mountWorkspaceGitRoot && mountGitWorktreeCommonDir {
+		if remapped, commonDirMount, ok := gitWorktreeCommonDirMount(sourceFolder, consistency); ok {
 			containerMountFolder = remapped
 			additionalMounts = append(additionalMounts, commonDirMount)
 		}
@@ -460,7 +458,7 @@ func bindMount(source, target, consistency string) string {
 // the shared common dir (the main repo's `.git`) into the container. ok is false
 // for a normal clone (`.git` is a directory), an absolute gitdir, or a missing
 // gitlink — all cases where no extra mount is needed.
-func gitWorktreeCommonDirMount(hostMountFolder, customContainerTarget, consistency string) (containerMountFolder, additionalMount string, ok bool) {
+func gitWorktreeCommonDirMount(hostMountFolder, consistency string) (containerMountFolder, additionalMount string, ok bool) {
 	info, err := os.Stat(filepath.Join(hostMountFolder, ".git"))
 	if err != nil || !info.Mode().IsRegular() {
 		return "", "", false
@@ -487,66 +485,8 @@ func gitWorktreeCommonDirMount(hostMountFolder, customContainerTarget, consisten
 	}
 	containerMountFolder = path.Join(append([]string{"/workspaces"}, segments...)...)
 
-	// The common dir lands at the same relative offset from wherever the worktree
-	// is mounted: a custom workspaceMount target when the config sets one, else the
-	// computed container mount folder.
-	worktreeContainerFolder := containerMountFolder
-	if customContainerTarget != "" {
-		worktreeContainerFolder = customContainerTarget
-	}
-	containerGitCommonDir := path.Clean(path.Join(worktreeContainerFolder, filepath.ToSlash(gitdir), "..", ".."))
+	containerGitCommonDir := path.Clean(path.Join(containerMountFolder, filepath.ToSlash(gitdir), "..", ".."))
 	return containerMountFolder, bindMount(gitCommonDir, containerGitCommonDir, consistency), true
-}
-
-// mountTarget extracts the target= value from a `type=bind,...` mount spec,
-// tolerating a quoted source/target that itself contains commas.
-func mountTarget(spec string) string {
-	for _, f := range splitMountFields(spec) {
-		if t, ok := strings.CutPrefix(f, "target="); ok {
-			return t
-		}
-	}
-	return ""
-}
-
-// splitMountFields splits a docker mount spec on commas that are not inside
-// double quotes, stripping the quotes.
-func splitMountFields(spec string) []string {
-	var fields []string
-	var b strings.Builder
-	inQuote := false
-	for _, r := range spec {
-		switch {
-		case r == '"':
-			inQuote = !inQuote
-		case r == ',' && !inQuote:
-			fields = append(fields, b.String())
-			b.Reset()
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return append(fields, b.String())
-}
-
-// substituteHostString applies host-phase variable substitution to s using a
-// minimal host context (platform, local workspace folder, env). Used for the
-// custom workspaceMount target, which is resolved before the main substitution
-// pass. Returns s unchanged on error or when it has no ${...} tags.
-func substituteHostString(workspace *Workspace, s string) string {
-	if !strings.Contains(s, "${") {
-		return s
-	}
-	ctx := HostSubContext{
-		Platform:             currentPlatform(),
-		LocalWorkspaceFolder: strings.TrimRight(workspace.RootFolderPath, "/\\"),
-		Env:                  EnvMap(os.Environ()),
-	}
-	out, err := NewVariableResolver().resolveString(SubstitutionContext{HostSubContext: ctx}, PhaseHost, s)
-	if err != nil {
-		return s
-	}
-	return out
 }
 
 // parseGitdir extracts the target of a `gitdir: <path>` line from a `.git`

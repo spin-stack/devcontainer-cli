@@ -86,6 +86,15 @@ runs the official CLI is unaffected:
   matching container.
 - Features are staged under `<tmp>/devcontainercli-<user>/container-features/`,
   one folder per build, and that folder is kept as the official CLI keeps it.
+- When the workspace is a Git worktree and the configuration sets both
+  `workspaceMount` and `workspaceFolder`, `up` no longer mounts the main
+  repository's Git common directory, and `read-configuration` no longer reports
+  `additionalMountString`, as in the official CLI v0.89.0. With only
+  `workspaceMount` set, the common directory is mounted under
+  `/workspaces/<main repository>/.git` rather than under the custom mount's
+  target. Earlier releases carried an unreleased upstream change (#1261) instead.
+  A configuration that needs Git inside the container this way should add the
+  common directory to `mounts` itself.
 - `build` on a Docker Compose configuration without `--image-name` reports
   `"imageName"` as the image's name, a string, as the official CLI does. Earlier
   releases wrapped it in an array. With `--image-name`, and for image and

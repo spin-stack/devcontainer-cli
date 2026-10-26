@@ -109,18 +109,6 @@ func TestComputeWorkspaceConfigWorksInTheGitRootsSubfolder(t *testing.T) {
 	}
 }
 
-// substituteHostString resolves the host variables of a string, and leaves a
-// string whose substitution fails as written.
-func TestSubstituteHostString(t *testing.T) {
-	w := &Workspace{RootFolderPath: "/home/me/proj/"}
-	if got := substituteHostString(w, "/w/${localWorkspaceFolderBasename}"); got != "/w/proj" {
-		t.Errorf("substituteHostString = %q, want /w/proj", got)
-	}
-	if got := substituteHostString(w, "/w/${localEnv}"); got != "/w/${localEnv}" {
-		t.Errorf("failed substitution = %q, want it unchanged", got)
-	}
-}
-
 // An empty COMPOSE_FILE is no COMPOSE_FILE, and a .env's COMPOSE_FILE comes
 // next (TS getDockerComposeFilePaths: `if (envComposeFile)`, then the .env file).
 func TestDockerComposeFilePathsFromTheDotEnv(t *testing.T) {
