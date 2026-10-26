@@ -337,6 +337,8 @@ func TestUpWorkspaceMounts(t *testing.T) {
 			[]dockermount.Mount{bind("/s", "/w", "consistent"), bind("/git", "/git", "delegated")}},
 		{"worktree common dir", config.WorkspaceConfig{WorkspaceFolder: "/w", AdditionalMounts: []string{"type=bind,source=/git,target=/git"}}, "/src", "cached",
 			[]dockermount.Mount{bind("/src", "/w", "cached"), bind("/git", "/git", "cached")}},
+		{"empty workspaceMount mounts no workspace", config.WorkspaceConfig{WorkspaceFolder: "/w", NoWorkspaceMount: true, AdditionalMounts: []string{"type=bind,source=/git,target=/git"}}, "/src", "cached",
+			[]dockermount.Mount{bind("/git", "/git", "cached")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := upWorkspaceMounts(&tc.wc, tc.ws, tc.consistency)

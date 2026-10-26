@@ -11,6 +11,11 @@ import (
 type DevContainer struct {
 	// Runtime — not serialized from JSON
 	ConfigFilePath string `json:"configFilePath,omitempty"`
+	// workspaceMountSet records that the configuration has a workspaceMount
+	// property, even an empty or null one, which WorkspaceMount cannot tell
+	// from an absent one (TS getWorkspaceConfiguration's `'workspaceMount' in
+	// config`).
+	workspaceMountSet bool
 
 	// --- Common properties (all variants) ---
 	Name                        string               `json:"name,omitempty"`

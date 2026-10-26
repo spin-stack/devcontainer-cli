@@ -404,7 +404,12 @@ func workspaceOutput(result *config.LoadResult, workspaceFolder, containerIDFlag
 	ws = map[string]any{
 		"workspaceFolder": result.WorkspaceConfig.WorkspaceFolder,
 	}
-	if result.WorkspaceConfig.WorkspaceMount != "" {
+	// A workspaceMount the configuration sets is written as it is set, even
+	// empty or null (TS readDevContainerConfigFile's `'workspaceMount' in
+	// config`); otherwise the computed one, if any.
+	if v, set := result.Raw["workspaceMount"]; set {
+		ws["workspaceMount"] = v
+	} else if result.WorkspaceConfig.WorkspaceMount != "" {
 		ws["workspaceMount"] = result.WorkspaceConfig.WorkspaceMount
 	}
 	// The loader's additional mounts are at most the Git worktree common dir's,

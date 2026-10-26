@@ -250,3 +250,70 @@ func TestWorktreeCommonDirCustomWorkspaceMount(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadKeepsAnEmptyWorkspaceMount holds TS getWorkspaceConfiguration and
+// readDevContainerConfigFile (utils.ts, configContainer.ts), which test
+// `'workspaceMount' in config`: an empty or null workspaceMount is set, so it
+// replaces the computed mount and mounts no workspace, and with workspaceFolder
+// also set the worktree common dir is not mounted either.
+func TestLoadKeepsAnEmptyWorkspaceMount(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("oracle pins the linux consistency behavior (empty suffix)")
+	}
+	cases := []struct {
+		name, config, wantFolder string
+		wantCommonDir            bool
+	}{
+		{"empty", `{"image":"alpine","workspaceMount":""}`, "/workspaces/feature", true},
+		{"null", `{"image":"alpine","workspaceMount":null}`, "/workspaces/feature", true},
+		{"empty with workspaceFolder", `{"image":"alpine","workspaceMount":"","workspaceFolder":"/w"}`, "/w", false},
+		{"empty after substitution", `{"image":"alpine","workspaceMount":"${localEnv:DEVCONTAINER_CLI_TEST_UNSET}","workspaceFolder":"/w"}`, "/w", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			wt := writeGitlink(t, base, "worktrees/feature", "gitdir: ../main/.git/worktrees/feature")
+			if err := os.MkdirAll(filepath.Join(wt, ".devcontainer"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(wt, ".devcontainer", "devcontainer.json"), []byte(tc.config), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			res, err := LoadDevContainerConfigWithMounts(wt, "", "", MountOptions{MountWorkspaceGitRoot: true, MountGitWorktreeCommonDir: true})
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			wc := res.WorkspaceConfig
+			if wc.WorkspaceMount != "" || !wc.NoWorkspaceMount {
+				t.Errorf("WorkspaceMount = %q, NoWorkspaceMount = %v, want empty and true", wc.WorkspaceMount, wc.NoWorkspaceMount)
+			}
+			if wc.WorkspaceFolder != tc.wantFolder {
+				t.Errorf("WorkspaceFolder = %q, want %q", wc.WorkspaceFolder, tc.wantFolder)
+			}
+			var want []string
+			if tc.wantCommonDir {
+				want = []string{"type=bind,source=" + filepath.Join(base, "worktrees", "main", ".git") + ",target=/workspaces/main/.git"}
+			}
+			if !slices.Equal(wc.AdditionalMounts, want) {
+				t.Errorf("AdditionalMounts = %q, want %q", wc.AdditionalMounts, want)
+			}
+		})
+	}
+
+	t.Run("absent", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".devcontainer"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".devcontainer", "devcontainer.json"), []byte(`{"image":"alpine"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		res, err := LoadDevContainerConfig(dir, "", "")
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		if wc := res.WorkspaceConfig; wc.WorkspaceMount == "" || wc.NoWorkspaceMount {
+			t.Errorf("WorkspaceMount = %q, NoWorkspaceMount = %v, want the computed mount", wc.WorkspaceMount, wc.NoWorkspaceMount)
+		}
+	})
+}
