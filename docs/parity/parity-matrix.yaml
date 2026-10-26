@@ -780,6 +780,7 @@ initial_cases:
     notes: "TS builds a Dockerfile service through a build override even without Features (getImageBuildOptions adds the devcontainer.metadata label to the image) and then runs updateRemoteUserUID on the built image (dockerCompose.ts startContainer). Go built the service unchanged and never remapped the remote user's UID for compose."
 
   - id: up.compose-image-with-local-feature-image-name-success
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -907,6 +908,7 @@ initial_cases:
     notes: "BuildKit Features build (TS getFeaturesBuildOptions + getFeatureLayers, containerFeaturesConfiguration.ts): the Feature is staged at its consecutiveId (hello_0), bind-mounted from the dev_containers_feature_content_source build context, copied to /tmp/dev-container-features/hello_0 and installed through devcontainer-features-install.sh, which sources ../devcontainer-features.builtin.env (_CONTAINER_USER/_REMOTE_USER plus the _*_HOME lines the first RUN appends) and devcontainer-features.env (options in devcontainer-feature.json order); the folder is removed afterwards, the builtin env stays. The Feature's containerEnv and the config's containerEnv are ENV lines and the image keeps its own user (USER $_DEV_CONTAINERS_IMAGE_USER). Go used to copy _dev_container_feature_0 to /tmp/build-features and run install.sh with inline env prefixes, so ../devcontainer-features.builtin.env did not exist."
 
   - id: build.features-staging-layout-no-buildkit-success
+    lock: feature-content-image
     lane: runtime
     command: build
     priority: p1
@@ -1098,6 +1100,7 @@ initial_cases:
     notes: "A compose configuration without workspaceFolder works in `/` (TS getWorkspaceConfiguration returns getRemoteWorkspaceFolder, `config.workspaceFolder || '/'`, dockerCompose.ts): up's remoteWorkspaceFolder, ${containerWorkspaceFolder}, the lifecycle commands' cwd and exec's cwd. Go used /workspaces/<basename>, a folder the compose service never mounts."
 
   - id: build.frozen-lockfile-missing-failure
+    lock: feature-content-image
     lane: runtime
     command: build
     priority: p1
@@ -1111,6 +1114,7 @@ initial_cases:
     notes: "--frozen-lockfile without a lockfile fails with TS writeLockfile's 'Lockfile does not exist.' (lockfile.ts), wrapped as the build's ContainerError: message is that text, description 'An error occurred building the container.'. Go skipped the check when no lockfile existed and built the image."
 
   - id: up.frozen-lockfile-mismatch-failure
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -1124,6 +1128,7 @@ initial_cases:
     notes: "A stale lockfile with --frozen-lockfile fails with TS's 'Lockfile does not match.' as the message and 'An error occurred setting up the container.' as the description. Go reported 'An error occurred setting up the container: install features: lockfile: lockfile does not match' in both."
 
   - id: up.compose-frozen-lockfile-missing-failure
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -1151,6 +1156,7 @@ initial_cases:
     notes: "JSON.stringify writes properties in insertion order: the result as readConfiguration's literal lists them, the configuration in its document's order with configFilePath last, featuresConfiguration as FeaturesConfig's literal (featureSets, dstFolder), mergedConfiguration as mergeConfiguration builds it (the configuration without replaceProperties, then the properties it sets). Go wrote every object with sorted keys. Nested user objects keep sorted keys (docs/DIVERGENCES.md)."
 
   - id: up.include-configurations-key-order-success
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -1271,6 +1277,7 @@ initial_cases:
     notes: "up mounts the additionalMountString read-configuration reports: TS spawnDevContainer passes it as a --mount after the workspace mount (singleContainer.ts), so the container has the worktree and its common dir."
 
   - id: build.lockfile-written-by-default-success
+    lock: feature-content-image
     lane: runtime
     command: build
     priority: p1
@@ -1287,6 +1294,7 @@ initial_cases:
     notes: "TS writes devcontainer-lock.json on every build with Features unless --no-lockfile is given (containerFeaturesConfiguration.ts generateFeaturesConfig -> writeLockfile, which creates the file); it records the OCI Feature, pinned to its digest, and leaves the local one out. Go wrote it only with --experimental-lockfile or --frozen-lockfile."
 
   - id: build.no-lockfile-writes-none-success
+    lock: feature-content-image
     lane: runtime
     command: build
     priority: p1
@@ -1302,6 +1310,7 @@ initial_cases:
     notes: "--no-lockfile disables writing the lockfile (generateFeaturesConfig skips writeLockfile): the configuration folder holds no devcontainer-lock.json after the build."
 
   - id: build.dot-devcontainer-lockfile-path-success
+    lock: feature-content-image
     lane: runtime
     command: build
     priority: p1
@@ -1316,6 +1325,7 @@ initial_cases:
     notes: "A .devcontainer.json gets .devcontainer-lock.json next to it (lockfile.ts getLockfilePath); with only a local Feature (under .devcontainer/, where TS requires it) the lockfile's features map is empty, and TS still writes it."
 
   - id: up.lockfile-rewrites-stale-success
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -1332,6 +1342,7 @@ initial_cases:
     notes: "up rewrites a stale lockfile with the resolved Features by default (writeLockfile replaces content whose JSON.parse -> JSON.stringify differs). Go left an existing lockfile alone without a lockfile flag."
 
   - id: up.no-lockfile-leaves-lockfile-success
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -1346,6 +1357,7 @@ initial_cases:
     notes: "--no-lockfile neither reads nor writes the lockfile: a stale one is left as it was."
 
   - id: up.compose-lockfile-written-by-default-success
+    lock: feature-content-image
     lane: runtime
     command: up
     priority: p1
@@ -1362,6 +1374,7 @@ initial_cases:
     notes: "The Compose path resolves the Features through the same generateFeaturesConfig (dockerCompose.ts -> getExtendImageBuildInfo) and writes the lockfile by default. Go wrote it only with a lockfile flag."
 
   - id: build.compose-no-lockfile-writes-none-success
+    lock: feature-content-image
     lane: runtime
     command: build
     priority: p1
