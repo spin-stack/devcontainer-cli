@@ -315,6 +315,30 @@ func copyDockerignore(origDockerfile, newDockerfile string) {
 	_ = os.WriteFile(newDockerfile+".dockerignore", data, 0644)
 }
 
+// configRelativePath is TS getConfigFilePath (configuration.ts): a path the
+// configuration names, resolved against the configuration's folder, so an
+// absolute one stays as it is.
+func configRelativePath(cfg *config.DevContainer, p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Join(filepath.Dir(cfg.ConfigFilePath), p)
+}
+
+// dockerfileConfigPath is TS getDockerfilePath: the configuration's Dockerfile.
+func dockerfileConfigPath(cfg *config.DevContainer) string {
+	return configRelativePath(cfg, cfg.Dockerfile())
+}
+
+// dockerContextPath is TS getDockerContextPath (spec-node/utils.ts): the
+// configured build context, else the Dockerfile's folder.
+func dockerContextPath(cfg *config.DevContainer) string {
+	if c := cfg.BuildContext(); c != "" {
+		return configRelativePath(cfg, c)
+	}
+	return filepath.Dir(dockerfileConfigPath(cfg))
+}
+
 // prepareDockerfileBuild resolves cfg's Dockerfile relative to the config dir,
 // reads it, ensures the final stage has a name (writing a temp Dockerfile when a
 // name must be injected), and parses it. The caller must defer prep.Cleanup().
@@ -325,8 +349,7 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 	if dockerfilePath == "" {
 		return nil, fmt.Errorf("no Dockerfile specified")
 	}
-	configDir := filepath.Dir(cfg.ConfigFilePath)
-	dockerfilePath = filepath.Join(configDir, dockerfilePath)
+	dockerfilePath = dockerfileConfigPath(cfg)
 
 	content, err := os.ReadFile(dockerfilePath)
 	if err != nil {
@@ -384,7 +407,6 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	defer prep.Cleanup()
 	dockerfilePath := prep.Path
 	stageName := prep.StageName
-	configDir := filepath.Dir(cfg.ConfigFilePath)
 
 	// The base image is the FROM of the config's target, else of the last stage
 	// (TS getImageBuildInfoFromDockerfile with config.build.target), not of the
@@ -405,11 +427,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	// Determine image names (match TS getFolderImageName: vsc-{basename}-{hash})
 	imageNames := imageNamesOr(opts.imageNames, folderImageName(resolvePath(opts.workspaceFolder)))
 
-	// Build context
-	contextPath := configDir
-	if cfg.BuildContext() != "" {
-		contextPath = filepath.Join(configDir, cfg.BuildContext())
-	}
+	contextPath := dockerContextPath(cfg)
 
 	// Build args from config
 	buildArgs := buildArgsFromConfig(cfg)

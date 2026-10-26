@@ -637,7 +637,6 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	defer prep.Cleanup()
 	dockerfilePath := prep.Path
 	stageName := prep.StageName
-	configDir := filepath.Dir(cfg.ConfigFilePath)
 
 	imageName := folderImageName(workspaceFolder)
 
@@ -657,7 +656,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
 	stageMetadata := imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)
 
-	contextPath := filepath.Join(configDir, cfg.BuildContext())
+	contextPath := dockerContextPath(cfg)
 
 	upCacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
 	// Bridge the CLI credential chain to the build subprocess via a temporary
