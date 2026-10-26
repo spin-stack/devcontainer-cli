@@ -76,6 +76,10 @@ type LoadResult struct {
 	// HostSub is the host-side substitution context used for the config; reuse it
 	// so Feature metadata (mounts/containerEnv) resolves ${localEnv:…} the same way.
 	HostSub HostSubContext
+	// KeyOrder is the configuration's top-level properties in the order its
+	// document lists them (the override's after the base's), the order TS
+	// writes them in (jsonc.parse keeps it).
+	KeyOrder []string
 }
 
 // WorkspaceConfig describes the workspace mount and folder inside the container.
@@ -178,6 +182,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	// does (uriToFsPath(configFile)).
 	objectPath := cmp.Or(configPath, overrideConfigPath)
 	var raw map[string]any
+	var keyOrder []string
 	if configPath != "" {
 		baseData, err := os.ReadFile(configPath)
 		switch {
@@ -185,6 +190,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 			if raw, err = parseConfigObject(baseData, objectPath); err != nil {
 				return nil, wrapParseError("parse config", configPath, err)
 			}
+			keyOrder = jsonc.Names(baseData)
 		case overrideConfigPath == "":
 			return nil, fmt.Errorf("read config %s: %w", configPath, err)
 		}
@@ -199,6 +205,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 			return nil, wrapParseError("parse override config", overrideConfigPath, perr)
 		}
 		raw = deepMergeConfig(raw, overrideRaw)
+		keyOrder = append(keyOrder, jsonc.Names(overrideData)...)
 	}
 
 	// TS moves the deprecated properties before anything reads the config, so the
@@ -262,6 +269,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		RawConfig:       rawConfig,
 		WorkspaceConfig: wsConfig,
 		HostSub:         ctx,
+		KeyOrder:        keyOrder,
 	}, nil
 }
 

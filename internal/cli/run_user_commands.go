@@ -231,7 +231,7 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 	return writeSuccessJSON(out, map[string]any{
 		"outcome": "success",
 		"result":  "done",
-	})
+	}, runUserCommandsResultKeys...)
 }
 
 // configFromFlag is the config --config names when no --workspace-folder loaded

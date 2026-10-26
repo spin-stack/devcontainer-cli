@@ -1013,6 +1013,7 @@ initial_cases:
     ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
     verify_cmd: "docker exec ${CONTAINER_ID} cat /tmp/post-create; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then CLI=${PARITY_CLI_TS}; else CLI=${PARITY_CLI_GO}; fi; $CLI exec --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} pwd 2>/dev/null"
     cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    key_order: [""]
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
@@ -1056,6 +1057,34 @@ initial_cases:
     class: lockfile
     current_status: match
     notes: "The compose path checks the frozen lockfile too (TS generateFeaturesConfig -> writeLockfile, wrapped by dockerCompose.ts as 'An error occurred setting up the container.'). Go skipped it when no lockfile existed and started the service."
+
+  - id: read-configuration.key-order-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"name\":\"ko\",\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"features\":{\"./f\":{}},\"containerEnv\":{\"K\":\"v\"},\"postCreateCommand\":\"true\",\"forwardPorts\":[3000],\"capAdd\":[\"SYS_PTRACE\"]}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-features-configuration --include-merged-configuration"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    key_order: ["", "configuration", "featuresConfiguration", "mergedConfiguration"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "JSON.stringify writes properties in insertion order: the result as readConfiguration's literal lists them, the configuration in its document's order with configFilePath last, featuresConfiguration as FeaturesConfig's literal (featureSets, dstFolder), mergedConfiguration as mergeConfiguration builds it (the configuration without replaceProperties, then the properties it sets). Go wrote every object with sorted keys. Nested user objects keep sorted keys (docs/DIVERGENCES.md)."
+
+  - id: up.include-configurations-key-order-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"name\":\"ko\",\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"features\":{\"./f\":{}},\"containerEnv\":{\"K\":\"v\"},\"postCreateCommand\":\"true\",\"forwardPorts\":[3000],\"capAdd\":[\"SYS_PTRACE\"]}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --include-configuration --include-merged-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    key_order: ["", "configuration", "mergedConfiguration"]
+    asserts: [exit_code]
+    class: output-shape
+    current_status: match
+    notes: "up's result follows doProvision's literal (outcome, then launch's containerId, composeProjectName, remoteUser, remoteWorkspaceFolder, configuration, mergedConfiguration, ociAuthDiagnostics), its configuration the document's order and its mergedConfiguration mergeConfiguration's. Go wrote sorted keys. Only the order is compared: TS writes configFilePath's fsPath here (vscode-uri toJSON writes it once something read it) and Go does not, a content gap outside this case."
 
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
@@ -1939,6 +1968,7 @@ initial_cases:
     setup_cmd: "CONTAINER_ID=$(docker run -d -e TEST_CE=TEST_VALUE alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
     verify_cmd: "docker exec ${CONTAINER_ID} test -f /postAttachCommand.txt"
     cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    key_order: ["", "configuration", "mergedConfiguration"]
     asserts: [exit_code, stdout_normalized]
     class: lifecycle-runtime
     current_status: match
@@ -1963,6 +1993,7 @@ initial_cases:
     docker_required: true
     ts_cmd: "up --workspace-folder src/test/configs/image --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
     cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true"
+    key_order: [""]
     asserts: [exit_code, stdout_normalized]
     class: up-runtime
     current_status: match
@@ -2655,6 +2686,7 @@ initial_cases:
     ts_cmd: "build --workspace-folder src/test/configs/image --buildkit=never --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
     setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
     cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1 || true"
+    key_order: [""]
     asserts: [exit_code, stdout_normalized]
     class: build-runtime
     current_status: match

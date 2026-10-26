@@ -95,6 +95,18 @@ touches a compared surface, reflected in the parity matrix.
   given in another order (a base image's label written by another tool) is likewise
   rewritten in pick order. The parsed metadata is the same; only the label's bytes differ
   (`internal/imagemeta/testdata/ts-oracle/imagemeta.json` records both cases).
+- **Command results write nested objects with their keys sorted.** TS writes each result
+  with `JSON.stringify`, so properties come in insertion order. Go matches that order for
+  the results of `up`, `build`, `set-up`, `run-user-commands` and `read-configuration`,
+  for `featuresConfiguration`, for the top level of `configuration` (the document's
+  order, with `customizations` moved from deprecated properties and then `configFilePath`
+  last) and for the top level of `mergedConfiguration` (the configuration without
+  `mergeConfiguration`'s `replaceProperties`, then the properties it sets). Objects nested
+  deeper are written with sorted keys, because a decoded Go map keeps no order: a
+  configuration's `containerEnv` or `customizations`, merged objects such as `remoteEnv`
+  or `portsAttributes`, and each Feature in `featuresConfiguration.featureSets`, which
+  TS writes in its `devcontainer-feature.json` order. The parsed values are the same; the
+  parity matrix's `key_order` cases hold the orders that match.
 
 ## Firm decisions & scope
 
