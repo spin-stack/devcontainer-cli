@@ -91,6 +91,10 @@ type WorkspaceConfig struct {
 	// operations work inside the container for `git worktree add --relative-paths`
 	// checkouts (--mount-git-worktree-common-dir).
 	AdditionalMounts []string `json:"-"`
+	// NoWorkspaceMount is set when the configuration's workspaceMount is empty
+	// or null: the container gets no workspace mount (TS spawnDevContainer
+	// passes no --mount for a falsy workspaceMount).
+	NoWorkspaceMount bool `json:"-"`
 }
 
 // Workspace describes the local workspace.
@@ -224,6 +228,8 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		configFilePath = overrideConfigPath
 	}
 
+	_, config.workspaceMountSet = raw["workspaceMount"]
+
 	// Compute workspace config using the caller's mount options.
 	wsConfig := computeWorkspaceConfig(workspace, &config, mounts.MountWorkspaceGitRoot, mounts.MountGitWorktreeCommonDir)
 
@@ -257,8 +263,12 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	if config.WorkspaceFolder != "" {
 		wsConfig.WorkspaceFolder = config.WorkspaceFolder
 	}
-	if config.WorkspaceMount != "" {
+	// A workspaceMount the configuration sets replaces the computed one, even
+	// when it is empty or null, which mounts no workspace (TS
+	// readDevContainerConfigFile's `'workspaceMount' in config`).
+	if config.workspaceMountSet {
 		wsConfig.WorkspaceMount = config.WorkspaceMount
+		wsConfig.NoWorkspaceMount = config.WorkspaceMount == ""
 	}
 
 	config.ConfigFilePath = configFilePath
@@ -403,7 +413,8 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 	// workspaceMount to it: a config that sets both gets neither. The common dir
 	// lands relative to the computed container mount folder, whatever target a
 	// custom workspaceMount names.
-	computed := config.WorkspaceFolder == "" || config.WorkspaceMount == ""
+	hasWorkspaceMount := config.WorkspaceMount != "" || config.workspaceMountSet
+	computed := config.WorkspaceFolder == "" || !hasWorkspaceMount
 	if computed && mountWorkspaceGitRoot && mountGitWorktreeCommonDir {
 		if remapped, commonDirMount, ok := gitWorktreeCommonDirMount(sourceFolder, consistency); ok {
 			containerMountFolder = remapped
@@ -429,7 +440,7 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 	if config.WorkspaceFolder != "" {
 		wc.WorkspaceFolder = config.WorkspaceFolder
 	}
-	if config.WorkspaceMount != "" {
+	if hasWorkspaceMount {
 		wc.WorkspaceMount = config.WorkspaceMount
 	}
 	return wc

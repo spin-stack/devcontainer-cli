@@ -960,13 +960,14 @@ func containerRunUser(metadataUser string, img image.InspectResponse) string {
 // upWorkspaceMounts are the container's workspace mounts. The workspace mount is
 // the computed workspaceMount (which honors a custom `workspaceMount` in the
 // config and the git-root source folder), else a bind of the workspace folder;
-// with no workspace and no workspaceMount (up --config alone) TS mounts nothing.
+// with no workspace and no workspaceMount (up --config alone), or with an empty
+// or null workspaceMount, TS mounts nothing.
 // The extra workspace-derived mounts (currently the Git worktree common dir from
 // --mount-git-worktree-common-dir) follow so Git works inside the container.
 // --workspace-mount-consistency, when set, applies to all of them.
 func upWorkspaceMounts(wc *config.WorkspaceConfig, workspaceFolder, consistency string) ([]dockermount.Mount, error) {
 	var mounts []dockermount.Mount
-	if spec := wc.WorkspaceMount; spec != "" || workspaceFolder != "" {
+	if spec := wc.WorkspaceMount; !wc.NoWorkspaceMount && (spec != "" || workspaceFolder != "") {
 		wsMount := dockermount.Mount{Type: dockermount.TypeBind, Source: workspaceFolder, Target: wc.WorkspaceFolder}
 		if spec != "" {
 			parsed, parseErr := docker.ParseMountSpec(spec)

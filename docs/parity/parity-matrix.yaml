@@ -1318,6 +1318,48 @@ initial_cases:
     current_status: match
     notes: "With workspaceMount and workspaceFolder both set, TS spawnDevContainer gets no additionalMountString (getWorkspaceConfiguration, utils.ts), so the container has only the custom workspace mount. Go also mounted the common dir."
 
+  - id: read-configuration.git-worktree-common-dir-empty-workspace-mount-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "BASE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $BASE; mkdir -p $BASE; git init -q $BASE/repo && git -C $BASE/repo -c user.email=p@p -c user.name=p commit -q --allow-empty -m init && git -C $BASE/repo worktree add -q ../wt && printf '%s\\n' 'gitdir: ../repo/.git/worktrees/wt' > $BASE/wt/.git; mkdir -p $BASE/wt/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"workspaceMount\":\"\"}' > $BASE/wt/.devcontainer/devcontainer.json; echo WORKSPACE=$BASE/wt; echo BASE=$BASE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --mount-git-worktree-common-dir"
+    cleanup_cmd: "rm -rf ${BASE}; true"
+    key_order: ["workspace"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "An empty workspaceMount is set: TS readDevContainerConfigFile (configContainer.ts) tests `'workspaceMount' in config`, so read-configuration reports workspaceMount as \"\" beside the computed workspaceFolder and additionalMountString. Go replaced it with the computed bind mount."
+
+  - id: read-configuration.git-worktree-common-dir-null-workspace-mount-and-folder-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "BASE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $BASE; mkdir -p $BASE; git init -q $BASE/repo && git -C $BASE/repo -c user.email=p@p -c user.name=p commit -q --allow-empty -m init && git -C $BASE/repo worktree add -q ../wt && printf '%s\\n' 'gitdir: ../repo/.git/worktrees/wt' > $BASE/wt/.git; mkdir -p $BASE/wt/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"workspaceMount\":null,\"workspaceFolder\":\"/src/wt\"}' > $BASE/wt/.devcontainer/devcontainer.json; echo WORKSPACE=$BASE/wt; echo BASE=$BASE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --mount-git-worktree-common-dir"
+    cleanup_cmd: "rm -rf ${BASE}; true"
+    key_order: ["workspace"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "A null workspaceMount with workspaceFolder: TS getWorkspaceConfiguration (utils.ts) counts the property as set, so it computes neither the workspace mount nor the common-dir mount, and read-configuration reports workspaceMount as null. Go computed both."
+
+  - id: up.git-worktree-common-dir-empty-workspace-mount-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "BASE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $BASE; mkdir -p $BASE; git init -q $BASE/repo && git -C $BASE/repo -c user.email=p@p -c user.name=p commit -q --allow-empty -m init && git -C $BASE/repo worktree add -q ../wt && printf '%s\\n' 'gitdir: ../repo/.git/worktrees/wt' > $BASE/wt/.git; mkdir -p $BASE/wt/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"workspaceMount\":\"\"}' > $BASE/wt/.devcontainer/devcontainer.json; echo WORKSPACE=$BASE/wt; echo BASE=$BASE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --mount-git-worktree-common-dir --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker inspect -f '{{range .Mounts}}{{.Type}}:{{.Source}}:{{.Destination}} {{end}}' ${CONTAINER_ID}"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${BASE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "An empty workspaceMount mounts no workspace: TS spawnDevContainer (singleContainer.ts) passes no --mount for a falsy workspaceMount, so the container has only the worktree common dir. Go bind-mounted the workspace folder."
+
   - id: build.lockfile-written-by-default-success
     lock: feature-content-image
     lane: runtime
