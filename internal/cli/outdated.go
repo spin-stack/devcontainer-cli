@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"regexp"
 	"slices"
@@ -452,6 +453,10 @@ func newUpgradeCmd() *cobra.Command {
 			})
 
 			loadResult, err := config.LoadDevContainerConfig(ws, cp, "")
+			if errors.Is(err, fs.ErrNotExist) {
+				// A --config file that does not exist is TS getConfig's "not found".
+				return &coreerrors.ContainerError{Description: fmt.Sprintf("Dev container config (%s) not found.", cp)}
+			}
 			if err != nil {
 				return err
 			}

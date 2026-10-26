@@ -122,6 +122,9 @@ runs the official CLI is unaffected:
 - `upgrade --log-level` accepts only `error`, `info`, `debug`, and `trace`. Any
   other value exits 1 with `Invalid value "<value>" for --log-level` instead of
   running at the default level.
+- `upgrade --config` naming a file that does not exist reports
+  `Dev container config (<path>) not found.` instead of the operating system's
+  read error. The exit code stays 1.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
