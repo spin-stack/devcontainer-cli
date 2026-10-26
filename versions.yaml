@@ -13,6 +13,18 @@
     task lint, with this repository's .golangci.yml. go-tools' version, so the spin-stack
     repositories are measured by the same linter; the image's Go must be at least go.mod's.
 
+- name: node
+  kind: image
+  source: node
+  version: 24-bookworm-slim
+  pin: sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
+  track: digest
+  note: >-
+    The Node.js the ts-oracle runs the reference's functions in (task testdata:ts-oracle,
+    TestTSOracleGoldensMatchTheReference), so a golden does not depend on the host's Node: URL
+    parsing, IDNA and JSON.parse messages change between Node releases. A bump that changes an
+    answer fails the oracle gate until the goldens are refreshed and the Go ports follow.
+
 - name: distroless
   kind: image
   source: gcr.io/distroless/static

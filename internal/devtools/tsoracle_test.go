@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -217,16 +218,24 @@ func TestRefreshTSOracleFiles(t *testing.T) {
 	}
 }
 
-// The recorded goldens are what the reference's functions return today. It
-// runs where `task reference` has installed the reference (the parity CI job,
-// through task parity:contract).
+// The recorded goldens are what the reference's functions return today, run in
+// the node image versions.yaml pins, which task parity:contract hands in as
+// TS_ORACLE_IMAGE. It runs where `task reference` has installed the reference
+// and Docker is reachable (the parity CI job).
 func TestTSOracleGoldensMatchTheReference(t *testing.T) {
 	const root = "../.."
+	image := os.Getenv("TS_ORACLE_IMAGE")
+	if image == "" {
+		t.Skip("TS_ORACLE_IMAGE not set; run it through task parity:contract or task testdata:ts-oracle:check")
+	}
 	if _, err := os.Stat(filepath.Join(root, "reference/node_modules/esbuild")); err != nil {
 		t.Skipf("reference not installed (%v); run `task reference`", err)
 	}
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skipf("docker not reachable (%v); the oracle runs in the pinned node image", err)
+	}
 	var out strings.Builder
-	if err := (tool{out: &out, errw: &out}).tsOracle(root, true); err != nil {
+	if err := (tool{out: &out, errw: &out}).tsOracle(root, image, true); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 }

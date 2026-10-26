@@ -117,6 +117,13 @@ const fns: Record<string, (...args: any[]) => any> = {
 			}
 			const { lockfile, initLockfile } = await readLockfile({ configFilePath: URI.file(path.join(dir, 'devcontainer.json')) } as any);
 			return initLockfile ? 'init' : lockfile ? 'lockfile' : 'none';
+		} catch (err: any) {
+			// The temporary folder is <dir> in the golden, so a message that names
+			// the file stays the same from run to run.
+			if (typeof err?.message === 'string') {
+				err.message = err.message.split(dir).join('<dir>');
+			}
+			throw err;
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}

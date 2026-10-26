@@ -49,7 +49,11 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "metrics":
 		err = t.metrics(rest)
 	case "ts-oracle":
-		err = t.tsOracle(".", false)
+		if len(rest) != 1 {
+			fmt.Fprintln(stderr, "usage: devtool ts-oracle <node image>")
+			return 2
+		}
+		err = t.tsOracle(".", rest[0], false)
 	default:
 		fmt.Fprintf(stderr, "devtool: unknown command %q\n", cmd)
 		return 2
@@ -553,26 +557,49 @@ func (t tool) metrics(args []string) error {
 
 // tsOracle rewrites every internal/**/testdata/ts-oracle/*.json under root
 // with the answers the reference's own functions give to the golden's
-// requests; with check it writes nothing and fails on a stale golden.
+// requests; with check it writes nothing and fails on a stale golden. Node.js
+// runs in image, the node image versions.yaml pins (the Taskfile hands it in),
+// so the answers do not depend on the host's Node.js: URL parsing, IDNA and
+// JSON.parse messages change between releases.
 //
 // mutate-lane: TestTSOracleGoldensMatchTheReference
-func (t tool) tsOracle(root string, check bool) error {
+func (t tool) tsOracle(root, image string, check bool) error {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	// The reference may be a symlink out of the repository; esbuild reads it
+	// through its real path, so that path is mounted too.
+	reference, err := filepath.EvalSymlinks(filepath.Join(root, "reference"))
+	if err != nil {
+		return err
+	}
 	dir, err := os.MkdirTemp("", "ts-oracle-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(dir)
+	node := func(mounts []string, args ...string) *exec.Cmd {
+		run := []string{"run", "--rm", "-i", "--network=none", "-u", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())}
+		for _, m := range mounts {
+			run = append(run, "-v", m)
+		}
+		return exec.Command("docker", append(append(run, image, "node"), args...)...)
+	}
 	bundle := filepath.Join(dir, "oracle.js")
-	if err := t.run("node", filepath.Join(root, "tools/tsoracle/build.mjs"), filepath.Join(root, "reference"), bundle); err != nil {
-		return fmt.Errorf("bundle tools/tsoracle/oracle.ts: %w", err)
+	build := node([]string{root + ":" + root + ":ro", reference + ":" + reference + ":ro", dir + ":" + dir},
+		filepath.Join(root, "tools/tsoracle/build.mjs"), reference, bundle)
+	build.Stdout, build.Stderr = t.out, t.errw
+	if err := build.Run(); err != nil {
+		return fmt.Errorf("bundle tools/tsoracle/oracle.ts in %s: %w", image, err)
 	}
 	return refreshTSOracleFiles(root, func(request []byte) ([]byte, error) {
-		cmd := exec.Command("node", bundle)
+		cmd := node([]string{dir + ":" + dir + ":ro"}, bundle)
 		cmd.Stdin = bytes.NewReader(request)
 		cmd.Stderr = t.errw
 		out, err := cmd.Output()
 		if err != nil {
-			return nil, fmt.Errorf("run the oracle: %w", err)
+			return nil, fmt.Errorf("run the oracle in %s: %w", image, err)
 		}
 		return out, nil
 	}, check, t.errw)
