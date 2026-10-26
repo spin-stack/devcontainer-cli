@@ -342,3 +342,100 @@ func TestUpgradeLogsAsTheReference(t *testing.T) {
 		t.Errorf("log of a configuration that does not load = %q, want none", got)
 	}
 }
+
+// --feature/--target-version pin the Feature in devcontainer.json before the
+// lockfile is generated, as TS updateFeatureVersionInConfig does, also with
+// --dry-run: the first key, in file order, naming the Feature whatever its
+// version is replaced, as a pattern, everywhere in the file's text.
+func TestUpgradePinsTheFeatureVersionInConfig(t *testing.T) {
+	reg := newReadRegistry(t)
+	h := reg.host
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"2.0.0"}`)
+	reg.addFeature(t, "ns/other", `{"id":"other","version":"1.0.0"}`)
+	ws := t.TempDir()
+	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")
+	writeFile(t, cfg, "{\n\t// pinned: "+h+"/ns/tool:1\n\t\"image\": \"alpine\",\n\t\"features\": {\n\t\t\""+h+"/ns/other:1\": {},\n\t\t\""+h+"/ns/tool:1\": {}\n\t}\n}\n", 0o644)
+	logFile := filepath.Join(t.TempDir(), "upgrade.log")
+	got, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run", "--feature", h+"/ns/tool:1.5", "--target-version", "2", "--log-file", logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCfg := "{\n\t// pinned: " + h + "/ns/tool:2\n\t\"image\": \"alpine\",\n\t\"features\": {\n\t\t\"" + h + "/ns/other:1\": {},\n\t\t\"" + h + "/ns/tool:2\": {}\n\t}\n}\n"
+	if got := readFile(t, cfg); got != wantCfg {
+		t.Errorf("config = %q, want %q", got, wantCfg)
+	}
+	if e, ok := parseLockfile(t, got).Features[h+"/ns/tool:2"]; !ok || e.Version != "2.0.0" {
+		t.Errorf("lockfile = %s, want it generated from the pinned configuration", got)
+	}
+	log := readFile(t, logFile)
+	for _, want := range []string{
+		"Updating '" + h + "/ns/tool:1.5' to '2' in devcontainer.json",
+		"Updating config file: '" + cfg + "'",
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log = %q, want it to hold %q", log, want)
+		}
+	}
+	if strings.Contains(log, "\"image\": \"alpine\"") {
+		t.Errorf("log = %q, want the updated text only at trace level", log)
+	}
+}
+
+// Of two keys naming the Feature only the first in file order is replaced;
+// the key is read as a regular expression, so a '.' in it matches any
+// character, and a key that is not a valid one fails the command.
+func TestUpgradeFeatureKeyIsAPattern(t *testing.T) {
+	reg := newReadRegistry(t)
+	h := reg.host
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"2.0.0"}`)
+	ws := t.TempDir()
+	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")
+	writeFile(t, cfg, `{"image":"alpine","x":"`+h+`/ns/tool:1X0","features":{"`+h+`/ns/tool:1.0":{},"`+h+`/ns/tool:3":{}}}`, 0o644)
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run", "--feature", h+"/ns/tool", "--target-version", "2"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, cfg), `{"image":"alpine","x":"`+h+`/ns/tool:2","features":{"`+h+`/ns/tool:2":{},"`+h+`/ns/tool:3":{}}}`; got != want {
+		t.Errorf("config = %q, want %q", got, want)
+	}
+
+	bad := `{"image":"alpine","features":{"` + h + `/ns/to(ol:1":{}}}`
+	writeFile(t, cfg, bad, 0o644)
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run", "--feature", h+"/ns/to(ol", "--target-version", "2"); err == nil || !strings.Contains(err.Error(), "missing closing )") {
+		t.Errorf("an invalid pattern: err = %v", err)
+	}
+	if got := readFile(t, cfg); got != bad {
+		t.Errorf("config = %q, want it untouched", got)
+	}
+}
+
+// A configuration with no Feature to pin is left as it is: without Features
+// TS logs so at debug level, and with Features none of which is the one
+// asked for, the unchanged text at trace level.
+func TestUpgradeLeavesAConfigWithoutTheFeature(t *testing.T) {
+	reg := newReadRegistry(t)
+	h := reg.host
+	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
+	cases := []struct {
+		features, level, wantLog string
+		wantErr                  bool
+	}{
+		{`null`, "debug", "No Features found in '", true},
+		{`{"` + h + `/ns/tool:1":{}}`, "trace", "No changes to config file: ", false},
+	}
+	for _, c := range cases {
+		ws := writeOutdatedWorkspace(t, c.features, "")
+		cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")
+		before := readFile(t, cfg)
+		logFile := filepath.Join(t.TempDir(), "upgrade.log")
+		_, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run", "--feature", h+"/ns/other", "--target-version", "2", "--log-level", c.level, "--log-file", logFile)
+		if (err != nil) != c.wantErr {
+			t.Errorf("features %s: err = %v, want error %t", c.features, err, c.wantErr)
+		}
+		if got := readFile(t, cfg); got != before {
+			t.Errorf("features %s: config = %q, want it untouched", c.features, got)
+		}
+		if log := readFile(t, logFile); !strings.Contains(log, c.wantLog+cfg) || strings.Contains(log, "Updating config file") {
+			t.Errorf("features %s: log = %q, want %q", c.features, log, c.wantLog+cfg)
+		}
+	}
+}

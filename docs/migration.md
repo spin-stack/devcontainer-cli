@@ -140,6 +140,11 @@ runs the official CLI is unaffected:
   depend on, with each entry's `dependsOn`, so it matches the one `build` and the
   official CLI write. Make every Feature reachable, with registry credentials
   where needed, before running `upgrade`.
+- `upgrade --feature <id> --target-version <version>` rewrites the Feature's
+  key in `devcontainer.json` to `<id without version>:<version>`, even with
+  `--dry-run`, before generating the lockfile. Earlier releases validated the
+  two flags but otherwise ignored them. Run it on a clean working tree, or
+  without the flags, when the configuration must stay unchanged.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
