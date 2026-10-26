@@ -135,3 +135,42 @@ func TestFeaturesResolveDependenciesFailures(t *testing.T) {
 		}
 	})
 }
+
+// A lockfile the reference's readLockfile throws on fails the command as an
+// uncaught error does in TS: what console.error prints for it on stderr
+// (frames left out), nothing on stdout, exit code 1.
+func TestFeaturesResolveDependenciesFailsOnAnUnreadableLockfile(t *testing.T) {
+	for name, tc := range map[string]struct {
+		write  func(path string) error
+		stderr string
+	}{
+		"not JSON": {
+			write:  func(path string) error { return os.WriteFile(path, []byte("not json"), 0o644) },
+			stderr: "SyntaxError: Unexpected token 'o', \"not json\" is not valid JSON\n",
+		},
+		"a directory": {
+			write:  func(path string) error { return os.Mkdir(path, 0o755) },
+			stderr: "[Error: EISDIR: illegal operation on a directory, read] {\n  errno: -21,\n  code: 'EISDIR',\n  syscall: 'read'\n}\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ws, configPath := resolveDepsWorkspace(t, `{"./a":{}}`, map[string]string{"a": `{"id":"a"}`})
+			if err := tc.write(features.LockfilePath(configPath)); err != nil {
+				t.Fatal(err)
+			}
+			cmd := realFeaturesResolveDepsCmd()
+			cmd.SilenceUsage, cmd.SilenceErrors = true, true
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SetArgs([]string{"--workspace-folder", ws})
+			err := cmd.ExecuteContext(t.Context())
+			if exit, ok := errors.AsType[*coreerrors.ExitCodeError](err); !ok || exit.Code != 1 {
+				t.Fatalf("err = %v, want exit code 1", err)
+			}
+			if stdout.Len() != 0 || stderr.String() != tc.stderr {
+				t.Errorf("stdout = %q, stderr = %q; want no stdout and stderr %q", stdout.String(), stderr.String(), tc.stderr)
+			}
+		})
+	}
+}
