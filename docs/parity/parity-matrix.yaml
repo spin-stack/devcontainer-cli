@@ -321,6 +321,20 @@ initial_cases:
     current_status: match
     notes: "upgrade's --log-level is a yargs choice of error/info/debug/trace (featuresUpgradeOptions), checked before .check(): 'warn' => exit 1 with the invalid-choice error, not the --feature/--target-version one. Go accepted any value and ran."
 
+  - id: upgrade.err-no-features
+    lane: contract
+    command: upgrade
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\"}' > $WORKSPACE/.devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "test ! -e ${WORKSPACE}/.devcontainer-lock.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "upgrade --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code]
+    class: upgrade-runtime
+    current_status: match
+    notes: "Without Features generateFeaturesConfig returns undefined and upgrade throws ContainerError 'Failed to update lockfile' (upgradeCommand.ts): exit 1 and no lockfile written (verify_cmd). TS logs the inspected error object, whose last line is '}', so only the exit code is compared; TestUpgradeFailsWithoutFeatures holds the message. Go wrote {\"features\":{}} and exited 0."
+
   - id: outdated.malformed-lockfile-error
     lane: contract
     command: outdated

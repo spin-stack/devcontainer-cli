@@ -466,6 +466,12 @@ func newUpgradeCmd() *cobra.Command {
 			})
 
 			cfg := loadResult.Config
+			// TS generateFeaturesConfig resolves no Features config for a
+			// configuration without Features, which upgrade reports as a
+			// failure rather than writing an empty lockfile.
+			if len(cfg.Features) == 0 {
+				return &coreerrors.ContainerError{Description: "Failed to update lockfile"}
+			}
 
 			// The lockfile sits next to the configuration, whose path a loaded
 			// configuration always carries.
