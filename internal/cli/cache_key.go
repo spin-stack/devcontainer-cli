@@ -50,9 +50,14 @@ func computeCacheKey(result *config.LoadResult, env map[string]string) (string, 
 
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	if df := cfg.Dockerfile(); df != "" {
-		if content, rerr := os.ReadFile(filepath.Join(configDir, df)); rerr == nil {
-			in.Dockerfile = string(content)
+		// The Dockerfile build reads (prepareDockerfileBuild). One that cannot
+		// be read fails the key, which would otherwise not track the image's
+		// recipe.
+		content, err := os.ReadFile(filepath.Join(configDir, df))
+		if err != nil {
+			return "", fmt.Errorf("read Dockerfile: %w", err)
 		}
+		in.Dockerfile = string(content)
 	}
 
 	// ReadLockfile's bool reports an empty marker file, which pins nothing; a
