@@ -1,0 +1,363 @@
+{
+  "comment": "lockfile.ts generateLockfile, as the text writeLockfile writes (JSON.stringify(lockfile, null, 2) + newline, which keeps the key order); ported in lockfile.go (GenerateLockfile, Lockfile.MarshalJSON) and types.go (Feature.DependsOnKeys).",
+  "cases": [
+    {
+      "name": "ids that differ in case",
+      "fn": "generateLockfileText",
+      "args": [
+        {
+          "featureSets": [
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/Node:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/Node"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/zeta:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/zeta"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/Alpha:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/Alpha"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "result": "{\n  \"features\": {\n    \"ghcr.io/a/b/Alpha:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/Alpha@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/node:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/Node:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/Node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/zeta:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/zeta@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  }\n}\n"
+    },
+    {
+      "name": "ids that differ in punctuation",
+      "fn": "generateLockfileText",
+      "args": [
+        {
+          "featureSets": [
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node-js:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node-js"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node_js:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node_js"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node.js:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node.js"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/node",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/node"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "result": "{\n  \"features\": {\n    \"ghcr.io/a/b/node\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/node_js:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node_js@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/node-js:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node-js@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/node:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/node.js:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node.js@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/node@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  }\n}\n"
+    },
+    {
+      "name": "version tags and registries",
+      "fn": "generateLockfileText",
+      "args": [
+        {
+          "featureSets": [
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/c:10",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/c"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/c:9",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/c"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "localhost:5000/a/b",
+                "featureRef": {
+                  "registry": "localhost:5000",
+                  "path": "a/b"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "LOCALHOST:5000/a/c",
+                "featureRef": {
+                  "registry": "LOCALHOST:5000",
+                  "path": "a/c"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "result": "{\n  \"features\": {\n    \"ghcr.io/a/b/c:10\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/c@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"ghcr.io/a/b/c:9\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/c@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"localhost:5000/a/b\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"localhost:5000/a/b@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"LOCALHOST:5000/a/c\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"LOCALHOST:5000/a/c@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  }\n}\n"
+    },
+    {
+      "name": "tarballs",
+      "fn": "generateLockfileText",
+      "args": [
+        {
+          "featureSets": [
+            {
+              "sourceInformation": {
+                "type": "direct-tarball",
+                "userFeatureId": "https://example.com/b.tgz?x=1&y=<2>",
+                "tarballUri": "https://example.com/b.tgz?x=1&y=<2>"
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "2.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "direct-tarball",
+                "userFeatureId": "https://example.com/A.tgz",
+                "tarballUri": "https://example.com/A.tgz"
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "2.0.0"
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "direct-tarball",
+                "userFeatureId": "https://example.com/a.tgz",
+                "tarballUri": "https://example.com/a.tgz"
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "2.0.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "result": "{\n  \"features\": {\n    \"https://example.com/a.tgz\": {\n      \"version\": \"2.0.0\",\n      \"resolved\": \"https://example.com/a.tgz\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"https://example.com/A.tgz\": {\n      \"version\": \"2.0.0\",\n      \"resolved\": \"https://example.com/A.tgz\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    },\n    \"https://example.com/b.tgz?x=1&y=<2>\": {\n      \"version\": \"2.0.0\",\n      \"resolved\": \"https://example.com/b.tgz?x=1&y=<2>\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  }\n}\n"
+    },
+    {
+      "name": "dependsOn keeps its order",
+      "fn": "generateLockfileText",
+      "args": [
+        {
+          "featureSets": [
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/c:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/c"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0",
+                  "dependsOn": {
+                    "ghcr.io/z/z/z:1": {},
+                    "ghcr.io/a/a/a:1": {
+                      "x": "1"
+                    },
+                    "ghcr.io/M/m/m": {}
+                  }
+                }
+              ]
+            },
+            {
+              "sourceInformation": {
+                "type": "oci",
+                "userFeatureId": "ghcr.io/a/b/d:1",
+                "featureRef": {
+                  "registry": "ghcr.io",
+                  "path": "a/b/d"
+                }
+              },
+              "computedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "features": [
+                {
+                  "version": "1.0.0",
+                  "dependsOn": {}
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "result": "{\n  \"features\": {\n    \"ghcr.io/a/b/c:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/c@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"dependsOn\": [\n        \"ghcr.io/z/z/z:1\",\n        \"ghcr.io/a/a/a:1\",\n        \"ghcr.io/M/m/m\"\n      ]\n    },\n    \"ghcr.io/a/b/d:1\": {\n      \"version\": \"1.0.0\",\n      \"resolved\": \"ghcr.io/a/b/d@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"integrity\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  }\n}\n"
+    }
+  ]
+}

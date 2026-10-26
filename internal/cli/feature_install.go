@@ -191,6 +191,7 @@ func featureFromMetadata(m features.Feature, id string, opts any, cachePath stri
 		UserOptions:          extractUserOptions(opts),
 		Options:              m.Options,
 		DependsOn:            m.DependsOn,
+		DependsOnOrder:       m.DependsOnOrder,
 		InstallsAfter:        m.InstallsAfter,
 		LegacyIds:            m.LegacyIds,
 		ContainerEnv:         m.ContainerEnv,
@@ -393,6 +394,7 @@ func processInstallFeature(
 			UserOptions:      extractUserOptions(opts),
 			Options:          m.Options,
 			DependsOn:        m.DependsOn,
+			DependsOnOrder:   m.DependsOnOrder,
 			InstallsAfter:    m.InstallsAfter,
 			LegacyIds:        m.LegacyIds,
 			ContainerEnv:     m.ContainerEnv,
@@ -443,6 +445,7 @@ func processInstallFeature(
 				if json.Unmarshal([]byte(metaJSON), &am) == nil {
 					set.Features[0].LegacyIds = am.LegacyIds
 					set.Features[0].DependsOn = am.DependsOn
+					set.Features[0].DependsOnOrder = am.DependsOnOrder
 					set.Features[0].InstallsAfter = am.InstallsAfter
 					set.Features[0].Options = am.Options
 					set.Features[0].Init = am.Init

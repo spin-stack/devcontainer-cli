@@ -1,7 +1,13 @@
 // Package features resolves, orders, installs and locks dev container Features.
 package features
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"maps"
+	"slices"
+
+	"github.com/devcontainers/cli/internal/jsonc"
+)
 
 // Set represents a resolved feature with its source and metadata.
 type Set struct {
@@ -13,13 +19,16 @@ type Set struct {
 
 // Feature represents a single feature within a Set.
 type Feature struct {
-	ID                   string            `json:"id"`
-	Version              string            `json:"version,omitempty"`
-	Name                 string            `json:"name,omitempty"`
-	Description          string            `json:"description,omitempty"`
-	DocumentationURL     string            `json:"documentationURL,omitempty"`
-	Options              map[string]any    `json:"options,omitempty"`
-	DependsOn            map[string]any    `json:"dependsOn,omitempty"`
+	ID               string         `json:"id"`
+	Version          string         `json:"version,omitempty"`
+	Name             string         `json:"name,omitempty"`
+	Description      string         `json:"description,omitempty"`
+	DocumentationURL string         `json:"documentationURL,omitempty"`
+	Options          map[string]any `json:"options,omitempty"`
+	DependsOn        map[string]any `json:"dependsOn,omitempty"`
+	// DependsOnOrder is the order the metadata lists dependsOn's keys in,
+	// which TS keeps (Object.keys); UnmarshalJSON records it.
+	DependsOnOrder       []string          `json:"-"`
 	InstallsAfter        []string          `json:"installsAfter,omitempty"`
 	LegacyIds            []string          `json:"legacyIds,omitempty"`
 	Included             bool              `json:"included"`
@@ -40,6 +49,38 @@ type Feature struct {
 	PostStartCommand     any               `json:"postStartCommand,omitempty"`
 	PostAttachCommand    any               `json:"postAttachCommand,omitempty"`
 	Customizations       map[string]any    `json:"customizations,omitempty"`
+}
+
+// UnmarshalJSON decodes the Feature and records the order of its dependsOn
+// keys in DependsOnOrder.
+func (f *Feature) UnmarshalJSON(data []byte) error {
+	type plain Feature
+	if err := json.Unmarshal(data, (*plain)(f)); err != nil {
+		return err
+	}
+	f.DependsOnOrder = jsonc.MemberNames(data, "dependsOn")
+	return nil
+}
+
+// DependsOnKeys is TS Object.keys(dependsOn) for a Feature decoded from its
+// metadata: the keys of DependsOn in the order DependsOnOrder lists them (a
+// repeated key where it first appears). Keys DependsOnOrder does not list,
+// as for a Feature built in code, follow in sorted order.
+func (f *Feature) DependsOnKeys() []string {
+	keys := make([]string, 0, len(f.DependsOn))
+	listed := make(map[string]bool, len(f.DependsOn))
+	for _, k := range f.DependsOnOrder {
+		if _, ok := f.DependsOn[k]; ok && !listed[k] {
+			listed[k] = true
+			keys = append(keys, k)
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(f.DependsOn)) {
+		if !listed[k] {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }
 
 // SourceInfo describes where a feature comes from.

@@ -14,6 +14,7 @@ import { mergeConfiguration, getDevcontainerMetadataLabel } from '../../referenc
 import { generateContainerEnvs, getFeatureValueObject, parseMount, escapeQuotesForShell } from '../../reference/src/spec-configuration/containerFeaturesConfiguration';
 import { getSafeId } from '../../reference/src/spec-node/containerFeatures';
 import { getFeatureIdWithoutVersion } from '../../reference/src/spec-configuration/containerFeaturesOCI';
+import { generateLockfile } from '../../reference/src/spec-configuration/lockfile';
 import { getRef, getCollectionRef } from '../../reference/src/spec-configuration/containerCollectionsOCI';
 import { replaceTemplatedValues } from '../../reference/src/spec-configuration/containerTemplatesOCI';
 import { readVersionPrefix, convertMountToVolume, convertMountToVolumeTopLevelElement } from '../../reference/src/spec-node/dockerCompose';
@@ -64,6 +65,8 @@ const fns: Record<string, (...args: any[]) => any> = {
 	getSafeId: (s: string) => getSafeId(s),
 	// spec-configuration/containerFeaturesOCI.ts
 	getFeatureIdWithoutVersion: (s: string) => getFeatureIdWithoutVersion(s),
+	// spec-configuration/lockfile.ts: the text writeLockfile writes, which keeps the key order.
+	generateLockfileText: async (featuresConfig: any) => JSON.stringify(await generateLockfile(featuresConfig), null, 2) + '\n',
 	// spec-configuration/containerCollectionsOCI.ts
 	getRef: (s: string) => getRef(nullOutput, s),
 	getCollectionRef: (registry: string, namespace: string) => getCollectionRef(nullOutput, registry, namespace),
