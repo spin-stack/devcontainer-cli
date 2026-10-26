@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -623,6 +624,49 @@ func TestReadConfigurationCommandWithoutDockerEngine(t *testing.T) {
 	}
 	if !strings.Contains(string(logged), "Warning: Docker engine:") {
 		t.Errorf("log = %q, want the Docker engine warning", logged)
+	}
+}
+
+// Reading the Features configuration writes TS generateFeaturesConfig's trace
+// lines (containerFeaturesConfiguration.ts): the workspace root, then, with no
+// Features, that there are no user Features. Without a request for the
+// Features nothing is read.
+func TestReadConfigurationCommandTracesReadingTheFeatures(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "not a docker host")
+	// traced is the log's lines without their timestamps.
+	traced := func(ws string, args ...string) []string {
+		t.Helper()
+		logFile := filepath.Join(t.TempDir(), "log.txt")
+		if _, err := runReadConfigurationCmd(t, append([]string{"--workspace-folder", ws, "--log-level", "trace", "--log-file", logFile}, args...)...); err != nil {
+			t.Fatal(err)
+		}
+		logged, err := os.ReadFile(logFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lines []string
+		for line := range strings.Lines(string(logged)) {
+			_, text, _ := strings.Cut(strings.TrimSuffix(line, "\n"), "] ")
+			lines = append(lines, text)
+		}
+		return lines
+	}
+	ws := writeConfigFixture(t, map[string]string{".devcontainer/devcontainer.json": `{"image": "img:1"}`})
+	lines := traced(ws, "--include-features-configuration")
+	if i := slices.Index(lines, "workspace root: "+ws); i < 0 || i+1 == len(lines) || lines[i+1] != "No user features to update" {
+		t.Errorf("log = %q, want the workspace root and then no user features", lines)
+	}
+	if lines := traced(ws); slices.ContainsFunc(lines, func(l string) bool {
+		return strings.HasPrefix(l, "workspace root:") || l == "No user features to update"
+	}) {
+		t.Errorf("log without --include-features-configuration = %q", lines)
+	}
+
+	files := map[string]string{".devcontainer/devcontainer.json": `{"image": "img:1", "features": {"./feat": {}}}`}
+	maps.Copy(files, localFeatureFiles)
+	ws = writeConfigFixture(t, files)
+	if lines := traced(ws, "--include-features-configuration"); !slices.Contains(lines, "workspace root: "+ws) || slices.Contains(lines, "No user features to update") {
+		t.Errorf("log with a Feature = %q, want the workspace root alone", lines)
 	}
 }
 
