@@ -446,12 +446,6 @@ func newUpgradeCmd() *cobra.Command {
 			}
 			defer closeLog()
 
-			logger := log.New(log.Options{
-				Level:  log.ParseLevel(logLevel),
-				Format: "text",
-				Writer: logDst,
-			})
-
 			loadResult, err := config.LoadDevContainerConfig(ws, cp, "")
 			if errors.Is(err, fs.ErrNotExist) {
 				// A --config file that does not exist is TS getConfig's "not found".
@@ -460,6 +454,16 @@ func newUpgradeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// TS writes its log header with the first event, which every run
+			// that gets past loading the configuration logs (at trace level
+			// at least), and none that fails to load it.
+			logger := log.New(log.Options{
+				Version: cliVersion(),
+				Level:   log.ParseLevel(logLevel),
+				Format:  "text",
+				Writer:  logDst,
+			})
 
 			cfg := loadResult.Config
 
@@ -487,12 +491,7 @@ func newUpgradeCmd() *cobra.Command {
 			if err := os.WriteFile(features.LockfilePath(lockfilePath), nil, 0o644); err != nil {
 				return err
 			}
-			if err := features.WriteLockfile(lockfilePath, lf, features.WriteOptions{}); err != nil {
-				return err
-			}
-
-			logger.Write("Lockfile updated.", log.LevelInfo)
-			return nil
+			return features.WriteLockfile(lockfilePath, lf, features.WriteOptions{})
 		},
 	}
 

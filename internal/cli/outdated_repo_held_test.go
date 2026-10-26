@@ -284,3 +284,28 @@ func TestUpgradeMissingConfigIsNotFound(t *testing.T) {
 		t.Errorf("err = %v, want %q", err, want)
 	}
 }
+
+// upgrade logs TS's header once the configuration loads, none when it does
+// not, and nothing of its own after writing the lockfile.
+func TestUpgradeLogsAsTheReference(t *testing.T) {
+	reg := newReadRegistry(t)
+	reg.manifests["ns/tool"] = featureManifest("tool")
+	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
+	writeFile(t, cfg, `{"image":"alpine","features":{"`+reg.host+`/ns/tool:1":{}}}`, 0o644)
+	logFile := filepath.Join(t.TempDir(), "upgrade.log")
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", t.TempDir(), "--config", cfg, "--log-file", logFile); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(readFile(t, logFile)), "\n")
+	if !strings.Contains(lines[0], "@devcontainers/cli ") || strings.Contains(readFile(t, logFile), "Lockfile updated.") {
+		t.Errorf("log = %q, want the header first and no \"Lockfile updated.\"", lines)
+	}
+
+	missing := filepath.Join(t.TempDir(), "nope.json")
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", t.TempDir(), "--config", missing, "--log-file", logFile); err == nil {
+		t.Fatal("a missing --config: want an error")
+	}
+	if got := readFile(t, logFile); got != "" {
+		t.Errorf("log of a configuration that does not load = %q, want none", got)
+	}
+}
