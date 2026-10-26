@@ -3,8 +3,10 @@ package features
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
@@ -44,7 +46,8 @@ func TestTSOracleReadLockfile(t *testing.T) {
 			lockfile, initLockfile, err := ReadLockfile(filepath.Join(dir, "devcontainer.json"))
 			switch {
 			case err != nil:
-				return nil, err
+				// The oracle writes its temporary folder as <dir>.
+				return nil, errors.New(strings.ReplaceAll(err.Error(), dir, "<dir>"))
 			case initLockfile:
 				return "init", nil
 			case lockfile != nil:

@@ -121,6 +121,16 @@ func TestMainUsageErrors(t *testing.T) {
 	if code != 1 || out != "" || errOut != "devtool coverage-report: usage: coverage-report <profile|covdata-dir> [title]\n" {
 		t.Errorf("a command's error: code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
+	// ts-oracle takes the node image, the one argument the Taskfile hands in.
+	for _, args := range [][]string{{"ts-oracle"}, {"ts-oracle", "a", "b"}} {
+		if code, out, errOut := runMain(t, "", args...); code != 2 || out != "" || errOut != "usage: devtool ts-oracle <node image>\n" {
+			t.Errorf("%q: code=%d stdout=%q stderr=%q", args, code, out, errOut)
+		}
+	}
+	// With its image it runs, and here, with no reference/ to bundle, fails.
+	if code, _, errOut := runMain(t, "", "ts-oracle", "node:test"); code != 1 || !strings.Contains(errOut, "reference") {
+		t.Errorf("ts-oracle with an image: code=%d stderr=%q, want the missing reference/", code, errOut)
+	}
 }
 
 func TestParityAffectedReadsFilesFromStdin(t *testing.T) {
