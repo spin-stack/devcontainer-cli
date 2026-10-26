@@ -334,12 +334,13 @@ func sequenceLen(b []byte) int {
 type WriteOptions struct {
 	// Frozen fails (rather than writing) if the lockfile is missing or would change.
 	Frozen bool
-	// Force writes even when no prior lockfile exists.
-	Force bool
 }
 
-// WriteLockfile writes a lockfile to disk. With opts.Frozen set, it fails
-// instead of writing when the lockfile is missing or would change.
+// WriteLockfile writes a lockfile to disk as TS writeLockfile (lockfile.ts)
+// does: it creates the file when there is none and rewrites it when its
+// content would change. With opts.Frozen set, it fails instead of writing when
+// the lockfile is missing or would change. A lockfile that exists but cannot be
+// read is an error, as writeLockfile rethrows all but ENOENT.
 func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) error {
 	path := LockfilePath(configPath)
 
@@ -349,18 +350,12 @@ func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) err
 	}
 
 	oldData, readErr := os.ReadFile(path)
-
-	if !opts.Force && readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+	missing := errors.Is(readErr, os.ErrNotExist)
+	if readErr != nil && !missing {
 		return readErr
 	}
-
-	missing := errors.Is(readErr, os.ErrNotExist)
 	if opts.Frozen && missing {
 		return ErrLockfileMissing
-	}
-	// If no old lockfile and not explicitly enabled, skip
-	if !opts.Force && missing {
-		return nil
 	}
 
 	// TS compares the old lockfile through JSON.parse -> JSON.stringify, so a

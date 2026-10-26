@@ -719,34 +719,69 @@ func TestExtendImageWithFeaturesSwitchesToADockerDriverBuilder(t *testing.T) {
 	}
 }
 
-// --experimental-lockfile writes the lockfile; --experimental-frozen-lockfile
-// fails when the resolved Features differ from it. An existing lockfile pins
-// the Features it records.
+// The lockfile is written by default, as TS generateFeaturesConfig writes it
+// unless --no-lockfile is given; --frozen-lockfile fails when the resolved
+// Features differ from it. An existing lockfile pins the Features it records.
 func TestExtendImageWithFeaturesLockfile(t *testing.T) {
-	t.Run("written", func(t *testing.T) {
+	tgz := featureTgzBytes(t, map[string]string{"devcontainer-feature.json": `{"id":"tb","version":"1.2.3"}`, "install.sh": "#!/bin/sh\n"})
+	sum := sha256.Sum256(tgz)
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+	uri := serveBytes(t, tgz, http.StatusOK) + "/devcontainer-feature-tb.tgz"
+	want := "{\n  \"features\": {\n    \"" + uri + "\": {\n      \"version\": \"1.2.3\",\n      \"resolved\": \"" + uri + "\",\n      \"integrity\": \"" + digest + "\"\n    }\n  }\n}\n"
+	t.Run("written by default", func(t *testing.T) {
 		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
-		res := extendRun{fbOpts: FeatureBuildOptions{Lockfile: true, ConfigPath: configPath}}.run(t)
+		res := extendRun{features: map[string]any{uri: true}, fbOpts: FeatureBuildOptions{ConfigPath: configPath}}.run(t)
 		if res.err != nil {
 			t.Fatal(res.err)
 		}
-		if _, err := os.Stat(features.LockfilePath(configPath)); err != nil {
-			t.Errorf("lockfile not written: %v", err)
+		if data, err := os.ReadFile(features.LockfilePath(configPath)); err != nil || string(data) != want {
+			t.Errorf("lockfile = %q, %v; want\n%s", data, err, want)
 		}
 	})
-	t.Run("left alone without the flags", func(t *testing.T) {
-		t.Chdir(t.TempDir())
-		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
+	t.Run("stale lockfile rewritten", func(t *testing.T) {
+		configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 		if err := os.WriteFile(features.LockfilePath(configPath), []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		if res := (extendRun{features: map[string]any{uri: true}, fbOpts: FeatureBuildOptions{ConfigPath: configPath}}).run(t); res.err != nil {
+			t.Fatal(res.err)
+		}
+		if data, err := os.ReadFile(filepath.Join(filepath.Dir(configPath), ".devcontainer-lock.json")); err != nil || string(data) != want {
+			t.Errorf("lockfile = %q, %v; want\n%s", data, err, want)
+		}
+	})
+	t.Run("local Features only", func(t *testing.T) {
+		// generateLockfile records OCI and tarball Features only: an empty map.
+		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
 		if res := (extendRun{fbOpts: FeatureBuildOptions{ConfigPath: configPath}}).run(t); res.err != nil {
 			t.Fatal(res.err)
 		}
-		if data, err := os.ReadFile(features.LockfilePath(configPath)); err != nil || string(data) != "{}" {
-			t.Errorf("lockfile = %q, %v; want it untouched", data, err)
+		if data, err := os.ReadFile(features.LockfilePath(configPath)); err != nil || string(data) != "{\n  \"features\": {}\n}\n" {
+			t.Errorf("lockfile = %q, %v", data, err)
 		}
-		// Without a configuration there is no lockfile to write.
-		if res := (extendRun{fbOpts: FeatureBuildOptions{Lockfile: true}}).run(t); res.err != nil {
+	})
+	t.Run("--no-lockfile writes none", func(t *testing.T) {
+		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
+		if res := (extendRun{features: map[string]any{uri: true}, fbOpts: FeatureBuildOptions{ConfigPath: configPath, NoLockfile: true}}).run(t); res.err != nil {
+			t.Fatal(res.err)
+		}
+		if _, err := os.Stat(features.LockfilePath(configPath)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("--no-lockfile wrote a lockfile: %v", err)
+		}
+		stale := filepath.Join(t.TempDir(), "devcontainer.json")
+		if err := os.WriteFile(features.LockfilePath(stale), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if res := (extendRun{features: map[string]any{uri: true}, fbOpts: FeatureBuildOptions{ConfigPath: stale, NoLockfile: true}}).run(t); res.err != nil {
+			t.Fatal(res.err)
+		}
+		if data, err := os.ReadFile(features.LockfilePath(stale)); err != nil || string(data) != "{}" {
+			t.Errorf("lockfile = %q, %v; want it untouched under --no-lockfile", data, err)
+		}
+	})
+	t.Run("without a configuration", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		if res := (extendRun{}).run(t); res.err != nil {
 			t.Fatal(res.err)
 		}
 		if entries, _ := os.ReadDir("."); len(entries) != 0 {

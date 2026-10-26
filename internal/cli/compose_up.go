@@ -324,9 +324,11 @@ func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContai
 	if err := substituteFeatureHostVars(res.FeatureSets, loadResult.HostSub); err != nil {
 		return nil, "", err
 	}
-	if (opts.experimentalLockfile || opts.experimentalFrozenLockfile) && cfg.ConfigFilePath != "" {
+	// Written by default, as TS generateFeaturesConfig writes it unless
+	// --no-lockfile is given.
+	if !opts.noLockfile && cfg.ConfigFilePath != "" {
 		lf := features.GenerateLockfile(&features.Config{FeatureSets: res.FeatureSets}, opts.lockfileExcludeIDs)
-		if err := features.WriteLockfile(cfg.ConfigFilePath, lf, features.WriteOptions{Frozen: opts.experimentalFrozenLockfile, Force: opts.experimentalLockfile}); err != nil {
+		if err := features.WriteLockfile(cfg.ConfigFilePath, lf, features.WriteOptions{Frozen: opts.experimentalFrozenLockfile}); err != nil {
 			return nil, "", fmt.Errorf("lockfile: %w", err)
 		}
 	}

@@ -76,10 +76,11 @@ func readHeld(t *testing.T, path string) (string, time.Time) {
 	return string(data), info.ModTime()
 }
 
-// A new lockfile is written as TS writeLockfile writes it.
+// A new lockfile is written as TS writeLockfile writes it, which creates the
+// file when there is none: the lockfile is on by default.
 func TestWriteLockfileWritesWhatTSWrites(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "devcontainer.json")
-	if err := WriteLockfile(configPath, heldLockfile(), WriteOptions{Force: true}); err != nil {
+	if err := WriteLockfile(configPath, heldLockfile(), WriteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := readHeld(t, LockfilePath(configPath)); got != heldLockfileJSON {

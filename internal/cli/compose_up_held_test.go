@@ -622,8 +622,10 @@ func TestComposeFeatureSets(t *testing.T) {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			t.Errorf("features folder %q: %v", dir, err)
 		}
-		if _, err := os.Stat(filepath.Join(h.dc, "devcontainer-lock.json")); !os.IsNotExist(err) {
-			t.Errorf("lockfile written without --experimental-lockfile: %v", err)
+		// The lockfile is written by default (TS generateFeaturesConfig); a
+		// local Feature leaves its features map empty.
+		if got := readFile(t, filepath.Join(h.dc, "devcontainer-lock.json")); got != "{\n  \"features\": {}\n}\n" {
+			t.Errorf("lockfile = %q", got)
 		}
 	})
 	t.Run("missing feature", func(t *testing.T) {
@@ -633,15 +635,15 @@ func TestComposeFeatureSets(t *testing.T) {
 			t.Error("want an error for a Feature folder that does not exist")
 		}
 	})
-	t.Run("experimental lockfile", func(t *testing.T) {
+	t.Run("no lockfile", func(t *testing.T) {
 		h := newComposeHarness(t)
-		h.r.opts.experimentalLockfile = true
+		h.r.opts.noLockfile = true
 		cfg := &config.DevContainer{ConfigFilePath: filepath.Join(h.dc, "devcontainer.json"), Features: h.localFeature()}
 		if _, _, err := h.r.composeFeatureSets(ctx, cfg, lr); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := os.Stat(filepath.Join(h.dc, "devcontainer-lock.json")); err != nil {
-			t.Errorf("lockfile not written: %v", err)
+		if _, err := os.Stat(filepath.Join(h.dc, "devcontainer-lock.json")); !os.IsNotExist(err) {
+			t.Errorf("lockfile written with --no-lockfile: %v", err)
 		}
 	})
 	t.Run("frozen lockfile out of date", func(t *testing.T) {
@@ -653,15 +655,19 @@ func TestComposeFeatureSets(t *testing.T) {
 			t.Errorf("err = %v, want the lockfile error", err)
 		}
 	})
-	t.Run("existing lockfile left alone", func(t *testing.T) {
-		h := newComposeHarness(t)
-		lock := h.write("devcontainer-lock.json", `{"features":{"stale":{}}}`)
-		cfg := &config.DevContainer{ConfigFilePath: filepath.Join(h.dc, "devcontainer.json"), Features: h.localFeature()}
-		if _, _, err := h.r.composeFeatureSets(ctx, cfg, lr); err != nil {
-			t.Fatal(err)
-		}
-		if got := readFile(t, lock); got != `{"features":{"stale":{}}}` {
-			t.Errorf("lockfile rewritten without a lockfile flag: %s", got)
+	t.Run("existing lockfile", func(t *testing.T) {
+		// Rewritten by default; --no-lockfile leaves it alone.
+		for noLockfile, want := range map[bool]string{false: "{\n  \"features\": {}\n}\n", true: `{"features":{"stale":{}}}`} {
+			h := newComposeHarness(t)
+			h.r.opts.noLockfile = noLockfile
+			lock := h.write("devcontainer-lock.json", `{"features":{"stale":{}}}`)
+			cfg := &config.DevContainer{ConfigFilePath: filepath.Join(h.dc, "devcontainer.json"), Features: h.localFeature()}
+			if _, _, err := h.r.composeFeatureSets(ctx, cfg, lr); err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, lock); got != want {
+				t.Errorf("noLockfile=%t: lockfile = %q, want %q", noLockfile, got, want)
+			}
 		}
 	})
 	t.Run("malformed lockfile", func(t *testing.T) {
