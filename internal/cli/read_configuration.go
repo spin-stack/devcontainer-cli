@@ -166,7 +166,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		output["cacheKey"] = key
 	}
 
-	if ws, ok := workspaceOutput(result, workspaceFolder, opts.containerID); ok {
+	if ws, ok := workspaceOutput(result); ok {
 		output["workspace"] = orderedObject{ws, workspaceKeys}
 	}
 
@@ -411,17 +411,16 @@ func substituteContainerEnv(containerCfg *container.Config, cfgMap map[string]an
 }
 
 // workspaceOutput is read-configuration's "workspace"; ok is false when the
-// configuration gives none. With --container-id and no workspace folder it is
-// empty, as in TS.
-func workspaceOutput(result *config.LoadResult, workspaceFolder, containerIDFlag string) (ws map[string]any, ok bool) {
+// configuration gives none. Without a workspace folder it has only the
+// configuration's own workspaceFolder and workspaceMount, as TS
+// getWorkspaceConfiguration leaves them for an undefined workspace.
+func workspaceOutput(result *config.LoadResult) (ws map[string]any, ok bool) {
 	if result == nil || result.WorkspaceConfig == nil {
 		return nil, false
 	}
-	if workspaceFolder == "" && containerIDFlag != "" {
-		return map[string]any{}, true
-	}
-	ws = map[string]any{
-		"workspaceFolder": result.WorkspaceConfig.WorkspaceFolder,
+	ws = map[string]any{}
+	if result.WorkspaceConfig.WorkspaceFolder != "" {
+		ws["workspaceFolder"] = result.WorkspaceConfig.WorkspaceFolder
 	}
 	// A workspaceMount the configuration sets is written as it is set, even
 	// empty or null (TS readDevContainerConfigFile's `'workspaceMount' in

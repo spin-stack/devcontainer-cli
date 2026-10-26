@@ -2317,6 +2317,19 @@ initial_cases:
     current_status: match
     notes: "--container-id without --workspace-folder has no workspace, so TS's configuration is the override itself (configPath = overrideConfigFile, a file URI): it is printed with ${containerEnv:…} resolved from the container and the workspace variables left as written. Go loaded no configuration and printed an empty one."
 
+  - id: read-configuration.container-id-config-workspace-without-folder-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"workspaceFolder\":\"/wf\",\"workspaceMount\":\"type=bind,source=/a,target=/wf\"}' > $WORKSPACE/devcontainer.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "read-configuration --container-id ${CONTAINER_ID} --config ${WORKSPACE}/devcontainer.json"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "Without a workspace, TS getWorkspaceConfiguration keeps the configuration's own workspaceFolder and workspaceMount, and read-configuration prints them as the workspace. Go printed an empty workspace whenever --container-id came without --workspace-folder."
+
   - id: read-configuration.container-metadata-success
     lane: runtime
     command: read-configuration
