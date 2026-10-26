@@ -1568,6 +1568,20 @@ initial_cases:
     current_status: match
     notes: "The lockfile holds every resolved OCI Feature, the dependencies a Feature's dependsOn pulls in among them (generateFeaturesConfig computes the dependency graph): a local Feature depending on common-utils:2 adds common-utils:2 to the lockfile, while the local Feature itself is left out. Go looked up only the configured Features and missed common-utils."
 
+  - id: upgrade.feature-target-version-success
+    lane: runtime
+    command: upgrade
+    priority: p1
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; cp -R reference/src/test/configs/image-with-features/. $WORKSPACE/; echo WORKSPACE=$WORKSPACE"
+    verify_cmd: "cat ${WORKSPACE}/.devcontainer.json"
+    cleanup_cmd: "rm -rf /tmp/parity-upgrade-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "upgrade --workspace-folder ${WORKSPACE} --dry-run --feature ghcr.io/devcontainers/features/docker-in-docker:2.5 --target-version 1"
+    asserts: [exit_code, stdout_normalized]
+    class: upgrade-runtime
+    current_status: match
+    notes: "--feature/--target-version first rewrite the Feature's key in devcontainer.json to '<id without version>:<target>' (updateFeatureVersionInConfig), even with --dry-run, and the lockfile is generated from the configuration read again: docker-in-docker:2 becomes docker-in-docker:1 in the file (verify_cmd) and in the printed lockfile. Go validated the flags but never applied them."
+
   - id: read-configuration.missing-required
     lane: contract
     command: read-configuration

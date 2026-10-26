@@ -468,6 +468,20 @@ func newUpgradeCmd() *cobra.Command {
 
 			cfg := loadResult.Config
 
+			// --feature/--target-version first pin the Feature's version in
+			// devcontainer.json, with or without --dry-run, and the lockfile
+			// is then generated from the configuration read again.
+			if feature != "" {
+				logger.Write(fmt.Sprintf("Updating '%s' to '%s' in devcontainer.json", feature, targetVersion), log.LevelInfo)
+				if err := updateFeatureVersionInConfig(logger, cfg, feature, targetVersion); err != nil {
+					return err
+				}
+				if loadResult, err = config.LoadDevContainerConfig(ws, cp, ""); err != nil {
+					return err
+				}
+				cfg = loadResult.Config
+			}
+
 			// The lockfile sits next to the configuration, whose path a loaded
 			// configuration always carries.
 			lockfilePath := cfg.ConfigFilePath
@@ -519,6 +533,51 @@ func newUpgradeCmd() *cobra.Command {
 
 	addLogFileFlags(cmd, &logFile, &terminalLogFile)
 	return cmd
+}
+
+// updateFeatureVersionInConfig pins the configured Feature that is feature,
+// whatever its version, to targetVersion in the configuration file, as TS
+// updateFeatureVersionInConfig does: the first Feature key, in the order the
+// file lists them, whose id without its version is feature's is replaced,
+// read as a regular expression, everywhere in the file's text by
+// "<feature without version>:<targetVersion>".
+func updateFeatureVersionInConfig(logger log.Logger, cfg *config.DevContainer, feature, targetVersion string) error {
+	configPath := cfg.ConfigFilePath
+	if cfg.Features == nil {
+		logger.Write(fmt.Sprintf("No Features found in '%s'.", configPath), log.LevelDebug)
+		return nil
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	previous := string(data)
+	updated := previous
+
+	target := getFeatureIdWithoutVersion(feature)
+	for _, userFeatureID := range orderedFeatureKeys(configPath, cfg.Features) {
+		if getFeatureIdWithoutVersion(userFeatureID) != target {
+			continue
+		}
+		re, err := regexp.Compile(userFeatureID)
+		if err != nil {
+			return err
+		}
+		// TS String.replace reads '$' patterns in the replacement, but a
+		// replacement holding '$' comes from a key holding '$', which as a
+		// pattern only matches at the very end of the text, where a JSON
+		// document has its closing brace: it is replaced literally.
+		updated = re.ReplaceAllLiteralString(updated, target+":"+targetVersion)
+		break
+	}
+
+	logger.Write(updated, log.LevelTrace)
+	if updated == previous {
+		logger.Write(fmt.Sprintf("No changes to config file: %s\n", configPath), log.LevelTrace)
+		return nil
+	}
+	logger.Write(fmt.Sprintf("Updating config file: '%s'", configPath), log.LevelInfo)
+	return os.WriteFile(configPath, []byte(updated), 0o644)
 }
 
 // errorStack is how the reference logs an error it catches (err.stack, frames
