@@ -761,7 +761,9 @@ func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
 
 // commandErrorOutput is the error result of up and build: a ContainerError (TS
 // throws one with its own description, which the commands report as it is)
-// as it is, any other error described as "<description>: <error>".
+// as it is; an error carrying the reference's own message as TS reports any
+// error it wraps, that message under "<description>."; any other error
+// described as "<description>: <error>".
 func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
 	if ce, ok := coreerrors.AsContainerError(err); ok {
 		return coreerrors.ToErrorOutput(ce)
@@ -772,6 +774,9 @@ func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
 		if errors.Is(err, plain) {
 			return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: description + ".", OriginalError: plain})
 		}
+	}
+	if re, ok := errors.AsType[coreerrors.ReferenceError](err); ok {
+		return coreerrors.ErrorOutput{Outcome: "error", Message: re.Error(), Description: description + "."}
 	}
 	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: fmt.Sprintf("%s: %v", description, err)})
 }

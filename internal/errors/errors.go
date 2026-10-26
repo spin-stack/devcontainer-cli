@@ -30,6 +30,15 @@ func (e *ContainerError) Unwrap() error {
 	return e.OriginalError
 }
 
+// ReferenceError is an error whose message is the reference CLI's own, the
+// message of a plain JavaScript error it throws (a lockfile JSON.parse or fs
+// error, say). up and build report it as TS reports such an error: its
+// message under the command's generic description.
+type ReferenceError interface {
+	error
+	ReferenceError()
+}
+
 // ExitCodeError wraps an error with a specific exit code for the process.
 type ExitCodeError struct {
 	Code int

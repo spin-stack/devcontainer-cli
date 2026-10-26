@@ -763,6 +763,22 @@ func TestExtendImageWithFeaturesLockfile(t *testing.T) {
 			t.Fatalf("err = %v, build = %v; want a lockfile error before any build", res.err, res.build)
 		}
 	})
+	t.Run("malformed", func(t *testing.T) {
+		// TS readLockfile rethrows the JSON.parse error: the build fails with
+		// its message before anything is built; --no-lockfile does not read it.
+		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
+		if err := os.WriteFile(features.LockfilePath(configPath), []byte("not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		res := extendRun{fbOpts: FeatureBuildOptions{ConfigPath: configPath}}.run(t)
+		lerr, ok := errors.AsType[*features.LockfileError](res.err)
+		if !ok || lerr.Error() != `Unexpected token 'o', "not json" is not valid JSON` || res.build != nil {
+			t.Fatalf("err = %v, build = %v; want the lockfile's SyntaxError before any build", res.err, res.build)
+		}
+		if unlocked := (extendRun{fbOpts: FeatureBuildOptions{ConfigPath: configPath, NoLockfile: true}}).run(t); unlocked.err != nil {
+			t.Fatalf("--no-lockfile: err = %v", unlocked.err)
+		}
+	})
 	t.Run("pins on read", func(t *testing.T) {
 		uri := serveBytes(t, featureTgzBytes(t, map[string]string{"devcontainer-feature.json": `{"id":"tb"}`}), http.StatusOK) + "/devcontainer-feature-tb.tgz"
 		configPath := filepath.Join(t.TempDir(), "devcontainer.json")

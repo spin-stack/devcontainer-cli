@@ -493,6 +493,32 @@ initial_cases:
     current_status: match
     notes: "TS reads the config before looking for a container (configContainer.ts): with no workspace and no config it fails with 'No dev container config and no workspace found.' even though --id-label finds a container. Go used to reuse the container and report success with an empty remoteWorkspaceFolder."
 
+  - id: build.malformed-lockfile-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/feat/devcontainer-feature.json; printf '#!/bin/sh\\necho installed\\n' > $WORKSPACE/.devcontainer/feat/install.sh; chmod +x $WORKSPACE/.devcontainer/feat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./feat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' 'not json' > $WORKSPACE/.devcontainer/devcontainer-lock.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile-error
+    current_status: match
+    notes: "readLockfile rethrows JSON.parse's SyntaxError while the Features are resolved; build wraps it in a ContainerError: message the SyntaxError's, description 'An error occurred building the container.'. Go used to ignore the lockfile and build."
+
+  - id: up.malformed-lockfile-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/feat/devcontainer-feature.json; printf '#!/bin/sh\\necho installed\\n' > $WORKSPACE/.devcontainer/feat/install.sh; chmod +x $WORKSPACE/.devcontainer/feat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./feat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' 'not json' > $WORKSPACE/.devcontainer/devcontainer-lock.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile-error
+    current_status: match
+    notes: "As build.malformed-lockfile-error, with up's description 'An error occurred setting up the container.'; no container is created."
+
   - id: up.config-without-workspace-success
     lane: runtime
     command: up

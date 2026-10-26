@@ -291,6 +291,13 @@ func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
 	if want := "An error occurred building the container: some internal failure"; out.Description != want || out.Message != want {
 		t.Errorf("other error = %+v", out)
 	}
+	// An error carrying the reference's own message (a lockfile it cannot
+	// read) is reported as TS reports any error it wraps in a ContainerError.
+	lockErr := &features.LockfileError{Name: "SyntaxError", Message: "Unexpected end of JSON input"}
+	out = commandErrorOutput(fmt.Errorf("fetch features: %w", lockErr), "An error occurred setting up the container")
+	if out.Message != "Unexpected end of JSON input" || out.Description != "An error occurred setting up the container." {
+		t.Errorf("reference error = %+v", out)
+	}
 }
 
 type errorString string
