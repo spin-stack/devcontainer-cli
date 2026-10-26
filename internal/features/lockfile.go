@@ -6,11 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/collate"
 	"golang.org/x/text/language"
@@ -108,9 +112,14 @@ func GenerateLockfile(config *Config, excludeUserFeatureIDs map[string]bool) *Lo
 	return lf
 }
 
-// ReadLockfile reads a lockfile from disk.
-// Returns (lockfile, initLockfile, error).
-// If the file is empty, initLockfile=true (marker to initialize on next build).
+// ReadLockfile reads a lockfile from disk, as the reference's readLockfile
+// (lockfile.ts) does. It returns (lockfile, initLockfile, error): a missing
+// file is no lockfile, and a file that is blank once trimmed is the marker
+// that asks for one to be written (initLockfile). Every other failure is an
+// error, as readLockfile rethrows everything but ENOENT: a file that cannot be
+// read or is not JSON comes back as a *LockfileError carrying the message the
+// reference reports. JSON null is no lockfile (TS reads it through `?.`), and
+// JSON that is not shaped like a lockfile is an error too.
 func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 	path := LockfilePath(configPath)
 	data, err := os.ReadFile(path)
@@ -118,14 +127,21 @@ func ReadLockfile(configPath string) (*Lockfile, bool, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
 		}
-		return nil, false, err
+		return nil, false, nodeFSError(err)
 	}
 
-	content := strings.TrimSpace(string(data))
-	if content == "" {
+	// readLocalFile's Buffer, decoded by toString() and trimmed by trim().
+	content := decodeUTF8Lossy(data)
+	if strings.TrimFunc(content, isJSWhitespace) == "" {
 		return nil, true, nil // empty marker
 	}
+	if msg := v8JSONSyntaxError(content); msg != "" {
+		return nil, false, &LockfileError{Name: "SyntaxError", Message: msg}
+	}
 
+	if !jsonTruthy(data) {
+		return nil, false, nil
+	}
 	var lf Lockfile
 	if err := json.Unmarshal(data, &lf); err != nil {
 		return nil, false, fmt.Errorf("parse lockfile: %w", err)
@@ -138,6 +154,181 @@ var (
 	ErrLockfileMissing  = errors.New("Lockfile does not exist.")
 	ErrLockfileMismatch = errors.New("Lockfile does not match.")
 )
+
+// jsonTruthy is the truthiness of JSON.parse(data), valid JSON: TS reads the
+// parsed lockfile through `lockfile?.` and `if (lockfile)`, so null, false, 0
+// and "" are no lockfile.
+func jsonTruthy(data []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return true // valid JSON V8 parses; encoding/json reports the rest
+	}
+	switch v := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return v
+	case string:
+		return v != ""
+	case json.Number:
+		f, _ := v.Float64() // out of range: ±Inf, truthy
+		return f != 0
+	}
+	return true
+}
+
+// LockfileError is a lockfile the reference's readLockfile fails on, carrying
+// what the reference reports: the class and message of the JavaScript error,
+// and for a file system error the properties Node.js gives it.
+type LockfileError struct {
+	// Name is the error's class: SyntaxError for JSON.parse, Error for the
+	// file system.
+	Name    string
+	Message string
+	// Errno, Code and Syscall are a file system error's properties; Path is
+	// set only when the open failed, as Node.js sets it.
+	Errno   int
+	Code    string
+	Syscall string
+	Path    string
+	Err     error
+}
+
+func (e *LockfileError) Error() string { return e.Message }
+
+func (e *LockfileError) Unwrap() error { return e.Err }
+
+// ReferenceError marks the message as the reference's own, the message of a
+// plain JavaScript error it throws (internal/errors.ReferenceError).
+func (e *LockfileError) ReferenceError() {}
+
+// Stack is the error's stack without its frames, as the reference logs it.
+func (e *LockfileError) Stack() string { return e.Name + ": " + e.Message }
+
+// Inspect is what console.error prints for the error, frames left out: a
+// SyntaxError's stack, and for a file system error, which Node.js raises with
+// no frames, util.inspect's "[Error: message]" and its properties.
+func (e *LockfileError) Inspect() string {
+	if e.Code == "" {
+		return e.Stack()
+	}
+	props := fmt.Sprintf("  errno: %d,\n  code: %s,\n  syscall: %s", e.Errno, jsQuote(e.Code), jsQuote(e.Syscall))
+	if e.Path != "" {
+		props += ",\n  path: " + jsQuote(e.Path)
+	}
+	return fmt.Sprintf("[%s] {\n%s\n}", e.Stack(), props)
+}
+
+// nodeErrno is the libuv code and description Node.js names a file system
+// error with.
+var nodeErrno = map[syscall.Errno][2]string{
+	syscall.EACCES:       {"EACCES", "permission denied"},
+	syscall.EISDIR:       {"EISDIR", "illegal operation on a directory"},
+	syscall.ENOTDIR:      {"ENOTDIR", "not a directory"},
+	syscall.ELOOP:        {"ELOOP", "too many symbolic links encountered"},
+	syscall.ENAMETOOLONG: {"ENAMETOOLONG", "name too long"},
+	syscall.EPERM:        {"EPERM", "operation not permitted"},
+	syscall.EIO:          {"EIO", "i/o error"},
+}
+
+// nodeFSError is the error fs.readFile fails with for err: "<CODE>:
+// <description>, <syscall>", with the path quoted when the open failed. An
+// error Node.js would name differently keeps its own message.
+func nodeFSError(err error) error {
+	var pathErr *fs.PathError
+	var errno syscall.Errno
+	if !errors.As(err, &pathErr) || !errors.As(err, &errno) {
+		return err
+	}
+	name, ok := nodeErrno[errno]
+	if !ok {
+		return err
+	}
+	e := &LockfileError{Name: "Error", Errno: -int(errno), Code: name[0], Syscall: pathErr.Op, Err: err}
+	e.Message = fmt.Sprintf("%s: %s, %s", name[0], name[1], pathErr.Op)
+	if pathErr.Op == "open" {
+		e.Path = pathErr.Path
+		e.Message += " '" + pathErr.Path + "'"
+	}
+	return e
+}
+
+// jsQuote quotes s as util.inspect does: in single quotes, or in double
+// quotes or backticks when s holds a single quote, escaping backslashes and
+// the quote.
+func jsQuote(s string) string {
+	quote := "'"
+	if strings.Contains(s, "'") {
+		switch {
+		case !strings.Contains(s, `"`):
+			quote = `"`
+		case !strings.Contains(s, "`"):
+			quote = "`"
+		}
+	}
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	return quote + strings.ReplaceAll(s, quote, `\`+quote) + quote
+}
+
+// isJSWhitespace is what String.prototype.trim removes: WhiteSpace (Zs, tab,
+// vertical tab, form feed, no-break space, BOM) and LineTerminator.
+func isJSWhitespace(r rune) bool {
+	switch r {
+	case '\t', '\n', '\v', '\f', '\r', '\u2028', '\u2029', '\ufeff':
+		return true
+	}
+	return unicode.Is(unicode.Zs, r)
+}
+
+// decodeUTF8Lossy decodes b as Buffer.toString('utf8') does, the WHATWG UTF-8
+// decoder: each maximal invalid subpart becomes one U+FFFD.
+func decodeUTF8Lossy(b []byte) string {
+	var out strings.Builder
+	for len(b) > 0 {
+		n := sequenceLen(b)
+		r, _ := utf8.DecodeRune(b[:n]) // U+FFFD for an invalid subpart
+		out.WriteRune(r)
+		b = b[n:]
+	}
+	return out.String()
+}
+
+// sequenceLen is the length of the UTF-8 sequence at the start of b, or of
+// its maximal subpart when it is invalid: a lead byte and the continuation
+// bytes that could still have completed it.
+func sequenceLen(b []byte) int {
+	lead := b[0]
+	var need int
+	lo, hi := byte(0x80), byte(0xbf)
+	switch {
+	case 0xc2 <= lead && lead <= 0xdf:
+		need = 1
+	case 0xe0 <= lead && lead <= 0xef:
+		need = 2
+		switch lead {
+		case 0xe0:
+			lo = 0xa0
+		case 0xed:
+			hi = 0x9f
+		}
+	case 0xf0 <= lead && lead <= 0xf4:
+		need = 3
+		switch lead {
+		case 0xf0:
+			lo = 0x90
+		case 0xf4:
+			hi = 0x8f
+		}
+	}
+	n := 1
+	for n <= need && n < len(b) && lo <= b[n] && b[n] <= hi {
+		n++
+		lo, hi = 0x80, 0xbf
+	}
+	return n
+}
 
 // WriteOptions controls how WriteLockfile behaves.
 type WriteOptions struct {
