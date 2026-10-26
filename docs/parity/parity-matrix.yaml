@@ -1376,6 +1376,34 @@ initial_cases:
     current_status: match
     notes: "A Compose build with --no-lockfile writes no lockfile."
 
+  - id: build.absolute-dockerfile-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer $WORKSPACE/df; printf '%s\\n' 'FROM alpine:3' 'COPY marker /marker' > $WORKSPACE/df/Dockerfile; echo absolute > $WORKSPACE/df/marker; printf '{\"build\":{\"dockerfile\":\"%s/df/Dockerfile\"}}' $WORKSPACE > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm parity-${PARITY_CASE_ID}-${PARITY_SIDE} cat /marker"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: build-runtime
+    current_status: match
+    notes: "An absolute build.dockerfile is used where it is (configuration.ts getDockerfilePath resolves it against the configuration's folder, which keeps an absolute path), and without build.context the context is its folder (utils.ts getDockerContextPath). Go joined it onto the configuration's folder and failed reading '<config dir>/<absolute path>'."
+
+  - id: build.subfolder-dockerfile-default-context-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/sub; printf '%s\\n' 'FROM alpine:3' 'COPY marker /marker' > $WORKSPACE/.devcontainer/sub/Dockerfile; echo subfolder > $WORKSPACE/.devcontainer/sub/marker; printf '%s' '{\"build\":{\"dockerfile\":\"sub/Dockerfile\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm parity-${PARITY_CASE_ID}-${PARITY_SIDE} cat /marker"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code]
+    class: build-runtime
+    current_status: match
+    notes: "Without build.context the context is the Dockerfile's folder (utils.ts getDockerContextPath: parentURI(getDockerfilePath)), not the configuration's: COPY finds the file next to sub/Dockerfile. Go used the configuration's folder and the COPY failed."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

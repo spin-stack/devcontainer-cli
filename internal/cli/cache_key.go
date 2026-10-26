@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/features"
@@ -48,12 +47,11 @@ func computeCacheKey(result *config.LoadResult, env map[string]string) (string, 
 	}
 	in := cacheKeyInput{Config: cfgJSON, Context: cfg.BuildContext()}
 
-	configDir := filepath.Dir(cfg.ConfigFilePath)
-	if df := cfg.Dockerfile(); df != "" {
+	if cfg.Dockerfile() != "" {
 		// The Dockerfile build reads (prepareDockerfileBuild). One that cannot
 		// be read fails the key, which would otherwise not track the image's
 		// recipe.
-		content, err := os.ReadFile(filepath.Join(configDir, df))
+		content, err := os.ReadFile(dockerfileConfigPath(cfg))
 		if err != nil {
 			return "", fmt.Errorf("read Dockerfile: %w", err)
 		}

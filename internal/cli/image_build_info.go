@@ -130,10 +130,7 @@ func getImageBuildInfo(ctx context.Context, cfg *config.DevContainer, insp *imag
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	switch {
 	case cfg.IsDockerfileConfig():
-		dockerfilePath := cfg.Dockerfile()
-		if !filepath.IsAbs(dockerfilePath) {
-			dockerfilePath = filepath.Join(configDir, dockerfilePath)
-		}
+		dockerfilePath := dockerfileConfigPath(cfg)
 		if st, err := os.Stat(dockerfilePath); err != nil || st.IsDir() {
 			return nil, fmt.Errorf("Dockerfile (%s) not found.", dockerfilePath)
 		}
