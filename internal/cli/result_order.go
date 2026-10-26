@@ -62,6 +62,8 @@ var (
 	runUserCommandsResultKeys = []string{"outcome", "result"}
 	// readConfiguration.
 	readConfigurationKeys = []string{"configuration", "workspace", "featuresConfiguration", "mergedConfiguration", "ociAuthDiagnostics"}
+	// getWorkspaceConfiguration's WorkspaceConfiguration (utils.ts).
+	workspaceKeys = []string{"workspaceFolder", "workspaceMount", "additionalMountString"}
 	// generateFeaturesConfig's FeaturesConfig.
 	featuresConfigurationKeys = []string{"featureSets", "dstFolder"}
 	// The properties mergeConfiguration (imageMetadata.ts) sets after spreading
