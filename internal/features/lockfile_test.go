@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -229,4 +230,41 @@ func indexOf(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+// A new lockfile gets Node's default file mode, 0666 less the umask, as TS
+// writeLockfile's fs.writeFile gives it; rewriting one keeps its mode.
+func TestWriteLockfileMode(t *testing.T) {
+	old := syscall.Umask(0o002)
+	t.Cleanup(func() { syscall.Umask(old) })
+
+	configPath := filepath.Join(t.TempDir(), "devcontainer.json")
+	lf := &Lockfile{Features: map[string]LockfileEntry{"ghcr.io/o/f:1": {Version: "1.0.0"}}}
+	if err := WriteLockfile(configPath, lf, WriteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	path := LockfilePath(configPath)
+	if got := fileMode(t, path); got != 0o664 {
+		t.Fatalf("new lockfile mode = %v, want 0664", got)
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lf.Features["ghcr.io/o/f:1"] = LockfileEntry{Version: "1.0.1"}
+	if err := WriteLockfile(configPath, lf, WriteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := fileMode(t, path); got != 0o600 {
+		t.Fatalf("rewritten lockfile mode = %v, want its 0600 kept", got)
+	}
+}
+
+func fileMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }
