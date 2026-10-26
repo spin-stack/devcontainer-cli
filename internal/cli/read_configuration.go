@@ -123,7 +123,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	workspaceFolder, configPath, overridePath := readConfigurationPaths(opts, cwd)
 
 	var result *config.LoadResult
-	if workspaceFolder != "" || configPath != "" {
+	if workspaceFolder != "" || configPath != "" || overridePath != "" {
 		var loadErr error
 		if result, loadErr = loadReadConfiguration(workspaceFolder, configPath, overridePath, opts); loadErr != nil {
 			return loadErr
@@ -266,10 +266,17 @@ func readConfigurationPaths(opts *readConfigOpts, cwd string) (workspaceFolder, 
 		return p
 	}
 	workspaceFolder = opts.workspaceFolder
-	if workspaceFolder == "" && opts.containerID == "" && len(opts.idLabels) == 0 {
+	if readConfigurationHasWorkspace(opts) && workspaceFolder == "" {
 		workspaceFolder = cwd
 	}
 	return abs(workspaceFolder), abs(opts.configPath), abs(opts.overrideConfig)
+}
+
+// readConfigurationHasWorkspace reports whether read-configuration has a
+// workspace folder: --workspace-folder, else cwd unless --container-id or
+// --id-label is given (TS readConfigurationOptions' check).
+func readConfigurationHasWorkspace(opts *readConfigOpts) bool {
+	return opts.workspaceFolder != "" || opts.containerID == "" && len(opts.idLabels) == 0
 }
 
 // loadReadConfiguration loads the configuration read-configuration prints,
@@ -322,12 +329,14 @@ func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[st
 		}
 		cfgMap[k] = v
 	}
-	// TS makes a file URI of --config; a configuration found in the workspace,
-	// or its default path when only --override-config is given, has the
+	// TS makes a file URI of --config, and without a workspace of
+	// --override-config, which is then the configuration (configPath =
+	// overrideConfigFile); a configuration found in the workspace, or its
+	// default path when only --override-config is given, has the
 	// vscode-fileHost scheme, with or without --container-id
 	// (devContainersSpecCLI.ts readConfiguration).
 	scheme := "vscode-fileHost"
-	if opts.configPath != "" {
+	if opts.configPath != "" || opts.overrideConfig != "" && !readConfigurationHasWorkspace(opts) {
 		scheme = "file"
 	}
 	// TS findContainerAndIdLabels reads the URI's fsPath (devContainersSpecCLI.ts
