@@ -37,11 +37,11 @@ func executeCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error
 func TestOutdatedCmdWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{}`, "")
 	t.Chdir(t.TempDir())
-	if got, err := executeCmd(t, newOutdatedCmd(), "--workspace-folder", ws); err != nil || got != "No features configured.\n" {
+	if got, err := executeCmd(t, newOutdatedCmd(), "--workspace-folder", ws); err != nil || got != "Feature  Current  Wanted  Latest\n" {
 		t.Errorf("--workspace-folder: err = %v, stdout = %q", err, got)
 	}
 	t.Chdir(ws)
-	if got, err := executeCmd(t, newOutdatedCmd()); err != nil || got != "No features configured.\n" {
+	if got, err := executeCmd(t, newOutdatedCmd()); err != nil || got != "Feature  Current  Wanted  Latest\n" {
 		t.Errorf("cwd: err = %v, stdout = %q", err, got)
 	}
 }

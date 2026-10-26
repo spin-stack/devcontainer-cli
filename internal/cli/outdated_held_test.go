@@ -90,14 +90,14 @@ func TestOutdatedReportsVersions(t *testing.T) {
 	}
 }
 
-// With no Features there is nothing to look up: an empty result in JSON, a
-// sentence in text.
+// With no Features there is nothing to look up: an empty result in JSON, and
+// in text the table TS writes with no rows, its header alone.
 func TestOutdatedWithoutFeatures(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{}`, "")
 	if got, err := runOutdatedFor(t, outdatedOpts{workspaceFolder: ws, outputFormat: "json"}); err != nil || got != "{\"features\":{}}\n" {
 		t.Errorf("json: err = %v, stdout = %q", err, got)
 	}
-	if got, err := runOutdatedFor(t, outdatedOpts{workspaceFolder: ws, outputFormat: "text"}); err != nil || got != "No features configured.\n" {
+	if got, err := runOutdatedFor(t, outdatedOpts{workspaceFolder: ws, outputFormat: "text"}); err != nil || got != "Feature  Current  Wanted  Latest\n" {
 		t.Errorf("text: err = %v, stdout = %q", err, got)
 	}
 }

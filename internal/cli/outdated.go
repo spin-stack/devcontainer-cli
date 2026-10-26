@@ -144,6 +144,9 @@ func resolvePublishedVersions(ociClient oci.Registry, ref *oci.Ref) []*semver.Ve
 	return versions
 }
 
+// outdatedHeader is the header row of outdated's text table.
+var outdatedHeader = []string{"Feature", "Current", "Wanted", "Latest"}
+
 // writeOutdatedJSON writes outdated's JSON result as TS does:
 // JSON.stringify(outdated, undefined, process.stdout.isTTY ? '  ' : undefined),
 // indented only when stdout is a terminal.
@@ -202,7 +205,8 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 		if opts.outputFormat == "json" {
 			writeOutdatedJSON(out.Stdout(), map[string]any{"features": map[string]any{}})
 		} else {
-			fmt.Fprintln(out.Stdout(), "No features configured.")
+			// TS writes its table with no rows: the header alone.
+			fmt.Fprintln(out.Stdout(), textTable([][]string{outdatedHeader}))
 		}
 		return nil
 	}
@@ -270,7 +274,7 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 		// column shows the full user id without its version tag/digest. Formatting
 		// mirrors npm's text-table (min column widths, 2-space separator, left
 		// aligned, trailing whitespace stripped per row).
-		rows := [][]string{{"Feature", "Current", "Wanted", "Latest"}}
+		rows := [][]string{outdatedHeader}
 		for _, id := range orderedFeatureKeys(cfg.ConfigFilePath, cfg.Features) {
 			e, ok := result[id]
 			if !ok {
