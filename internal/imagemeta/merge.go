@@ -3,12 +3,14 @@ package imagemeta
 import (
 	"cmp"
 	"encoding/json"
-	"fmt"
 	"maps"
 	"math"
+	"math/big"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 // MergedConfig holds the result of merging devcontainer.json config with
@@ -214,49 +216,95 @@ func dedupeMountsByTarget(mounts []any) []any {
 	return out
 }
 
-// forwardPortKey returns the de-dup key of a forwarded port: "localhost:N" for
-// a numeric port N (a numeric string is NOT treated as a number by TS — only
-// actual JSON numbers are), the port itself as a string otherwise.
-func forwardPortKey(p any) string {
-	switch v := p.(type) {
-	case float64:
-		return fmt.Sprintf("localhost:%d", int(v))
-	case int:
-		return fmt.Sprintf("localhost:%d", v)
-	case int64:
-		return fmt.Sprintf("localhost:%d", v)
-	}
-	return fmt.Sprintf("%v", p)
-}
-
+// dedupeForwardPorts is TS mergeForwardPorts over the concatenated
+// forwardPorts: a number N becomes "localhost:N", the values are de-duplicated
+// as a JS Set does (strings, booleans and null by value, objects never), and a
+// string /localhost:\d+/ finds anywhere becomes parseInt of its text from the
+// tenth character on (null where that is NaN). Every other value stays as it is.
 func dedupeForwardPorts(ports []any) []any {
-	seen := make(map[string]bool, len(ports))
-	var keys []string
-	for _, p := range ports {
-		key := forwardPortKey(p)
-		if !seen[key] {
-			seen[key] = true
-			keys = append(keys, key)
-		}
-	}
-	// Denormalize: a "localhost:N" key becomes the number N; anything else stays a
-	// string — matching TS's final .map(port => /localhost:\d+/.test ? parseInt : port).
+	seen := make(map[any]bool, len(ports))
 	var out []any // nil without ports, as the merge leaves ForwardPorts then
-	for _, k := range keys {
-		out = append(out, denormalizePort(k))
+	for _, p := range ports {
+		port := normalizeForwardPort(p)
+		switch port.(type) {
+		case string, bool, nil:
+			if seen[port] {
+				continue
+			}
+			seen[port] = true
+		}
+		out = append(out, denormalizePort(port))
 	}
 	return out
 }
 
-// denormalizePort turns a "localhost:<digits>" key back into the port number
-// and returns any other key as the string it is.
-func denormalizePort(key string) any {
-	if rest, ok := strings.CutPrefix(key, "localhost:"); ok && allDigits(rest) {
-		if n, err := strconv.Atoi(rest); err == nil {
-			return float64(n)
+// normalizeForwardPort is TS `typeof port === 'number' ? `localhost:${port}` : port`.
+func normalizeForwardPort(p any) any {
+	switch v := p.(type) {
+	case float64:
+		if v == 0 {
+			return "localhost:0" // `${-0}` is "0"
 		}
+		return "localhost:" + jsNumberString(v)
+	case int:
+		return "localhost:" + strconv.Itoa(v)
+	case int64:
+		return "localhost:" + strconv.FormatInt(v, 10)
 	}
-	return key
+	return p
+}
+
+// localhostPort is TS mergeForwardPorts' /localhost:\d+/, unanchored.
+var localhostPort = regexp.MustCompile(`localhost:[0-9]`)
+
+// denormalizePort is TS `/localhost:\d+/.test(port) ? parseInt(port.substring('localhost:'.length)) : port`
+// for a normalized port: the substring counts UTF-16 code units from the start
+// of the string, wherever the match is.
+func denormalizePort(port any) any {
+	s, ok := port.(string)
+	if !ok || !localhostPort.MatchString(s) {
+		return port
+	}
+	units := utf16.Encode([]rune(s))
+	n, ok := jsParseInt(string(utf16.Decode(units[len("localhost:"):])))
+	if !ok {
+		return nil // NaN, which JSON.stringify writes as null
+	}
+	return n
+}
+
+// jsSpaceChars are the characters JS parseInt skips before a number.
+const jsSpaceChars = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+
+// jsParseInt is JS parseInt(s) without a radix: leading white space, a sign,
+// then hexadecimal digits after 0x or 0X, else decimal digits, up to the
+// first other character. ok is false for NaN; a zero is +0, which is how
+// JSON.stringify writes -0.
+func jsParseInt(s string) (float64, bool) {
+	s = strings.TrimLeft(s, jsSpaceChars)
+	neg := false
+	if s != "" && (s[0] == '-' || s[0] == '+') {
+		neg = s[0] == '-'
+		s = s[1:]
+	}
+	base, digits := 10, "0123456789"
+	if len(s) >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X') {
+		base, digits = 16, "0123456789abcdefABCDEF"
+		s = s[2:]
+	}
+	end := 0
+	for end < len(s) && strings.IndexByte(digits, s[end]) >= 0 {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	n, _ := new(big.Int).SetString(s[:end], base)
+	f, _ := new(big.Float).SetInt(n).Float64()
+	if neg && f != 0 {
+		f = -f
+	}
+	return f, true
 }
 
 func allDigits(s string) bool {
