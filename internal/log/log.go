@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // Level mirrors the TS enum values for compatibility.
@@ -123,15 +126,20 @@ func New(opts Options) Logger {
 		opts.Level = LevelInfo
 	}
 
+	// The handler is TS createLogFrom's (spec-node/devContainers.ts): JSON for
+	// --log-format json, the terminal format when stdout is a terminal
+	// (process.stdout.isTTY), the plain format otherwise.
 	var h Handler
-	switch opts.Format {
-	case "json":
+	switch {
+	case opts.Format == "json":
 		// The JSON stream emits every event regardless of --log-level; the
 		// consumer (e.g. the VS Code extension) filters client-side. Only the
-		// terminal handler applies the level filter, matching the TS CLI.
+		// text handlers apply the level filter, matching the TS CLI.
 		h = newJSONHandler(opts.Writer)
-	default:
+	case stdoutIsTerminal():
 		h = newTerminalHandler(opts.Writer, opts.StartTime, opts.Level)
+	default:
+		h = newPlainHandler(opts.Writer, opts.Level)
 	}
 
 	l := &logger{
@@ -249,6 +257,15 @@ func (n *nullLog) Event(Event)                  {}
 
 // --- Terminal handler ---
 
+// stdoutIsTerminal reports what TS reads as process.stdout.isTTY: whether the
+// CLI's stdout is a terminal. Like TS, the choice of log format follows stdout
+// even though the log itself goes to stderr.
+func stdoutIsTerminal() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+// terminalHandler is TS createTerminalLog: logEventToTerminalText
+// (spec-utils/log.ts) with ANSI colors and \r\n line ends.
 type terminalHandler struct {
 	w        io.Writer
 	start    int64
@@ -261,30 +278,176 @@ func newTerminalHandler(w io.Writer, start time.Time, minLevel Level) Handler {
 }
 
 func (h *terminalHandler) HandleEvent(e Event) {
-	if e.Type == "progress" {
-		return // progress events are not printed in terminal mode
-	}
-	// Filter by --log-level: drop events below the configured threshold, like
-	// the TS CLI terminal handler (e.g. at info, debug "Run:" lines are hidden).
-	if e.Level == 0 || e.Level < h.minLevel {
+	// A progress event has no level (0, below any minLevel), so it is never
+	// printed, as in TS.
+	if e.Level < h.minLevel {
 		return
 	}
-	elapsed := e.Timestamp - h.start
+	elapsed := fmt.Sprintf("%d ms", e.Timestamp-h.start)
+	trace := h.minLevel <= LevelTrace
 	var line string
 	switch e.Type {
 	case "text":
-		line = fmt.Sprintf("[%d ms] %s", elapsed, ensureNewline(e.Text))
+		line = "[" + color(timestampColor, elapsed) + "] " + toTerminalText(e.Text)
 	case "raw":
 		line = e.Text
 	case "start":
-		line = fmt.Sprintf("[%d ms] Start: %s", elapsed, ensureNewline(e.Text))
+		if trace {
+			line = color(startColor, "["+elapsed+"] Start") + ": " + toTerminalText(e.Text)
+		} else {
+			line = "[" + color(timestampColor, elapsed) + "] Start: " + toTerminalText(e.Text)
+		}
 	case "stop":
-		duration := e.Timestamp - e.StartTimestamp
-		line = fmt.Sprintf("[%d ms] Stop (%d ms): %s", elapsed, duration, ensureNewline(e.Text))
+		// TS shows a stop line on the terminal only at trace.
+		if trace {
+			line = color(stopColor, "["+elapsed+"] Stop") + fmt.Sprintf(" (%d ms): ", e.Timestamp-e.StartTimestamp) + toTerminalText(e.Text)
+		}
 	}
 	if line != "" {
 		fmt.Fprint(h.w, line)
 	}
+}
+
+// TS foreground colors (spec-utils/log.ts).
+const (
+	stopColor      = "38;2;143;99;79"
+	startColor     = "38;2;99;143;79"
+	timestampColor = "38;2;99;143;79"
+	numberColor    = "38;2;86;156;214"
+)
+
+// color is TS color: s in bold and the given foreground color. TS colors each
+// line of s; every caller passes one line, a timestamp or a number.
+func color(c, s string) string {
+	return "\x1b[1m\x1b[" + c + "m" + s + "\x1b[39m\x1b[22m"
+}
+
+// terminalEscapeSequences is TS terminalEscapeSequences (spec-utils/log.ts).
+var terminalEscapeSequences = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]`)
+
+// newlines matches TS toTerminalText's /\r?\n/g.
+var newlines = regexp.MustCompile(`\r?\n`)
+
+// toTerminalText is TS toTerminalText: the text colorized, every line ending
+// in \r\n, and one \r\n at the end.
+func toTerminalText(text string) string {
+	s := newlines.ReplaceAllString(colorize(text), "\r\n")
+	if !strings.HasSuffix(s, "\r\n") {
+		s += "\r\n"
+	}
+	return s
+}
+
+// colorize is TS colorize: numbers colored outside escape sequences, which are
+// kept as they are.
+func colorize(text string) string {
+	var b strings.Builder
+	last := 0
+	for _, m := range terminalEscapeSequences.FindAllStringIndex(text, -1) { // mutate-exempt: any negative n finds every match
+		b.WriteString(colorizePlainText(text[last:m[0]]))
+		b.WriteString(text[m[0]:m[1]])
+		last = m[1]
+	}
+	b.WriteString(colorizePlainText(text[last:]))
+	return b.String()
+}
+
+// colorizePlainText is TS colorizePlainText, whose expression
+// /(?<=^|[^A-Za-z0-9_\-\.])[0-9]+(\.[0-9]+)*(?=$|[^A-Za-z0-9_\-\.])/g needs
+// lookaround that Go's regexp lacks: a number such as 1 or 1.2.3 is colored
+// when neither neighbour is a letter, digit, '_', '-' or '.'.
+func colorizePlainText(text string) string {
+	var b strings.Builder
+	last := 0
+	for i := 0; i < len(text); i++ {
+		if !isDigit(text[i]) || (i > 0 && isWordByte(text[i-1])) {
+			continue
+		}
+		j := skipDigits(text, i)
+		for j+1 < len(text) && text[j] == '.' && isDigit(text[j+1]) {
+			j = skipDigits(text, j+1) // mutate-exempt: text[j+1] is a digit, so skipping from j+2 ends at the same place
+		}
+		// No shorter match can pass the lookahead: it would end before a
+		// digit or a '.', so a failed number is skipped whole.
+		if j == len(text) || !isWordByte(text[j]) {
+			b.WriteString(text[last:i])
+			b.WriteString(color(numberColor, text[i:j]))
+			last = j
+		}
+		i = j - 1
+	}
+	b.WriteString(text[last:])
+	return b.String()
+}
+
+func skipDigits(s string, i int) int {
+	for i < len(s) && isDigit(s[i]) {
+		i++
+	}
+	return i
+}
+
+func isDigit(c byte) bool { return '0' <= c && c <= '9' }
+
+// isWordByte is the complement of TS's [^A-Za-z0-9_\-\.].
+func isWordByte(c byte) bool {
+	return isDigit(c) || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_' || c == '-' || c == '.'
+}
+
+// StripTerminalFormatting removes what the terminal format adds to a line, its
+// escape sequences and the \r of its \r\n line ends, for a copy of the log
+// that is read as a file (--log-file, --terminal-log-file).
+func StripTerminalFormatting(s string) string {
+	return strings.ReplaceAll(terminalEscapeSequences.ReplaceAllString(s, ""), "\r\n", "\n")
+}
+
+// --- Plain handler ---
+
+// plainHandler is TS createPlainLog: logEventToFileText (spec-utils/log.ts),
+// used when stdout is not a terminal.
+type plainHandler struct {
+	w        io.Writer
+	minLevel Level
+}
+
+// newPlainHandler's minLevel is never 0: New defaults it to info.
+func newPlainHandler(w io.Writer, minLevel Level) Handler {
+	return &plainHandler{w: w, minLevel: minLevel}
+}
+
+func (h *plainHandler) HandleEvent(e Event) {
+	// A progress event has no level (0, below any minLevel), so it is never
+	// printed, as in TS.
+	if e.Level < h.minLevel {
+		return
+	}
+	// new Date(e.timestamp).toISOString()
+	stamp := "[" + time.UnixMilli(e.Timestamp).UTC().Format("2006-01-02T15:04:05.000Z") + "] "
+	var line string
+	switch e.Type {
+	case "text", "raw":
+		line = stamp + toLogFileText(e.Text)
+	case "start":
+		line = stamp + "Start: " + toLogFileText(e.Text)
+	case "stop":
+		// TS shows a stop line in the plain log at debug and trace.
+		if h.minLevel <= LevelDebug {
+			line = stamp + fmt.Sprintf("Stop (%d ms): ", e.Timestamp-e.StartTimestamp) + toLogFileText(e.Text)
+		}
+	}
+	if line != "" {
+		fmt.Fprint(h.w, line)
+	}
+}
+
+// toLogFileText is TS toLogFileText: the text without escape sequences, its
+// last line end replaced with os.EOL (one added when it has none).
+func toLogFileText(text string) string {
+	s := terminalEscapeSequences.ReplaceAllString(text, "")
+	if t, ok := strings.CutSuffix(s, "\r\n"); ok {
+		return t + eol
+	}
+	return strings.TrimSuffix(s, "\n") + eol
 }
 
 // --- JSON handler ---
@@ -309,11 +472,4 @@ func (h *jsonHandler) HandleEvent(e Event) {
 
 func nowMillis() int64 {
 	return time.Now().UnixMilli()
-}
-
-func ensureNewline(s string) string {
-	if len(s) == 0 || s[len(s)-1] != '\n' {
-		return s + "\n"
-	}
-	return s
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/devcontainers/cli/internal/log"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,7 @@ func logWriter(paths ...string) (io.Writer, func(), error) {
 		if p == "" {
 			continue
 		}
-		if dir := filepath.Dir(p); dir != "" && dir != "." {
+		if dir := filepath.Dir(p); dir != "" && dir != "." { // mutate-exempt: MkdirAll of "." creates nothing
 			_ = os.MkdirAll(dir, 0o755)
 		}
 		f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
@@ -51,11 +52,24 @@ func logWriter(paths ...string) (io.Writer, func(), error) {
 			return os.Stderr, noop, err
 		}
 		files = append(files, f)
-		writers = append(writers, f)
+		writers = append(writers, plainFileWriter{f})
 	}
 
 	if len(files) == 0 {
 		return os.Stderr, noop, nil
 	}
 	return io.MultiWriter(writers...), cleanup, nil
+}
+
+// plainFileWriter keeps a log file free of the terminal format: on a terminal
+// stdout the log is colored and ends its lines in \r\n (TS createTerminalLog),
+// which a file reader should not have to filter. The logger writes one event per
+// Write, so no escape sequence is split across two calls.
+type plainFileWriter struct{ w io.Writer }
+
+func (p plainFileWriter) Write(b []byte) (int, error) {
+	if _, err := io.WriteString(p.w, log.StripTerminalFormatting(string(b))); err != nil {
+		return 0, err
+	}
+	return len(b), nil
 }
