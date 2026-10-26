@@ -961,3 +961,33 @@ func TestProcessInstallFeatureOCISetJSON(t *testing.T) {
 		t.Errorf("set JSON:\ngot  %s\nwant %s", got, want)
 	}
 }
+
+// An OCI Feature's id is its metadata's, as TS spreads the metadata over
+// {id: <reference id>, ...}: the annotation's when the manifest has one,
+// else the layer's, else the reference's. consecutiveId follows it.
+func TestProcessInstallFeatureOCIIDIsTheMetadatas(t *testing.T) {
+	const id = "ghcr.io/owner/coll/hello:1"
+	renamed, anonymous := `{"id":"new-hello"}`, `{"version":"1.0.0"}`
+	for name, tc := range map[string]struct {
+		layer      string
+		annotation *string
+		want       string
+	}{
+		"annotation":            {`{"id":"layer-hello"}`, &renamed, "new-hello"},
+		"annotation without id": {`{"id":"layer-hello"}`, &anonymous, "hello"},
+		"layer":                 {`{"id":"layer-hello"}`, nil, "layer-hello"},
+		"neither":               {`{"version":"1.0.0"}`, nil, "hello"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reg := newOCIFeatureRegistry()
+			reg.add(t, id, map[string]string{"devcontainer-feature.json": tc.layer}, tc.annotation)
+			set, err := installFeature(t, reg, id, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := set.Features[0].ID; got != tc.want {
+				t.Errorf("id = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"archive/tar"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -419,8 +420,10 @@ func processInstallFeature(
 			jsonc.Unmarshal(metaData, &m)
 		}
 
+		// TS's Feature takes its id from the metadata it spreads over
+		// {id: <ref id>, ...}: the layer's here, the annotation's below.
 		feat := features.Feature{
-			ID:               ref.ID,
+			ID:               cmp.Or(m.ID, ref.ID),
 			Version:          m.Version,
 			Name:             m.Name,
 			Description:      m.Description,
@@ -498,6 +501,7 @@ func processInstallFeature(
 					// TS reads the dependencies from the annotation and
 					// spreads it over the Feature (buildDependencyGraph).
 					set.Features[0].Metadata = am.Metadata
+					set.Features[0].ID = cmp.Or(am.ID, ref.ID)
 				}
 			}
 		}
