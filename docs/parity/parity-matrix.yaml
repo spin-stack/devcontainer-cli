@@ -2316,6 +2316,32 @@ initial_cases:
     current_status: match
     notes: "The workspace's container lookup (devcontainer.local_folder and devcontainer.config_file labels) fails the command the same way when Docker cannot answer: exit 1, nothing on stdout."
 
+  - id: up.host-variable-without-name-error
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"containerEnv\":{\"A\":\"${localEnv}\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE}"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: config-parsing
+    current_status: match
+    notes: "A ${localEnv} without a variable name is TS's ContainerError \"'${localEnv}' in devcontainer.json can not be resolved because no environment variable name is given.\" (variableSubstitution.ts), as both message and description. Go prefixed it with 'apply host substitutions: '."
+
+  - id: set-up.host-variable-without-name-error
+    lane: contract
+    command: set-up
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"containerEnv\":{\"A\":\"${localEnv}\"}}' > $WORKSPACE/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "set-up --container-id parity-no-such-container --config ${WORKSPACE}/devcontainer.json"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: config-parsing
+    current_status: match
+    notes: "set-up reads --config before it looks for the container; the unresolvable variable is a ContainerError, so its description is its own text. Go described it as 'An error occurred running user commands in the container.' and prefixed the message with 'apply host substitutions: '."
+
   - id: read-configuration.container-config-success
     lane: runtime
     command: read-configuration

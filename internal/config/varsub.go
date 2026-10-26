@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf16"
+
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 )
 
 type SubstitutionPhase uint8
@@ -216,7 +218,8 @@ func resolveEnvTag(isWin bool, env map[string]string, args []string, tag, config
 		if configFilePath != "" {
 			location = " in " + path.Base(configFilePath)
 		}
-		return "", false, fmt.Errorf("'${%s}'%s can not be resolved because no environment variable name is given.", tag, location)
+		// TS throws a ContainerError with this description (variableSubstitution.ts).
+		return "", false, &coreerrors.ContainerError{Description: fmt.Sprintf("'${%s}'%s can not be resolved because no environment variable name is given.", tag, location)}
 	}
 	name := args[0]
 	if isWin {
