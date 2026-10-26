@@ -13,6 +13,7 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/moby/moby/api/types/container"
 	"github.com/spf13/cobra"
 )
@@ -228,7 +229,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	output["ociAuthDiagnostics"] = ociAuthDiagnostics(ctx)
 	orderConfigurations(output, result)
 
-	data, err := stringifyJSON(orderedObject{output, readConfigurationKeys}, "")
+	data, err := stringify.JSON(orderedObject{output, readConfigurationKeys}, "")
 	if err != nil {
 		return fmt.Errorf("marshal output: %w", err)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/spf13/cobra"
 )
 
@@ -85,7 +86,7 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 			if json.Indent(&buf, manifest.ManifestBytes, "", "  ") == nil {
 				fmt.Fprintln(out.Stdout(), buf.String())
 			} else {
-				data, _ := stringifyJSON(manifest.Manifest, "  ")
+				data, _ := stringify.JSON(manifest.Manifest, "  ")
 				fmt.Fprintln(out.Stdout(), string(data))
 			}
 			fmt.Fprintln(out.Stdout())
@@ -126,7 +127,7 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 	}
 
 	if outputFormat == "json" {
-		data, _ := stringifyJSON(jsonOutput, "    ")
+		data, _ := stringify.JSON(jsonOutput, "    ")
 		fmt.Fprintln(out.Stdout(), string(data))
 	}
 

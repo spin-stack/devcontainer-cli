@@ -16,6 +16,7 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/spf13/cobra"
 )
 
@@ -760,7 +761,7 @@ func buildOptionsFromConfig(cfg *config.DevContainer) []string {
 // writeSuccessJSON writes a command's result with its keys in order (see
 // orderedObject).
 func writeSuccessJSON(out Output, data map[string]any, order ...string) error {
-	b, err := stringifyJSON(orderedObject{data, order}, "")
+	b, err := stringify.JSON(orderedObject{data, order}, "")
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
 	}
@@ -787,7 +788,7 @@ func writeValidationError(out Output, message string) error {
 }
 
 func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
-	b, _ := stringifyJSON(errOutput, "")
+	b, _ := stringify.JSON(errOutput, "")
 	fmt.Fprintln(out.Stdout(), string(b))
 	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(errOutput.Description)}
 }

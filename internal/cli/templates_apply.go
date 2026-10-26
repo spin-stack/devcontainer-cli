@@ -7,6 +7,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/devcontainers/cli/internal/templates"
 	"github.com/spf13/cobra"
 )
@@ -51,7 +52,7 @@ func realTemplatesApplyCmd() *cobra.Command {
 				return err
 			}
 
-			data, _ := stringifyJSON(map[string]any{"files": files}, "")
+			data, _ := stringify.JSON(map[string]any{"files": files}, "")
 			fmt.Fprintln(outputFor(cmd).Stdout(), string(data))
 			return nil
 		},

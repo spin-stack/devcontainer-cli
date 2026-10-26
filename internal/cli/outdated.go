@@ -19,6 +19,7 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/spf13/cobra"
 )
 
@@ -235,7 +236,7 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 
 	if opts.outputFormat == "json" {
 		payload := map[string]any{"features": result}
-		data, _ := stringifyJSON(payload, "  ")
+		data, _ := stringify.JSON(payload, "  ")
 		fmt.Fprintln(out.Stdout(), string(data))
 	} else {
 		// Text table. Rows follow the order features were declared in the config
@@ -462,7 +463,7 @@ func newUpgradeCmd() *cobra.Command {
 			lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, nil)
 
 			if dryRun {
-				data, _ := stringifyJSON(lf, "  ")
+				data, _ := stringify.JSON(lf, "  ")
 				fmt.Fprintln(outputFor(cmd).Stdout(), string(data))
 				return nil
 			}
