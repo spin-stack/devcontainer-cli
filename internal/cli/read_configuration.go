@@ -148,6 +148,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if inspectErr != nil {
 		return readConfigurationFailure(lgr, inspectErr)
 	}
+	cfgMap, idErr := substituteDevContainerID(containerCfg, cfgMap, opts.idLabels, workspaceFolder, result)
+	if idErr != nil {
+		return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", idErr))
+	}
 	cfgMap, subErr := substituteContainerEnv(containerCfg, cfgMap)
 	if subErr != nil {
 		return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
@@ -392,6 +396,28 @@ func inspectContainerConfig(ctx context.Context, engine *docker.EngineClient, ci
 		return nil, fmt.Errorf("inspect container %s: %w", cid, err)
 	}
 	return inspect.Config, nil
+}
+
+// substituteDevContainerID resolves ${devcontainerId} in cfgMap from the id
+// labels of the container read-configuration found, as TS readConfiguration
+// adds beforeContainerSubstitute(idLabels) before the container's environment;
+// without a container cfgMap is returned as it is.
+func substituteDevContainerID(containerCfg *container.Config, cfgMap map[string]any, providedIDLabels []string, workspaceFolder string, result *config.LoadResult) (map[string]any, error) {
+	if containerCfg == nil {
+		return cfgMap, nil
+	}
+	configFile := ""
+	if result != nil {
+		configFile = result.Config.ConfigFilePath
+	}
+	idLabels := containerIDLabels(providedIDLabels, containerCfg.Labels, workspaceFolder, configFile)
+	substituted, err := config.NewVariableResolver().Resolve(config.SubstitutionContext{
+		DevContainerID: config.ComputeDevContainerID(config.EnvMap(idLabels)),
+	}, config.PhaseIdentity, cfgMap)
+	if err != nil {
+		return nil, err
+	}
+	return substituted.(map[string]any), nil
 }
 
 // substituteContainerEnv resolves ${containerEnv:...} in cfgMap with the

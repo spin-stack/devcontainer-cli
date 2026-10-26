@@ -133,6 +133,11 @@ func TestContainerIDLabels(t *testing.T) {
 	if got := containerIDLabels(nil, map[string]string{}, "/ws", "/ws/c.json"); !reflect.DeepEqual(got, []string{"devcontainer.local_folder=/ws"}) {
 		t.Errorf("older container = %v", got)
 	}
+	// Without a workspace folder or a config file, TS's template literal
+	// writes undefined (--container-id alone).
+	if got := containerIDLabels(nil, withConfig, "", ""); !reflect.DeepEqual(got, []string{"devcontainer.local_folder=undefined", "devcontainer.config_file=undefined"}) {
+		t.Errorf("no workspace folder or config file = %v", got)
+	}
 }
 
 // The label's entries get the host substitutions, and ${devcontainerId} only

@@ -2330,6 +2330,32 @@ initial_cases:
     current_status: match
     notes: "Without a workspace, TS getWorkspaceConfiguration keeps the configuration's own workspaceFolder and workspaceMount, and read-configuration prints them as the workspace. Go printed an empty workspace whenever --container-id came without --workspace-folder."
 
+  - id: read-configuration.container-id-devcontainer-id-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"name\":\"${devcontainerId}\"}' > $WORKSPACE/override.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "read-configuration --container-id ${CONTAINER_ID} --override-config ${WORKSPACE}/override.json"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "With a container, TS readConfiguration resolves ${devcontainerId} in the configuration from the container's id labels (beforeContainerSubstitute), here devcontainer.local_folder=undefined: no workspace folder, and a container without a config file label. Go left ${devcontainerId} as written."
+
+  - id: read-configuration.container-id-undefined-id-labels-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "CONTAINER_ID=$(docker run -d -l devcontainer.config_file=/parity/devcontainer.json -l 'devcontainer.metadata=[{\"remoteEnv\":{\"DID\":\"${devcontainerId}\"}}]' alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "read-configuration --container-id ${CONTAINER_ID} --include-merged-configuration"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "--container-id alone has neither a workspace folder nor a configuration, so TS findContainerAndIdLabels' labels are devcontainer.local_folder=undefined and, for a container with a config file label, devcontainer.config_file=undefined (template literals of undefined); the container metadata's ${devcontainerId} is computed from them. Go used empty values, a different id."
+
   - id: read-configuration.container-metadata-success
     lane: runtime
     command: read-configuration
