@@ -1118,7 +1118,11 @@
           "registry.example=xn--a"
         ]
       ],
-      "error": "Invalid authority 'xn--a'."
+      "result": {
+        "registry.example": [
+          "xn--a"
+        ]
+      }
     },
     {
       "fn": "parseCrossOriginAuthHosts",
@@ -1310,7 +1314,11 @@
           "registry.example=xn--.example"
         ]
       ],
-      "error": "Invalid authority 'xn--.example'."
+      "result": {
+        "registry.example": [
+          "xn--.example"
+        ]
+      }
     },
     {
       "fn": "parseCrossOriginAuthHosts",
@@ -1319,7 +1327,11 @@
           "registry.example=XN--.example"
         ]
       ],
-      "error": "Invalid authority 'XN--.example'."
+      "result": {
+        "registry.example": [
+          "xn--.example"
+        ]
+      }
     },
     {
       "fn": "parseCrossOriginAuthHosts",
@@ -1954,6 +1966,76 @@
         []
       ],
       "result": false
+    },
+    {
+      "name": "ascii xn-- label only lower-cased: xn--zz-",
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn--zz-"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--zz-"
+        ]
+      }
+    },
+    {
+      "name": "ascii xn-- label only lower-cased: xn--Ab",
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn--Ab"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--ab"
+        ]
+      }
+    },
+    {
+      "name": "ascii xn-- label only lower-cased: a.xn--",
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=a.xn--"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "a.xn--"
+        ]
+      }
+    },
+    {
+      "name": "ascii xn-- label only lower-cased: xn---",
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn---"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn---"
+        ]
+      }
+    },
+    {
+      "name": "ascii xn-- label only lower-cased: xn--a.xn--b",
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn--a.xn--b"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--a.xn--b"
+        ]
+      }
     }
   ]
 }
