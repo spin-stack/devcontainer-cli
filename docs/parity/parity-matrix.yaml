@@ -297,6 +297,19 @@ initial_cases:
     current_status: match
     notes: "XOR from yargs .check(): --feature and --target-version must be used together. Only --feature => exit 1 'The '--target-version' and '--feature' flag must be used together.'. Go ignored both flags; now RunE applies the XOR with the same message."
 
+  - id: outdated.malformed-lockfile-error
+    lane: contract
+    command: outdated
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"ghcr.io/devcontainers/features/node:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' 'not json' > $WORKSPACE/.devcontainer/devcontainer-lock.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "outdated --workspace-folder ${WORKSPACE} --output-format json"
+    asserts: [exit_code, stdout_normalized, stderr_normalized]
+    class: lockfile-error
+    current_status: match
+    notes: "readLockfile rethrows JSON.parse's SyntaxError; outdated's catch logs its stack at debug level and exits 1, so at the default log level stdout and stderr say nothing (TS prints only its banner). Go used to ignore the lockfile and report the versions."
+
   - id: outdated.image-with-features-text
     lane: runtime
     command: outdated

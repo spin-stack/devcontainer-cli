@@ -134,3 +134,26 @@ func TestOrderedFeatureKeysOnlyListsFeatures(t *testing.T) {
 		t.Errorf("keys = %q, want %q", got, want)
 	}
 }
+
+// A lockfile that is not JSON fails outdated as it fails the reference's:
+// exit code 1 and nothing on stdout, the SyntaxError's stack logged at debug
+// level only (outdated's catch writes it with output.write).
+func TestOutdatedFailsOnAMalformedLockfile(t *testing.T) {
+	ws := writeOutdatedWorkspace(t, `{"ghcr.io/devcontainers/features/node:1":{}}`, "not json")
+	const stack = `SyntaxError: Unexpected token 'o', "not json" is not valid JSON`
+	for level, logged := range map[string]bool{"info": false, "debug": true} {
+		logFile := filepath.Join(t.TempDir(), "log")
+		got, err := runOutdatedFor(t, outdatedOpts{workspaceFolder: ws, outputFormat: "json", logLevel: level, logFile: logFile})
+		wantExitCode(t, err, 1)
+		if got != "" {
+			t.Errorf("%s: stdout = %q, want nothing", level, got)
+		}
+		data, rerr := os.ReadFile(logFile)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		if strings.Contains(string(data), stack) != logged {
+			t.Errorf("%s: log =\n%s\nwant the stack logged: %v", level, data, logged)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/devcontainers/cli/internal/config"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
@@ -186,8 +188,14 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	ociClient := newOCIClient(ctx, logger)
 
 	// Lockfile pins the concrete "current" version when present (matches TS
-	// loadVersionInfo: current = lockfileVersion || wanted).
-	lockfile, _, _ := features.ReadLockfile(cfg.ConfigFilePath)
+	// loadVersionInfo: current = lockfileVersion || wanted). One that cannot be
+	// read fails the command as TS outdated's catch does: the error's stack
+	// logged at debug level, nothing on stdout, exit code 1.
+	lockfile, _, err := features.ReadLockfile(cfg.ConfigFilePath)
+	if err != nil {
+		logger.Write(errorStack(err), log.LevelDebug)
+		return &coreerrors.ExitCodeError{Code: 1, Err: err}
+	}
 
 	result := make(map[string]outdatedEntry)
 
@@ -542,4 +550,14 @@ func resolveFeatureSets(cfg *config.DevContainer, ociClient oci.Registry, logger
 		sets = append(sets, set)
 	}
 	return sets
+}
+
+// errorStack is how the reference logs an error it catches (err.stack, frames
+// left out): a lockfile error as the JavaScript error TS throws, any other
+// with its message.
+func errorStack(err error) string {
+	if lerr, ok := errors.AsType[*features.LockfileError](err); ok {
+		return lerr.Stack()
+	}
+	return err.Error()
 }
