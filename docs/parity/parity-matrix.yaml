@@ -830,6 +830,45 @@ initial_cases:
     current_status: match
     notes: "A bare Feature id ('myfeature') is a legacy id TS rejects ('Legacy feature myfeature not supported...'), exit 1 with no result. Go used to drop the Feature error silently and print a configuration without the Feature."
 
+  - id: read-configuration.local-feature-outside-devcontainer-error
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer $WORKSPACE/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/feat/devcontainer-feature.json; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"../feat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "A local Feature must lie in the workspace's .devcontainer folder (processFeatureIdentifier, containerFeaturesConfiguration.ts): '../feat' logs 'Local file path parse error. Resolved path must be a child of the .devcontainer/ folder.' and the Feature fails as one that could not be processed, exit 1 with no result. Go used to resolve the folder next to the configuration wherever it was and print a configuration with the Feature. stderr is not compared: Go also logs the thrown error at error level, which TS's read-configuration catch writes at debug level, a divergence common to every read-configuration failure."
+
+  - id: build.local-feature-absolute-path-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/feat/devcontainer-feature.json; printf '#!/bin/sh\\necho installed\\n' > $WORKSPACE/.devcontainer/feat/install.sh; chmod +x $WORKSPACE/.devcontainer/feat/install.sh; printf '{\"image\":\"alpine:3\",\"features\":{\"%s/.devcontainer/feat\":{}}}' $WORKSPACE > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "An absolute Feature id is a local Feature (getFeatureIdType: './', '../' or '/') that processFeatureIdentifier refuses, even for a folder inside .devcontainer: it logs 'An Absolute path to a local feature is not allowed.' and build reports {\"outcome\":\"error\",\"message\":\"ERR: Feature '<path>' could not be processed.  You may not have permission ...\",\"description\":\"An error occurred building the container.\"}, exit 1. Go used to take it for a legacy id and fail with the legacy Feature error."
+
+  - id: build.local-feature-config-outside-devcontainer-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/feat/devcontainer-feature.json; printf '#!/bin/sh\\n' > $WORKSPACE/feat/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./feat\":{}}}' > $WORKSPACE/.devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "With the configuration at the workspace root (.devcontainer.json), './feat' resolves outside the .devcontainer folder, which processFeatureIdentifier refuses; build reports the plain Error buildDependencyGraph throws as its message: {\"outcome\":\"error\",\"message\":\"ERR: Feature './feat' could not be processed.  You may not have permission ...\",\"description\":\"An error occurred building the container.\"}, exit 1. Go used to build the Feature."
+
   - id: up.update-uid-remote-user-from-image-metadata-success
     lane: runtime
     command: up

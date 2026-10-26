@@ -69,7 +69,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			// diagram and the install order from it via a single builder. The
 			// previous edge-less node list ignored transitive dependencies in
 			// the install order.
-			processFeature := newMetadataProcessFeature(ociClient, logger, basePath, lockfile)
+			processFeature := newMetadataProcessFeature(ociClient, logger, localFeatureRoots{basePath, ws}, lockfile)
 			graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, cfg.OverrideFeatureInstallOrder, lockfile)
 			if err != nil {
 				return err

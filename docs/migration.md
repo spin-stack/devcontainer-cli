@@ -95,6 +95,12 @@ runs the official CLI is unaffected:
   target. Earlier releases carried an unreleased upstream change (#1261) instead.
   A configuration that needs Git inside the container this way should add the
   common directory to `mounts` itself.
+- A local Feature (`./x`) must live inside the workspace's `.devcontainer/`
+  folder, as in the official CLI. `build`, `up`, `read-configuration` and
+  `upgrade` now exit 1 with `ERR: Feature './x' could not be processed. ...` for
+  `../x`, an absolute path, or `./x` next to a `.devcontainer.json` at the
+  workspace root, where earlier releases resolved the folder next to the
+  configuration. Move the Feature's folder under `.devcontainer/`.
 - `build` on a Docker Compose configuration without `--image-name` reports
   `"imageName"` as the image's name, a string, as the official CLI does. Earlier
   releases wrapped it in an array. With `--image-name`, and for image and

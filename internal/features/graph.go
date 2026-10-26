@@ -8,6 +8,20 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
+// unprocessedFeatureError is the plain Error TS buildDependencyGraph throws
+// for a Feature its processFeature returned nothing for; up and build report
+// its message as their error result's message (errors.ReferenceError).
+type unprocessedFeatureError struct{ msg string }
+
+func unprocessedFeature(format string, args ...any) error {
+	return &unprocessedFeatureError{msg: fmt.Sprintf(format, args...)}
+}
+
+func (e *unprocessedFeatureError) Error() string { return e.msg }
+
+// ReferenceError marks the message as the reference's own.
+func (e *unprocessedFeatureError) ReferenceError() {}
+
 // ProcessFeature resolves a single feature (identified by node.UserFeatureID and
 // node.Options) into a Set. The returned Set must have its
 // SourceInfo populated and Features[0] carrying the feature metadata
@@ -92,7 +106,7 @@ func resolveDependencyGraph(
 			return nil, err
 		}
 		if processed == nil {
-			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  You may not have permission to access this Feature, or may not be logged in.  If the issue persists, report this to the Feature author.", current.UserFeatureID)
+			return nil, unprocessedFeature("ERR: Feature '%s' could not be processed.  You may not have permission to access this Feature, or may not be logged in.  If the issue persists, report this to the Feature author.", current.UserFeatureID)
 		}
 		current.Set = processed
 
@@ -140,7 +154,7 @@ func resolveDependencyGraph(
 					return nil, err
 				}
 				if softSet == nil {
-					return nil, fmt.Errorf("installsAfter dependency '%s' of Feature '%s' could not be processed.", iaID, current.UserFeatureID)
+					return nil, unprocessedFeature("installsAfter dependency '%s' of Feature '%s' could not be processed.", iaID, current.UserFeatureID)
 				}
 				dep.Set = softSet
 				if len(softSet.Features) > 0 {
@@ -186,7 +200,7 @@ func applyOverrideFeatureInstallOrder(
 			return err
 		}
 		if processed == nil {
-			return fmt.Errorf("Feature '%s' in 'overrideFeatureInstallOrder' could not be processed.", overrideID)
+			return unprocessedFeature("Feature '%s' in 'overrideFeatureInstallOrder' could not be processed.", overrideID)
 		}
 		override.Set = processed
 		if len(processed.Features) > 0 {

@@ -439,3 +439,24 @@ func TestUpgradeLeavesAConfigWithoutTheFeature(t *testing.T) {
 		}
 	}
 }
+
+// A local Feature outside the .devcontainer folder fails upgrade as TS
+// processFeatureIdentifier fails it, with or without --dry-run, rather than
+// being written to the lockfile.
+func TestUpgradeRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		ws := writeOutdatedWorkspace(t, `{"../f":{}}`, "")
+		writeFile(t, filepath.Join(ws, "f", "devcontainer-feature.json"), `{"id":"f","version":"1.0.0"}`, 0o644)
+		args := []string{"--workspace-folder", ws}
+		if dryRun {
+			args = append(args, "--dry-run")
+		}
+		got, err := executeCmd(t, newUpgradeCmd(), args...)
+		if err == nil || !strings.HasPrefix(err.Error(), "ERR: Feature '../f' could not be processed.") || got != "" {
+			t.Errorf("dry-run %t: err = %v, stdout = %q", dryRun, err, got)
+		}
+		if _, err := os.Stat(filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")); !os.IsNotExist(err) {
+			t.Errorf("dry-run %t: wrote a lockfile: %v", dryRun, err)
+		}
+	}
+}

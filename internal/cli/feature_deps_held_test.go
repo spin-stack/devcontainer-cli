@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,35 +13,62 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-func resolveMetadata(t *testing.T, reg oci.Registry, basePath string, lockfile *features.Lockfile, id string, opts any) (*features.Set, error) {
+func resolveMetadata(t *testing.T, reg oci.Registry, local localFeatureRoots, lockfile *features.Lockfile, id string, opts any) (*features.Set, error) {
 	t.Helper()
-	return newMetadataProcessFeature(reg, log.Null, basePath, lockfile)(&features.FNode{UserFeatureID: id, Options: opts})
+	return newMetadataProcessFeature(reg, log.Null, local, lockfile)(&features.FNode{UserFeatureID: id, Options: opts})
 }
 
 // A local Feature's metadata is its devcontainer-feature.json, its id the
 // user's reference when the file declares none, and its value the options.
 func TestMetadataProcessFeatureLocal(t *testing.T) {
-	base := t.TempDir()
+	roots := devcontainerRoots(t)
+	base := roots.configDir
 	writeFeature(t, base, "named", `{"id":"declared","dependsOn":{"./other":{}}}`)
 	writeFeature(t, base, "anonymous", `{"version":"1.0.0"}`)
 	opts := map[string]any{"flag": true}
 
-	set, err := resolveMetadata(t, nil, base, nil, "./named", opts)
+	set, err := resolveMetadata(t, nil, roots, nil, "./named", opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if f := set.Features[0]; f.ID != "declared" || !reflect.DeepEqual(f.Value, opts) || f.DependsOn["./other"] == nil {
 		t.Errorf("feature = %+v, want id declared, the options and the dependsOn", f)
 	}
-	set, err = resolveMetadata(t, nil, base, nil, "./anonymous", nil)
+	set, err = resolveMetadata(t, nil, roots, nil, "./anonymous", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := set.Features[0].ID; got != "./anonymous" {
 		t.Errorf("id = %q, want the reference ./anonymous", got)
 	}
-	if _, err := resolveMetadata(t, nil, base, nil, "./missing", nil); err == nil || !strings.HasPrefix(err.Error(), "ERR: Feature './missing' could not be processed.") {
+	if _, err := resolveMetadata(t, nil, roots, nil, "./missing", nil); err == nil || !strings.HasPrefix(err.Error(), "ERR: Feature './missing' could not be processed.") {
 		t.Errorf("missing local Feature: err = %v", err)
+	}
+}
+
+// resolve-dependencies refuses a local Feature outside the workspace's
+// .devcontainer folder as TS processFeatureIdentifier does: the reason is
+// logged and no Feature set comes back, which the graph fails; without a
+// configuration (features info's graph) a local Feature is refused too.
+func TestMetadataProcessFeatureRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
+	roots := devcontainerRoots(t)
+	writeFeature(t, roots.workspaceRoot, "feat", `{"version":"1.0.0"}`)
+	for _, tc := range []struct {
+		roots  localFeatureRoots
+		logged string
+	}{
+		{roots, "Local file path parse error. Resolved path must be a child of the .devcontainer/ folder.  Parsed: " + filepath.Join(roots.workspaceRoot, "feat")},
+		{localFeatureRoots{}, "A local feature requires a configuration path."},
+	} {
+		var logs bytes.Buffer
+		logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logs})
+		set, err := newMetadataProcessFeature(nil, logger, tc.roots, nil)(&features.FNode{UserFeatureID: "../feat"})
+		if set != nil || err != nil {
+			t.Errorf("set, err = %+v, %v; want neither", set, err)
+		}
+		if !strings.Contains(logs.String(), tc.logged+"\n") {
+			t.Errorf("logs = %q, want %q", logs.String(), tc.logged)
+		}
 	}
 }
 
@@ -47,7 +76,7 @@ func TestMetadataProcessFeatureLocal(t *testing.T) {
 func TestMetadataProcessFeatureTarball(t *testing.T) {
 	opts := map[string]any{"v": "1"}
 	uri := serveBytes(t, featureTgzBytes(t, map[string]string{"devcontainer-feature.json": `{"id":"tb","installsAfter":["x"]}`}), http.StatusOK) + "/f.tgz"
-	set, err := resolveMetadata(t, nil, "", nil, uri, opts)
+	set, err := resolveMetadata(t, nil, localFeatureRoots{}, nil, uri, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,11 +84,11 @@ func TestMetadataProcessFeatureTarball(t *testing.T) {
 		t.Errorf("feature = %+v", f)
 	}
 	missing := serveBytes(t, nil, http.StatusNotFound) + "/f.tgz"
-	if _, err := resolveMetadata(t, nil, "", nil, missing, nil); err == nil || !strings.HasPrefix(err.Error(), "ERR: Feature '"+missing+"' could not be processed.") {
+	if _, err := resolveMetadata(t, nil, localFeatureRoots{}, nil, missing, nil); err == nil || !strings.HasPrefix(err.Error(), "ERR: Feature '"+missing+"' could not be processed.") {
 		t.Errorf("unreachable tarball: err = %v", err)
 	}
 	notTar := serveBytes(t, []byte("not a tarball"), http.StatusOK) + "/f.tgz"
-	if _, err := resolveMetadata(t, nil, "", nil, notTar, nil); err == nil {
+	if _, err := resolveMetadata(t, nil, localFeatureRoots{}, nil, notTar, nil); err == nil {
 		t.Error("a tarball that does not extract must fail")
 	}
 }
@@ -85,7 +114,7 @@ func TestMetadataProcessFeatureOCI(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			reg := newOCIFeatureRegistry()
 			manifest := reg.add(t, "ghcr.io/owner/coll/hello:1", layer, tc.annotation)
-			set, err := resolveMetadata(t, reg, "", nil, id, opts)
+			set, err := resolveMetadata(t, reg, localFeatureRoots{}, nil, id, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +134,7 @@ func TestMetadataProcessFeatureOCI(t *testing.T) {
 		m := reg.add(t, "ghcr.io/owner/coll/other:1", layer, nil)
 		reg.manifests["ghcr.io/owner/coll/broken:1"] = &oci.ManifestContainer{Manifest: &oci.Manifest{Layers: []oci.Layer{{Digest: "sha256:" + strings.Repeat("e", 64)}, m.Manifest.Layers[0]}}}
 		for _, ref := range []string{"ghcr.io/owner/coll/hello:1", "ghcr.io/owner/coll/broken:1"} {
-			set, err := resolveMetadata(t, reg, "", nil, ref, nil)
+			set, err := resolveMetadata(t, reg, localFeatureRoots{}, nil, ref, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -120,7 +149,7 @@ func TestMetadataProcessFeatureOCI(t *testing.T) {
 		reg := newOCIFeatureRegistry()
 		reg.add(t, "ghcr.io/owner/coll/hello@"+digest, layer, nil)
 		lf := &features.Lockfile{Features: map[string]features.LockfileEntry{id: {Integrity: digest}}}
-		if _, err := resolveMetadata(t, reg, "", lf, id, nil); err != nil {
+		if _, err := resolveMetadata(t, reg, localFeatureRoots{}, lf, id, nil); err != nil {
 			t.Fatal(err)
 		}
 		if want := []string{"ghcr.io/owner/coll/hello@" + digest}; !reflect.DeepEqual(reg.fetched, want) {
@@ -144,7 +173,7 @@ func TestMetadataProcessFeatureOCI(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(reg)
 			}
-			if _, err := resolveMetadata(t, reg, "", nil, tc.id, nil); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, err := resolveMetadata(t, reg, localFeatureRoots{}, nil, tc.id, nil); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 		})

@@ -1377,6 +1377,7 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		Secrets:                     buildSecretsFromFile(opts.secretsFile),
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+		WorkspaceFolder:             opts.workspaceFolder,
 		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,

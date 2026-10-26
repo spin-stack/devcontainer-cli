@@ -26,7 +26,7 @@ func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []str
 			Options:       map[string]any{},
 		})
 	}
-	graph, err := features.BuildDependencyGraph(logger, newMetadataProcessFeature(client, logger, "", nil), userFeatures, nil, nil)
+	graph, err := features.BuildDependencyGraph(logger, newMetadataProcessFeature(client, logger, localFeatureRoots{}, nil), userFeatures, nil, nil)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Could not build dependency graph: %v", err), log.LevelTrace)
 		return "flowchart\n"
@@ -39,18 +39,17 @@ func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []str
 // dependsOn, installsAfter). It does not stage install content, so it is cheap
 // enough for the resolve-dependencies and mermaid consumers. OCI metadata is read
 // annotation-first with a blob fallback, matching the TS getOCIFeatureMetadata.
-func newMetadataProcessFeature(client oci.Registry, logger log.Logger, basePath string, lockfile *features.Lockfile) features.ProcessFeature {
+func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local localFeatureRoots, lockfile *features.Lockfile) features.ProcessFeature {
 	return func(node *features.FNode) (*features.Set, error) {
 		id := node.UserFeatureID
 		srcType := features.ClassifyID(id)
 
 		switch srcType {
 		case features.SourceLocalPath:
-			resolvedPath := id
-			if !filepath.IsAbs(resolvedPath) {
-				resolvedPath = filepath.Join(basePath, resolvedPath)
+			resolvedPath, ok, err := local.resolve(logger, id)
+			if !ok {
+				return nil, err
 			}
-			resolvedPath = filepath.Clean(resolvedPath)
 			meta, err := readLocalFeatureMetadata(resolvedPath)
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)

@@ -311,7 +311,7 @@ func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContai
 			return nil, "", err
 		}
 	}
-	res, err := fetchFeatureSetsWithOrder(ctx, r.log, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, lockfile, cfg.OverrideFeatureInstallOrder)
+	res, err := fetchFeatureSetsWithOrder(ctx, r.log, cfg.Features, localFeatureRoots{filepath.Dir(cfg.ConfigFilePath), opts.workspaceFolder}, opts.skipFeatureAutoMapping, lockfile, cfg.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, "", err
 	}

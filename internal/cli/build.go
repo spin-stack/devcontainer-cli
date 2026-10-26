@@ -864,6 +864,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 		docker: dockerClient,
 		engine: engine,
 		opts: &upOpts{
+			workspaceFolder:            opts.workspaceFolder,
 			cacheFrom:                  opts.cacheFrom,
 			buildNoCache:               opts.noCache,
 			skipFeatureAutoMapping:     opts.skipFeatureAutoMapping,
@@ -967,6 +968,7 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		HostSub:                     hostSub,
 		SkipPersistCustoms:          opts.skipPersistCustoms,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
+		WorkspaceFolder:             opts.workspaceFolder,
 		AdditionalMetadata:          []imagemeta.Entry{configToMetadataEntry(cfg)},
 		LabelMetadata:               []imagemeta.Entry{r.configLabel},
 	}
