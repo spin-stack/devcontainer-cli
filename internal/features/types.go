@@ -2,6 +2,7 @@
 package features
 
 import (
+	"bytes"
 	"encoding/json"
 	"maps"
 	"slices"
@@ -49,6 +50,58 @@ type Feature struct {
 	PostStartCommand     any               `json:"postStartCommand,omitempty"`
 	PostAttachCommand    any               `json:"postAttachCommand,omitempty"`
 	Customizations       map[string]any    `json:"customizations,omitempty"`
+	// KeyOrder is the order devcontainer-feature.json lists its top-level
+	// properties in; UnmarshalJSON records it.
+	KeyOrder []string `json:"-"`
+	// SourceKeys, when set, are the properties TS processFeatureIdentifier
+	// and fetchFeatures give the Feature before its metadata is merged in
+	// ({...featureJson, ...feature}), in the order they set them. A Feature
+	// with SourceKeys is written in TS's key order: the metadata's
+	// properties as it lists them, then these, then any other.
+	SourceKeys []string `json:"-"`
+}
+
+// The properties TS sets on a Feature before merging its metadata: a local
+// or tarball Feature starts {id, name, value, included}
+// (processFeatureIdentifier), an OCI one {id, included, value}
+// (tryGetOCIFeatureSet), and fetchFeatures adds cachePath and consecutiveId.
+var (
+	LocalFeatureKeys = []string{"id", "name", "value", "included", "cachePath", "consecutiveId"}
+	OCIFeatureKeys   = []string{"id", "included", "value", "cachePath", "consecutiveId"}
+)
+
+// MarshalJSON writes the Feature with its properties in TS's order when it
+// has SourceKeys, and in the struct's order otherwise.
+func (f Feature) MarshalJSON() ([]byte, error) {
+	type plain Feature
+	data, err := json.Marshal(plain(f))
+	if err != nil || f.SourceKeys == nil {
+		return data, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	order := slices.Concat(f.KeyOrder, f.SourceKeys, jsonc.Names(data))
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	written := make(map[string]bool, len(fields))
+	for _, k := range order {
+		v, ok := fields[k]
+		if !ok || written[k] {
+			continue
+		}
+		written[k] = true
+		if len(written) > 1 {
+			buf.WriteByte(',')
+		}
+		key, _ := json.Marshal(k)
+		buf.Write(key)
+		buf.WriteByte(':')
+		buf.Write(v)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }
 
 // UnmarshalJSON decodes the Feature and records the order of its dependsOn
@@ -59,6 +112,7 @@ func (f *Feature) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	f.DependsOnOrder = jsonc.MemberNames(data, "dependsOn")
+	f.KeyOrder = jsonc.Names(data)
 	return nil
 }
 
