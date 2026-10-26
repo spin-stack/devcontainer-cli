@@ -2430,6 +2430,32 @@ initial_cases:
     class: container-runtime
     current_status: match
 
+  - id: exec.container-id-config-without-workspace-success
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"remoteEnv\":{\"PARITY_A\":\"from-config\"}}' > $WORKSPACE/devcontainer.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "exec --container-id ${CONTAINER_ID} --config ${WORKSPACE}/devcontainer.json printenv PARITY_A"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "TS exec reads --config without --workspace-folder (configPath = configFile), so the configuration's remoteEnv reaches the command. Go read a configuration only with --workspace-folder, and printenv found nothing (exit 1)."
+
+  - id: exec.container-id-config-missing-error
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    setup_cmd: "CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "exec --container-id ${CONTAINER_ID} --config /tmp/parity-no-such-config/devcontainer.json true"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "A --config that does not exist fails exec even with --container-id: TS throws 'Dev container config (…) not found.' before it looks at the container. Go ignored the load error with --container-id and ran the command."
+
   - id: exec.container-metadata-success
     lane: runtime
     command: exec

@@ -95,6 +95,11 @@ runs the official CLI is unaffected:
   target. Earlier releases carried an unreleased upstream change (#1261) instead.
   A configuration that needs Git inside the container this way should add the
   common directory to `mounts` itself.
+- `exec` reads the configuration `--config` or `--override-config` names, also
+  with `--container-id` and no `--workspace-folder`, and exits 1 when it is
+  missing (`Dev container config (<path>) not found.`) or cannot be loaded.
+  Earlier releases ignored those flags without a workspace folder and ran the
+  command despite a configuration error.
 - `read-configuration` looks up the workspace's container (or the one
   `--id-label` names) as the official CLI does, and exits 1 with nothing on
   stdout when that lookup fails, including when no Docker engine is reachable.

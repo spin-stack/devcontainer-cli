@@ -69,16 +69,37 @@ func TestExecConfigPath(t *testing.T) {
 	}
 }
 
-func TestExecConfigError(t *testing.T) {
-	loadErr := errors.New("no config")
-	if err := execConfigError(loadErr, ""); err != loadErr {
-		t.Errorf("without a container id: err = %v, want the load error", err)
+// TS exec reads the configuration the flags name, with or without
+// --container-id, and fails when it cannot: --config without
+// --workspace-folder is read, and a missing one is not found.
+func TestExecLoadConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "c.json")
+	if err := os.WriteFile(cfg, []byte(`{"image":"img","remoteUser":"u"}`), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if err := execConfigError(loadErr, "c"); err != nil {
-		t.Errorf("with a container id: err = %v, want none", err)
+	override := filepath.Join(dir, "o.json")
+	if err := os.WriteFile(override, []byte(`{"image":"img","remoteUser":"o"}`), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if err := execConfigError(nil, ""); err != nil {
-		t.Errorf("loaded: err = %v", err)
+	if got, err := execLoadConfig(&execOpts{containerID: "c"}, dir); got != nil || err != nil {
+		t.Errorf("nothing named = %v, %v; want no configuration", got, err)
+	}
+	if got, err := execLoadConfig(&execOpts{containerID: "c", configPath: "c.json"}, dir); err != nil || got.Config.RemoteUser != "u" || got.Config.ConfigFilePath != cfg {
+		t.Errorf("--config with --container-id = %+v, %v; want c.json read", got, err)
+	}
+	if got, err := execLoadConfig(&execOpts{containerID: "c", overrideConfig: "o.json"}, dir); err != nil || got.Config.RemoteUser != "o" {
+		t.Errorf("--override-config = %+v, %v; want o.json read", got, err)
+	}
+	missing := filepath.Join(dir, "missing.json")
+	want := "Dev container config (" + missing + ") not found."
+	if _, err := execLoadConfig(&execOpts{containerID: "c", configPath: "missing.json"}, dir); err == nil || err.Error() != want {
+		t.Errorf("missing --config: err = %v, want %q", err, want)
+	}
+	ws := t.TempDir()
+	want = "Dev container config (" + filepath.Join(ws, ".devcontainer", "devcontainer.json") + ") not found."
+	if _, err := execLoadConfig(&execOpts{containerID: "c", workspaceFolder: ws}, dir); err == nil || err.Error() != want {
+		t.Errorf("workspace without a configuration: err = %v, want %q", err, want)
 	}
 }
 

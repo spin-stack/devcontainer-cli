@@ -4,8 +4,10 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -149,15 +151,13 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		Writer:  logDst,
 	})
 
-	// 1. If workspace-folder provided without container-id, validate config exists early
-	var loadResult *config.LoadResult
-	if opts.workspaceFolder != "" {
-		cwd, _ := os.Getwd()
-		var loadErr error
-		loadResult, loadErr = config.LoadDevContainerConfig(resolvePath(opts.workspaceFolder), execConfigPath(opts.configPath, cwd), "")
-		if err := execConfigError(loadErr, opts.containerID); err != nil {
-			return err
-		}
+	// 1. The configuration, read before the container is looked for, as TS
+	// exec does: the workspace's, --config's or --override-config's, with or
+	// without --container-id. One that is named but cannot be read fails exec.
+	cwd, _ := os.Getwd()
+	loadResult, loadErr := execLoadConfig(opts, cwd)
+	if loadErr != nil {
+		return loadErr
 	}
 
 	engine, err := docker.NewEngineClient(logger)
@@ -249,14 +249,24 @@ func execConfigPath(configPath, cwd string) string {
 	return configPath
 }
 
-// execConfigError is the configuration error that stops exec: with
-// --container-id the container is known, and a configuration that does not
-// load only loses its settings.
-func execConfigError(loadErr error, containerID string) error {
-	if loadErr != nil && containerID == "" {
-		return loadErr
+// execLoadConfig is TS exec's configuration: none without --workspace-folder,
+// --config or --override-config, else the one they name, which must exist
+// ("Dev container config (…) not found." names --config, else the workspace's
+// default path), even with --container-id.
+func execLoadConfig(opts *execOpts, cwd string) (*config.LoadResult, error) {
+	if opts.workspaceFolder == "" && opts.configPath == "" && opts.overrideConfig == "" {
+		return nil, nil
 	}
-	return nil
+	ws := ""
+	if opts.workspaceFolder != "" {
+		ws = resolvePath(opts.workspaceFolder)
+	}
+	configPath := execConfigPath(opts.configPath, cwd)
+	loaded, err := config.LoadDevContainerConfig(ws, configPath, execConfigPath(opts.overrideConfig, cwd))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, &coreerrors.ContainerError{Description: fmt.Sprintf("Dev container config (%s) not found.", configPath)}
+	}
+	return loaded, err
 }
 
 // containerRunning reports whether an inspected container is running.
