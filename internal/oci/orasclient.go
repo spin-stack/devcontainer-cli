@@ -11,13 +11,6 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// isLocalRegistry reports whether the registry is a local/insecure one that
-// serves plain HTTP (localhost / loopback), as opposed to a real HTTPS registry.
-func isLocalRegistry(registry string) bool {
-	host, _, _ := strings.Cut(registry, ":")
-	return host == "localhost" || host == "127.0.0.1"
-}
-
 // repository builds an oras-go remote.Repository for the given ref, wired to the
 // devcontainer credential resolution (DEVCONTAINERS_OCI_AUTH → docker config /
 // credential helpers → GITHUB_TOKEN → platform default → anonymous) and the
@@ -29,8 +22,9 @@ func (c *Client) repository(ref *Ref) (*remote.Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Local/insecure registries (localhost, 127.0.0.1) speak plain HTTP.
-	repo.PlainHTTP = isLocalRegistry(ref.Registry)
+	// The reference addresses only a localhost registry over plain HTTP
+	// (getRegistryScheme); 127.0.0.1 and [::1] get HTTPS like any other host.
+	repo.PlainHTTP = ref.Scheme() == "http"
 	// Reuse the client-level auth cache across operations. Fall back to a
 	// per-repository cache if the client was constructed without one (e.g. a
 	// zero-value Client in a test), so repository() never wires a nil cache.

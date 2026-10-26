@@ -6,15 +6,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-// readRegistry is a read-only OCI distribution registry over plain HTTP on
-// 127.0.0.1 (which the OCI client addresses without TLS): it serves the tag
-// lists and manifests a test puts in it and 404s anything else.
+// readRegistry is a read-only OCI distribution registry over plain HTTP,
+// addressed as localhost (which the OCI client reaches without TLS): it serves
+// the tag lists and manifests a test puts in it and 404s anything else.
 type readRegistry struct {
 	host      string
 	tags      map[string][]string // repository -> tags
@@ -26,7 +27,13 @@ func newReadRegistry(t *testing.T) *readRegistry {
 	r := &readRegistry{tags: map[string][]string{}, manifests: map[string][]byte{}}
 	srv := httptest.NewServer(http.HandlerFunc(r.serve))
 	t.Cleanup(srv.Close)
-	r.host = strings.TrimPrefix(srv.URL, "http://")
+	// httptest listens on 127.0.0.1, which the OCI client (as the reference)
+	// addresses over HTTPS; a localhost registry is plain HTTP.
+	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.host = "localhost:" + port
 	return r
 }
 

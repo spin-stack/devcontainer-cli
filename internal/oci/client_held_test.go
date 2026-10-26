@@ -27,7 +27,7 @@ func TestClientGivesUpOnRegistryThatNeverAnswers(t *testing.T) {
 	defer func() { responseHeaderTimeout = orig }()
 
 	c := NewClientWithAuthPolicy(log.Null, map[string]string{"DOCKER_CONFIG": t.TempDir()}, DefaultAuthPolicy())
-	ref := &Ref{Registry: strings.TrimPrefix(srv.URL, "http://"), Path: "me/feat", Resource: "me/feat"}
+	ref := &Ref{Registry: localhostRegistry(t, srv), Path: "me/feat", Resource: "me/feat"}
 	done := make(chan error, 1)
 	go func() {
 		_, err := c.FetchBlobContext(context.Background(), ref, "sha256:"+strings.Repeat("a", 64))
