@@ -42,10 +42,17 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 	if dockerPath == "" {
 		dockerPath = "docker"
 	}
-	if out, err := osexec.Command(dockerPath, "compose", "version", "--short").Output(); err == nil {
+	// TS dockerComposeCLIConfig logs the command and the version it found.
+	runLine := "Run: " + dockerPath + " compose version --short"
+	start := logger.Start(runLine, log.LevelDebug)
+	out, err := osexec.Command(dockerPath, "compose", "version", "--short").Output()
+	logger.Stop(runLine, start, log.LevelDebug)
+	if err == nil {
+		version := strings.TrimSpace(string(out))
+		logger.Write("Docker Compose version: "+version, log.LevelDebug)
 		return &ComposeClient{
 			Command: []string{dockerPath, "compose"},
-			Version: parseComposeVersion(strings.TrimSpace(string(out))),
+			Version: parseComposeVersion(version),
 			Env:     withBakeFSEntitlement(env, os.LookupEnv),
 			Log:     logger,
 		}, nil
