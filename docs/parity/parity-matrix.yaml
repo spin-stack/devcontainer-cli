@@ -1276,6 +1276,48 @@ initial_cases:
     current_status: match
     notes: "up mounts the additionalMountString read-configuration reports: TS spawnDevContainer passes it as a --mount after the workspace mount (singleContainer.ts), so the container has the worktree and its common dir."
 
+  - id: read-configuration.git-worktree-common-dir-custom-workspace-mount-and-folder-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "BASE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $BASE; mkdir -p $BASE; git init -q $BASE/repo && git -C $BASE/repo -c user.email=p@p -c user.name=p commit -q --allow-empty -m init && git -C $BASE/repo worktree add -q ../wt && printf '%s\\n' 'gitdir: ../repo/.git/worktrees/wt' > $BASE/wt/.git; mkdir -p $BASE/wt/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"workspaceMount\":\"type=bind,source=${localWorkspaceFolder},target=/src/wt\",\"workspaceFolder\":\"/src/wt\"}' > $BASE/wt/.devcontainer/devcontainer.json; echo WORKSPACE=$BASE/wt; echo BASE=$BASE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --mount-git-worktree-common-dir"
+    cleanup_cmd: "rm -rf ${BASE}; true"
+    key_order: ["workspace"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "TS getWorkspaceConfiguration (utils.ts) computes the common-dir mount together with the workspace mount, only when the config leaves workspaceFolder or workspaceMount unset: with both set, read-configuration reports no additionalMountString. Go added one relative to the custom mount's target."
+
+  - id: read-configuration.git-worktree-common-dir-custom-workspace-mount-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "BASE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $BASE; mkdir -p $BASE; git init -q $BASE/repo && git -C $BASE/repo -c user.email=p@p -c user.name=p commit -q --allow-empty -m init && git -C $BASE/repo worktree add -q ../wt && printf '%s\\n' 'gitdir: ../repo/.git/worktrees/wt' > $BASE/wt/.git; mkdir -p $BASE/wt/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"workspaceMount\":\"type=volume,source=parity-wt,target=/src/wt\"}' > $BASE/wt/.devcontainer/devcontainer.json; echo WORKSPACE=$BASE/wt; echo BASE=$BASE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --mount-git-worktree-common-dir"
+    cleanup_cmd: "rm -rf ${BASE}; true"
+    key_order: ["workspace"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "A custom workspaceMount (here a volume) without workspaceFolder: TS getWorkspaceConfiguration (utils.ts) still computes the worktree layout, so workspaceFolder and the additionalMountString target derive from /workspaces/<segments>, not from the custom mount's target. Go resolved the common dir relative to the custom target."
+
+  - id: up.git-worktree-common-dir-custom-workspace-mount-and-folder-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "BASE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $BASE; mkdir -p $BASE; git init -q $BASE/repo && git -C $BASE/repo -c user.email=p@p -c user.name=p commit -q --allow-empty -m init && git -C $BASE/repo worktree add -q ../wt && printf '%s\\n' 'gitdir: ../repo/.git/worktrees/wt' > $BASE/wt/.git; mkdir -p $BASE/wt/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\",\"workspaceMount\":\"type=bind,source=${localWorkspaceFolder},target=/src/wt\",\"workspaceFolder\":\"/src/wt\"}' > $BASE/wt/.devcontainer/devcontainer.json; echo WORKSPACE=$BASE/wt; echo BASE=$BASE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --mount-git-worktree-common-dir --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker inspect -f '{{range .Mounts}}{{.Type}}:{{.Source}}:{{.Destination}} {{end}}' ${CONTAINER_ID}"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${BASE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "With workspaceMount and workspaceFolder both set, TS spawnDevContainer gets no additionalMountString (getWorkspaceConfiguration, utils.ts), so the container has only the custom workspace mount. Go also mounted the common dir."
+
   - id: build.lockfile-written-by-default-success
     lock: feature-content-image
     lane: runtime
