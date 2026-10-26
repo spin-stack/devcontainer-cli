@@ -1159,10 +1159,10 @@ initial_cases:
     ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --include-configuration --include-merged-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
     cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
     key_order: ["", "configuration", "mergedConfiguration"]
-    asserts: [exit_code]
+    asserts: [exit_code, stdout_normalized]
     class: output-shape
     current_status: match
-    notes: "up's result follows doProvision's literal (outcome, then launch's containerId, composeProjectName, remoteUser, remoteWorkspaceFolder, configuration, mergedConfiguration, ociAuthDiagnostics), its configuration the document's order and its mergedConfiguration mergeConfiguration's. Go wrote sorted keys. Only the order is compared: TS writes configFilePath's fsPath here (vscode-uri toJSON writes it once something read it) and Go does not, a content gap outside this case."
+    notes: "up's result follows doProvision's literal (outcome, then launch's containerId, composeProjectName, remoteUser, remoteWorkspaceFolder, configuration, mergedConfiguration, ociAuthDiagnostics), its configuration the document's order and its mergedConfiguration mergeConfiguration's. Go wrote sorted keys. The content is compared too: with --id-label, TS writes configFilePath's fsPath here because processing the Features reads the lockfile next to the configuration (getLockfilePath reads configFilePath.fsPath, and vscode-uri's toJSON writes fsPath once something read it)."
 
   - id: read-configuration.json-stringify-escapes-success
     lane: semantic
@@ -1176,6 +1176,45 @@ initial_cases:
     class: output-shape
     current_status: match
     notes: "JSON.stringify writes &, <, > and U+2028/U+2029 in strings as they are; encoding/json escapes them (\\u0026, \\u003c, \\u003e, \\u2028, \\u2029), which stdout_normalized's JSON parse cannot see. stdout_text compares the raw bytes. An escaped backslash followed by u0026 stays as written. A lone surrogate escape is not covered: Go's JSON decoder turns it into U+FFFD (docs/DIVERGENCES.md)."
+
+  - id: up.config-file-fspath-without-id-label-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --include-configuration --include-merged-configuration"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=devcontainer.local_folder=${WORKSPACE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "Without --id-label, TS resolveWithLocalFolder passes configPath.fsPath to findContainerAndIdLabels (configContainer.ts), and vscode-uri's toJSON writes fsPath once something read it, so both configurations' configFilePath have fsPath. Go left it out of every up result."
+
+  - id: up.config-file-fspath-id-label-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --include-configuration --include-merged-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "With --id-label, a configuration found in the workspace (vscode-fileHost, read through CLIHostDocuments, which uses uriToFsPath) and no Features, nothing in TS's up reads configFilePath.fsPath, so its URI has no fsPath. Guards against writing it always."
+
+  - id: up.compose-config-file-fspath-features-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'true' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/\",\"remoteUser\":\"root\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --skip-post-create --include-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "A compose configuration with Features: TS generateFeaturesConfig reads the lockfile next to the configuration (getLockfilePath reads configFilePath.fsPath), so even with --id-label the configuration's configFilePath has fsPath (vscode-uri's toJSON writes it once read). Go left it out."
 
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime

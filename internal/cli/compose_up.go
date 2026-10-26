@@ -297,8 +297,14 @@ type composeExtendResult struct {
 // returning nil when none are configured. The returned folder (TS dstFolder)
 // holds each Feature at its consecutiveId; it is kept because the compose build
 // override references it (TS keeps its features folder too).
+//
+// mutate-lane: TestParityMatrix - up.compose-config-file-fspath-features-success
+// processes a compose configuration's Features through it.
 func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult) ([]*features.Set, string, error) {
 	opts := r.opts
+	if len(cfg.Features) > 0 {
+		r.lockfileRead = !opts.noLockfile
+	}
 	// A lockfile that cannot be read fails the compose flow as it fails TS's
 	// (readLockfile rethrows), reported by up and build as their error result.
 	var lockfile *features.Lockfile
