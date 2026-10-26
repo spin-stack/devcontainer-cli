@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path"
@@ -209,6 +210,12 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}
 	if overrideConfigPath != "" {
 		overrideData, oerr := os.ReadFile(overrideConfigPath)
+		if errors.Is(oerr, fs.ErrNotExist) {
+			// TS reads the override in place of the configuration
+			// (readDocument(overrideConfigFile ?? configFile)): a missing one is the
+			// configuration not found, named by the configuration's path.
+			return nil, &NotFoundError{Path: objectPath}
+		}
 		if oerr != nil {
 			return nil, fmt.Errorf("read override config %s: %w", overrideConfigPath, oerr)
 		}

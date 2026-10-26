@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -485,5 +487,50 @@ func TestLoadDevContainerConfigOverrideWithoutWorkspace(t *testing.T) {
 	}
 	if result.Config.Image != "override" || result.Config.RemoteUser != "" {
 		t.Errorf("image, remoteUser = %q, %q; want the override's alone", result.Config.Image, result.Config.RemoteUser)
+	}
+}
+
+// TS reads the override in place of the configuration, so a missing override
+// is the configuration not found, named by the configuration's path: --config,
+// the one found in the workspace, the workspace's default path, or without a
+// workspace the override itself (configContainer.ts resolveWithLocalFolder).
+func TestLoadDevContainerConfigMissingOverrideIsNotFound(t *testing.T) {
+	ws := t.TempDir()
+	withConfig := t.TempDir()
+	found := filepath.Join(withConfig, ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(found), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(found, []byte(`{"image":"base"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	for _, tc := range []struct {
+		name, workspace, config, want string
+	}{
+		{"default path", ws, "", filepath.Join(ws, ".devcontainer", "devcontainer.json")},
+		{"found config", withConfig, "", found},
+		{"--config", "", found, found},
+		{"no workspace", "", "", missing},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := LoadDevContainerConfig(tc.workspace, tc.config, missing)
+			nf, ok := errors.AsType[*NotFoundError](err)
+			if !ok {
+				t.Fatalf("err = %v, want a NotFoundError", err)
+			}
+			if nf.Path != tc.want {
+				t.Errorf("path = %q, want %q", nf.Path, tc.want)
+			}
+		})
+	}
+}
+
+// Only a missing override is a configuration not found; one that cannot be
+// read for another reason keeps its read error.
+func TestLoadDevContainerConfigUnreadableOverride(t *testing.T) {
+	_, err := LoadDevContainerConfig(t.TempDir(), "", t.TempDir())
+	if _, ok := errors.AsType[*NotFoundError](err); ok || err == nil || !strings.Contains(err.Error(), "read override config") {
+		t.Errorf("err = %v, want the override's read error", err)
 	}
 }

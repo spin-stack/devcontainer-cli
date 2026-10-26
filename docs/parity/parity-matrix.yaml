@@ -2270,6 +2270,28 @@ initial_cases:
     class: required-args
     current_status: match
 
+  - id: up.override-config-missing-error
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder src/test/configs/image --override-config path-that-does-not-exist.json"
+    asserts: [exit_code, stdout_normalized]
+    class: required-args
+    current_status: match
+    notes: "TS reads the override in place of the configuration (readDocument(overrideConfigFile ?? configFile)), so a missing override is the configuration not found, named by the configuration's path: 'Dev container config (<workspace>/.devcontainer/devcontainer.json) not found.' Go failed with 'read override config …: no such file or directory'."
+
+  - id: run-user-commands.override-config-missing-error
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder path-that-does-not-exist --override-config path-that-does-not-exist.json"
+    asserts: [exit_code, stdout_normalized]
+    class: required-args
+    current_status: match
+    notes: "A workspace without a devcontainer.json and a missing override: TS names the workspace's default config path (getDefaultDevContainerConfigPath) as not found. Go named the override in a read error."
+
   - id: read-configuration.container-config-success
     lane: runtime
     command: read-configuration
