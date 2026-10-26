@@ -891,6 +891,30 @@ initial_cases:
     current_status: match
     notes: "TS validates no property type: a falsy \"extensions\" and a \"devPort\" that customizations.vscode already sets stay in the configuration as written. Go failed the typed decode (exit 1, 'cannot unmarshal')."
 
+  - id: set-up.config-without-workspace
+    lane: runtime
+    command: set-up
+    priority: p1
+    docker_required: true
+    ts_cmd: "set-up --container-id ${CONTAINER_ID} --config src/test/configs/set-up-with-workspace-variables/devcontainer.json --include-configuration --include-merged-configuration --skip-post-create"
+    setup_cmd: "CONTAINER_ID=$(docker run -d -e TEST_CE=TEST_VALUE alpine:3.17 sleep inf); echo CONTAINER_ID=$CONTAINER_ID"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "TS doSetUp reads --config with no workspace: ${localWorkspaceFolder}, its basename and (without workspaceFolder) ${containerWorkspaceFolder} stay as written, and properties the typed config has no field for are reported. Go resolved them against the current directory ('.', '/workspaces/.') and dropped the untyped properties."
+
+  - id: set-up.missing-config
+    lane: runtime
+    command: set-up
+    priority: p1
+    docker_required: true
+    ts_cmd: "set-up --container-id parity-no-such-container --config src/test/configs/set-up-with-workspace-variables/missing.json"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "TS reads --config before it looks for the container: 'Dev container config (...) not found.' and exit 1. Go ignored a config that did not load (and reported the missing container first)."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/moby/moby/api/types/container"
 )
 
 // runSetUpCmd runs `set-up` with args and returns its stdout, stderr and error.
@@ -96,25 +98,76 @@ func TestSetUpReportsAnUnusableDockerHost(t *testing.T) {
 	}
 }
 
-func TestSetUpConfigLoadsTheGivenConfigOnly(t *testing.T) {
+// TS doSetUp reads --config with no workspace: a file that does not exist is
+// "Dev container config (...) not found.", one that does not load is an error,
+// and only a config's own workspaceFolder gives ${containerWorkspaceFolder}.
+func TestSetUpConfigLoadsTheGivenConfigWithoutAWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "devcontainer.json")
-	if err := os.WriteFile(good, []byte(`{"image":"alpine:3","remoteUser":"vscode"}`), 0o644); err != nil {
+	if err := os.WriteFile(good, []byte(`{"image":"alpine:3","remoteUser":"vscode","remoteEnv":{
+		"A":"${localWorkspaceFolder}","B":"${localWorkspaceFolderBasename}",
+		"C":"${containerWorkspaceFolder}","D":"${containerWorkspaceFolderBasename}"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withFolder := filepath.Join(dir, "with-folder.json")
+	if err := os.WriteFile(withFolder, []byte(`{"image":"alpine:3","workspaceFolder":"/src/app","remoteEnv":{"C":"${containerWorkspaceFolder}","D":"${containerWorkspaceFolderBasename}"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	bad := filepath.Join(dir, "broken.json")
-	if err := os.WriteFile(bad, []byte(`{"image":`), 0o644); err != nil {
+	if err := os.WriteFile(bad, []byte(`[1]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if cfg := setUpConfig(""); cfg != nil {
-		t.Errorf("setUpConfig(\"\") = %+v, want nil without --config", cfg)
+	if loaded, err := setUpConfig(""); loaded != nil || err != nil {
+		t.Errorf("setUpConfig(\"\") = %+v, %v; want nil without --config", loaded, err)
 	}
-	if cfg := setUpConfig(good); cfg == nil || cfg.RemoteUser != "vscode" {
-		t.Errorf("setUpConfig(%q) = %+v, want the config's remoteUser", good, cfg)
+	loaded, err := setUpConfig(good)
+	if err != nil || loaded.Config.RemoteUser != "vscode" {
+		t.Fatalf("setUpConfig(%q) = %+v, %v; want the config's remoteUser", good, loaded, err)
 	}
-	if cfg := setUpConfig(bad); cfg != nil {
-		t.Errorf("setUpConfig(%q) = %+v, want nil for a config that does not load", bad, cfg)
+	want := map[string]any{"A": "${localWorkspaceFolder}", "B": "${localWorkspaceFolderBasename}", "C": "${containerWorkspaceFolder}", "D": "${containerWorkspaceFolderBasename}"}
+	if got := loaded.Raw["remoteEnv"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("remoteEnv = %v, want the workspace variables as written %v", got, want)
+	}
+	loaded, err = setUpConfig(withFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := loaded.Raw["remoteEnv"], map[string]any{"C": "/src/app", "D": "app"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("remoteEnv = %v, want the config's workspaceFolder %v", got, want)
+	}
+
+	missing := filepath.Join(dir, "missing.json")
+	_, err = setUpConfig(missing)
+	if out := setUpErrorOutput(err); out.Message != "Dev container config ("+missing+") not found." || out.Description != out.Message {
+		t.Errorf("missing config: %+v, want TS's not found error", out)
+	}
+	_, err = setUpConfig(bad)
+	if out := setUpErrorOutput(err); out.Message != "Dev container config ("+bad+") must contain a JSON object literal." || out.Description != out.Message {
+		t.Errorf("config that is no object: %+v, want TS's error", out)
+	}
+	if out := setUpErrorOutput(errors.New("boom")); out.Message != "boom" || out.Description != "An error occurred running user commands in the container." {
+		t.Errorf("other error: %+v, want TS's wrapped error", out)
+	}
+}
+
+// set-up reads --config before it looks for the container, as TS doSetUp
+// does, so a missing config is reported even when the container is missing.
+func TestSetUpReportsAMissingConfigBeforeTheContainer(t *testing.T) {
+	startFakeEngine(t, map[string]map[string]string{})
+	missing := filepath.Join(t.TempDir(), "nope.json")
+
+	stdout, _, err := runSetUpCmd(t, "--container-id", "missing", "--config", missing)
+
+	if err == nil {
+		t.Fatal("set-up succeeded without its config")
+	}
+	var got map[string]any
+	if jerr := json.Unmarshal([]byte(stdout), &got); jerr != nil {
+		t.Fatalf("stdout is not a JSON result: %v\n%s", jerr, stdout)
+	}
+	if want := "Dev container config (" + missing + ") not found."; got["outcome"] != "error" || got["message"] != want || got["description"] != want {
+		t.Errorf("result = %v, want %q", got, want)
 	}
 }
 
@@ -126,10 +179,10 @@ func TestSetUpMergedPutsTheConfigOverTheContainerMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := setUpMerged(labels, nil, logger); got.RemoteUser != "node" || !reflect.DeepEqual(got.PostCreateCommands, []any{"from-image"}) {
+	if got := imagemeta.MergeConfiguration(setUpEntries(labels, nil, logger)); got.RemoteUser != "node" || !reflect.DeepEqual(got.PostCreateCommands, []any{"from-image"}) {
 		t.Errorf("without a config: remoteUser %q, postCreate %v; want the label's", got.RemoteUser, got.PostCreateCommands)
 	}
-	got := setUpMerged(labels, cfg, logger)
+	got := imagemeta.MergeConfiguration(setUpEntries(labels, cfg, logger))
 	if got.RemoteUser != "vscode" {
 		t.Errorf("remoteUser = %q, want the config's", got.RemoteUser)
 	}
@@ -139,9 +192,9 @@ func TestSetUpMergedPutsTheConfigOverTheContainerMetadata(t *testing.T) {
 }
 
 // setUpResultJSON is setUpResult's result as set-up prints it.
-func setUpResultJSON(t *testing.T, cfg *config.DevContainer, merged *imagemeta.MergedConfig, env map[string]string, includeConfig, includeMerged bool) map[string]any {
+func setUpResultJSON(t *testing.T, loaded *config.LoadResult, entries []imagemeta.Entry, env []string, includeConfig, includeMerged bool) map[string]any {
 	t.Helper()
-	result, err := setUpResult(cfg, merged, env, includeConfig, includeMerged)
+	result, err := setUpResult(loaded, entries, &container.Config{Env: env}, includeConfig, includeMerged)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,46 +211,61 @@ func setUpResultJSON(t *testing.T, cfg *config.DevContainer, merged *imagemeta.M
 
 func strPtr(s string) *string { return &s }
 
+// loadedConfig is the LoadResult of a config with the given raw properties,
+// read from configFile.
+func loadedConfig(t *testing.T, configFile string, raw map[string]any) *config.LoadResult {
+	t.Helper()
+	var cfg config.DevContainer
+	data, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConfigFilePath = configFile
+	return &config.LoadResult{Config: &cfg, Raw: raw}
+}
+
 func TestSetUpResultReportsTheConfigurationAsTSDoes(t *testing.T) {
-	cfg := &config.DevContainer{
-		ConfigFilePath: "/ws/.devcontainer/devcontainer.json",
-		Image:          "alpine:3",
-		RemoteEnv:      map[string]*string{"FROM_CONTAINER": strPtr("${containerEnv:FOO}")},
-	}
-	merged := imagemeta.MergeConfiguration([]imagemeta.Entry{configToMetadataEntry(cfg)})
-	env := map[string]string{"FOO": "bar"}
+	loaded := loadedConfig(t, "/ws/.devcontainer/devcontainer.json", map[string]any{
+		"image":     "alpine:3",
+		"remoteEnv": map[string]any{"FROM_CONTAINER": "${containerEnv:FOO}"},
+		// Properties the typed config has no field for, or leaves behind,
+		// are reported as written, as TS reports its configuration.
+		"foo":        map[string]any{"b": 1.0},
+		"extensions": "",
+	})
+	entries := setUpEntries(nil, loaded.Config, log.Null)
 
-	got := setUpResultJSON(t, cfg, merged, env, true, true)
+	got := setUpResultJSON(t, loaded, entries, []string{"FOO=bar"}, true, true)
 
-	wantURI := map[string]any{"$mid": float64(1), "fsPath": cfg.ConfigFilePath, "path": cfg.ConfigFilePath, "scheme": "file"}
+	wantURI := map[string]any{"$mid": float64(1), "fsPath": loaded.Config.ConfigFilePath, "path": loaded.Config.ConfigFilePath, "scheme": "file"}
 	conf, _ := got["configuration"].(map[string]any)
-	if !reflect.DeepEqual(conf["configFilePath"], wantURI) {
-		t.Errorf("configuration.configFilePath = %v, want %v", conf["configFilePath"], wantURI)
-	}
-	if re, _ := conf["remoteEnv"].(map[string]any); re["FROM_CONTAINER"] != "bar" {
-		t.Errorf("configuration.remoteEnv = %v, want ${containerEnv:FOO} resolved to bar", conf["remoteEnv"])
-	}
-	for k, v := range conf {
-		if v == nil {
-			t.Errorf("configuration.%s is null; TS leaves unset properties out", k)
-		}
-	}
 	mc, _ := got["mergedConfiguration"].(map[string]any)
-	if !reflect.DeepEqual(mc["configFilePath"], wantURI) {
-		t.Errorf("mergedConfiguration.configFilePath = %v, want %v", mc["configFilePath"], wantURI)
-	}
-	if re, _ := mc["remoteEnv"].(map[string]any); re["FROM_CONTAINER"] != "bar" {
-		t.Errorf("mergedConfiguration.remoteEnv = %v, want ${containerEnv:FOO} resolved to bar", mc["remoteEnv"])
+	for name, m := range map[string]map[string]any{"configuration": conf, "mergedConfiguration": mc} {
+		if !reflect.DeepEqual(m["configFilePath"], wantURI) {
+			t.Errorf("%s.configFilePath = %v, want %v", name, m["configFilePath"], wantURI)
+		}
+		if re, _ := m["remoteEnv"].(map[string]any); re["FROM_CONTAINER"] != "bar" {
+			t.Errorf("%s.remoteEnv = %v, want ${containerEnv:FOO} resolved to bar", name, m["remoteEnv"])
+		}
+		if m["image"] != "alpine:3" || !reflect.DeepEqual(m["foo"], map[string]any{"b": 1.0}) || m["extensions"] != "" {
+			t.Errorf("%s = %v, want image, foo and extensions as written", name, m)
+		}
+		for k, v := range m {
+			if v == nil {
+				t.Errorf("%s.%s is null; TS leaves unset properties out", name, k)
+			}
+		}
 	}
 }
 
 func TestSetUpResultLeavesOutWhatWasNotAskedFor(t *testing.T) {
-	merged := imagemeta.MergeConfiguration(nil)
-
-	if got := setUpResultJSON(t, nil, merged, nil, false, false); !reflect.DeepEqual(got, map[string]any{"outcome": "success"}) {
+	if got := setUpResultJSON(t, nil, nil, nil, false, false); !reflect.DeepEqual(got, map[string]any{"outcome": "success"}) {
 		t.Errorf("result = %v, want the outcome alone", got)
 	}
-	got := setUpResultJSON(t, nil, merged, nil, true, false)
+	got := setUpResultJSON(t, nil, nil, nil, true, false)
 	if !reflect.DeepEqual(got["configuration"], map[string]any{}) {
 		t.Errorf("configuration without a config = %v, want {}", got["configuration"])
 	}
@@ -206,28 +274,29 @@ func TestSetUpResultLeavesOutWhatWasNotAskedFor(t *testing.T) {
 	}
 }
 
-func TestSetUpResultDropsAConfigFilePathThatResolvesToNothing(t *testing.T) {
-	cfg := &config.DevContainer{ConfigFilePath: "${containerEnv:UNSET}"}
+// TS substitutes no URI (substitute0), so configFilePath is the file's path
+// as it is, whatever ${containerEnv:...} it reads like.
+func TestSetUpResultLeavesTheConfigFilePathUnsubstituted(t *testing.T) {
+	file := "/ws/${containerEnv:UNSET}/devcontainer.json"
+	loaded := loadedConfig(t, file, map[string]any{"image": "alpine:3"})
 
-	got := setUpResultJSON(t, cfg, imagemeta.MergeConfiguration(nil), nil, true, true)
+	got := setUpResultJSON(t, loaded, nil, nil, true, true)
 
-	conf, _ := got["configuration"].(map[string]any)
-	if v, ok := conf["configFilePath"]; ok {
-		t.Errorf("configuration.configFilePath = %v, want it left out", v)
-	}
-	mc, _ := got["mergedConfiguration"].(map[string]any)
-	if v, ok := mc["configFilePath"]; ok {
-		t.Errorf("mergedConfiguration.configFilePath = %v, want it left out", v)
+	for _, name := range []string{"configuration", "mergedConfiguration"} {
+		m, _ := got[name].(map[string]any)
+		if uri, _ := m["configFilePath"].(map[string]any); uri["fsPath"] != file || uri["path"] != file {
+			t.Errorf("%s.configFilePath = %v, want the path %q", name, m["configFilePath"], file)
+		}
 	}
 }
 
 func TestSetUpResultReportsAContainerEnvReferenceWithoutAName(t *testing.T) {
-	cfg := &config.DevContainer{RemoteEnv: map[string]*string{"X": strPtr("${containerEnv}")}}
-	if _, err := setUpResult(cfg, imagemeta.MergeConfiguration(nil), nil, true, false); err == nil || !strings.HasPrefix(err.Error(), "resolve configuration container variables: ") {
+	loaded := loadedConfig(t, "/ws/devcontainer.json", map[string]any{"remoteEnv": map[string]any{"X": "${containerEnv}"}})
+	if _, err := setUpResult(loaded, nil, &container.Config{}, true, false); err == nil || !strings.HasPrefix(err.Error(), "resolve configuration container variables: ") {
 		t.Errorf("configuration error = %v, want the substitution error", err)
 	}
-	merged := imagemeta.MergeConfiguration([]imagemeta.Entry{{RemoteEnv: cfg.RemoteEnv}})
-	if _, err := setUpResult(nil, merged, nil, false, true); err == nil || !strings.HasPrefix(err.Error(), "resolve merged container variables: ") {
+	entries := []imagemeta.Entry{{RemoteEnv: map[string]*string{"X": strPtr("${containerEnv}")}}}
+	if _, err := setUpResult(nil, entries, &container.Config{}, false, true); err == nil || !strings.HasPrefix(err.Error(), "resolve merged container variables: ") {
 		t.Errorf("merged error = %v, want the substitution error", err)
 	}
 }

@@ -3,8 +3,9 @@ package cli
 import (
 	"cmp"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/moby/moby/api/types/container"
 
@@ -117,11 +118,30 @@ func runSetUp(ctx context.Context, out Output, opts *setUpOpts) error {
 	}
 	defer engine.Close()
 
+	// TS doSetUp reads the --config file before it looks for the container.
+	loaded, err := setUpConfig(opts.configPath)
+	if err != nil {
+		return writeErrorJSON(out, setUpErrorOutput(err))
+	}
+
 	inspect, err := engine.InspectContainer(ctx, opts.containerID)
 	if err != nil {
 		return writeErrorResult(out, "Dev container not found.")
 	}
-	return setUpContainer(ctx, out, engine, logger, opts, inspect)
+	return setUpContainer(ctx, out, engine, logger, opts, loaded, inspect)
+}
+
+// setUpErrorOutput is TS doSetUp's error result: a ContainerError as it is
+// (a NotObjectError is one in TS), any other error described as "An error
+// occurred running user commands in the container.".
+func setUpErrorOutput(err error) coreerrors.ErrorOutput {
+	if _, ok := errors.AsType[*config.NotObjectError](err); ok {
+		return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: err.Error()})
+	}
+	if ce, ok := coreerrors.AsContainerError(err); ok {
+		return coreerrors.ToErrorOutput(ce)
+	}
+	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: "An error occurred running user commands in the container.", OriginalError: err})
 }
 
 // setUpContainer runs the lifecycle hooks in the container and writes the
@@ -130,10 +150,14 @@ func runSetUp(ctx context.Context, out Output, opts *setUpOpts) error {
 // mutate-lane: TestParityMatrix - set-up.container-config-success,
 // set-up.container-metadata-success and set-up.after-failed-post-create-success
 // set up a real container through it.
-func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient, logger log.Logger, opts *setUpOpts, inspect container.InspectResponse) error {
+func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient, logger log.Logger, opts *setUpOpts, loaded *config.LoadResult, inspect container.InspectResponse) error {
 	containerID := opts.containerID
-	cfg := setUpConfig(opts.configPath)
-	merged := setUpMerged(inspect.Config.Labels, cfg, logger)
+	var cfg *config.DevContainer
+	if loaded != nil {
+		cfg = loaded.Config
+	}
+	entries := setUpEntries(inspect.Config.Labels, cfg, logger)
+	merged := imagemeta.MergeConfiguration(entries)
 
 	var cfgProbe string
 	var cfgRemoteEnv map[string]*string
@@ -166,99 +190,75 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 		}
 	}
 
-	result, err := setUpResult(cfg, merged, config.EnvMap(inspect.Config.Env), opts.includeConfig, opts.includeMerged)
+	result, err := setUpResult(loaded, entries, inspect.Config, opts.includeConfig, opts.includeMerged)
 	if err != nil {
 		return writeErrorResult(out, err.Error())
 	}
 	return writeSuccessJSON(out, result)
 }
 
-// setUpConfig is the --config file set-up merges over the container's
-// metadata: nil when no --config is given or it cannot be loaded.
-func setUpConfig(configPath string) *config.DevContainer {
+// setUpConfig loads the --config file set-up merges over the container's
+// metadata (nil without --config) as TS doSetUp reads it: with no workspace,
+// so ${localWorkspaceFolder} and its basename stay as written, and so does
+// ${containerWorkspaceFolder} unless the config sets workspaceFolder. A file
+// that does not exist is TS's "Dev container config (...) not found.".
+func setUpConfig(configPath string) (*config.LoadResult, error) {
 	if configPath == "" {
-		return nil
+		return nil, nil
 	}
-	loadResult, err := config.LoadDevContainerConfig(".", resolvePath(configPath), "")
-	if err != nil {
-		return nil
+	path := resolvePath(configPath)
+	loaded, err := config.LoadDevContainerConfig("", path, "")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, &coreerrors.ContainerError{Description: fmt.Sprintf("Dev container config (%s) not found.", path)}
 	}
-	return loadResult.Config
+	return loaded, err
 }
 
-// setUpMerged is set-up's merged configuration: the container's metadata label
-// entries, then the config (when there is one) as the last entry.
-func setUpMerged(labels map[string]string, cfg *config.DevContainer, logger log.Logger) *imagemeta.MergedConfig {
+// setUpEntries are the metadata entries set-up merges: the container's
+// metadata label entries, then the config (when there is one) as the last
+// entry.
+func setUpEntries(labels map[string]string, cfg *config.DevContainer, logger log.Logger) []imagemeta.Entry {
 	entries := imagemeta.ReadMetadataFromLabels(labels, logger)
 	if cfg != nil {
 		entries = append(entries, configToMetadataEntry(cfg))
 	}
-	return imagemeta.MergeConfiguration(entries)
+	return entries
 }
 
-// setUpResult is set-up's success result: configuration
-// (--include-configuration; {} without a config) and mergedConfiguration
-// (--include-merged-configuration), with ${containerEnv:…} resolved from the
-// container's environment and configFilePath as a file URI, as TS reports them.
-func setUpResult(cfg *config.DevContainer, merged *imagemeta.MergedConfig, containerEnv map[string]string, includeConfig, includeMerged bool) (map[string]any, error) {
+// setUpResult is set-up's success result as TS doSetUp reports it:
+// configuration (--include-configuration) is the loaded configuration ({}
+// without one) and mergedConfiguration (--include-merged-configuration) the
+// merge of entries over it, both with ${containerEnv:...} resolved from the
+// container's environment. configFilePath is the file URI, which TS never
+// substitutes.
+func setUpResult(loaded *config.LoadResult, entries []imagemeta.Entry, containerCfg *container.Config, includeConfig, includeMerged bool) (map[string]any, error) {
 	result := map[string]any{"outcome": "success"}
-
-	if includeConfig {
-		if cfg != nil {
-			// Substitute containerEnv in config
-			cfgJSON, _ := json.Marshal(cfg)
-			var cfgGeneric any
-			json.Unmarshal(cfgJSON, &cfgGeneric)
-			substituted, subErr := resolveContainerVariables(containerEnv, cfgGeneric)
-			if subErr != nil {
-				return nil, fmt.Errorf("resolve configuration container variables: %w", subErr)
-			}
-			// Clean null values and internal fields
-			if subMap, ok := substituted.(map[string]any); ok {
-				for k, v := range subMap {
-					if v == nil {
-						delete(subMap, k)
-					}
-				}
-				// Convert configFilePath to URI format (matches TS)
-				if cfp, ok := subMap["configFilePath"].(string); ok && cfp != "" {
-					subMap["configFilePath"] = map[string]any{
-						"$mid":   1,
-						"fsPath": cfp,
-						"path":   cfp,
-						"scheme": "file",
-					}
-				} else {
-					delete(subMap, "configFilePath")
-				}
-				delete(subMap, "extensions")
-				delete(subMap, "settings")
-				delete(subMap, "devPort")
-				result["configuration"] = subMap
-			} else {
-				result["configuration"] = substituted
-			}
-		} else {
-			// No config file → empty object (TS behavior)
-			result["configuration"] = map[string]any{}
-		}
+	if !includeConfig && !includeMerged {
+		return result, nil
 	}
-
+	cfgMap := map[string]any{}
+	var configFileURI any
+	if loaded != nil {
+		cfgMap = configurationOutput(loaded, &readConfigOpts{configPath: loaded.Config.ConfigFilePath})
+		configFileURI = cfgMap["configFilePath"]
+		delete(cfgMap, "configFilePath")
+	}
+	substituted, err := substituteContainerEnv(containerCfg, cfgMap)
+	if err != nil {
+		return nil, fmt.Errorf("resolve configuration container variables: %w", err)
+	}
+	if configFileURI != nil {
+		substituted["configFilePath"] = configFileURI
+	}
+	if includeConfig {
+		result["configuration"] = substituted
+	}
 	if includeMerged {
-		// Copy configFilePath URI to mergedConfiguration (matches TS)
-		if cfgResult, ok := result["configuration"].(map[string]any); ok {
-			if cfpURI, ok := cfgResult["configFilePath"]; ok {
-				merged.ConfigFilePath = cfpURI
-			}
+		merged, err := mergedConfigurationOutput(entries, containerCfg, substituted)
+		if err != nil {
+			return nil, fmt.Errorf("resolve merged container variables: %w", err)
 		}
-		mergedJSON, _ := json.Marshal(merged)
-		var mergedGeneric any
-		json.Unmarshal(mergedJSON, &mergedGeneric)
-		substituted, subErr := resolveContainerVariables(containerEnv, mergedGeneric)
-		if subErr != nil {
-			return nil, fmt.Errorf("resolve merged container variables: %w", subErr)
-		}
-		result["mergedConfiguration"] = substituted
+		result["mergedConfiguration"] = merged
 	}
 	return result, nil
 }

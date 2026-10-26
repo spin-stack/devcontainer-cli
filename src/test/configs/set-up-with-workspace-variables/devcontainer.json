@@ -1,0 +1,17 @@
+{
+	"image": "alpine:3.17",
+	// set-up reads its --config without a workspace: only workspaceFolder
+	// (unset here) gives ${containerWorkspaceFolder}.
+	"remoteEnv": {
+		"LOCAL_FOLDER": "${localWorkspaceFolder}",
+		"LOCAL_BASENAME": "${localWorkspaceFolderBasename}",
+		"CONTAINER_FOLDER": "${containerWorkspaceFolder}",
+		"CONTAINER_BASENAME": "${containerWorkspaceFolderBasename}",
+		"FROM_CONTAINER": "${containerEnv:TEST_CE}"
+	},
+	// Reported as written in configuration and mergedConfiguration.
+	"extensions": "",
+	"x-unknown": {
+		"kept": true
+	}
+}
