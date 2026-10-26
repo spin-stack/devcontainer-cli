@@ -350,7 +350,9 @@ type WriteOptions struct {
 // does: it creates the file when there is none and rewrites it when its
 // content would change. With opts.Frozen set, it fails instead of writing when
 // the lockfile is missing or would change. A lockfile that exists but cannot be
-// read is an error, as writeLockfile rethrows all but ENOENT.
+// read is an error, as writeLockfile rethrows all but ENOENT. A new lockfile
+// gets Node's fs.writeFile mode, 0666 less the umask; a rewritten one keeps
+// its mode.
 func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) error {
 	path := LockfilePath(configPath)
 
@@ -384,7 +386,7 @@ func WriteLockfile(configPath string, lockfile *Lockfile, opts WriteOptions) err
 		return nil
 	}
 
-	return os.WriteFile(path, newData, 0644)
+	return os.WriteFile(path, newData, 0o666)
 }
 
 // LockfilePath returns the lockfile path for a given config path.
