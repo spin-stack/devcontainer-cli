@@ -293,8 +293,7 @@ func loadReadConfiguration(workspaceFolder, configPath, overridePath string, opt
 // typed config drops are kept. The legacy settings, extensions and devPort are
 // left out only where the loader migrated them into customizations: one it
 // left in place, as TS updateFromOldProperties does, is printed. configFilePath is a
-// VS Code URI, with the file scheme when the config was named on the command
-// line or a container was.
+// VS Code URI, with the file scheme when the config was named with --config.
 func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[string]any {
 	cfgMap := map[string]any{}
 	if result == nil {
@@ -313,8 +312,12 @@ func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[st
 		}
 		cfgMap[k] = v
 	}
+	// TS makes a file URI of --config; a configuration found in the workspace,
+	// or its default path when only --override-config is given, has the
+	// vscode-fileHost scheme, with or without --container-id
+	// (devContainersSpecCLI.ts readConfiguration).
 	scheme := "vscode-fileHost"
-	if opts.containerID != "" || opts.configPath != "" || opts.overrideConfig != "" {
+	if opts.configPath != "" {
 		scheme = "file"
 	}
 	// TS findContainerAndIdLabels reads the URI's fsPath (devContainersSpecCLI.ts

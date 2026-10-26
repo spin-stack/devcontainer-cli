@@ -146,9 +146,10 @@ func TestAddUpConfigurationNamesTheConfigFileAsTSDoes(t *testing.T) {
 		opts   upOpts
 		scheme string
 	}{
-		{"found in the workspace", upOpts{}, "vscode-fileHost"},
-		{"--config", upOpts{configPath: "c.json"}, "file"},
-		{"--override-config", upOpts{overrideConfig: "o.json"}, "file"},
+		{"found in the workspace", upOpts{workspaceFolder: "/ws"}, "vscode-fileHost"},
+		{"--config", upOpts{workspaceFolder: "/ws", configPath: "c.json"}, "file"},
+		{"--override-config", upOpts{workspaceFolder: "/ws", overrideConfig: "o.json"}, "vscode-fileHost"},
+		{"--override-config without a workspace", upOpts{overrideConfig: "o.json"}, "file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.opts.includeConfig, tc.opts.includeMergedConfig = true, true
@@ -204,7 +205,8 @@ func TestUpConfigFileFSPathReadIsWhereTSUpReadsIt(t *testing.T) {
 		{"--id-label", upOpts{idLabels: labels}, false, false},
 		{"--id-label and --config", upOpts{idLabels: labels, configPath: "c.json"}, false, true},
 		{"--id-label, --config and --override-config", upOpts{idLabels: labels, configPath: "c.json", overrideConfig: "o.json"}, false, false},
-		{"--id-label and --override-config", upOpts{idLabels: labels, overrideConfig: "o.json"}, false, false},
+		{"--id-label and --override-config", upOpts{idLabels: labels, workspaceFolder: "/ws", overrideConfig: "o.json"}, false, false},
+		{"--id-label and --override-config without a workspace", upOpts{idLabels: labels, overrideConfig: "o.json"}, false, true},
 		{"--id-label and the lockfile read", upOpts{idLabels: labels}, true, true},
 	} {
 		if got := upConfigFileFSPathRead(&tc.opts, tc.lockfileRead); got != tc.want {
