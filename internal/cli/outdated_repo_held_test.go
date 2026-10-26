@@ -261,3 +261,16 @@ func TestGetFeatureIdWithoutVersionRightAfterSlash(t *testing.T) {
 		}
 	}
 }
+
+// --log-level is one of TS upgrade's choices, error among them, and yargs
+// rejects any other before .check() looks at --feature/--target-version.
+func TestUpgradeLogLevelChoices(t *testing.T) {
+	ws := writeOutdatedWorkspace(t, `{}`, "")
+	want := `Invalid value "warn" for --log-level. Choose from: error, info, debug, trace`
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--log-level", "warn", "--feature", "ghcr.io/o/f"); err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--log-level", "error", "--feature", "ghcr.io/o/f"); err == nil || !strings.Contains(err.Error(), "must be used together") {
+		t.Errorf("--log-level error: err = %v, want the --feature/--target-version check", err)
+	}
+}

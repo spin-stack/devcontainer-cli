@@ -391,6 +391,10 @@ func textTable(rows [][]string) string {
 	return strings.Join(lines, "\n")
 }
 
+// upgradeLogLevels are the choices TS featuresUpgradeOptions declares for
+// --log-level, which, unlike the other commands', include error.
+var upgradeLogLevels = []string{"error", "info", "debug", "trace"}
+
 func newUpgradeCmd() *cobra.Command {
 	var (
 		workspaceFolder string
@@ -409,6 +413,10 @@ func newUpgradeCmd() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Upgrade lockfile",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --log-level is a yargs choice, validated before .check() runs.
+			if err := validateEnum("log-level", logLevel, upgradeLogLevels); err != nil {
+				return err
+			}
 			// --feature/--target-version are the dependabot-oriented flags: they
 			// must be supplied together, and --target-version must be a bare
 			// x / x.y / x.y.z version. TS validates this in yargs .check() before

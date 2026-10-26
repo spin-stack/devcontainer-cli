@@ -119,6 +119,9 @@ runs the official CLI is unaffected:
   `--frozen-lockfile` instead.
 - `upgrade` always rewrites the lockfile in its canonical form, even when the
   existing one differs only in formatting.
+- `upgrade --log-level` accepts only `error`, `info`, `debug`, and `trace`. Any
+  other value exits 1 with `Invalid value "<value>" for --log-level` instead of
+  running at the default level.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.

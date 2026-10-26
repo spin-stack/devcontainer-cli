@@ -310,6 +310,17 @@ initial_cases:
     current_status: match
     notes: "XOR from yargs .check(): --feature and --target-version must be used together. Only --feature => exit 1 'The '--target-version' and '--feature' flag must be used together.'. Go ignored both flags; now RunE applies the XOR with the same message."
 
+  - id: upgrade.err-invalid-log-level
+    lane: contract
+    command: upgrade
+    priority: p1
+    docker_required: false
+    ts_cmd: "upgrade --workspace-folder src/test/configs/image-with-features --log-level warn --feature ghcr.io/devcontainers/features/node"
+    asserts: [exit_code, stderr_normalized]
+    class: format-validation
+    current_status: match
+    notes: "upgrade's --log-level is a yargs choice of error/info/debug/trace (featuresUpgradeOptions), checked before .check(): 'warn' => exit 1 with the invalid-choice error, not the --feature/--target-version one. Go accepted any value and ran."
+
   - id: outdated.malformed-lockfile-error
     lane: contract
     command: outdated
