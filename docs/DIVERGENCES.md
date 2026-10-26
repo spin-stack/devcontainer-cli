@@ -72,6 +72,12 @@ touches a compared surface, reflected in the parity matrix.
   reads only the first pair and takes `B`. Variable expansion, stage lookup and the final
   stage name otherwise follow the reference (recorded in
   `internal/{docker,cli}/testdata/ts-oracle/dockerfile.json`).
+- **An unknown `${templateOption:NAME}` is always replaced with the empty string.** TS
+  `replaceTemplatedValues` reads `options[NAME]` from a plain object, so a name that is not
+  an option but an `Object.prototype` property (`constructor`, `toString`, …) becomes the
+  inherited function's source text (`function Object() { [native code] }`) in the applied
+  template. This CLI treats such a name like every other unknown option
+  (`internal/templates/testdata/ts-oracle/templates.json`).
 - **The `devcontainer.metadata` label writes object values with their keys sorted.** The
   label is TS's `JSON.stringify` of the entries: each entry's properties in TS's pick
   order (`pickFeatureProperties` for a Feature, `pickConfigProperties` for the

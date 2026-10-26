@@ -35,17 +35,3 @@ func TestResolveContainerEnvIgnoresCaseOnlyOnWindows(t *testing.T) {
 		}
 	}
 }
-
-// Only ${templateOption:NAME} with a single name is a template option: TS
-// replaceTemplatedValues matches /\${templateOption:\s*(\w+?)\s*}/g, which
-// neither a second argument nor another variable fits, so both stay as written.
-func TestResolveTemplateOptionTakesOneName(t *testing.T) {
-	ctx := SubstitutionContext{TemplateOptions: map[string]string{"a": "x"}}
-	got, err := NewVariableResolver().Resolve(ctx, PhaseTemplate, "${templateOption:a}|${templateOption:a:b}|${other:a}")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "x|${templateOption:a:b}|${other:a}"; got != want {
-		t.Errorf("Resolve = %q, want %q", got, want)
-	}
-}

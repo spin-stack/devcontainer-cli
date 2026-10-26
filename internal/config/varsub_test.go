@@ -75,19 +75,6 @@ func TestVariableResolverIdentityStrings(t *testing.T) {
 	}
 }
 
-func TestSubstituteTemplateOptions(t *testing.T) {
-	options := map[string]string{"image": "ubuntu", "greeting": "hello"}
-	value := "${templateOption:image}:${templateOption: greeting }:${unknown}"
-	want := "ubuntu:hello:${unknown}"
-	got, err := NewVariableResolver().Resolve(SubstitutionContext{TemplateOptions: options}, PhaseTemplate, value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Errorf("template Resolve() = %q, want %q", got, want)
-	}
-}
-
 func TestSubstituteTags(t *testing.T) {
 	upper := func(tag string) (string, bool, error) { return strings.ToUpper(tag), true, nil }
 

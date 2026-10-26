@@ -7,10 +7,10 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
@@ -261,8 +261,9 @@ func escapeJSONPointer(s string) string {
 
 // applyOptionDefaults returns a copy of userOptions with any option declared in
 // the template's devcontainer-template.json filled in from its `default` when
-// the user did not provide a value (matching the TS CLI). string and boolean
-// option defaults are supported.
+// the user did not provide a value, as TS fetchTemplate does
+// (containerTemplatesOCI.ts): only an option of type "string" or "boolean"
+// whose default is truthy gets one, as the default's JS string.
 func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]string, logger log.Logger) map[string]string {
 	merged := make(map[string]string, len(userOptions))
 	maps.Copy(merged, userOptions)
@@ -280,34 +281,72 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 		if _, ok := merged[key]; ok {
 			continue
 		}
-		def, ok := raw.(map[string]any)
-		if !ok {
+		def, _ := raw.(map[string]any)
+		if t := def["type"]; t != "string" && t != "boolean" {
 			continue
 		}
-		switch d := def["default"].(type) {
-		case string:
-			merged[key] = d
-		case bool:
-			merged[key] = strconv.FormatBool(d)
-		default:
+		d := def["default"]
+		if !jsTruthy(d) {
 			continue
 		}
+		merged[key] = jsString(d)
 		logger.Write(fmt.Sprintf("Using default value for %s --> %s", key, merged[key]), log.LevelTrace)
 	}
 	return merged
 }
 
-// substituteTemplateOptions replaces ${templateOption:name} with the provided values.
+// jsTruthy is JavaScript truthiness for a decoded JSON value.
+func jsTruthy(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return x
+	case string:
+		return x != ""
+	case float64:
+		return x != 0
+	}
+	return true
+}
+
+// jsString is JavaScript's String(v) for a decoded JSON value.
+func jsString(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return x
+	case bool:
+		return strconv.FormatBool(x)
+	case float64:
+		// encoding/json writes a finite float64 as JS does; JSON has no other.
+		data, _ := json.Marshal(x)
+		return string(data)
+	case []any:
+		parts := make([]string, len(x))
+		for i, e := range x {
+			if e != nil {
+				parts[i] = jsString(e)
+			}
+		}
+		return strings.Join(parts, ",")
+	}
+	return "[object Object]"
+}
+
+// jsSpace is JavaScript's \s, which is wider than RE2's.
+const jsSpace = `[\t\n\v\f\r \x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]`
+
+// templateOptionPattern is TS replaceTemplatedValues' /\${templateOption:\s*(\w+?)\s*}/g.
+var templateOptionPattern = regexp.MustCompile(`\$\{templateOption:` + jsSpace + `*(\w+?)` + jsSpace + `*\}`)
+
+// substituteTemplateOptions is TS replaceTemplatedValues: every
+// ${templateOption:NAME} becomes the option's value, the empty string for an option without
+// one. An option named like an Object.prototype property is no exception here
+// (docs/DIVERGENCES.md).
 func substituteTemplateOptions(content string, options map[string]string) string {
-	resolved, err := config.NewVariableResolver().Resolve(config.SubstitutionContext{
-		TemplateOptions: options,
-	}, config.PhaseTemplate, content)
-	if err != nil {
-		return content
-	}
-	result, ok := resolved.(string)
-	if !ok {
-		return content
-	}
-	return result
+	return templateOptionPattern.ReplaceAllStringFunc(content, func(match string) string {
+		return options[templateOptionPattern.FindStringSubmatch(match)[1]]
+	})
 }

@@ -19,6 +19,7 @@ const esbuild = createRequire(path.join(refDir, 'package.json'))('esbuild');
 
 const privateExports = {
 	'src/spec-configuration/containerFeaturesConfiguration.ts': ['escapeQuotesForShell'],
+	'src/spec-configuration/containerTemplatesOCI.ts': ['replaceTemplatedValues'],
 	'src/spec-node/dockerCompose.ts': ['convertMountToVolume', 'convertMountToVolumeTopLevelElement'],
 };
 

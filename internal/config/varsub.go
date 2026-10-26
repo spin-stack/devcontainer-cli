@@ -19,15 +19,13 @@ const (
 	PhaseHost SubstitutionPhase = iota
 	PhaseIdentity
 	PhaseContainer
-	PhaseTemplate
 )
 
 type SubstitutionContext struct {
 	HostSubContext
-	IDLabels        map[string]string
-	DevContainerID  string
-	ContainerEnv    map[string]string
-	TemplateOptions map[string]string
+	IDLabels       map[string]string
+	DevContainerID string
+	ContainerEnv   map[string]string
 }
 
 // VariableResolver applies devcontainer substitutions one explicit phase at a
@@ -179,12 +177,6 @@ func (r *VariableResolver) resolveTag(ctx SubstitutionContext, phase Substitutio
 			return "", false, nil
 		}
 		return resolveEnvTag(ctx.Platform == "win32", ctx.ContainerEnv, args, tag, ctx.ConfigFilePath)
-	case PhaseTemplate:
-		if variable != "templateOption" || len(args) != 1 {
-			return "", false, nil
-		}
-		value, ok := ctx.TemplateOptions[strings.TrimSpace(args[0])]
-		return value, ok, nil
 	default:
 		return "", false, fmt.Errorf("unknown substitution phase %d", phase)
 	}
