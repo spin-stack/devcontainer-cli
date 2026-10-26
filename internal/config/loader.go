@@ -353,10 +353,20 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 // --- Helpers ---
 
 func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWorkspaceGitRoot, mountGitWorktreeCommonDir bool) *WorkspaceConfig {
+	// Docker Compose manages its own mounts, so the workspace folder is the
+	// config's own or `/`, never derived from the host folder (TS
+	// getWorkspaceConfiguration via getRemoteWorkspaceFolder).
+	if config.IsComposeConfig() {
+		folder := config.WorkspaceFolder
+		if folder == "" {
+			folder = "/"
+		}
+		return &WorkspaceConfig{WorkspaceFolder: folder}
+	}
 	// With no workspace (up --config without --workspace-folder) nothing is
 	// mounted: the folder and mount are the config's own, possibly empty, as TS
 	// getWorkspaceConfiguration leaves them for an undefined workspace.
-	if workspace.RootFolderPath == "" && !config.IsComposeConfig() {
+	if workspace.RootFolderPath == "" {
 		return &WorkspaceConfig{WorkspaceFolder: config.WorkspaceFolder, WorkspaceMount: config.WorkspaceMount}
 	}
 	sourceFolder := workspace.RootFolderPath
@@ -380,7 +390,7 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 	// gitdir still resolves to the mounted common dir inside the container.
 	containerMountFolder := "/workspaces/" + filepath.Base(sourceFolder)
 	var additionalMounts []string
-	if mountWorkspaceGitRoot && mountGitWorktreeCommonDir && !config.IsComposeConfig() {
+	if mountWorkspaceGitRoot && mountGitWorktreeCommonDir {
 		// A custom workspaceMount defines where the worktree is actually mounted in
 		// the container; resolve the common dir relative to that (substituted)
 		// target so the relative gitdir still resolves. Otherwise fall back to the
@@ -406,13 +416,8 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 
 	wc := &WorkspaceConfig{
 		WorkspaceFolder:  containerFolder,
+		WorkspaceMount:   bindMount(sourceFolder, containerMountFolder, consistency),
 		AdditionalMounts: additionalMounts,
-	}
-
-	// Only compute workspaceMount for non-compose configs; Docker Compose manages
-	// its own mounts via the compose file.
-	if !config.IsComposeConfig() {
-		wc.WorkspaceMount = bindMount(sourceFolder, containerMountFolder, consistency)
 	}
 
 	if config.WorkspaceFolder != "" {

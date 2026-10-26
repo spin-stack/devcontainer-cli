@@ -1004,6 +1004,20 @@ initial_cases:
     current_status: match
     notes: "Without --image-name, TS doBuild reports a Compose build's image as a string (imageNameResult = originalImageName); with it, as the array of --image-name values. Go always wrote an array. The image keeps the name the sibling compose-image-without-features-minimal cases give it, so no cleanup removes it from under them."
 
+  - id: up.compose-without-workspace-folder-uses-root-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s\\n' 'services:' '  app:' '    image: alpine:3' '    command: sleep infinity' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"postCreateCommand\":\"pwd > /tmp/post-create; echo ${containerWorkspaceFolder} >> /tmp/post-create\"}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker exec ${CONTAINER_ID} cat /tmp/post-create; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then CLI=${PARITY_CLI_TS}; else CLI=${PARITY_CLI_GO}; fi; $CLI exec --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} pwd 2>/dev/null"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "A compose configuration without workspaceFolder works in `/` (TS getWorkspaceConfiguration returns getRemoteWorkspaceFolder, `config.workspaceFolder || '/'`, dockerCompose.ts): up's remoteWorkspaceFolder, ${containerWorkspaceFolder}, the lifecycle commands' cwd and exec's cwd. Go used /workspaces/<basename>, a folder the compose service never mounts."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade
