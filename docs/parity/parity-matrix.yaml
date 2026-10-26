@@ -3821,10 +3821,11 @@ initial_cases:
     priority: p1
     network_required: true
     ts_cmd: "outdated --workspace-folder src/test/configs/image-with-features --output-format json"
-    asserts: [exit_code, stdout_normalized]
+    asserts: [exit_code, stdout_normalized, stdout_text]
+    key_order: ["features"]
     class: outdated-runtime
     current_status: match
-    notes: "outdated resolves current/wanted/latest (+ wantedMajor/latestMajor) per feature; key = full userFeatureId (with tag). Both sides query the same registry, so latest matches between them."
+    notes: "outdated resolves current/wanted/latest (+ wantedMajor/latestMajor) per feature; key = full userFeatureId (with tag). Both sides query the same registry, so latest matches between them. The Features follow the configuration's order (loadVersionInfo reorders resolved.features), which stdout_text and key_order pin; Go used to sort them by id."
 
   - id: upgrade.image-with-features-success
     lane: runtime
