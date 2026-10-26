@@ -138,18 +138,12 @@ var whatwgIDNA = idna.New(
 	idna.VerifyDNSLength(false),
 )
 
-// domainToASCII is WHATWG domain to ASCII (beStrict false). A pure-ASCII domain
-// with no "xn--" label only lower-cases, as the standard allows.
+// domainToASCII is WHATWG domain to ASCII (beStrict false) as Node.js 26 (the
+// version versions.yaml pins for the oracle) runs it: a pure-ASCII domain is
+// only lower-cased, its "xn--" labels not checked as Punycode.
 func domainToASCII(domain string) (string, error) {
-	if isASCII(domain) && !hasPunycodeLabel(domain) {
+	if isASCII(domain) {
 		return strings.ToLower(domain), nil
-	}
-	// x/net/idna decodes a bare "xn--" label to an empty one; UTS #46, as
-	// Node's ICU implements it, fails it as an empty Punycode label.
-	for label := range strings.SplitSeq(domain, ".") {
-		if strings.EqualFold(label, "xn--") {
-			return "", errInvalidHost
-		}
 	}
 	out, err := whatwgIDNA.ToASCII(domain)
 	if err != nil || out == "" {
@@ -165,15 +159,6 @@ func isASCII(s string) bool {
 		}
 	}
 	return true
-}
-
-func hasPunycodeLabel(domain string) bool {
-	for label := range strings.SplitSeq(domain, ".") {
-		if strings.HasPrefix(strings.ToLower(label), "xn--") {
-			return true
-		}
-	}
-	return false
 }
 
 // isForbiddenDomainCodePoint is the WHATWG forbidden domain code point set:
