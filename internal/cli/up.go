@@ -61,8 +61,8 @@ type upOpts struct {
 	dotfilesTarget              string
 	omitSyntaxDirective         bool
 	omitConfigRemoteEnvFromMeta bool
-	terminalColumns             int
-	terminalRows                int
+	terminalColumns             givenInt
+	terminalRows                givenInt
 	secretsFile                 string
 	experimentalLockfile        bool
 	experimentalFrozenLockfile  bool
@@ -172,8 +172,8 @@ func newUpCmd() *cobra.Command {
 	} {
 		_ = f.MarkHidden(h)
 	}
-	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
-	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
+	f.Var(&opts.terminalColumns, "terminal-columns", "")
+	f.Var(&opts.terminalRows, "terminal-rows", "")
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 
 	return cmd

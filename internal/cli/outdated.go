@@ -48,6 +48,9 @@ func newOutdatedCmd() *cobra.Command {
 		Use:   "outdated",
 		Short: "Show current and available versions",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
+				return err
+			}
 			// 0.88: workspace-folder defaults to cwd when not provided.
 			if opts.workspaceFolder == "" {
 				opts.workspaceFolder, _ = os.Getwd()
@@ -63,8 +66,8 @@ func newOutdatedCmd() *cobra.Command {
 	f.StringVar(&opts.logLevel, "log-level", "info", "Log level.")
 	f.StringVar(&opts.logFormat, "log-format", "text", "Log format.")
 	f.String("user-data-folder", "", "")
-	f.Int("terminal-columns", 0, "")
-	f.Int("terminal-rows", 0, "")
+	f.Var(&opts.terminalColumns, "terminal-columns", "")
+	f.Var(&opts.terminalRows, "terminal-rows", "")
 
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd
@@ -79,6 +82,8 @@ type outdatedOpts struct {
 	logFormat       string
 	logFile         string
 	terminalLogFile string
+	terminalColumns givenInt
+	terminalRows    givenInt
 }
 
 type outdatedEntry struct {

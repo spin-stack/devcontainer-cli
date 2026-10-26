@@ -35,8 +35,8 @@ type runUserCommandsOpts struct {
 	defaultUserEnvProbe        string
 	containerSessionDataFolder string
 	secretsFile                string
-	terminalColumns            int
-	terminalRows               int
+	terminalColumns            givenInt
+	terminalRows               givenInt
 }
 
 func newRunUserCommandsCmd() *cobra.Command {
@@ -79,8 +79,8 @@ func newRunUserCommandsCmd() *cobra.Command {
 	f.StringVar(&opts.containerSessionDataFolder, "container-session-data-folder", "", "")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "")
 	f.String("user-data-folder", "", "")
-	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
-	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
+	f.Var(&opts.terminalColumns, "terminal-columns", "")
+	f.Var(&opts.terminalRows, "terminal-rows", "")
 
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd

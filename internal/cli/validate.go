@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -39,17 +40,39 @@ func validateMounts(mounts []string) error {
 	return nil
 }
 
-// validateTerminalImplications checks bidirectional implications between
-// terminal-columns and terminal-rows (matches yargs .implies()).
-func validateTerminalImplications(columns, rows int) error {
-	if columns > 0 && rows == 0 {
+// validateTerminalImplications checks that --terminal-columns and
+// --terminal-rows are given together. Like yargs .implies(), it tests whether
+// each flag is present, not its value: --terminal-rows 0 alone fails too.
+func validateTerminalImplications(columns, rows givenInt) error {
+	if columns.given && !rows.given {
 		return fmt.Errorf("Implications failed:\n terminal-columns -> terminal-rows")
 	}
-	if rows > 0 && columns == 0 {
+	if rows.given && !columns.given {
 		return fmt.Errorf("Implications failed:\n terminal-rows -> terminal-columns")
 	}
 	return nil
 }
+
+// givenInt is a number flag that remembers whether it was given, for checks
+// that test a flag's presence (yargs .implies()). It parses its value as
+// pflag's IntVar does.
+type givenInt struct {
+	value int
+	given bool
+}
+
+func (g *givenInt) Set(s string) error {
+	v, err := strconv.ParseInt(s, 0, 64)
+	if err != nil {
+		return err
+	}
+	g.value, g.given = int(v), true
+	return nil
+}
+
+func (g *givenInt) String() string { return strconv.Itoa(g.value) }
+
+func (g *givenInt) Type() string { return "int" }
 
 // validateEnum checks that a flag value is one of the allowed choices.
 // logLevels and logFormats are the choices TS yargs declares for --log-level

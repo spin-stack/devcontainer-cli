@@ -49,8 +49,8 @@ type readConfigOpts struct {
 	dockerPath                string
 	additionalFeatures        string
 	skipFeatureAutoMapping    bool
-	terminalColumns           int
-	terminalRows              int
+	terminalColumns           givenInt
+	terminalRows              givenInt
 	cacheKey                  bool
 }
 
@@ -82,8 +82,8 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.String("user-data-folder", "", "Host path to persisted data.")
 	f.StringVar(&opts.containerID, "container-id", "", "Container ID.")
 	f.StringArrayVar(&opts.idLabels, "id-label", nil, "Id label(s).")
-	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "Terminal columns.")
-	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "Terminal rows.")
+	f.Var(&opts.terminalColumns, "terminal-columns", "Terminal columns.")
+	f.Var(&opts.terminalRows, "terminal-rows", "Terminal rows.")
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
 	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")

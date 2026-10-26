@@ -36,8 +36,8 @@ type setUpOpts struct {
 	remoteEnvs                 []string
 	defaultUserEnvProbe        string
 	containerSessionDataFolder string
-	terminalColumns            int
-	terminalRows               int
+	terminalColumns            givenInt
+	terminalRows               givenInt
 }
 
 func newSetUpCmd() *cobra.Command {
@@ -70,8 +70,8 @@ func newSetUpCmd() *cobra.Command {
 	f.String("user-data-folder", "", "")
 	f.StringArrayVar(&opts.remoteEnvs, "remote-env", nil, "Remote env vars.")
 	f.StringVar(&opts.containerSessionDataFolder, "container-session-data-folder", "", "")
-	f.IntVar(&opts.terminalColumns, "terminal-columns", 0, "")
-	f.IntVar(&opts.terminalRows, "terminal-rows", 0, "")
+	f.Var(&opts.terminalColumns, "terminal-columns", "")
+	f.Var(&opts.terminalRows, "terminal-rows", "")
 
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
 	return cmd

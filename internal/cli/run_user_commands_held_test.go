@@ -30,7 +30,7 @@ func TestPrepareRunUserCommandsOptsRejectsInvalidFlags(t *testing.T) {
 		{"id-label", func(o *runUserCommandsOpts) { o.idLabels = []string{"broken"} }, "id-label must match"},
 		{"remote-env", func(o *runUserCommandsOpts) { o.remoteEnvs = []string{"broken"} }, "remote-env must match"},
 		{"default-user-env-probe", func(o *runUserCommandsOpts) { o.defaultUserEnvProbe = "broken" }, "default-user-env-probe"},
-		{"terminal-columns", func(o *runUserCommandsOpts) { o.terminalColumns = 80 }, "terminal-columns -> terminal-rows"},
+		{"terminal-columns", func(o *runUserCommandsOpts) { o.terminalColumns = givenInt{value: 80, given: true} }, "terminal-columns -> terminal-rows"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := validRunUserCommandsOpts()
