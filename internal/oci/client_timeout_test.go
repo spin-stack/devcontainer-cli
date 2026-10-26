@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +55,7 @@ func TestGetPublishedTags_HangingRegistryTimesOut(t *testing.T) {
 	defer func() { metadataOpTimeout = orig }()
 
 	c := NewClient(log.New(log.Options{Level: log.LevelError}), nil)
-	ref := &Ref{Registry: strings.TrimPrefix(srv.URL, "http://"), Path: "me/feat", Resource: "me/feat"}
+	ref := &Ref{Registry: localhostRegistry(t, srv), Path: "me/feat", Resource: "me/feat"}
 
 	done := make(chan error, 1)
 	start := time.Now()

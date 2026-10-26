@@ -23,7 +23,7 @@ import (
 //   - inject a mid-loop manifest failure (failTags) to reproduce the
 //     no-rollback partial-publish risk in PushArtifact's tag loop.
 //
-// It runs on 127.0.0.1 (httptest), so isLocalRegistry() flips PlainHTTP on and
+// It is addressed as localhost (httptest), so Ref.Scheme() flips PlainHTTP on and
 // no TLS is needed.
 type fakeOCIRegistry struct {
 	mu     sync.Mutex
@@ -65,9 +65,9 @@ func (r *fakeOCIRegistry) start(t *testing.T) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(r.handle))
 	t.Cleanup(srv.Close)
-	r.srvURL = srv.URL
-	// Strip the scheme; the registry host is what ParseRef expects.
-	return strings.TrimPrefix(srv.URL, "http://")
+	host := localhostRegistry(t, srv)
+	r.srvURL = "http://" + host
+	return host
 }
 
 func (r *fakeOCIRegistry) authorized(req *http.Request) bool {

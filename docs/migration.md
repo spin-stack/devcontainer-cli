@@ -97,6 +97,9 @@ runs the official CLI is unaffected:
   are colored and end in `\r\n`, and Stop lines appear only at `trace`. Earlier
   releases always wrote `[N ms] text` without color. A script that parses the log
   should read the timestamped form, or use `--log-format json`.
+- Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
+  releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
+  like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
 
 ## Rollback
 

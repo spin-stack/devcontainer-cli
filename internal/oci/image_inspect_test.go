@@ -119,7 +119,7 @@ func TestInspectImageInRegistryManifest(t *testing.T) {
 	reg := newImageRegistry()
 	srv := httptest.NewServer(reg)
 	defer srv.Close()
-	host := strings.TrimPrefix(srv.URL, "http://")
+	host := localhostRegistry(t, srv)
 	want := ImageConfig{User: "node", Env: []string{"PATH=/usr/bin"}, Labels: map[string]string{"devcontainer.metadata": `[{"remoteUser":"node"}]`}}
 	reg.addImage(t, "devcontainers/base", "1", "application/vnd.docker.distribution.manifest.v2+json", want)
 
@@ -141,7 +141,7 @@ func TestInspectImageInRegistryIndexSelectsPlatform(t *testing.T) {
 			reg := newImageRegistry()
 			srv := httptest.NewServer(reg)
 			defer srv.Close()
-			host := strings.TrimPrefix(srv.URL, "http://")
+			host := localhostRegistry(t, srv)
 			amd := reg.addImage(t, "org/img", "", ocispec.MediaTypeImageManifest, ImageConfig{User: "amd"})
 			arm := reg.addImage(t, "org/img", "", ocispec.MediaTypeImageManifest, ImageConfig{User: "arm"})
 			armV7 := reg.addImage(t, "org/img", "", ocispec.MediaTypeImageManifest, ImageConfig{User: "armv7"})
@@ -175,7 +175,7 @@ func TestInspectImageInRegistryMissingManifest(t *testing.T) {
 	reg := newImageRegistry()
 	srv := httptest.NewServer(reg)
 	defer srv.Close()
-	host := strings.TrimPrefix(srv.URL, "http://")
+	host := localhostRegistry(t, srv)
 	_, err := testImageClient().InspectImageInRegistry(context.Background(), host+"/org/missing:1", ocispec.Platform{OS: "linux", Architecture: "amd64"})
 	if err == nil || err.Error() != "No manifest found for "+host+"/org/missing:1." {
 		t.Fatalf("err = %v", err)

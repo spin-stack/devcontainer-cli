@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/opencontainers/image-spec/specs-go"
@@ -63,7 +62,7 @@ func TestInspectImageInRegistryIndexVariant(t *testing.T) {
 	reg := newImageRegistry()
 	srv := httptest.NewServer(reg)
 	defer srv.Close()
-	host := strings.TrimPrefix(srv.URL, "http://")
+	host := localhostRegistry(t, srv)
 	v6 := reg.addImage(t, "org/img", "", ocispec.MediaTypeImageManifest, ImageConfig{User: "v6"})
 	v7 := reg.addImage(t, "org/img", "", ocispec.MediaTypeImageManifest, ImageConfig{User: "v7"})
 	v6.Platform = &ocispec.Platform{OS: "linux", Architecture: "arm", Variant: "v6"}

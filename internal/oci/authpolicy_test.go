@@ -280,7 +280,7 @@ func TestClientHonorsAuthPolicyEndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ref, err := ParseRef(strings.TrimPrefix(srv.URL, "http://") + "/devcontainers/features/go:1")
+	ref, err := ParseRef(localhostRegistry(t, srv) + "/devcontainers/features/go:1")
 	if err != nil {
 		t.Fatalf("parse ref: %v", err)
 	}
