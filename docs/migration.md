@@ -166,6 +166,11 @@ runs the official CLI is unaffected:
   `--dry-run`, before generating the lockfile. Earlier releases validated the
   two flags but otherwise ignored them. Run it on a clean working tree, or
   without the flags, when the configuration must stay unchanged.
+- `outdated --output-format json` indents its result only when stdout is a
+  terminal. Redirected or piped, as in a script, it is one unindented line
+  (`{"features":{...}}`) followed by a newline; earlier releases always indented it
+  with two spaces. A script that parses the JSON is unaffected; one that matches
+  lines or greps the indented text should parse the JSON instead (with `jq`, say).
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // bareVersion is a bare semver-ish target: x / x.y / x.y.z
@@ -142,6 +144,23 @@ func resolvePublishedVersions(ociClient oci.Registry, ref *oci.Ref) []*semver.Ve
 	return versions
 }
 
+// writeOutdatedJSON writes outdated's JSON result as TS does:
+// JSON.stringify(outdated, undefined, process.stdout.isTTY ? '  ' : undefined),
+// indented only when stdout is a terminal.
+func writeOutdatedJSON(w io.Writer, payload map[string]any) {
+	data, _ := stringify.JSON(payload, outdatedIndent(w))
+	fmt.Fprintln(w, string(data))
+}
+
+// outdatedIndent is the indent of outdated's JSON on w: two spaces when w is
+// a terminal (Node's isTTY, an isatty check), none otherwise.
+func outdatedIndent(w io.Writer) string {
+	if f, ok := w.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		return "  "
+	}
+	return ""
+}
+
 // majorOf returns the major version of a semver string, or "" if unparseable.
 func majorOf(v string) string {
 	if v == "" {
@@ -181,7 +200,7 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	cfg := loadResult.Config
 	if len(cfg.Features) == 0 {
 		if opts.outputFormat == "json" {
-			fmt.Fprintln(out.Stdout(), `{"features":{}}`)
+			writeOutdatedJSON(out.Stdout(), map[string]any{"features": map[string]any{}})
 		} else {
 			fmt.Fprintln(out.Stdout(), "No features configured.")
 		}
@@ -237,9 +256,7 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	}
 
 	if opts.outputFormat == "json" {
-		payload := map[string]any{"features": result}
-		data, _ := stringify.JSON(payload, "  ")
-		fmt.Fprintln(out.Stdout(), string(data))
+		writeOutdatedJSON(out.Stdout(), map[string]any{"features": result})
 	} else {
 		// Text table. Rows follow the order features were declared in the config
 		// (TS reorders resolved.features back to config order), and the Feature
