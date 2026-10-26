@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 )
 
 func TestFindConfigFile(t *testing.T) {
@@ -532,5 +534,25 @@ func TestLoadDevContainerConfigUnreadableOverride(t *testing.T) {
 	_, err := LoadDevContainerConfig(t.TempDir(), "", t.TempDir())
 	if _, ok := errors.AsType[*NotFoundError](err); ok || err == nil || !strings.Contains(err.Error(), "read override config") {
 		t.Errorf("err = %v, want the override's read error", err)
+	}
+}
+
+// A host variable without a name is TS's ContainerError (variableSubstitution.ts),
+// its description the whole text: the loader adds no prefix of its own, so
+// commands report it as TS does.
+func TestLoadDevContainerConfigUnresolvableVariableIsAContainerError(t *testing.T) {
+	ws := t.TempDir()
+	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"image":"img","containerEnv":{"A":"${localEnv}"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadDevContainerConfig(ws, "", "")
+	want := "'${localEnv}' in devcontainer.json can not be resolved because no environment variable name is given."
+	ce, ok := coreerrors.AsContainerError(err)
+	if !ok || err.Error() != want || ce.Description != want {
+		t.Errorf("err = %#v, want a ContainerError %q", err, want)
 	}
 }

@@ -259,9 +259,11 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		ConfigFilePath:           configFilePath,
 	}
 
+	// A variable that cannot be resolved is TS's ContainerError, reported as
+	// it is (no prefix of Go's own).
 	substituted, err := NewVariableResolver().Resolve(SubstitutionContext{HostSubContext: ctx}, PhaseHost, raw)
 	if err != nil {
-		return nil, fmt.Errorf("apply host substitutions: %w", err)
+		return nil, err
 	}
 	if m, ok := substituted.(map[string]any); ok {
 		raw = m
