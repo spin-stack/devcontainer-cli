@@ -121,7 +121,7 @@ func stageDirs(t *testing.T) func() string {
 
 func installFeature(t *testing.T, reg oci.Registry, id string, opts any, lockfile *features.Lockfile) (*features.Set, error) {
 	t.Helper()
-	return processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: id, Options: opts}, t.TempDir(), false, lockfile, stageDirs(t))
+	return processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: id, Options: opts}, localFeatureRoots{}, false, lockfile, stageDirs(t))
 }
 
 // An OCI Feature's identity, version and staged content come from the
@@ -290,7 +290,7 @@ func TestProcessInstallFeatureOCIErrors(t *testing.T) {
 			if stage == nil {
 				stage = stageDirs(t)
 			}
-			_, err := processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: featureID}, t.TempDir(), false, nil, stage)
+			_, err := processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: featureID}, localFeatureRoots{}, false, nil, stage)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("err = %v, want %q", err, tc.wantErr)
 			}
@@ -375,7 +375,7 @@ func TestProcessInstallFeatureTarballErrors(t *testing.T) {
 	})
 	t.Run("staging folder not writable", func(t *testing.T) {
 		uri := serveBytes(t, blob, http.StatusOK) + "/f.tgz"
-		_, err := processInstallFeature(log.Null, nil, &features.FNode{UserFeatureID: uri}, t.TempDir(), false, nil, func() string { return filepath.Join(blocker, "stage") })
+		_, err := processInstallFeature(log.Null, nil, &features.FNode{UserFeatureID: uri}, localFeatureRoots{}, false, nil, func() string { return filepath.Join(blocker, "stage") })
 		if err == nil || !strings.Contains(err.Error(), "write feature tarball") {
 			t.Fatalf("err = %v", err)
 		}
@@ -400,7 +400,7 @@ func TestTarballFeatureIDUsesTheURLPath(t *testing.T) {
 // always names the same.
 func TestFetchFeatureSetsReportsTheFirstSortedFailure(t *testing.T) {
 	for range 5 {
-		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, t.TempDir(), false)
+		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, devcontainerRoots(t), false)
 		if err == nil || !strings.Contains(err.Error(), "'./a-missing'") {
 			t.Fatalf("err = %v, want the failure of ./a-missing", err)
 		}
@@ -579,11 +579,11 @@ type extendResult struct {
 
 func (e extendRun) run(t *testing.T) extendResult {
 	t.Helper()
-	base := t.TempDir()
-	writeLocalFeature(t, base, "hello", nil)
+	roots := devcontainerRoots(t)
+	writeLocalFeature(t, roots.configDir, "hello", nil)
 	r := &fakeDockerRunner{reply: e.reply}
 	opts := e.fbOpts
-	opts.FeaturesBasePath = base
+	opts.FeaturesBasePath, opts.WorkspaceFolder = roots.configDir, roots.workspaceRoot
 	cfg := e.features
 	if cfg == nil {
 		cfg = map[string]any{"./hello": map[string]any{}}
@@ -849,11 +849,11 @@ func TestExtendImageWithFeaturesBridgesRegistryAuth(t *testing.T) {
 	t.Setenv("DOCKER_CONFIG", ambient)
 	t.Setenv("DEVCONTAINERS_OCI_AUTH", "registry.example.com|user|secret")
 
-	base := t.TempDir()
-	writeLocalFeature(t, base, "hello", nil)
+	roots := devcontainerRoots(t)
+	writeLocalFeature(t, roots.configDir, "hello", nil)
 	client := &docker.Client{DockerPath: script, Env: []string{"FAKE_DOCKER_LOG=" + logPath}, Log: log.Null}
 	_, err := extendImageWithFeatures(t.Context(), log.Null, client, &docker.EngineClient{API: &fakeDockerAPI{}}, "base:latest",
-		map[string]any{"./hello": true}, false, []string{"registry.example.com/app:1"}, &FeatureBuildOptions{FeaturesBasePath: base})
+		map[string]any{"./hello": true}, false, []string{"registry.example.com/app:1"}, &FeatureBuildOptions{FeaturesBasePath: roots.configDir, WorkspaceFolder: roots.workspaceRoot})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,8 @@
 package features
 
 import (
+	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -17,6 +19,7 @@ func TestClassifyFeatureID(t *testing.T) {
 		{"http://example.com/feature.tgz", SourceDirectTarball},
 		{"./local-feature", SourceLocalPath},
 		{"../sibling-feature", SourceLocalPath},
+		{"/abs/feature", SourceLocalPath},
 		{"go", SourceLegacyShorthand},
 		{"node", SourceLegacyShorthand},
 		{"my-feature", SourceLegacyShorthand},
@@ -143,5 +146,62 @@ func TestUserFeaturesToArray_Nil(t *testing.T) {
 	arr := UserFeaturesToArray(nil)
 	if arr != nil {
 		t.Errorf("expected nil, got %v", arr)
+	}
+}
+
+// A local Feature resolves next to its configuration, and only inside the
+// workspace's .devcontainer folder, as TS processFeatureIdentifier
+// (containerFeaturesConfiguration.ts) requires; each refusal is the error TS
+// logs.
+func TestLocalFeaturePath(t *testing.T) {
+	ws := t.TempDir()
+	dc := filepath.Join(ws, ".devcontainer")
+	outside := "Local file path parse error. Resolved path must be a child of the .devcontainer/ folder.  Parsed: "
+	for _, tc := range []struct {
+		name, id, configDir, workspaceRoot string
+		want, wantErr                      string
+	}{
+		{name: "inside .devcontainer", id: "./feat", configDir: dc, workspaceRoot: ws, want: filepath.Join(dc, "feat")},
+		{name: "nested", id: "./a/../b/feat", configDir: dc, workspaceRoot: ws, want: filepath.Join(dc, "b", "feat")},
+		{name: "the .devcontainer folder itself", id: "./", configDir: dc, workspaceRoot: ws, want: dc},
+		{name: "parent folder", id: "../feat", configDir: dc, workspaceRoot: ws, wantErr: outside + filepath.Join(ws, "feat")},
+		{name: "configuration at the workspace root", id: "./feat", configDir: ws, workspaceRoot: ws, wantErr: outside + filepath.Join(ws, "feat")},
+		{name: "configuration of another workspace", id: "./feat", configDir: dc, workspaceRoot: filepath.Join(ws, "other"), wantErr: outside + filepath.Join(dc, "feat")},
+		// TS looks for ".." anywhere in the relative path, a folder name included.
+		{name: "dots in a folder name", id: "./a..b", configDir: dc, workspaceRoot: ws, wantErr: outside + filepath.Join(dc, "a..b")},
+		{name: "absolute", id: filepath.Join(dc, "feat"), configDir: dc, workspaceRoot: ws, wantErr: "An Absolute path to a local feature is not allowed."},
+		{name: "absolute without a configuration", id: "/feat", wantErr: "An Absolute path to a local feature is not allowed."},
+		{name: "no configuration", id: "./feat", workspaceRoot: ws, wantErr: "A local feature requires a configuration path."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := LocalFeaturePath(tc.id, tc.configDir, tc.workspaceRoot)
+			if tc.wantErr != "" {
+				invalid, ok := errors.AsType[*InvalidLocalFeatureError](err)
+				if !ok || invalid.Error() != tc.wantErr || got != "" {
+					t.Fatalf("LocalFeaturePath = %q, %v; want the error %q", got, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("LocalFeaturePath = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// Without a workspace folder the workspace root is the working directory, as
+// TS's params.cwd falls back to process.cwd().
+func TestLocalFeaturePathDefaultsToTheWorkingDirectory(t *testing.T) {
+	ws := t.TempDir()
+	t.Chdir(ws)
+	dc := filepath.Join(ws, ".devcontainer")
+	if got, err := LocalFeaturePath("./feat", dc, ""); err != nil || got != filepath.Join(dc, "feat") {
+		t.Fatalf("LocalFeaturePath = %q, %v; want the Feature in the working directory's .devcontainer", got, err)
+	}
+	if _, err := LocalFeaturePath("./feat", filepath.Join(ws, "sub", ".devcontainer"), ""); err == nil {
+		t.Fatal("a configuration outside the working directory's .devcontainer resolved")
+	}
+	if got, err := LocalFeaturePath("./feat", dc, "."); err != nil || got != filepath.Join(dc, "feat") {
+		t.Fatalf("relative workspace root: LocalFeaturePath = %q, %v", got, err)
 	}
 }

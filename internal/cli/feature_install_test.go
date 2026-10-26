@@ -1,16 +1,32 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 )
+
+// devcontainerRoots creates a workspace with an empty .devcontainer folder and
+// returns the roots of a configuration in that folder, where local Features
+// must lie.
+func devcontainerRoots(t *testing.T) localFeatureRoots {
+	t.Helper()
+	ws := t.TempDir()
+	dir := filepath.Join(ws, ".devcontainer")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return localFeatureRoots{configDir: dir, workspaceRoot: ws}
+}
 
 func TestFetchFeatureSets(t *testing.T) {
 	tests := []struct {
@@ -134,9 +150,9 @@ func TestFetchFeatureSets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			baseDir := t.TempDir()
-			tt.setup(t, baseDir)
-			result, err := fetchFeatureSets(t.Context(), log.Null, tt.entries, baseDir, false)
+			roots := devcontainerRoots(t)
+			tt.setup(t, roots.configDir)
+			result, err := fetchFeatureSets(t.Context(), log.Null, tt.entries, roots, false)
 			if result != nil && result.TmpDir != "" {
 				defer os.RemoveAll(result.TmpDir)
 			}
@@ -213,7 +229,8 @@ func TestFeatureMetadataEntry_UsesOCIUserID(t *testing.T) {
 // devcontainer-feature.json id, else the folder name; its name, when the file
 // has none, is the user's reference.
 func TestFetchFeatureSets_StagingLayout(t *testing.T) {
-	baseDir := t.TempDir()
+	roots := devcontainerRoots(t)
+	baseDir := roots.configDir
 	writeLocalFeature(t, baseDir, "dir-a", map[string]any{"./dir-b": true})
 	dirB := filepath.Join(baseDir, "dir-b")
 	if err := os.MkdirAll(dirB, 0o755); err != nil {
@@ -225,7 +242,7 @@ func TestFetchFeatureSets_StagingLayout(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dirB, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	result, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./dir-a": true}, baseDir, false)
+	result, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./dir-a": true}, roots, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,4 +406,56 @@ func TestFeatureMetadataEntryCarriesEveryLifecycleHook(t *testing.T) {
 	if len(merged.UpdateContentCommands) != 1 {
 		t.Errorf("merged updateContentCommands = %#v, want the Feature's command", merged.UpdateContentCommands)
 	}
+}
+
+// A local Feature outside the workspace's .devcontainer folder, or given by an
+// absolute path, is refused as TS processFeatureIdentifier refuses it: the
+// reason is logged as an error and the Feature fails as one that could not be
+// processed, the plain Error build and up report as their message.
+func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
+	roots := devcontainerRoots(t)
+	writeLocalFeature(t, roots.workspaceRoot, "feat", nil)
+	writeLocalFeature(t, roots.configDir, "inside", nil)
+	for _, tc := range []struct{ id, logged string }{
+		{"../feat", "Local file path parse error. Resolved path must be a child of the .devcontainer/ folder.  Parsed: " + filepath.Join(roots.workspaceRoot, "feat")},
+		{filepath.Join(roots.configDir, "inside"), "An Absolute path to a local feature is not allowed."},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logs})
+			result, err := fetchFeatureSets(t.Context(), logger, map[string]any{tc.id: true}, roots, false)
+			if result != nil {
+				t.Fatalf("result = %+v, want none", result)
+			}
+			msg := "ERR: Feature '" + tc.id + "' could not be processed.  You may not have permission to access this Feature, or may not be logged in.  If the issue persists, report this to the Feature author."
+			if err == nil || err.Error() != msg {
+				t.Fatalf("err = %v, want %q", err, msg)
+			}
+			if !strings.Contains(logs.String(), tc.logged+"\n") {
+				t.Errorf("logs = %q, want %q", logs.String(), tc.logged)
+			}
+			// up wraps it; both report the message TS's plain Error has.
+			for _, e := range []error{err, fmt.Errorf("install features: %w", err)} {
+				want := coreerrors.ErrorOutput{Outcome: "error", Message: msg, Description: "An error occurred building the container."}
+				if got := commandErrorOutput(e, "An error occurred building the container"); got != want {
+					t.Errorf("commandErrorOutput = %+v, want %+v", got, want)
+				}
+			}
+		})
+	}
+}
+
+// read-configuration resolves local Features against its workspace folder:
+// a configuration at the workspace root (.devcontainer.json) has its Features
+// outside .devcontainer, and the command fails with no result.
+func TestReadConfigurationRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
+	ws := writeConfigFixture(t, map[string]string{
+		".devcontainer.json":             `{"image":"alpine:3","features":{"./feat":{}}}`,
+		"feat/devcontainer-feature.json": `{"id":"feat","version":"1.0.0"}`,
+	})
+	stdout, err := readConfigurationStdout("--workspace-folder", ws, "--include-merged-configuration")
+	if err == nil || !strings.HasPrefix(err.Error(), "ERR: Feature './feat' could not be processed.") || stdout != "" {
+		t.Fatalf("stdout = %q, err = %v; want the Feature's failure and no result", stdout, err)
+	}
+	wantExitCode(t, err, 1)
 }

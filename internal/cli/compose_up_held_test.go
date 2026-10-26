@@ -295,7 +295,7 @@ func newComposeHarness(t *testing.T) *composeHarness {
 			log:    logger,
 			docker: &docker.Client{DockerPath: "docker", Log: logger, Runner: run},
 			engine: &docker.EngineClient{API: engine, Log: logger},
-			opts:   &upOpts{userDataFolder: persisted, updateRemoteUserUIDDefault: "off", gpuAvailability: "none"},
+			opts:   &upOpts{workspaceFolder: ws, userDataFolder: persisted, updateRemoteUserUIDDefault: "off", gpuAvailability: "none"},
 			// The fixtures' metadata names no variables.
 			substitute: func(*[]imagemeta.Entry) error { return nil },
 		},

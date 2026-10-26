@@ -150,7 +150,7 @@ func TestDirectTarballDigestCheckedAgainstTheLockfile(t *testing.T) {
 	digest := "sha256:" + hex.EncodeToString(sum[:])
 
 	resolve := func(lf *features.Lockfile) error {
-		_, err := newMetadataProcessFeature(nil, log.Null, "", lf)(&features.FNode{UserFeatureID: uri})
+		_, err := newMetadataProcessFeature(nil, log.Null, localFeatureRoots{}, lf)(&features.FNode{UserFeatureID: uri})
 		return err
 	}
 	wrong := &features.Lockfile{Features: map[string]features.LockfileEntry{uri: {Integrity: "sha256:" + strings.Repeat("0", 64)}}}

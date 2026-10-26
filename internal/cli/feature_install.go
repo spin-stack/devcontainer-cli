@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -55,6 +56,9 @@ type FeatureBuildOptions struct {
 	SkipFeatureAutoMapping bool
 	SkipPersistCustoms     bool
 	FeaturesBasePath       string
+	// WorkspaceFolder is the workspace root local Features must lie under
+	// (in its .devcontainer folder); "" stands for the working directory.
+	WorkspaceFolder string
 	// AdditionalMetadata follows the Features' entries in the metadata the
 	// Features' users are found in (TS findContainerUsers), variables
 	// substituted; LabelMetadata follows them in the image's
@@ -90,8 +94,34 @@ type fetchFeatureResult struct {
 
 // fetchFeatureSets fetches features, without a lockfile or an install-order
 // override, and returns them in install order.
-func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, featuresBasePath, skipAutoMapping, nil, nil)
+func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots, skipAutoMapping bool) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, local, skipAutoMapping, nil, nil)
+}
+
+// localFeatureRoots are what a local Feature reference (./x) resolves
+// against: the folder of the configuration that lists it ("" when there is no
+// configuration) and the workspace root (TS params.cwd: the workspace folder,
+// or the working directory without one), whose .devcontainer folder the
+// Feature must lie in.
+type localFeatureRoots struct {
+	configDir     string
+	workspaceRoot string
+}
+
+// resolve returns a local Feature's folder. A reference TS
+// processFeatureIdentifier refuses is logged as the error TS writes and
+// reported as no Feature set (nil, nil), which the dependency graph fails as
+// a Feature that could not be processed, as TS does.
+func (r localFeatureRoots) resolve(logger log.Logger, id string) (string, bool, error) {
+	path, err := features.LocalFeaturePath(id, r.configDir, r.workspaceRoot)
+	if invalid, ok := errors.AsType[*features.InvalidLocalFeatureError](err); ok {
+		logger.Write(invalid.Msg, log.LevelError)
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return path, true, nil
 }
 
 // createFeaturesFolder creates the folder the Features are staged in, TS
@@ -109,7 +139,7 @@ func createFeaturesFolder() (string, error) {
 // overrideFeatureInstallOrder and returning the FeatureSets in install
 // order. Each returned Set's content is staged in the features folder at its
 // consecutiveId, `<feature id>_<installOrderIndex>`, as TS fetchFeatures does.
-func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, featuresBasePath string, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
@@ -142,7 +172,7 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresC
 	}
 
 	processFeature := func(node *features.FNode) (*features.Set, error) {
-		return processInstallFeature(logger, ociClient, node, featuresBasePath, skipAutoMapping, lockfile, nextStageDir)
+		return processInstallFeature(logger, ociClient, node, local, skipAutoMapping, lockfile, nextStageDir)
 	}
 
 	graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, overrideOrder, lockfile)
@@ -220,7 +250,7 @@ func processInstallFeature(
 	logger log.Logger,
 	ociClient oci.Registry,
 	node *features.FNode,
-	featuresBasePath string,
+	local localFeatureRoots,
 	skipAutoMapping bool,
 	lockfile *features.Lockfile,
 	nextStageDir func() string,
@@ -250,11 +280,10 @@ func processInstallFeature(
 
 	switch srcType {
 	case features.SourceLocalPath:
-		resolvedPath := id
-		if !filepath.IsAbs(resolvedPath) {
-			resolvedPath = filepath.Join(featuresBasePath, resolvedPath)
+		resolvedPath, ok, err := local.resolve(logger, id)
+		if !ok {
+			return nil, err
 		}
-		resolvedPath = filepath.Clean(resolvedPath)
 
 		info, statErr := os.Stat(resolvedPath)
 		if statErr != nil || !info.IsDir() {
@@ -659,7 +688,7 @@ func extendImageWithFeatures(
 			return nil, err
 		}
 	}
-	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, fbOpts.FeaturesBasePath, fbOpts.SkipFeatureAutoMapping, lockfile, fbOpts.OverrideFeatureInstallOrder)
+	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, fbOpts.SkipFeatureAutoMapping, lockfile, fbOpts.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, err
 	}

@@ -492,7 +492,7 @@ func newUpgradeCmd() *cobra.Command {
 			// resolved fails the command. A configuration without Features has
 			// no Features config, which TS reports as a failure rather than
 			// writing an empty lockfile.
-			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, filepath.Dir(lockfilePath), false, nil, nil)
+			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, localFeatureRoots{filepath.Dir(lockfilePath), ws}, false, nil, nil)
 			if err != nil {
 				return err
 			}

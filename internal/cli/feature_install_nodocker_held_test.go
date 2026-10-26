@@ -18,7 +18,8 @@ import (
 // it is written into the extended image, and the build still reports the
 // image's names.
 func TestExtendImageWithFeaturesResolvesFeatureHostVars(t *testing.T) {
-	base := t.TempDir()
+	roots := devcontainerRoots(t)
+	base := roots.configDir
 	dir := filepath.Join(base, "envy")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -33,6 +34,7 @@ func TestExtendImageWithFeaturesResolvesFeatureHostVars(t *testing.T) {
 	names, err := extendImageWithFeatures(t.Context(), log.Null, fakeDockerClient(r), &docker.EngineClient{API: &fakeDockerAPI{version: "25.0.0"}},
 		"base:latest", map[string]any{"./envy": true}, false, []string{"out:1"}, &FeatureBuildOptions{
 			FeaturesBasePath: base,
+			WorkspaceFolder:  roots.workspaceRoot,
 			HostSub:          &config.HostSubContext{Platform: "linux", Env: map[string]string{"HOST_VALUE": "resolved-on-host"}},
 		})
 	if err != nil {

@@ -183,7 +183,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if needsFeaturesConfiguration(opts, containerID, result) {
 		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 		var featErr error
-		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, filepath.Dir(result.Config.ConfigFilePath), opts.skipFeatureAutoMapping)
+		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, localFeatureRoots{filepath.Dir(result.Config.ConfigFilePath), workspaceFolder}, opts.skipFeatureAutoMapping)
 		if featErr != nil {
 			// TS readConfiguration writes the error to the log and exits 1 with no
 			// result; a Feature that cannot be resolved is not an empty one.
