@@ -168,7 +168,9 @@ on any host.
 
 A lockfile that exists but cannot be read or parsed fails the command (exit code 1, error
 result on stdout) instead of being left out of the key, as the upstream CLI fails every
-command that reads it. An empty lockfile pins nothing and keys like no lockfile.
+command that reads it. An empty lockfile pins nothing and keys like no lockfile. Likewise, a
+Dockerfile-based configuration whose Dockerfile cannot be read fails the command with
+`compute cache key: read Dockerfile: …`, the file `build` would fail on.
 
 The flag is **additive**: without it, the output is byte-for-byte identical to the upstream
 CLI; with it, a `cacheKey` field is added.

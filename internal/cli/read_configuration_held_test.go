@@ -481,6 +481,32 @@ func TestReadConfigurationCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	}
 }
 
+// --cache-key over a Dockerfile configuration whose Dockerfile is missing
+// fails with the error result naming the file; without the flag the command
+// does not read the Dockerfile, as the reference's does not, and succeeds.
+func TestReadConfigurationCacheKeyFailsOnAMissingDockerfile(t *testing.T) {
+	ws := writeConfigFixture(t, map[string]string{
+		".devcontainer/devcontainer.json": `{"build": {"dockerfile": "Dockerfile"}}`,
+	})
+	if _, err := runReadConfigurationCmd(t, "--workspace-folder", ws); err != nil {
+		t.Fatalf("without --cache-key: %v", err)
+	}
+	var stdout bytes.Buffer
+	root := NewRootCommand()
+	root.SetOut(&stdout)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"read-configuration", "--workspace-folder", ws, "--cache-key"})
+	wantExitCode(t, root.Execute(), 1)
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("stdout is not the error envelope: %v\n%s", err, stdout.String())
+	}
+	want := "compute cache key: read Dockerfile: open " + filepath.Join(ws, ".devcontainer", "Dockerfile") + ": no such file or directory"
+	if envelope["outcome"] != "error" || envelope["message"] != want {
+		t.Errorf("stdout = %s, want the error outcome %q", stdout.String(), want)
+	}
+}
+
 func TestReadConfigurationCommandFeaturesAndCacheKey(t *testing.T) {
 	files := map[string]string{".devcontainer/devcontainer.json": `{"image": "img:1", "features": {"./feat": {}}}`}
 	for k, v := range localFeatureFiles {

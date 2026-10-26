@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/devcontainers/cli/internal/config"
 )
 
 // A committed features lockfile pins resolved digests, so changing it changes
@@ -92,5 +94,19 @@ func TestComputeCacheKeyFailsOnAnUnreadableLockfile(t *testing.T) {
 	}
 	if _, err := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), nil); err == nil || !strings.Contains(err.Error(), lockPath) {
 		t.Errorf("err = %v, want the read failure naming %s", err, lockPath)
+	}
+}
+
+// A Dockerfile-based configuration whose Dockerfile cannot be read fails the
+// key instead of keying as if it had no Dockerfile, naming the file.
+func TestComputeCacheKeyFailsOnAMissingDockerfile(t *testing.T) {
+	dir := t.TempDir()
+	r := &config.LoadResult{Config: &config.DevContainer{
+		Build:          &config.Build{Dockerfile: "Dockerfile"},
+		ConfigFilePath: filepath.Join(dir, "devcontainer.json"),
+	}}
+	key, err := computeCacheKey(r, nil)
+	if want := "read Dockerfile: open " + filepath.Join(dir, "Dockerfile") + ": no such file or directory"; err == nil || err.Error() != want {
+		t.Errorf("key, err = %q, %v; want %q", key, err, want)
 	}
 }
