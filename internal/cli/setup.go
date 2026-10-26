@@ -194,7 +194,8 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 	if err != nil {
 		return writeErrorResult(out, err.Error())
 	}
-	return writeSuccessJSON(out, result)
+	orderConfigurations(result, loaded)
+	return writeSuccessJSON(out, result, setUpResultKeys...)
 }
 
 // setUpConfig loads the --config file set-up merges over the container's

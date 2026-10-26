@@ -95,6 +95,10 @@ type parityCase struct {
 	// classify TS's failure as an unusable-oracle skip → inconclusive; with it, when
 	// Go also failed the harness compares exit codes instead.
 	ExpectInfraFailure bool `yaml:"expect_infra_failure"`
+	// KeyOrder names JSON objects in the result on stdout whose keys must come in
+	// TS's order, which stdout_normalized cannot see (it sorts keys): "" is the
+	// result itself, "configuration" its configuration property, and so on.
+	KeyOrder []string `yaml:"key_order"`
 }
 
 type paritySideResult struct {
@@ -446,6 +450,22 @@ func TestParityMatrix(t *testing.T) {
 				goNorm := normalizeTextOpts(goRes.Stderr, scrubHashes)
 				if tsNorm != goNorm {
 					t.Errorf("stderr differs:\n--- TS\n%s\n--- Go\n%s", tsNorm, goNorm)
+				}
+			}
+
+			for _, path := range tc.KeyOrder {
+				tsKeys, err := jsonKeyOrder(extractJSONCandidate(tsRes.Stdout), path)
+				if err != nil {
+					t.Errorf("key_order %q: TS: %v", path, err)
+					continue
+				}
+				goKeys, err := jsonKeyOrder(extractJSONCandidate(goRes.Stdout), path)
+				if err != nil {
+					t.Errorf("key_order %q: Go: %v", path, err)
+					continue
+				}
+				if !slices.Equal(tsKeys, goKeys) {
+					t.Errorf("key order of %q differs:\n  TS: %v\n  Go: %v", path, tsKeys, goKeys)
 				}
 			}
 
@@ -1021,6 +1041,42 @@ func normalizeRequired(raw string) string {
 }
 
 // --- Helpers ---
+
+// jsonKeyOrder is the keys of the JSON object at path in the document data, in
+// the order data lists them: "" is the document itself, "a.b" the object at
+// property b of property a.
+func jsonKeyOrder(data, path string) ([]string, error) {
+	raw := json.RawMessage(data)
+	if path != "" {
+		for name := range strings.SplitSeq(path, ".") {
+			var obj map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &obj); err != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+			var ok bool
+			if raw, ok = obj[name]; !ok {
+				return nil, fmt.Errorf("%s: no property %q", path, name)
+			}
+		}
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil, fmt.Errorf("%s: not an object", path)
+	}
+	var keys []string
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		keys = append(keys, tok.(string))
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	return keys, nil
+}
 
 func extractJSONCandidate(raw string) string {
 	raw = strings.TrimSpace(raw)

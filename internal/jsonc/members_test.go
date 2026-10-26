@@ -24,3 +24,17 @@ func TestMemberNamesKeepsDocumentOrder(t *testing.T) {
 		}
 	}
 }
+
+// Names keeps the top-level object's document order; a document that is not
+// an object, or not JSON, gives nil.
+func TestNamesKeepsDocumentOrder(t *testing.T) {
+	doc := []byte("\ufeff{\n // comment\n \"name\": \"x\",\n \"image\": \"y\",\n \"capAdd\": [],\n}")
+	if got := Names(doc); !slices.Equal(got, []string{"name", "image", "capAdd"}) {
+		t.Errorf("Names = %v, want [name image capAdd]", got)
+	}
+	for _, d := range []string{`[]`, `{`} {
+		if got := Names([]byte(d)); got != nil {
+			t.Errorf("Names(%s) = %v, want nil", d, got)
+		}
+	}
+}

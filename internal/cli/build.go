@@ -224,7 +224,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		"outcome":            "success",
 		"imageName":          buildResultImageName(cfg.IsComposeConfig(), opts.imageNames, imageNameResult),
 		"ociAuthDiagnostics": ociAuthDiagnostics(ctx),
-	})
+	}, buildResultKeys...)
 }
 
 // buildResultImageName is the result's imageName: the image names built, except
@@ -724,8 +724,13 @@ func buildOptionsFromConfig(cfg *config.DevContainer) []string {
 	return cfg.Build.Options
 }
 
-func writeSuccessJSON(out Output, data map[string]any) error {
-	b, _ := json.Marshal(data)
+// writeSuccessJSON writes a command's result with its keys in order (see
+// orderedObject).
+func writeSuccessJSON(out Output, data map[string]any, order ...string) error {
+	b, err := json.Marshal(orderedObject{data, order})
+	if err != nil {
+		return fmt.Errorf("marshal result: %w", err)
+	}
 	fmt.Fprintln(out.Stdout(), string(b))
 	return nil
 }

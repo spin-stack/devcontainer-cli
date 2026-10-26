@@ -181,10 +181,10 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		}
 		if featResult != nil {
 			defer os.RemoveAll(featResult.TmpDir)
-			output["featuresConfiguration"] = map[string]any{
+			output["featuresConfiguration"] = orderedObject{map[string]any{
 				"featureSets": featResult.FeatureSets,
 				"dstFolder":   featResult.TmpDir,
-			}
+			}, featuresConfigurationKeys}
 		}
 	}
 
@@ -226,8 +226,9 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	// OCI auth diagnostics for this invocation (TS readConfiguration emits it
 	// unconditionally, even when no registry was contacted).
 	output["ociAuthDiagnostics"] = ociAuthDiagnostics(ctx)
+	orderConfigurations(output, result)
 
-	data, err := json.Marshal(output)
+	data, err := json.Marshal(orderedObject{output, readConfigurationKeys})
 	if err != nil {
 		return fmt.Errorf("marshal output: %w", err)
 	}

@@ -399,19 +399,27 @@ func TestConfigMetadataEntry(t *testing.T) {
 // stdout parsed, or the command's error.
 func runReadConfigurationCmd(t *testing.T, args ...string) (map[string]any, error) {
 	t.Helper()
+	stdout, err := readConfigurationStdout(args...)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	return out, nil
+}
+
+// readConfigurationStdout runs read-configuration with args and returns its
+// stdout as written, or the command's error.
+func readConfigurationStdout(args ...string) (string, error) {
 	var stdout bytes.Buffer
 	root := NewRootCommand()
 	root.SetOut(&stdout)
 	root.SetErr(io.Discard)
 	root.SetArgs(append([]string{"read-configuration"}, args...))
-	if err := root.Execute(); err != nil {
-		return nil, err
-	}
-	var out map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
-	}
-	return out, nil
+	err := root.Execute()
+	return stdout.String(), err
 }
 
 func wantExitCode(t *testing.T, err error, code int) {

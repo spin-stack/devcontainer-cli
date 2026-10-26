@@ -32,6 +32,16 @@ func StripComments(data []byte) ([]byte, error) {
 	return hujson.Standardize(stripBOM(data))
 }
 
+// Names returns the names of the members of the top-level JSONC object, in
+// the order the document lists them; nil when the document is not an object.
+func Names(data []byte) []string {
+	v, err := hujson.Parse(stripBOM(data))
+	if err != nil {
+		return nil
+	}
+	return objectNames(v)
+}
+
 // MemberNames returns the names of the members of the object at field of the
 // top-level JSONC object, in the order the document lists them; nil when the
 // document or the field is not an object.
@@ -46,18 +56,23 @@ func MemberNames(data []byte, field string) []string {
 	}
 	for _, m := range top.Members {
 		if lit, ok := m.Name.Value.(hujson.Literal); ok && lit.String() == field {
-			obj, ok := m.Value.Value.(*hujson.Object)
-			if !ok {
-				return nil
-			}
-			names := make([]string, 0, len(obj.Members))
-			for _, f := range obj.Members {
-				if lit, ok := f.Name.Value.(hujson.Literal); ok {
-					names = append(names, lit.String())
-				}
-			}
-			return names
+			return objectNames(m.Value)
 		}
 	}
 	return nil
+}
+
+// objectNames returns the member names of v, nil when v is not an object.
+func objectNames(v hujson.Value) []string {
+	obj, ok := v.Value.(*hujson.Object)
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(obj.Members))
+	for _, f := range obj.Members {
+		if lit, ok := f.Name.Value.(hujson.Literal); ok {
+			names = append(names, lit.String())
+		}
+	}
+	return names
 }

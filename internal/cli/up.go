@@ -463,8 +463,9 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := addUpConfiguration(result, opts, cfg, inspectResp, run.metadataOfContainer, logger); err != nil {
 		return writeErrorResult(out, err.Error())
 	}
+	orderConfigurations(result, loadResult)
 
-	return writeSuccessJSON(out, result)
+	return writeSuccessJSON(out, result, upResultKeys...)
 }
 
 // imageLabels are the labels of the image ref names, nil when there is no ref
