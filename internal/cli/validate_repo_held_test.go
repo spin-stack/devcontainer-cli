@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"math"
+	"strconv"
+	"testing"
+)
 
 // An --id-label is <name>=<value>: a name and a value on both sides of an '='.
 // TS rejects a label without '=', with an empty name or with an empty value.
@@ -95,6 +99,12 @@ func TestGivenIntParsesLikeIntVar(t *testing.T) {
 	var bad givenInt
 	if err := bad.Set("abc"); err == nil || bad.given {
 		t.Errorf("Set(\"abc\") = %v, givenInt %+v; want an error and not given", err, bad)
+	}
+	// A value int cannot hold is an error, never truncated.
+	tooBig := strconv.FormatUint(uint64(math.MaxInt)+1, 10)
+	var big givenInt
+	if err := big.Set(tooBig); err == nil || big.given {
+		t.Errorf("Set(%q) = %v, givenInt %+v; want an error and not given", tooBig, err, big)
 	}
 }
 

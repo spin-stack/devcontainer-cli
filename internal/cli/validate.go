@@ -62,7 +62,9 @@ type givenInt struct {
 }
 
 func (g *givenInt) Set(s string) error {
-	v, err := strconv.ParseInt(s, 0, 64)
+	// Parsed at int's size, so a value int cannot hold is an error rather
+	// than truncated.
+	v, err := strconv.ParseInt(s, 0, strconv.IntSize)
 	if err != nil {
 		return err
 	}
