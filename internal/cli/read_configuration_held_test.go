@@ -125,14 +125,20 @@ func TestConfigurationOutput(t *testing.T) {
 		t.Errorf("configFilePath = %v, want %v", got["configFilePath"], want)
 	}
 
-	for name, opts := range map[string]readConfigOpts{
-		"--config":          {configPath: cfp},
-		"--override-config": {overrideConfig: cfp},
-		"--container-id":    {containerID: "abc"},
+	// TS makes a file URI of --config only; the configuration found in the
+	// workspace keeps the vscode-fileHost scheme with --override-config or
+	// --container-id.
+	for name, tc := range map[string]struct {
+		opts   readConfigOpts
+		scheme string
+	}{
+		"--config":          {readConfigOpts{configPath: cfp}, "file"},
+		"--override-config": {readConfigOpts{overrideConfig: cfp}, "vscode-fileHost"},
+		"--container-id":    {readConfigOpts{containerID: "abc"}, "vscode-fileHost"},
 	} {
-		got := configurationOutput(result, &opts)
-		if scheme := got["configFilePath"].(map[string]any)["scheme"]; scheme != "file" {
-			t.Errorf("with %s: scheme = %v, want file", name, scheme)
+		got := configurationOutput(result, &tc.opts)
+		if scheme := got["configFilePath"].(map[string]any)["scheme"]; scheme != tc.scheme {
+			t.Errorf("with %s: scheme = %v, want %s", name, scheme, tc.scheme)
 		}
 	}
 }

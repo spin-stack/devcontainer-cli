@@ -516,14 +516,25 @@ func upRemoteUser(cfgUser string, ctr container.InspectResponse, imageLabels fun
 	return cmp.Or(ctrUser, "root")
 }
 
+// upConfigFileFromArgument reports whether the URI TS's up keeps as
+// configFilePath is one URI.file made from an argument, with the file scheme:
+// --config's, or without a workspace --override-config's
+// (configContainer.ts resolveWithLocalFolder). One found in the workspace, or
+// its default path, has the vscode-fileHost scheme.
+func upConfigFileFromArgument(opts *upOpts) bool {
+	return opts.configPath != "" || opts.workspaceFolder == "" && opts.overrideConfig != ""
+}
+
 // upConfigFileFSPathRead reports whether TS's up read the configuration URI's
 // fsPath, which decides whether the URI it writes has one: readDocument reads
-// a file URI's (editableFiles.ts), so a --config read without an override;
-// resolveWithLocalFolder passes it to findContainerAndIdLabels without
-// --id-label (configContainer.ts); and getLockfilePath reads it when Features
-// are processed with the lockfile on (lockfile.ts).
+// a file URI's (editableFiles.ts) when it is the document read
+// (overrideConfigFile ?? configFile); resolveWithLocalFolder passes it to
+// findContainerAndIdLabels without --id-label (configContainer.ts); and
+// getLockfilePath reads it when Features are processed with the lockfile on
+// (lockfile.ts).
 func upConfigFileFSPathRead(opts *upOpts, lockfileRead bool) bool {
-	return opts.configPath != "" && opts.overrideConfig == "" || len(opts.idLabels) == 0 || lockfileRead
+	readDocument := upConfigFileFromArgument(opts) && (opts.configPath == "" || opts.overrideConfig == "")
+	return readDocument || len(opts.idLabels) == 0 || lockfileRead
 }
 
 // addUpConfiguration adds the configuration (--include-configuration) and the
@@ -558,7 +569,7 @@ func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cf
 			}
 			if cfp, ok := subMap["configFilePath"].(string); ok && cfp != "" {
 				scheme := "vscode-fileHost"
-				if opts.configPath != "" || opts.overrideConfig != "" {
+				if upConfigFileFromArgument(opts) {
 					scheme = "file"
 				}
 				subMap["configFilePath"] = configFileURI(cfp, scheme, fsPathRead)

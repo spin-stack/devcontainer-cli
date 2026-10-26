@@ -1216,6 +1216,32 @@ initial_cases:
     current_status: match
     notes: "A compose configuration with Features: TS generateFeaturesConfig reads the lockfile next to the configuration (getLockfilePath reads configFilePath.fsPath), so even with --id-label the configuration's configFilePath has fsPath (vscode-uri's toJSON writes it once read). Go left it out."
 
+  - id: read-configuration.override-config-scheme-success
+    lane: semantic
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\"}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\"}' > $WORKSPACE/override.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --override-config ${WORKSPACE}/override.json"
+    cleanup_cmd: "rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "TS makes a file URI of --config only: with --override-config, configFilePath is the configuration found in the workspace (getDevContainerConfigPathIn), with the vscode-fileHost scheme. Go wrote the file scheme whenever --override-config or --container-id was given."
+
+  - id: up.override-config-scheme-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\"}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' '{\"image\":\"alpine:3\",\"remoteUser\":\"root\"}' > $WORKSPACE/override.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --override-config ${WORKSPACE}/override.json --buildkit=never --include-configuration --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "up keeps the configuration found in the workspace as configFilePath, with the vscode-fileHost scheme, when --override-config is given; readDocument reads the override, not it, so with --id-label its URI has no fsPath. Go wrote the file scheme."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade
