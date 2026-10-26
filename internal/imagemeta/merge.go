@@ -246,10 +246,6 @@ func normalizeForwardPort(p any) any {
 			return "localhost:0" // `${-0}` is "0"
 		}
 		return "localhost:" + jsNumberString(v)
-	case int:
-		return "localhost:" + strconv.Itoa(v)
-	case int64:
-		return "localhost:" + strconv.FormatInt(v, 10)
 	}
 	return p
 }
@@ -297,7 +293,7 @@ func jsParseInt(s string) (float64, bool) {
 		end++
 	}
 	if end == 0 {
-		return 0, false
+		return 0, false // mutate-exempt: the value is unused when ok is false
 	}
 	n, _ := new(big.Int).SetString(s[:end], base)
 	f, _ := new(big.Float).SetInt(n).Float64()
