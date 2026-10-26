@@ -44,7 +44,7 @@ type DevContainer struct {
 	Features                    map[string]any       `json:"features,omitempty"`
 	OverrideFeatureInstallOrder []string             `json:"overrideFeatureInstallOrder,omitempty"`
 	HostRequirements            *HostRequirements    `json:"hostRequirements,omitempty"`
-	Customizations              map[string]any       `json:"customizations,omitempty"`
+	Customizations              Customizations       `json:"customizations,omitempty"`
 	// Secrets is the spec's "recommended secrets" metadata (env-var key ->
 	// {description, documentationUrl}). The CLI does not act on it; kept as an
 	// open map so it round-trips losslessly through read-configuration/metadata.
@@ -64,9 +64,27 @@ type DevContainer struct {
 	RunServices       []string        `json:"runServices,omitempty"`
 
 	// --- Deprecated / VS Code specific (migrated by UpdateFromOldProperties) ---
-	Extensions []string `json:"extensions,omitempty"`
-	Settings   any      `json:"settings,omitempty"`
-	DevPort    *int     `json:"devPort,omitempty"`
+	// Untyped: TS neither validates nor reads what updateFromOldProperties
+	// leaves behind (a falsy "extensions", a "devPort" vscode already has).
+	Extensions any `json:"extensions,omitempty"`
+	Settings   any `json:"settings,omitempty"`
+	DevPort    any `json:"devPort,omitempty"`
+}
+
+// Customizations is the "customizations" object of a configuration. TS
+// neither validates it nor fails on another JSON value; such a value is no
+// customizations here, and the raw configuration still carries it as written.
+type Customizations map[string]any
+
+// UnmarshalJSON decodes an object; any other JSON value decodes to nil.
+func (c *Customizations) UnmarshalJSON(data []byte) error {
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	m, _ := v.(map[string]any)
+	*c = m
+	return nil
 }
 
 // Build represents the "build" property in devcontainer.json.

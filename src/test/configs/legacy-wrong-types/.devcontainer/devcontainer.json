@@ -1,0 +1,12 @@
+{
+	"image": "mcr.microsoft.com/devcontainers/base:latest",
+	// Left in place by updateFromOldProperties: a falsy "extensions" and a
+	// "devPort" that customizations.vscode already sets.
+	"extensions": "",
+	"devPort": "x",
+	"customizations": {
+		"vscode": {
+			"devPort": 1
+		}
+	}
+}

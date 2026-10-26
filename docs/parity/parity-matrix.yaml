@@ -880,6 +880,17 @@ initial_cases:
     current_status: match
     notes: "The container is created without a remoteUser and the config then names foo. exec probes the user environment as the merged configuration's remoteUser (devContainersSpecCLI.ts exec: getImageMetadataFromContainer adds the config's remoteUser, createContainerProperties(..., mergedConfig.remoteUser)), so the probed HOME and PATH are foo's. Go probed as the container's metadata user (root here) and only ran the command as foo, passing root's HOME=/root and PATH."
 
+  - id: read-configuration.legacy-wrong-types
+    lane: semantic
+    command: read-configuration
+    priority: p2
+    docker_required: false
+    ts_cmd: "read-configuration --workspace-folder src/test/configs/legacy-wrong-types"
+    asserts: [exit_code, stdout_normalized]
+    class: config-parsing
+    current_status: match
+    notes: "TS validates no property type: a falsy \"extensions\" and a \"devPort\" that customizations.vscode already sets stay in the configuration as written. Go failed the typed decode (exit 1, 'cannot unmarshal')."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade
