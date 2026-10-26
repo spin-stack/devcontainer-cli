@@ -166,6 +166,10 @@ digests, when committed) and the proxy environment (`HTTP(S)_PROXY`, `NO_PROXY`,
 **hermetic** — no network, no registry resolution — so identical inputs yield the same key
 on any host.
 
+A lockfile that exists but cannot be read or parsed fails the command (exit code 1, error
+result on stdout) instead of being left out of the key, as the upstream CLI fails every
+command that reads it. An empty lockfile pins nothing and keys like no lockfile.
+
 The flag is **additive**: without it, the output is byte-for-byte identical to the upstream
 CLI; with it, a `cacheKey` field is added.
 

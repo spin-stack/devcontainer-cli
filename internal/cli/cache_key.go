@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -55,11 +56,20 @@ func computeCacheKey(result *config.LoadResult, env map[string]string) (string, 
 	}
 
 	// ReadLockfile's bool reports an empty marker file, which pins nothing; a
-	// lockfile with content comes back as a non-nil lock.
-	if lock, _, _ := features.ReadLockfile(cfg.ConfigFilePath); lock != nil {
-		if lockJSON, lerr := json.Marshal(lock); lerr == nil {
-			in.Lockfile = lockJSON
+	// lockfile with content comes back as a non-nil lock. A lockfile that
+	// cannot be read or parsed fails the key, as it fails every reference
+	// command that reads it (lockfile.ts readLockfile rethrows all but ENOENT):
+	// a key computed without it would not track the pinned digests.
+	lock, _, err := features.ReadLockfile(cfg.ConfigFilePath)
+	if err != nil {
+		return "", fmt.Errorf("read features lockfile %s: %w", features.LockfilePath(cfg.ConfigFilePath), err)
+	}
+	if lock != nil {
+		lockJSON, err := json.Marshal(lock)
+		if err != nil {
+			return "", err
 		}
+		in.Lockfile = lockJSON
 	}
 
 	proxy := map[string]string{}

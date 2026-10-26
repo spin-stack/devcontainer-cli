@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +59,38 @@ func TestComputeCacheKeyIgnoresEmptyProxy(t *testing.T) {
 	}
 	if k, _ := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), map[string]string{"HTTPS_PROXY": ""}); k != base {
 		t.Error("an empty proxy variable changed the key")
+	}
+}
+
+// A lockfile that is not JSON fails the key instead of keying as if no
+// lockfile were committed: the reference's readLockfile rethrows the parse
+// error, and a key without the lockfile would not track its pinned digests.
+func TestComputeCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "devcontainer.json")
+	lockPath := filepath.Join(dir, "devcontainer-lock.json")
+	if err := os.WriteFile(lockPath, []byte(`{"features":`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	key, err := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), nil)
+	if err == nil {
+		t.Fatalf("key = %q, want the lockfile parse error", key)
+	}
+	if !strings.Contains(err.Error(), "read features lockfile "+lockPath+": parse lockfile:") {
+		t.Errorf("err = %v, want it to name the lockfile and the parse failure", err)
+	}
+}
+
+// A lockfile that exists but cannot be read fails the key too: only a missing
+// lockfile (ENOENT) means none is committed.
+func TestComputeCacheKeyFailsOnAnUnreadableLockfile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "devcontainer.json")
+	lockPath := filepath.Join(dir, "devcontainer-lock.json")
+	if err := os.Mkdir(lockPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), nil); err == nil || !strings.Contains(err.Error(), lockPath) {
+		t.Errorf("err = %v, want the read failure naming %s", err, lockPath)
 	}
 }
