@@ -650,9 +650,14 @@ func extendImageWithFeatures(
 	fbOpts *FeatureBuildOptions,
 ) ([]string, error) {
 	// Read the lockfile (if any) to pin feature resolution to recorded digests.
+	// One that cannot be read fails the build, as TS generateFeaturesConfig's
+	// readLockfile rethrows.
 	var lockfile *features.Lockfile
 	if fbOpts.ConfigPath != "" && !fbOpts.NoLockfile {
-		lockfile, _, _ = features.ReadLockfile(fbOpts.ConfigPath)
+		var err error
+		if lockfile, _, err = features.ReadLockfile(fbOpts.ConfigPath); err != nil {
+			return nil, err
+		}
 	}
 	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, fbOpts.FeaturesBasePath, fbOpts.SkipFeatureAutoMapping, lockfile, fbOpts.OverrideFeatureInstallOrder)
 	if err != nil {
