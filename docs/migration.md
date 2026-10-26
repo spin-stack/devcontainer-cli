@@ -95,6 +95,11 @@ runs the official CLI is unaffected:
   target. Earlier releases carried an unreleased upstream change (#1261) instead.
   A configuration that needs Git inside the container this way should add the
   common directory to `mounts` itself.
+- `read-configuration` looks up the workspace's container (or the one
+  `--id-label` names) as the official CLI does, and exits 1 with nothing on
+  stdout when that lookup fails, including when no Docker engine is reachable.
+  Earlier releases ignored the failure and printed the configuration. Run it
+  where the Docker engine answers.
 - A local Feature (`./x`) must live inside the workspace's `.devcontainer/`
   folder, as in the official CLI. `build`, `up`, `read-configuration` and
   `upgrade` now exit 1 with `ERR: Feature './x' could not be processed. ...` for

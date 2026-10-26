@@ -401,7 +401,9 @@ func (w *rawLogWriter) Write(p []byte) (int, error) {
 func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, configFile string, logger log.Logger) string {
 	// [local_folder, config_file] disambiguates when a project has multiple
 	// devcontainer.json configs; falls back to local_folder for legacy containers.
-	if id := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels); id != "" {
+	// A failed lookup is treated as no container, where TS fails on it (not
+	// yet matched).
+	if id, _ := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels); id != "" {
 		return id
 	}
 	return findComposeContainer(ctx, engine, opts, logger)

@@ -449,6 +449,7 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 // a configuration at the workspace root (.devcontainer.json) has its Features
 // outside .devcontainer, and the command fails with no result.
 func TestReadConfigurationRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
+	startFakeEngine(t, nil)
 	ws := writeConfigFixture(t, map[string]string{
 		".devcontainer.json":             `{"image":"alpine:3","features":{"./feat":{}}}`,
 		"feat/devcontainer-feature.json": `{"id":"feat","version":"1.0.0"}`,

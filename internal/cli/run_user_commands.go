@@ -162,7 +162,9 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 
 	containerID := opts.containerID
 	if containerID == "" {
-		containerID = resolveContainerID(ctx, engine, opts.workspaceFolder, "", opts.idLabels)
+		// A failed lookup is reported as no container, where TS reports the
+		// failed `docker ps` (not yet matched).
+		containerID, _ = resolveContainerID(ctx, engine, opts.workspaceFolder, "", opts.idLabels)
 	}
 	if containerID == "" {
 		return writeErrorResult(out, "Dev container not found.")
