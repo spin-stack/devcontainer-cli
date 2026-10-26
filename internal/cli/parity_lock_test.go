@@ -15,9 +15,13 @@ var (
 	parityWorkspaceFlag  = regexp.MustCompile(`--workspace-folder\s+(src/test/configs/[^\s"';]+)`)
 	parityConfigFlag     = regexp.MustCompile(`--config\s+(src/test/configs/[^\s"';]+)`)
 	nonEmptyFeaturesJSON = regexp.MustCompile(`"features"\s*:\s*\{\s*"`)
+	// setupWritesFeatures matches a setup_cmd that writes a configuration with
+	// Features itself, its quotes possibly escaped for the shell.
+	setupWritesFeatures = regexp.MustCompile(`\\?"features\\?"\s*:\s*\{\s*\\?"`)
 )
 
-// A case that builds Features without BuildKit goes through the shared
+// A case that builds Features without BuildKit, from a fixture or from a
+// configuration its setup_cmd writes, goes through the shared
 // dev_container_feature_content_temp image, so it must hold the
 // feature-content-image lock; a case that does not, must not, so the lock
 // serializes no more than it has to.
@@ -36,13 +40,13 @@ func TestParityMatrixLocksTheFeatureContentImage(t *testing.T) {
 			t.Errorf("case %q names unknown lock %q", tc.ID, tc.Lock)
 		}
 		cmds := tc.TSCmd + "\n" + tc.SetupCmd
-		need := strings.Contains(cmds, "--buildkit=never") && slices.ContainsFunc(parityCaseConfigs(t, cmds), func(config string) bool {
+		need := strings.Contains(cmds, "--buildkit=never") && (setupWritesFeatures.MatchString(tc.SetupCmd) || slices.ContainsFunc(parityCaseConfigs(t, cmds), func(config string) bool {
 			data, err := os.ReadFile(filepath.Join("..", "..", config))
 			if err != nil {
 				t.Fatalf("case %q: %v", tc.ID, err)
 			}
 			return nonEmptyFeaturesJSON.Match(data)
-		})
+		}))
 		switch has := tc.Lock == "feature-content-image"; {
 		case need && !has:
 			t.Errorf("case %q builds Features without BuildKit; add `lock: feature-content-image`", tc.ID)
