@@ -19,7 +19,7 @@ import { getRef, getCollectionRef } from '../../reference/src/spec-configuration
 import { replaceTemplatedValues } from '../../reference/src/spec-configuration/containerTemplatesOCI';
 import { readVersionPrefix, convertMountToVolume, convertMountToVolumeTopLevelElement } from '../../reference/src/spec-node/dockerCompose';
 import { qualifyImageName, isBuildxCacheToInline } from '../../reference/src/spec-node/utils';
-import { logEventToTerminalText, createPlainLog } from '../../reference/src/spec-utils/log';
+import { logEventToTerminalText, createPlainLog, createJSONLog } from '../../reference/src/spec-utils/log';
 import { parseCrossOriginAuthHosts, isAllowedTokenServiceRealm } from '../../reference/src/spec-configuration/httpOCIRegistry';
 import { readLockfile } from '../../reference/src/spec-configuration/lockfile';
 
@@ -91,6 +91,12 @@ const fns: Record<string, (...args: any[]) => any> = {
 	plainLogText: (e: any, logLevel: number) => {
 		let text: string | null = null;
 		createPlainLog(t => { text = t; }, () => logLevel).event(e);
+		return text;
+	},
+	// The line the JSON log (--log-format json) writes for one event.
+	jsonLogText: (e: any) => {
+		let text: string | null = null;
+		createJSONLog(t => { text = t; }, () => 0, new Date(0)).event(e);
 		return text;
 	},
 	// spec-configuration/httpOCIRegistry.ts: the registry → auth-hosts Map as an

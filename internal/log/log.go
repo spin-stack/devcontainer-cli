@@ -3,7 +3,6 @@ package log
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/term"
+
+	"github.com/devcontainers/cli/internal/stringify"
 )
 
 // Level mirrors the TS enum values for compatibility.
@@ -452,6 +453,8 @@ func toLogFileText(text string) string {
 
 // --- JSON handler ---
 
+// jsonHandler is TS createJSONLog: each event as JSON.stringify writes it, on
+// a line of its own.
 type jsonHandler struct {
 	w io.Writer
 }
@@ -461,7 +464,7 @@ func newJSONHandler(w io.Writer) Handler {
 }
 
 func (h *jsonHandler) HandleEvent(e Event) {
-	data, err := json.Marshal(e)
+	data, err := stringify.JSON(e, "")
 	if err != nil {
 		return // an Event is always serializable; drop rather than emit a broken line
 	}

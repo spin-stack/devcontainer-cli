@@ -10,6 +10,7 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/spf13/cobra"
 )
 
@@ -102,7 +103,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			// install-order JSON.
 			fmt.Fprintln(out.Stdout(), features.GenerateMermaidDiagram(graph))
 
-			data, _ := stringifyJSON(map[string]any{"installOrder": entries}, "  ")
+			data, _ := stringify.JSON(map[string]any{"installOrder": entries}, "  ")
 			fmt.Fprintln(out.Stdout(), string(data))
 			return nil
 		},

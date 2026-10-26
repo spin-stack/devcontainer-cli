@@ -19,6 +19,7 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
+	"github.com/devcontainers/cli/internal/stringify"
 	"github.com/iancoleman/orderedmap"
 	"github.com/spf13/cobra"
 )
@@ -450,7 +451,7 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	}
 	logger.Write("Published collection metadata.", log.LevelInfo)
 
-	data, _ := stringifyJSON(result, "")
+	data, _ := stringify.JSON(result, "")
 	fmt.Fprintln(out.Stdout(), string(data))
 	return nil
 }

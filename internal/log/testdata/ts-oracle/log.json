@@ -1,5 +1,5 @@
 {
-  "comment": "spec-utils/log.ts logEventToTerminalText and createPlainLog's logEventToFileText, ported in log.go.",
+  "comment": "spec-utils/log.ts logEventToTerminalText, createPlainLog's logEventToFileText and createJSONLog, ported in log.go.",
   "cases": [
     {
       "name": "terminal/no line end",
@@ -735,6 +735,98 @@
         3
       ],
       "result": "[1970-01-01T00:00:00.000Z] x\n"
+    },
+    {
+      "name": "json/text with html characters",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1000,
+          "text": "Run: a && b <c> 'd'"
+        }
+      ],
+      "result": "{\"type\":\"text\",\"level\":3,\"timestamp\":1000,\"text\":\"Run: a && b <c> 'd'\"}\n"
+    },
+    {
+      "name": "json/line and paragraph separators",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 2,
+          "timestamp": 1000,
+          "text": "a\u2028b\u2029c"
+        }
+      ],
+      "result": "{\"type\":\"text\",\"level\":2,\"timestamp\":1000,\"text\":\"a\u2028b\u2029c\"}\n"
+    },
+    {
+      "name": "json/control characters and non-ascii",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 1,
+          "timestamp": 1000,
+          "text": "\"q\"\\\b\f\n\r\t\u0001\u001b[1mé😀"
+        }
+      ],
+      "result": "{\"type\":\"text\",\"level\":1,\"timestamp\":1000,\"text\":\"\\\"q\\\"\\\\\\b\\f\\n\\r\\t\\u0001\\u001b[1mé😀\"}\n"
+    },
+    {
+      "name": "json/raw",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "raw",
+          "level": 3,
+          "timestamp": 1000,
+          "text": "<raw>\r\n"
+        }
+      ],
+      "result": "{\"type\":\"raw\",\"level\":3,\"timestamp\":1000,\"text\":\"<raw>\\r\\n\"}\n"
+    },
+    {
+      "name": "json/start",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "start",
+          "level": 2,
+          "timestamp": 1000,
+          "text": "Run: docker compose -f a&b.yml config"
+        }
+      ],
+      "result": "{\"type\":\"start\",\"level\":2,\"timestamp\":1000,\"text\":\"Run: docker compose -f a&b.yml config\"}\n"
+    },
+    {
+      "name": "json/stop",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 2,
+          "timestamp": 1250,
+          "text": "Run: x > y",
+          "startTimestamp": 1000
+        }
+      ],
+      "result": "{\"type\":\"stop\",\"level\":2,\"timestamp\":1250,\"text\":\"Run: x > y\",\"startTimestamp\":1000}\n"
+    },
+    {
+      "name": "json/progress",
+      "fn": "jsonLogText",
+      "args": [
+        {
+          "type": "progress",
+          "name": "Build <image>",
+          "status": "running",
+          "stepDetail": "a & b"
+        }
+      ],
+      "result": "{\"type\":\"progress\",\"name\":\"Build <image>\",\"status\":\"running\",\"stepDetail\":\"a & b\"}\n"
     }
   ]
 }

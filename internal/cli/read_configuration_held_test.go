@@ -20,6 +20,7 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
+	"github.com/devcontainers/cli/internal/stringify"
 )
 
 // loadFixtureConfig writes a workspace with .devcontainer/devcontainer.json
@@ -252,7 +253,7 @@ func TestWorkspaceOutput(t *testing.T) {
 
 // TS writes the workspace as getWorkspaceConfiguration's literal lists it.
 func TestWorkspaceOutputKeepsTSOrder(t *testing.T) {
-	got, err := stringifyJSON(orderedObject{map[string]any{"additionalMountString": "a", "workspaceMount": "m", "workspaceFolder": "f"}, workspaceKeys}, "")
+	got, err := stringify.JSON(orderedObject{map[string]any{"additionalMountString": "a", "workspaceMount": "m", "workspaceFolder": "f"}, workspaceKeys}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
