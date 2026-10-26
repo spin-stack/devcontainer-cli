@@ -232,24 +232,24 @@ func TestWorkspaceOutput(t *testing.T) {
 	withMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p", WorkspaceMount: "type=bind,source=/p,target=/workspaces/p"}}
 	withoutMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p"}}
 	worktree := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/wt", WorkspaceMount: "type=bind,source=/r/wt,target=/workspaces/wt", AdditionalMounts: []string{"type=bind,source=/r/repo/.git,target=/workspaces/repo/.git"}}}
+	// Without a workspace the loader leaves the configuration's own folder and
+	// mount, possibly empty: TS writes what is set (undefined is left out).
+	noWorkspace := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{}}
 	for _, tc := range []struct {
-		name          string
-		result        *config.LoadResult
-		ws, container string
-		want          map[string]any
-		ok            bool
+		name   string
+		result *config.LoadResult
+		want   map[string]any
+		ok     bool
 	}{
-		{"no config", nil, "/p", "", nil, false},
-		{"no workspace config", &config.LoadResult{}, "/p", "", nil, false},
-		{"folder and mount", withMount, "/p", "", map[string]any{"workspaceFolder": "/workspaces/p", "workspaceMount": "type=bind,source=/p,target=/workspaces/p"}, true},
-		{"folder only", withoutMount, "/p", "", map[string]any{"workspaceFolder": "/workspaces/p"}, true},
-		{"worktree common dir", worktree, "/r/wt", "", map[string]any{"workspaceFolder": "/workspaces/wt", "workspaceMount": "type=bind,source=/r/wt,target=/workspaces/wt", "additionalMountString": "type=bind,source=/r/repo/.git,target=/workspaces/repo/.git"}, true},
-		{"container id without workspace folder", withMount, "", "abc", map[string]any{}, true},
-		{"container id and workspace folder", withoutMount, "/p", "abc", map[string]any{"workspaceFolder": "/workspaces/p"}, true},
-		{"id label without workspace folder", withoutMount, "", "", map[string]any{"workspaceFolder": "/workspaces/p"}, true},
+		{"no config", nil, nil, false},
+		{"no workspace config", &config.LoadResult{}, nil, false},
+		{"folder and mount", withMount, map[string]any{"workspaceFolder": "/workspaces/p", "workspaceMount": "type=bind,source=/p,target=/workspaces/p"}, true},
+		{"folder only", withoutMount, map[string]any{"workspaceFolder": "/workspaces/p"}, true},
+		{"worktree common dir", worktree, map[string]any{"workspaceFolder": "/workspaces/wt", "workspaceMount": "type=bind,source=/r/wt,target=/workspaces/wt", "additionalMountString": "type=bind,source=/r/repo/.git,target=/workspaces/repo/.git"}, true},
+		{"no workspace, nothing configured", noWorkspace, map[string]any{}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := workspaceOutput(tc.result, tc.ws, tc.container)
+			got, ok := workspaceOutput(tc.result)
 			if ok != tc.ok || !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("workspaceOutput = %v, %v; want %v, %v", got, ok, tc.want, tc.ok)
 			}
@@ -498,6 +498,28 @@ func TestReadConfigurationCommandOverrideConfigWithoutWorkspace(t *testing.T) {
 	want := map[string]any{"$mid": float64(1), "fsPath": override, "path": override, "scheme": "file"}
 	if !reflect.DeepEqual(cfg["configFilePath"], want) {
 		t.Errorf("configFilePath = %v, want %v", cfg["configFilePath"], want)
+	}
+	if ws, ok := out["workspace"].(map[string]any); !ok || len(ws) != 0 {
+		t.Errorf("workspace = %v, want an empty object", out["workspace"])
+	}
+}
+
+// Without a workspace folder, TS getWorkspaceConfiguration keeps the
+// configuration's own workspaceFolder and workspaceMount, which
+// read-configuration prints as the workspace. Go printed an empty workspace
+// with --container-id, and an empty workspaceFolder without one.
+func TestReadConfigurationCommandWorkspaceWithoutWorkspaceFolder(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
+	if err := os.WriteFile(cfg, []byte(`{"image":"img:1","workspaceFolder":"/wf","workspaceMount":"type=bind,source=/a,target=/wf"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runReadConfigurationCmd(t, "--id-label", "devcontainer-cli-test=workspace-without-folder", "--config", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"workspaceFolder": "/wf", "workspaceMount": "type=bind,source=/a,target=/wf"}
+	if !reflect.DeepEqual(out["workspace"], want) {
+		t.Errorf("workspace = %v, want %v", out["workspace"], want)
 	}
 }
 
