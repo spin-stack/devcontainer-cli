@@ -162,9 +162,18 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 
 	containerID := opts.containerID
 	if containerID == "" {
-		// A failed lookup is reported as no container, where TS reports the
-		// failed `docker ps` (not yet matched).
-		containerID, _ = resolveContainerID(ctx, engine, opts.workspaceFolder, "", opts.idLabels)
+		// TS looks the container up by the workspace folder and the
+		// configuration's file (findContainerAndIdLabels); a failed lookup is
+		// its error, described as running the user commands.
+		lookupConfigFile := ""
+		if loadResult != nil {
+			lookupConfigFile = loadResult.Config.ConfigFilePath
+		}
+		var lookupErr error
+		containerID, lookupErr = resolveContainerID(ctx, engine, opts.workspaceFolder, lookupConfigFile, opts.idLabels)
+		if lookupErr != nil {
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: "An error occurred running user commands in the container.", OriginalError: lookupErr}))
+		}
 	}
 	if containerID == "" {
 		return writeErrorResult(out, "Dev container not found.")
