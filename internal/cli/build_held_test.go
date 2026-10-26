@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -253,5 +254,26 @@ func TestPrepareDockerfileBuildStage(t *testing.T) {
 	}
 	if _, err := prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Empty"}}); err == nil || !strings.Contains(err.Error(), "no FROM instructions") {
 		t.Errorf("no FROM: err = %v", err)
+	}
+}
+
+// A Compose build without --image-name reports its image as a string, as TS
+// doBuild does (imageNameResult = originalImageName); with --image-name, and
+// for any other configuration, the names are an array.
+func TestBuildResultImageName(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		compose  bool
+		argNames []string
+		built    []string
+		want     any
+	}{
+		{"compose without --image-name", true, nil, []string{"proj-app"}, "proj-app"},
+		{"compose with --image-name", true, []string{"a"}, []string{"a"}, []string{"a"}},
+		{"image without --image-name", false, nil, []string{"vsc-x"}, []string{"vsc-x"}},
+	} {
+		if got := buildResultImageName(tc.compose, tc.argNames, tc.built); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: imageName = %#v, want %#v", tc.name, got, tc.want)
+		}
 	}
 }

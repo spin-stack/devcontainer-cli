@@ -992,6 +992,18 @@ initial_cases:
     current_status: match
     notes: "TS outdated declares terminal-columns/terminal-rows with implies, as its siblings do (devContainersSpecCLI.ts outdatedOptions); Go outdated did not check the pair at all."
 
+  - id: build.compose-image-name-is-a-string-without-image-name
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    ts_cmd: "build --workspace-folder src/test/configs/compose-image-without-features-minimal --buildkit=never"
+    setup_cmd: "echo DOCKER_DEFAULT_PLATFORM=linux/amd64"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "Without --image-name, TS doBuild reports a Compose build's image as a string (imageNameResult = originalImageName); with it, as the array of --image-name values. Go always wrote an array. The image keeps the name the sibling compose-image-without-features-minimal cases give it, so no cleanup removes it from under them."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade
