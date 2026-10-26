@@ -125,6 +125,10 @@ runs the official CLI is unaffected:
 - `upgrade --config` naming a file that does not exist reports
   `Dev container config (<path>) not found.` instead of the operating system's
   read error. The exit code stays 1.
+- `upgrade` no longer logs `Lockfile updated.` on stderr after writing the
+  lockfile, and starts its log with the version header once the configuration
+  loads, as the official CLI does. Check the exit code to tell whether the
+  lockfile was written.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
