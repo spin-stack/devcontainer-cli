@@ -299,9 +299,14 @@ type composeExtendResult struct {
 // override references it (TS keeps its features folder too).
 func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult) ([]*features.Set, string, error) {
 	opts := r.opts
+	// A lockfile that cannot be read fails the compose flow as it fails TS's
+	// (readLockfile rethrows), reported by up and build as their error result.
 	var lockfile *features.Lockfile
 	if cfg.ConfigFilePath != "" && !opts.noLockfile {
-		lockfile, _, _ = features.ReadLockfile(cfg.ConfigFilePath)
+		var err error
+		if lockfile, _, err = features.ReadLockfile(cfg.ConfigFilePath); err != nil {
+			return nil, "", err
+		}
 	}
 	res, err := fetchFeatureSetsWithOrder(ctx, r.log, cfg.Features, filepath.Dir(cfg.ConfigFilePath), opts.skipFeatureAutoMapping, lockfile, cfg.OverrideFeatureInstallOrder)
 	if err != nil {

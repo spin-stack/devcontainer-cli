@@ -519,6 +519,32 @@ initial_cases:
     current_status: match
     notes: "As build.malformed-lockfile-error, with up's description 'An error occurred setting up the container.'; no container is created."
 
+  - id: build.compose-malformed-lockfile-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/feat/devcontainer-feature.json; printf '#!/bin/sh\\necho installed\\n' > $WORKSPACE/.devcontainer/feat/install.sh; chmod +x $WORKSPACE/.devcontainer/feat/install.sh; printf 'services:\\n  app:\\n    image: alpine:3\\n    command: sleep infinity\\n' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/workspace\",\"features\":{\"./feat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' 'not json' > $WORKSPACE/.devcontainer/devcontainer-lock.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile-error
+    current_status: match
+    notes: "A Compose configuration reads the lockfile while its Features are resolved for the build override; readLockfile's SyntaxError is build's message under 'An error occurred building the container.'. Go used to ignore the lockfile and build."
+
+  - id: up.compose-malformed-lockfile-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/feat; printf '%s' '{\"id\":\"feat\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/feat/devcontainer-feature.json; printf '#!/bin/sh\\necho installed\\n' > $WORKSPACE/.devcontainer/feat/install.sh; chmod +x $WORKSPACE/.devcontainer/feat/install.sh; printf 'services:\\n  app:\\n    image: alpine:3\\n    command: sleep infinity\\n' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/workspace\",\"features\":{\"./feat\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; printf '%s' 'not json' > $WORKSPACE/.devcontainer/devcontainer-lock.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "docker rm -f $(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}) >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lockfile-error
+    current_status: match
+    notes: "As build.compose-malformed-lockfile-error, with up's description 'An error occurred setting up the container.'; no service is started."
+
   - id: up.config-without-workspace-success
     lane: runtime
     command: up

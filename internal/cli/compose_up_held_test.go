@@ -20,6 +20,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
@@ -661,6 +662,20 @@ func TestComposeFeatureSets(t *testing.T) {
 		}
 		if got := readFile(t, lock); got != `{"features":{"stale":{}}}` {
 			t.Errorf("lockfile rewritten without a lockfile flag: %s", got)
+		}
+	})
+	t.Run("malformed lockfile", func(t *testing.T) {
+		// TS readLockfile rethrows the JSON.parse error; --no-lockfile skips it.
+		for _, noLockfile := range []bool{false, true} {
+			h := newComposeHarness(t)
+			h.r.opts.noLockfile = noLockfile
+			h.write("devcontainer-lock.json", "not json")
+			cfg := &config.DevContainer{ConfigFilePath: filepath.Join(h.dc, "devcontainer.json"), Features: h.localFeature()}
+			_, _, err := h.r.composeFeatureSets(ctx, cfg, lr)
+			lerr, failed := errors.AsType[*features.LockfileError](err)
+			if failed == noLockfile || failed && lerr.Error() != `Unexpected token 'o', "not json" is not valid JSON` {
+				t.Errorf("noLockfile=%t: err = %v", noLockfile, err)
+			}
 		}
 	})
 	t.Run("lockfile pins a tarball", func(t *testing.T) {
