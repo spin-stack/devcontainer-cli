@@ -79,6 +79,8 @@ func TestFeatureMarshalJSONMovesDeprecatedProperties(t *testing.T) {
 			`{"id":"c","customizations":{"vscode":{"extensions":"basex,1"}},"included":true,"value":null}`},
 		{`{"id":"d","extensions":[],"settings":"ab"}`,
 			`{"id":"d","included":true,"value":null,"customizations":{"vscode":{"extensions":[],"settings":{"0":"a","1":"b"}}}}`},
+		{`{"id":"g","extensions":0,"settings":1}`,
+			`{"id":"g","extensions":0,"included":true,"value":null,"customizations":{"vscode":{"settings":{}}}}`},
 		{`{"id":"e","extensions":"","settings":null,"devPort":1}`,
 			`{"id":"e","extensions":"","settings":null,"devPort":1,"included":true,"value":null}`},
 	} {
