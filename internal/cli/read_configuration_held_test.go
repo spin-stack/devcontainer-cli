@@ -224,13 +224,19 @@ func TestInspectContainerConfig(t *testing.T) {
 
 func TestSubstituteContainerEnv(t *testing.T) {
 	cfgMap := map[string]any{"remoteEnv": map[string]any{"P": "${containerEnv:PATH}"}}
-	got, err := substituteContainerEnv(nil, cfgMap)
+	got, err := substituteContainerEnv(nil, cfgMap, "")
 	if err != nil || !reflect.DeepEqual(got, cfgMap) {
 		t.Fatalf("without a container = %v, %v; want the config unchanged", got, err)
 	}
-	got, err = substituteContainerEnv(&container.Config{Env: []string{"PATH=/bin"}}, cfgMap)
+	got, err = substituteContainerEnv(&container.Config{Env: []string{"PATH=/bin"}}, cfgMap, "")
 	if err != nil || !reflect.DeepEqual(got, map[string]any{"remoteEnv": map[string]any{"P": "/bin"}}) {
 		t.Fatalf("with a container = %v, %v; want ${containerEnv:PATH} resolved", got, err)
+	}
+	// A reference without a name is TS's ContainerError naming the file.
+	_, err = substituteContainerEnv(&container.Config{}, map[string]any{"x": "${containerEnv}"}, "/ws/c.json")
+	want := "'${containerEnv}' in c.json can not be resolved because no environment variable name is given."
+	if ce, ok := coreerrors.AsContainerError(err); !ok || ce.Description != want {
+		t.Errorf("unnamed reference: err = %v, want the ContainerError %q", err, want)
 	}
 }
 
@@ -350,7 +356,7 @@ func TestMergedConfigurationOutput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := mergedConfigurationOutput(entries, cc, cfgMap)
+		got, err := mergedConfigurationOutput(entries, cc, cfgMap, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -564,6 +570,30 @@ func TestReadConfigurationCommandWorkspaceWithoutWorkspaceFolder(t *testing.T) {
 	want := map[string]any{"workspaceFolder": "/wf", "workspaceMount": "type=bind,source=/a,target=/wf"}
 	if !reflect.DeepEqual(out["workspace"], want) {
 		t.Errorf("workspace = %v, want %v", out["workspace"], want)
+	}
+}
+
+// An unresolvable ${containerEnv} fails read-configuration as TS's
+// ContainerError does: logged, naming the configuration's file, exit 1 and
+// nothing on stdout.
+func TestReadConfigurationCommandUnresolvableContainerVariable(t *testing.T) {
+	startFakeEngine(t, map[string]map[string]string{"c1": {}})
+	cfg := filepath.Join(t.TempDir(), "c.json")
+	if err := os.WriteFile(cfg, []byte(`{"image":"img","remoteEnv":{"A":"${containerEnv}"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	logFile := filepath.Join(t.TempDir(), "log.txt")
+	stdout, err := readConfigurationStdout("--container-id", "c1", "--config", cfg, "--log-file", logFile)
+	wantExitCode(t, err, 1)
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing", stdout)
+	}
+	logged, readErr := os.ReadFile(logFile)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if want := "'${containerEnv}' in c.json can not be resolved because no environment variable name is given."; !strings.Contains(string(logged), want) {
+		t.Errorf("log = %q, want %q", logged, want)
 	}
 }
 

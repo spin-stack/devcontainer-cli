@@ -2456,6 +2456,71 @@ initial_cases:
     current_status: match
     notes: "A --config that does not exist fails exec even with --container-id: TS throws 'Dev container config (…) not found.' before it looks at the container. Go ignored the load error with --container-id and ran the command."
 
+  - id: read-configuration.container-env-without-name-error
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"remoteEnv\":{\"A\":\"${containerEnv}\"}}' > $WORKSPACE/devcontainer.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "read-configuration --container-id ${CONTAINER_ID} --config ${WORKSPACE}/devcontainer.json"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "A ${containerEnv} without a name is TS's ContainerError; read-configuration fails with it like any error: logged, exit 1, nothing on stdout. Go wrote an error envelope on stdout."
+
+  - id: set-up.container-env-without-name-error
+    lane: runtime
+    command: set-up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"remoteEnv\":{\"A\":\"${containerEnv}\"}}' > $WORKSPACE/devcontainer.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "set-up --container-id ${CONTAINER_ID} --config ${WORKSPACE}/devcontainer.json --skip-post-create"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "TS setupInContainer substitutes the container's environment into the configuration whether or not it is reported, so set-up fails with the ContainerError \"'${containerEnv}' in devcontainer.json can not be resolved …\" as message and description. Go reported success without --include-configuration, and with it prefixed the message with 'resolve configuration container variables: ' and named no file."
+
+  - id: exec.container-env-without-name-error
+    lane: runtime
+    command: exec
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"postCreateCommand\":\"echo ${containerEnv}\"}' > $WORKSPACE/devcontainer.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "exec --container-id ${CONTAINER_ID} --config ${WORKSPACE}/devcontainer.json true"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "TS exec substitutes the container's environment into the whole merged configuration before it runs the command, so an unresolvable variable anywhere in it (here postCreateCommand) fails exec (exit 1). Go substituted remoteEnv alone and ran the command."
+
+  - id: run-user-commands.container-env-without-name-error
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE; printf '%s' '{\"image\":\"alpine:3\",\"remoteEnv\":{\"A\":\"${containerEnv}\"}}' > $WORKSPACE/devcontainer.json; CONTAINER_ID=$(docker run -d alpine:3.17 sleep inf); echo WORKSPACE=$WORKSPACE; echo CONTAINER_ID=$CONTAINER_ID"
+    ts_cmd: "run-user-commands --container-id ${CONTAINER_ID} --config ${WORKSPACE}/devcontainer.json"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "TS doRunUserCommands substitutes the container's environment into the configuration first and reports the ContainerError as message and description. Go ran the commands and reported success."
+
+  - id: up.container-env-without-name-error
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"remoteEnv\":{\"A\":\"${containerEnv}\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --buildkit=never --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1; rm -rf ${WORKSPACE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: container-runtime
+    current_status: match
+    notes: "TS setupInContainer substitutes the container's environment into the configuration and the merged configuration once the container runs, even with --skip-post-create: up fails with the ContainerError and the container's id. Go reported success."
+
   - id: exec.container-metadata-success
     lane: runtime
     command: exec

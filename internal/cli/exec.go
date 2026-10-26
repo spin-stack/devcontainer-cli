@@ -204,6 +204,16 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		return err
 	}
 	merged := imagemeta.MergeConfiguration(entries)
+	// TS exec substitutes the container's environment into the merged
+	// configuration before it probes the user environment; a variable that
+	// cannot be resolved fails exec, naming the configuration's file.
+	var rawConfig any
+	if loadResult != nil {
+		rawConfig = loadResult.Raw
+	}
+	if err := checkContainerSubstitution(containerEnv, configFile, rawConfig, merged); err != nil {
+		return err
+	}
 	// The user is the merged configuration's remoteUser - the configuration's,
 	// else the image metadata's - else the container's, else root; the
 	// environment is probed as that user (TS createContainerProperties with
@@ -309,10 +319,14 @@ func execRemoteEnv(probed map[string]string, metadata map[string]*string, cfg *c
 			}
 		}
 	}
+	configFile := ""
+	if cfg != nil {
+		configFile = cfg.ConfigFilePath
+	}
 	for k, v := range resolved {
-		substituted, err := resolveContainerVariables(containerEnv, v)
+		substituted, err := resolveContainerVariables(containerEnv, configFile, v)
 		if err != nil {
-			return nil, fmt.Errorf("resolve container variables: %w", err)
+			return nil, err
 		}
 		if s, ok := substituted.(string); ok {
 			resolved[k] = s

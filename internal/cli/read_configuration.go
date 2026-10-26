@@ -159,9 +159,15 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if idErr != nil {
 		return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", idErr))
 	}
-	cfgMap, subErr := substituteContainerEnv(containerCfg, cfgMap)
+	configFile := ""
+	if result != nil {
+		configFile = result.Config.ConfigFilePath
+	}
+	// TS readConfiguration fails like any other error: logged, exit 1, nothing
+	// on stdout.
+	cfgMap, subErr := substituteContainerEnv(containerCfg, cfgMap, configFile)
 	if subErr != nil {
-		return writeErrorResult(out, fmt.Sprintf("resolve configuration container variables: %v", subErr))
+		return readConfigurationFailure(lgr, subErr)
 	}
 
 	output := map[string]any{
@@ -237,9 +243,9 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		if entriesErr != nil {
 			return readConfigurationFailure(lgr, entriesErr)
 		}
-		merged, mergeErr := mergedConfigurationOutput(entries, containerCfg, cfgMap)
+		merged, mergeErr := mergedConfigurationOutput(entries, containerCfg, cfgMap, configFile)
 		if mergeErr != nil {
-			return mergeErr
+			return readConfigurationFailure(lgr, mergeErr)
 		}
 		output["mergedConfiguration"] = merged
 	}
@@ -431,11 +437,13 @@ func substituteDevContainerID(containerCfg *container.Config, cfgMap map[string]
 
 // substituteContainerEnv resolves ${containerEnv:...} in cfgMap with the
 // container's environment; without a container cfgMap is returned as it is.
-func substituteContainerEnv(containerCfg *container.Config, cfgMap map[string]any) (map[string]any, error) {
+// configFile is the configuration's file, which an unresolvable variable's
+// error names.
+func substituteContainerEnv(containerCfg *container.Config, cfgMap map[string]any, configFile string) (map[string]any, error) {
 	if containerCfg == nil {
 		return cfgMap, nil
 	}
-	substituted, err := resolveContainerVariables(config.EnvMap(containerCfg.Env), cfgMap)
+	substituted, err := resolveContainerVariables(config.EnvMap(containerCfg.Env), configFile, cfgMap)
 	if err != nil {
 		return nil, err
 	}
@@ -514,14 +522,14 @@ func readConfigurationMetadata(base, featureEntries []imagemeta.Entry, container
 // mergedConfiguration by spreading the config, so the properties
 // mergeConfiguration does not own (image, features, build, configFilePath, ...)
 // come from cfgMap.
-func mergedConfigurationOutput(entries []imagemeta.Entry, containerCfg *container.Config, cfgMap map[string]any) (map[string]any, error) {
+func mergedConfigurationOutput(entries []imagemeta.Entry, containerCfg *container.Config, cfgMap map[string]any, configFile string) (map[string]any, error) {
 	merged := imagemeta.MergeConfiguration(entries)
 
 	if containerCfg != nil {
 		mergedJSON, _ := json.Marshal(merged)
 		var mergedGeneric any
 		json.Unmarshal(mergedJSON, &mergedGeneric)
-		substituted, err := resolveContainerVariables(config.EnvMap(containerCfg.Env), mergedGeneric)
+		substituted, err := resolveContainerVariables(config.EnvMap(containerCfg.Env), configFile, mergedGeneric)
 		if err != nil {
 			return nil, err
 		}
