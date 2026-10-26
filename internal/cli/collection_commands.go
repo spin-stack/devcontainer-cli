@@ -450,7 +450,7 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	}
 	logger.Write("Published collection metadata.", log.LevelInfo)
 
-	data, _ := json.Marshal(result)
+	data, _ := stringifyJSON(result, "")
 	fmt.Fprintln(out.Stdout(), string(data))
 	return nil
 }

@@ -228,7 +228,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	output["ociAuthDiagnostics"] = ociAuthDiagnostics(ctx)
 	orderConfigurations(output, result)
 
-	data, err := json.Marshal(orderedObject{output, readConfigurationKeys})
+	data, err := stringifyJSON(orderedObject{output, readConfigurationKeys}, "")
 	if err != nil {
 		return fmt.Errorf("marshal output: %w", err)
 	}

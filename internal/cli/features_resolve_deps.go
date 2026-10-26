@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -103,7 +102,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			// install-order JSON.
 			fmt.Fprintln(out.Stdout(), features.GenerateMermaidDiagram(graph))
 
-			data, _ := json.MarshalIndent(map[string]any{"installOrder": entries}, "", "  ")
+			data, _ := stringifyJSON(map[string]any{"installOrder": entries}, "  ")
 			fmt.Fprintln(out.Stdout(), string(data))
 			return nil
 		},

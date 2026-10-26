@@ -85,7 +85,7 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 			if json.Indent(&buf, manifest.ManifestBytes, "", "  ") == nil {
 				fmt.Fprintln(out.Stdout(), buf.String())
 			} else {
-				data, _ := json.MarshalIndent(manifest.Manifest, "", "  ")
+				data, _ := stringifyJSON(manifest.Manifest, "  ")
 				fmt.Fprintln(out.Stdout(), string(data))
 			}
 			fmt.Fprintln(out.Stdout())
@@ -126,7 +126,7 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 	}
 
 	if outputFormat == "json" {
-		data, _ := json.MarshalIndent(jsonOutput, "", "    ")
+		data, _ := stringifyJSON(jsonOutput, "    ")
 		fmt.Fprintln(out.Stdout(), string(data))
 	}
 

@@ -445,6 +445,17 @@ func TestParityMatrix(t *testing.T) {
 				}
 			}
 
+			// stdout_text compares stdout as text, only scrubbing paths and hashes,
+			// so what stdout_normalized's JSON parse hides (how a string is
+			// escaped) is compared byte for byte.
+			if asserts["stdout_text"] {
+				tsText := normalizeStringOpts(tsRes.Stdout, scrubHashes)
+				goText := normalizeStringOpts(goRes.Stdout, scrubHashes)
+				if tsText != goText {
+					t.Errorf("stdout text differs:\n--- TS\n%s\n--- Go\n%s", tsText, goText)
+				}
+			}
+
 			if asserts["stderr_normalized"] {
 				tsNorm := normalizeTextOpts(tsRes.Stderr, scrubHashes)
 				goNorm := normalizeTextOpts(goRes.Stderr, scrubHashes)
