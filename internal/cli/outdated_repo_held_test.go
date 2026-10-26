@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/features"
 	"github.com/spf13/cobra"
 )
@@ -196,13 +197,15 @@ func TestUpgradeFailsOnALockfileItCannotReadBack(t *testing.T) {
 // upgrade reads the workspace given by --workspace-folder, and the current
 // directory without it.
 func TestUpgradeWorkspaceFolderDefaultsToCwd(t *testing.T) {
-	ws := writeOutdatedWorkspace(t, `{}`, "")
+	reg := newReadRegistry(t)
+	reg.manifests["ns/tool"] = featureManifest("tool")
+	ws := writeOutdatedWorkspace(t, `{"`+reg.host+`/ns/tool:1":{}}`, "")
 	t.Chdir(t.TempDir())
-	if got, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run"); err != nil || parseLockfile(t, got).Features == nil {
+	if got, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run"); err != nil || len(parseLockfile(t, got).Features) != 1 {
 		t.Errorf("--workspace-folder: err = %v, stdout = %q", err, got)
 	}
 	t.Chdir(ws)
-	if got, err := executeCmd(t, newUpgradeCmd(), "--dry-run"); err != nil || parseLockfile(t, got).Features == nil {
+	if got, err := executeCmd(t, newUpgradeCmd(), "--dry-run"); err != nil || len(parseLockfile(t, got).Features) != 1 {
 		t.Errorf("cwd: err = %v, stdout = %q", err, got)
 	}
 }
@@ -229,8 +232,30 @@ func TestUpgradeRejectsBadInvocations(t *testing.T) {
 			t.Errorf("%q: err = %v, want %q", c.args, err, c.want)
 		}
 	}
-	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run", "--feature", "ghcr.io/o/f", "--target-version", "2.1"); err != nil {
-		t.Errorf("--feature with a bare --target-version: %v", err)
+	if _, err := executeCmd(t, newUpgradeCmd(), "--workspace-folder", ws, "--dry-run", "--feature", "ghcr.io/o/f", "--target-version", "2.1"); err == nil || err.Error() != "Failed to update lockfile" {
+		t.Errorf("--feature with a bare --target-version: err = %v, want it past the flag checks", err)
+	}
+}
+
+// A configuration without Features has no Features config to lock, which TS
+// upgrade fails on ("Failed to update lockfile") rather than writing an empty
+// lockfile, with or without --dry-run.
+func TestUpgradeFailsWithoutFeatures(t *testing.T) {
+	for _, feats := range []string{`{}`, `null`} {
+		for _, dryRun := range []bool{false, true} {
+			ws := writeOutdatedWorkspace(t, feats, "")
+			args := []string{"--workspace-folder", ws}
+			if dryRun {
+				args = append(args, "--dry-run")
+			}
+			got, err := executeCmd(t, newUpgradeCmd(), args...)
+			if _, ok := coreerrors.AsContainerError(err); !ok || err.Error() != "Failed to update lockfile" || got != "" {
+				t.Errorf("features %s, dry-run %t: err = %v, stdout = %q", feats, dryRun, err, got)
+			}
+			if _, err := os.Stat(filepath.Join(ws, ".devcontainer", "devcontainer-lock.json")); !os.IsNotExist(err) {
+				t.Errorf("features %s, dry-run %t: wrote a lockfile: %v", feats, dryRun, err)
+			}
+		}
 	}
 }
 

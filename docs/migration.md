@@ -129,6 +129,10 @@ runs the official CLI is unaffected:
   lockfile, and starts its log with the version header once the configuration
   loads, as the official CLI does. Check the exit code to tell whether the
   lockfile was written.
+- `upgrade` on a configuration without Features exits 1 with
+  `Failed to update lockfile` and writes no lockfile, with or without
+  `--dry-run`. Earlier releases wrote or printed `{"features":{}}` and exited 0.
+  Skip `upgrade` for configurations that use no Features.
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
