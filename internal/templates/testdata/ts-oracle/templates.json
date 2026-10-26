@@ -1,0 +1,191 @@
+{
+  "comment": "containerTemplatesOCI.ts replaceTemplatedValues (module-private, exported for the oracle by build.mjs); ported in apply.go (substituteTemplateOptions).",
+  "cases": [
+    {
+      "name": "known option",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:baseImage}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "ubuntu:22.04"
+    },
+    {
+      "name": "unknown option is empty",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "keep=${templateOption:missing}|",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "keep=|"
+    },
+    {
+      "name": "empty value is empty",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "[${templateOption:empty}]",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "[]"
+    },
+    {
+      "name": "whitespace around the name",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption: greeting }|${templateOption:\tgreeting\n}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "hello|hello"
+    },
+    {
+      "name": "unicode whitespace around the name",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption: greeting　}|${templateOption:\u000bgreeting﻿}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "hello|hello"
+    },
+    {
+      "name": "word characters only",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:a_1}|${templateOption:a-1}|${templateOption:a.b}|${templateOption:a:b}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "x|${templateOption:a-1}|${templateOption:a.b}|${templateOption:a:b}"
+    },
+    {
+      "name": "no name",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:}|${templateOption: }",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "${templateOption:}|${templateOption: }"
+    },
+    {
+      "name": "non-ASCII name is no word",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:café}",
+        {
+          "café": "x"
+        }
+      ],
+      "result": "${templateOption:café}"
+    },
+    {
+      "name": "unterminated and nested",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:greeting|${templateOption:${templateOption:greeting}}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "${templateOption:greeting|${templateOption:hello}"
+    },
+    {
+      "name": "other variables stay",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${localEnv:HOME}|${templateOption}|$templateOption:greeting",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "${localEnv:HOME}|${templateOption}|$templateOption:greeting"
+    },
+    {
+      "name": "repeated",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:greeting}${templateOption:greeting}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "hellohello"
+    },
+    {
+      "name": "case sensitive",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${TemplateOption:greeting}|${templateOption:Greeting}",
+        {
+          "baseImage": "ubuntu:22.04",
+          "greeting": "hello",
+          "empty": "",
+          "a_1": "x"
+        }
+      ],
+      "result": "${TemplateOption:greeting}|"
+    },
+    {
+      "name": "replacement is literal",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:dollar}",
+        {
+          "dollar": "$1$&$$"
+        }
+      ],
+      "result": "$1$&$$"
+    },
+    {
+      "name": "inherited Object property",
+      "fn": "replaceTemplatedValues",
+      "args": [
+        "${templateOption:constructor}|${templateOption:toString}",
+        {}
+      ],
+      "divergence": "docs/DIVERGENCES.md: an unknown ${templateOption:NAME} that names an Object.prototype property becomes ''; the reference looks it up on a plain object and writes the inherited function's source",
+      "result": "function Object() { [native code] }|function toString() { [native code] }"
+    }
+  ]
+}

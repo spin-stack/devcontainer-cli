@@ -4,47 +4,6 @@ import (
 	"testing"
 )
 
-func TestSubstituteTemplateOptions(t *testing.T) {
-	tests := []struct {
-		content string
-		options map[string]string
-		want    string
-	}{
-		{
-			content: `{"image": "${templateOption:baseImage}"}`,
-			options: map[string]string{"baseImage": "ubuntu:22.04"},
-			want:    `{"image": "ubuntu:22.04"}`,
-		},
-		{
-			content: "FROM ${templateOption:baseImage}\nRUN echo ${templateOption:greeting}",
-			options: map[string]string{"baseImage": "alpine", "greeting": "hello"},
-			want:    "FROM alpine\nRUN echo hello",
-		},
-		{
-			content: "no options here",
-			options: map[string]string{},
-			want:    "no options here",
-		},
-		{
-			content: "${templateOption:missing}",
-			options: map[string]string{},
-			want:    "${templateOption:missing}", // unresolved passthrough
-		},
-		{
-			content: "${templateOption: spacedName }",
-			options: map[string]string{"spacedName": "value"},
-			want:    "value",
-		},
-	}
-
-	for _, tt := range tests {
-		got := substituteTemplateOptions(tt.content, tt.options)
-		if got != tt.want {
-			t.Errorf("substituteTemplateOptions(%q, %v) = %q, want %q", tt.content, tt.options, got, tt.want)
-		}
-	}
-}
-
 func TestSelectedTemplate_OmitPaths(t *testing.T) {
 	// Verify omit path parsing
 	selected := SelectedTemplate{

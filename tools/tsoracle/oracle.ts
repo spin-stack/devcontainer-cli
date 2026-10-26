@@ -15,11 +15,12 @@ import { generateContainerEnvs, getFeatureValueObject, parseMount, escapeQuotesF
 import { getSafeId } from '../../reference/src/spec-node/containerFeatures';
 import { getFeatureIdWithoutVersion } from '../../reference/src/spec-configuration/containerFeaturesOCI';
 import { getRef, getCollectionRef } from '../../reference/src/spec-configuration/containerCollectionsOCI';
+import { replaceTemplatedValues } from '../../reference/src/spec-configuration/containerTemplatesOCI';
 import { readVersionPrefix, convertMountToVolume, convertMountToVolumeTopLevelElement } from '../../reference/src/spec-node/dockerCompose';
 import { qualifyImageName, isBuildxCacheToInline } from '../../reference/src/spec-node/utils';
 
-// escapeQuotesForShell, convertMountToVolume and convertMountToVolumeTopLevelElement
-// are module-private in the reference; build.mjs exports them for this bundle.
+// escapeQuotesForShell, convertMountToVolume, convertMountToVolumeTopLevelElement
+// and replaceTemplatedValues are module-private in the reference; build.mjs exports them for this bundle.
 
 const nullOutput: any = { write() { }, raw() { }, start() { return 0; }, stop() { }, event() { } };
 
@@ -66,6 +67,8 @@ const fns: Record<string, (...args: any[]) => any> = {
 	// spec-configuration/containerCollectionsOCI.ts
 	getRef: (s: string) => getRef(nullOutput, s),
 	getCollectionRef: (registry: string, namespace: string) => getCollectionRef(nullOutput, registry, namespace),
+	// spec-configuration/containerTemplatesOCI.ts
+	replaceTemplatedValues: (template: string, options: any) => replaceTemplatedValues(nullOutput, template, options),
 	// spec-node/dockerCompose.ts: readVersionPrefix reads the compose files' contents given here.
 	readVersionPrefix: async (contents: string[]) => {
 		const host: any = { readFile: async (p: string) => Buffer.from(contents[Number(p)], 'utf8') };
