@@ -1,0 +1,1959 @@
+{
+  "comment": "httpOCIRegistry.ts parseCrossOriginAuthHosts (normalizeHttpsAuthority) and isAllowedTokenServiceRealm; ported in authpolicy.go (ParseCrossOriginAuthHosts, normalizeHTTPSAuthority, AuthPolicy.allowsTokenServiceRealm) and whatwghost.go. Authorities go through Node's WHATWG URL parser.",
+  "cases": [
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=AUTH.Example.COM"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example.com"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example?"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example#"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:443"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:0443"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:00000000000000443"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:80"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example:80"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:080"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example:80"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:65535"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example:65535"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:65536"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example:65536'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example\\"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/.."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/./"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/x/.."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/x/../"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/%2e"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/.%2E/"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/?"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example?#"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:443/"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=/auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=\\auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=//auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=@auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=:@auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example\t"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example "
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.ex\nample"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=\tauth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=x%41y.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xay.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=bücher.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--bcher-kva.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn--bcher-kva.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--bcher-kva.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=Ａ.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "a.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=a­b.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "ab.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=faß.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--fa-hia.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0x7f.1"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "127.0.0.1"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=127.1"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "127.0.0.1"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "0.0.0.0"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.3."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "1.2.0.3"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=4294967295"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "255.255.255.255"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::1]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1]:443"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::1]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[0:0::1]:8443"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::1]:8443"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[ABCD::]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[abcd::]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[1:0:0:2:0:0:0:3]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[1:0:0:2::3]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[1:0:0:2:0:0:3:4]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[1::2:0:0:3:4]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::ffff:1.2.3.4]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::ffff:102:304]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1.2.3.4]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::102:304]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth..example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth..example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example."
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=-"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "-"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=a_b.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "a_b.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=a;b.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "a;b.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=a$b.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "a$b.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example="
+        ]
+      ],
+      "error": "Invalid cross-origin auth host 'registry.example='. Expected '<registry-host>=<auth-host>'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=/"
+        ]
+      ],
+      "error": "Invalid authority '/'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example/x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/x/../y"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example/x/../y'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example//"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example//'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example?x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example?x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example#x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example#x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example#?"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example#?'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example/#x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example/#x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example\\x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example\\x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=user@auth.example"
+        ]
+      ],
+      "error": "Invalid authority 'user@auth.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=:pw@auth.example"
+        ]
+      ],
+      "error": "Invalid authority ':pw@auth.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=::@auth.example"
+        ]
+      ],
+      "error": "Invalid authority '::@auth.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=@@auth.example"
+        ]
+      ],
+      "error": "Invalid authority '@@auth.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example@"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example@'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=@"
+        ]
+      ],
+      "error": "Invalid authority '@'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example:x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:1:2"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example:1:2'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth example"
+        ]
+      ],
+      "error": "Invalid authority 'auth example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example= auth.example"
+        ]
+      ],
+      "error": "Invalid authority ' auth.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth<example"
+        ]
+      ],
+      "error": "Invalid authority 'auth<example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth|example"
+        ]
+      ],
+      "error": "Invalid authority 'auth|example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth^example"
+        ]
+      ],
+      "error": "Invalid authority 'auth^example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%zz"
+        ]
+      ],
+      "error": "Invalid authority 'auth%zz'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%2fexample"
+        ]
+      ],
+      "error": "Invalid authority 'auth%2fexample'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%20example"
+        ]
+      ],
+      "error": "Invalid authority 'auth%20example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%00"
+        ]
+      ],
+      "error": "Invalid authority 'auth%00'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%7f"
+        ]
+      ],
+      "error": "Invalid authority 'auth%7f'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%ff"
+        ]
+      ],
+      "error": "Invalid authority 'auth%ff'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1"
+        ]
+      ],
+      "error": "Invalid authority '[::1'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=::1"
+        ]
+      ],
+      "error": "Invalid authority '::1'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1]x"
+        ]
+      ],
+      "error": "Invalid authority '[::1]x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1.02.3.4]"
+        ]
+      ],
+      "error": "Invalid authority '[::1.02.3.4]'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[1.2.3.4]"
+        ]
+      ],
+      "error": "Invalid authority '[1.2.3.4]'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.3.256"
+        ]
+      ],
+      "error": "Invalid authority '1.2.3.256'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.3.4.5"
+        ]
+      ],
+      "error": "Invalid authority '1.2.3.4.5'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=999999999999"
+        ]
+      ],
+      "error": "Invalid authority '999999999999'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0x100000000"
+        ]
+      ],
+      "error": "Invalid authority '0x100000000'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.0x"
+        ]
+      ],
+      "error": "Invalid authority 'auth.0x'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.1"
+        ]
+      ],
+      "error": "Invalid authority 'auth.1'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn--a"
+        ]
+      ],
+      "error": "Invalid authority 'xn--a'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=­"
+        ]
+      ],
+      "error": "Invalid authority '­'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth‍.example"
+        ]
+      ],
+      "error": "Invalid authority 'auth‍.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "REGISTRY.example:443=auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example/=auth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "[::1]:5000=auth.example"
+        ]
+      ],
+      "result": {
+        "[::1]:5000": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "localhost:443?=auth.example"
+        ]
+      ],
+      "result": {
+        "localhost": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "r.example=a.example",
+          "R.example:443=b.example/",
+          "r.example=A.example:443",
+          "s.example=a.example"
+        ]
+      ],
+      "result": {
+        "r.example": [
+          "a.example",
+          "b.example"
+        ],
+        "s.example": [
+          "a.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "noequals"
+        ]
+      ],
+      "error": "Invalid cross-origin auth host 'noequals'. Expected '<registry-host>=<auth-host>'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "=auth.example"
+        ]
+      ],
+      "error": "Invalid cross-origin auth host '=auth.example'. Expected '<registry-host>=<auth-host>'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example="
+        ]
+      ],
+      "error": "Invalid cross-origin auth host 'registry.example='. Expected '<registry-host>=<auth-host>'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=cafe.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "cafe.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%"
+        ]
+      ],
+      "error": "Invalid authority 'auth%'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth%4"
+        ]
+      ],
+      "error": "Invalid authority 'auth%4'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.ex%41"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.exa"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=%41uth.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=ab.example"
+        ]
+      ],
+      "error": "Invalid authority 'ab.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=xn--.example"
+        ]
+      ],
+      "error": "Invalid authority 'xn--.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=XN--.example"
+        ]
+      ],
+      "error": "Invalid authority 'XN--.example'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=XN--bcher-kva.example"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "xn--bcher-kva.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=%2e"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "."
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example.."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example.."
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.09"
+        ]
+      ],
+      "error": "Invalid authority 'auth.09'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0x"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "0.0.0.0"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0X10"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "0.0.0.16"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0.08"
+        ]
+      ],
+      "error": "Invalid authority '0.08'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=010"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "0.0.0.8"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=0x10000000000000000"
+        ]
+      ],
+      "error": "Invalid authority '0x10000000000000000'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=99999999999999999999999"
+        ]
+      ],
+      "error": "Invalid authority '99999999999999999999999'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "0.0.0.1"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.3.4.0"
+        ]
+      ],
+      "error": "Invalid authority '1.2.3.4.0'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.256.4"
+        ]
+      ],
+      "error": "Invalid authority '1.2.256.4'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.255.3.4"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "1.255.3.4"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.3.4"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "1.2.3.4"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=1.2.3.4."
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "1.2.3.4"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.ex\rample"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "auth.example"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=:443"
+        ]
+      ],
+      "error": "Invalid authority ':443'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::1]:"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::1]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[::]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[::]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[1:2:3:4:5:6:7:8]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[1:2:3:4:5:6:7:8]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[1::]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[1::]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[0:1:0:0:1:0:0:0]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[0:1:0:0:1::]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[1:0:2:0:3:0:4:0]"
+        ]
+      ],
+      "result": {
+        "registry.example": [
+          "[1:0:2:0:3:0:4:0]"
+        ]
+      }
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=[fe80::1%25eth0]"
+        ]
+      ],
+      "error": "Invalid authority '[fe80::1%25eth0]'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:+443"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example:+443'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "registry.example=auth.example:-1"
+        ]
+      ],
+      "error": "Invalid authority 'auth.example:-1'."
+    },
+    {
+      "fn": "parseCrossOriginAuthHosts",
+      "args": [
+        [
+          "a=b=c"
+        ]
+      ],
+      "error": "Invalid cross-origin auth host 'a=b=c'. Expected '<registry-host>=<auth-host>'."
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://registry.example/token",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://registry.example:443/token",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://registry.example/token",
+        "https://registry.example:443/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://REGISTRY.example/token",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://registry.example/token",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://registry.example:8443/token",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://localhost:5000/token",
+        "http://localhost:5000/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://LOCALHOST:5000/token",
+        "http://localhost:5000/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://localhost/token",
+        "http://localhost:80/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://127.0.0.1:5000/token",
+        "http://127.0.0.1:5000/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://[::1]:5000/token",
+        "http://[::1]:5000/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://127.0.0.1:5000/token",
+        "https://127.0.0.1:5000/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.docker.io/token",
+        "https://registry-1.docker.io/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.docker.io:443/token",
+        "https://registry-1.docker.io/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://auth.docker.io/token",
+        "https://registry-1.docker.io/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://gitlab.com/jwt/auth",
+        "https://registry.gitlab.com/v2/",
+        []
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example:443"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example:443/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example:443/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example:443=AUTH.example/"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example:8443/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example:8443/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example:8443"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example:5000/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example:5000/v2/",
+        [
+          "registry.example:5000=auth.example"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "http://registry.example/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "http://registry.example:80/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": true
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "http://auth.example/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example"
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://auth.example/token",
+        "https://registry.example/v2/",
+        [
+          "registry.example=auth.example/x"
+        ]
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "not a url",
+        "https://registry.example/v2/",
+        []
+      ],
+      "result": false
+    },
+    {
+      "fn": "isAllowedTokenServiceRealm",
+      "args": [
+        "https://registry.example/token",
+        "not a url",
+        []
+      ],
+      "result": false
+    }
+  ]
+}
