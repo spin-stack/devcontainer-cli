@@ -7,14 +7,29 @@ import (
 	"os"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
+
+// plainStdout points stdout at /dev/null for the test, so New picks the plain
+// log however the test binary was started.
+func plainStdout(t *testing.T) {
+	t.Helper()
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stdout
+	os.Stdout = null
+	t.Cleanup(func() {
+		os.Stdout = saved
+		_ = null.Close()
+	})
+}
 
 // Without a Writer the logger writes to stderr, where the TS CLI writes its log.
 func TestNewWritesToStderrByDefault(t *testing.T) {
+	plainStdout(t)
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -31,17 +46,16 @@ func TestNewWritesToStderrByDefault(t *testing.T) {
 	}
 }
 
-// Without a StartTime the elapsed time counts from New, so the first line
-// reads a few milliseconds, not the milliseconds since 1970.
-func TestNewCountsElapsedFromNowByDefault(t *testing.T) {
+// With stdout not a terminal the log is TS's plain log: each line stamped with
+// its ISO time (spec-node/devContainers.ts createLogFrom picks createPlainLog
+// when process.stdout.isTTY is false). /dev/null is a character device but no
+// terminal.
+func TestNewWritesThePlainLogWhenStdoutIsNotATerminal(t *testing.T) {
+	plainStdout(t)
 	var buf bytes.Buffer
 	New(Options{Writer: &buf}).Write("x", LevelInfo)
-	m := regexp.MustCompile(`^\[(-?\d+) ms\] x\n$`).FindStringSubmatch(buf.String())
-	if m == nil {
-		t.Fatalf("output = %q", buf.String())
-	}
-	if ms, _ := strconv.ParseInt(m[1], 10, 64); ms < 0 || ms > 60_000 {
-		t.Errorf("elapsed = %d ms, want the time since New", ms)
+	if !regexp.MustCompile(`^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] x\n$`).MatchString(buf.String()) {
+		t.Errorf("output = %q, want the plain log line", buf.String())
 	}
 }
 
@@ -67,38 +81,5 @@ func TestBannerLineNamesTheKernelRelease(t *testing.T) {
 	want := fmt.Sprintf("@devcontainers/cli 1.2.3. Go %s. %s %s %s.", runtime.Version(), runtime.GOOS, strings.TrimSpace(string(b)), runtime.GOARCH)
 	if got := BannerLine("1.2.3"); got != want {
 		t.Errorf("BannerLine = %q, want %q", got, want)
-	}
-}
-
-// A line's [N ms] is its timestamp minus the logger's start, and each text
-// ends in exactly one newline, as TS logEventToTerminalText
-// (spec-utils/log.ts: `${e.timestamp - startTimestamp} ms`, and
-// toTerminalText's replace(/(\r?\n)?$/, ...) adding a line end only when
-// there is none).
-func TestTerminalLinesCountFromTheStartAndEndInOneNewline(t *testing.T) {
-	start := time.UnixMilli(1_000)
-	for _, tc := range []struct{ text, want string }{
-		{"a", "[1234 ms] a\n"},
-		{"a\n", "[1234 ms] a\n"},
-		{"ab\n", "[1234 ms] ab\n"},
-		{"\n", "[1234 ms] \n"},
-		{"", "[1234 ms] \n"},
-	} {
-		var buf bytes.Buffer
-		newTerminalHandler(&buf, start, LevelInfo).HandleEvent(Event{Type: "text", Level: LevelInfo, Timestamp: 2_234, Text: tc.text})
-		if buf.String() != tc.want {
-			t.Errorf("text %q printed %q, want %q", tc.text, buf.String(), tc.want)
-		}
-	}
-}
-
-// A stop line reads the elapsed time since the start and, in parentheses, the
-// time since its own start event (spec-utils/log.ts: `Stop (${e.timestamp -
-// e.startTimestamp} ms)`).
-func TestTerminalStopLineShowsItsDuration(t *testing.T) {
-	var buf bytes.Buffer
-	newTerminalHandler(&buf, time.UnixMilli(1_000), LevelTrace).HandleEvent(Event{Type: "stop", Level: LevelInfo, Timestamp: 2_234, StartTimestamp: 2_000, Text: "Run: x"})
-	if want := "[1234 ms] Stop (234 ms): Run: x\n"; buf.String() != want {
-		t.Errorf("printed %q, want %q", buf.String(), want)
 	}
 }

@@ -86,6 +86,13 @@ runs the official CLI is unaffected:
   matching container.
 - Features are staged under `<tmp>/devcontainercli-<user>/container-features/`,
   one folder per build, and that folder is kept as the official CLI keeps it.
+- The text log on stderr follows the official CLI's two formats. With stdout
+  redirected or piped, each line starts with its UTC time
+  (`[2026-01-02T03:04:05.678Z] text`) and Stop lines appear at `--log-level debug`
+  and `trace`. With stdout on a terminal, lines keep the elapsed `[N ms]` prefix,
+  are colored and end in `\r\n`, and Stop lines appear only at `trace`. Earlier
+  releases always wrote `[N ms] text` without color. A script that parses the log
+  should read the timestamped form, or use `--log-format json`.
 
 ## Rollback
 

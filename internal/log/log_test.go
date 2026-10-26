@@ -60,28 +60,7 @@ func TestSecretMasking(t *testing.T) {
 	}
 }
 
-func TestTerminalHandler_Text(t *testing.T) {
-	var buf bytes.Buffer
-	start := time.Now()
-	l := New(Options{
-		Level:     LevelInfo,
-		Format:    "text",
-		Writer:    &buf,
-		StartTime: start,
-	})
-
-	l.Write("Starting container", LevelInfo)
-	out := buf.String()
-
-	if !strings.Contains(out, "ms]") {
-		t.Errorf("expected timestamp, got: %q", out)
-	}
-	if !strings.Contains(out, "Starting container") {
-		t.Errorf("expected message, got: %q", out)
-	}
-}
-
-func TestTerminalHandler_StartStop(t *testing.T) {
+func TestTextHandler_StartStop(t *testing.T) {
 	var buf bytes.Buffer
 	start := time.Now()
 	l := New(Options{

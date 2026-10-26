@@ -1,0 +1,740 @@
+{
+  "comment": "spec-utils/log.ts logEventToTerminalText and createPlainLog's logEventToFileText, ported in log.go.",
+  "cases": [
+    {
+      "name": "terminal/no line end",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "a"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] a\r\n"
+    },
+    {
+      "name": "plain/no line end",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "a"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] a\n"
+    },
+    {
+      "name": "terminal/line end",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "a\n"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] a\r\n"
+    },
+    {
+      "name": "plain/line end",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "a\n"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] a\n"
+    },
+    {
+      "name": "terminal/crlf line end",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "a\r\n"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] a\r\n"
+    },
+    {
+      "name": "plain/crlf line end",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "a\r\n"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] a\n"
+    },
+    {
+      "name": "terminal/lone cr",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "a\r"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] a\r\r\n"
+    },
+    {
+      "name": "plain/lone cr",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "a\r"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] a\r\n"
+    },
+    {
+      "name": "terminal/empty",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": ""
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] \r\n"
+    },
+    {
+      "name": "plain/empty",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": ""
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] \n"
+    },
+    {
+      "name": "terminal/only line end",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "\n"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] \r\n"
+    },
+    {
+      "name": "plain/only line end",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "\n"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] \n"
+    },
+    {
+      "name": "terminal/two lines",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "line1\nline2"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] line1\r\nline2\r\n"
+    },
+    {
+      "name": "plain/two lines",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "line1\nline2"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] line1\nline2\n"
+    },
+    {
+      "name": "terminal/two lines crlf",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "line1\r\nline2\n"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] line1\r\nline2\r\n"
+    },
+    {
+      "name": "plain/two lines crlf",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "line1\r\nline2\n"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] line1\r\nline2\n"
+    },
+    {
+      "name": "terminal/number",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "took 5 ms"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] took \u001b[1m\u001b[38;2;86;156;214m5\u001b[39m\u001b[22m ms\r\n"
+    },
+    {
+      "name": "terminal/banner",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "@devcontainers/cli 0.89.0. Node.js v22.22.1. linux 7.0.0-38-generic x64."
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] @devcontainers/cli 0.89.0. Node.js v22.22.1. linux 7.0.0-38-generic x64.\r\n"
+    },
+    {
+      "name": "terminal/dotted number",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "version 1.2.3"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] version \u001b[1m\u001b[38;2;86;156;214m1.2.3\u001b[39m\u001b[22m\r\n"
+    },
+    {
+      "name": "terminal/port pair",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "port 8080:80"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] port \u001b[1m\u001b[38;2;86;156;214m8080\u001b[39m\u001b[22m:\u001b[1m\u001b[38;2;86;156;214m80\u001b[39m\u001b[22m\r\n"
+    },
+    {
+      "name": "terminal/glued to word chars",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "x-1 a_2 b.3 4a"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] x-1 a_2 b.3 4a\r\n"
+    },
+    {
+      "name": "terminal/word char boundaries",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "1-x 2_y Z3 3Z z4 4z A5 5A a6 0 @7 8["
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] 1-x 2_y Z3 3Z z4 4z A5 5A a6 \u001b[1m\u001b[38;2;86;156;214m0\u001b[39m\u001b[22m @\u001b[1m\u001b[38;2;86;156;214m7\u001b[39m\u001b[22m \u001b[1m\u001b[38;2;86;156;214m8\u001b[39m\u001b[22m[\r\n"
+    },
+    {
+      "name": "terminal/word char before a second-character digit",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "x1"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] x1\r\n"
+    },
+    {
+      "name": "terminal/trailing dot",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "1.2."
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] 1.2.\r\n"
+    },
+    {
+      "name": "terminal/parenthesized",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "(42)"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] (\u001b[1m\u001b[38;2;86;156;214m42\u001b[39m\u001b[22m)\r\n"
+    },
+    {
+      "name": "terminal/first and last",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "7 and 9"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] \u001b[1m\u001b[38;2;86;156;214m7\u001b[39m\u001b[22m and \u001b[1m\u001b[38;2;86;156;214m9\u001b[39m\u001b[22m\r\n"
+    },
+    {
+      "name": "terminal/non-ascii neighbour",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "é5 5é"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] é\u001b[1m\u001b[38;2;86;156;214m5\u001b[39m\u001b[22m \u001b[1m\u001b[38;2;86;156;214m5\u001b[39m\u001b[22mé\r\n"
+    },
+    {
+      "name": "terminal/escape sequences",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "\u001b[31m7\u001b[0m done 3"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] \u001b[31m\u001b[1m\u001b[38;2;86;156;214m7\u001b[39m\u001b[22m\u001b[0m done \u001b[1m\u001b[38;2;86;156;214m3\u001b[39m\u001b[22m\r\n"
+    },
+    {
+      "name": "terminal/c1 csi",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "1m9"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] 1m\u001b[1m\u001b[38;2;86;156;214m9\u001b[39m\u001b[22m\r\n"
+    },
+    {
+      "name": "terminal/number across lines",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "1\n2"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] \u001b[1m\u001b[38;2;86;156;214m1\u001b[39m\u001b[22m\r\n\u001b[1m\u001b[38;2;86;156;214m2\u001b[39m\u001b[22m\r\n"
+    },
+    {
+      "name": "terminal/below level",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "text",
+          "level": 2,
+          "timestamp": 2234,
+          "text": "hidden"
+        },
+        3,
+        1000
+      ],
+      "result": null
+    },
+    {
+      "name": "terminal/raw is verbatim",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "raw",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "raw \u001b[1m 5\n"
+        },
+        3,
+        1000
+      ],
+      "result": "raw \u001b[1m 5\n"
+    },
+    {
+      "name": "terminal/progress",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "progress",
+          "name": "Building",
+          "status": "running"
+        },
+        3,
+        1000
+      ],
+      "result": null
+    },
+    {
+      "name": "terminal/start at info",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "start",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "Run: x"
+        },
+        3,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] Start: Run: x\r\n"
+    },
+    {
+      "name": "terminal/stop at info",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "Run: x",
+          "startTimestamp": 2000
+        },
+        3,
+        1000
+      ],
+      "result": null
+    },
+    {
+      "name": "plain/start at info",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "start",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "Run: x"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] Start: Run: x\n"
+    },
+    {
+      "name": "plain/stop at info",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "Run: x",
+          "startTimestamp": 1792975082145
+        },
+        3
+      ],
+      "result": null
+    },
+    {
+      "name": "terminal/start at debug",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "start",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "Run: x"
+        },
+        2,
+        1000
+      ],
+      "result": "[\u001b[1m\u001b[38;2;99;143;79m1234 ms\u001b[39m\u001b[22m] Start: Run: x\r\n"
+    },
+    {
+      "name": "terminal/stop at debug",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "Run: x",
+          "startTimestamp": 2000
+        },
+        2,
+        1000
+      ],
+      "result": null
+    },
+    {
+      "name": "plain/start at debug",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "start",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "Run: x"
+        },
+        2
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] Start: Run: x\n"
+    },
+    {
+      "name": "plain/stop at debug",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "Run: x",
+          "startTimestamp": 1792975082145
+        },
+        2
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] Stop (234 ms): Run: x\n"
+    },
+    {
+      "name": "terminal/start at trace",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "start",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "Run: x"
+        },
+        1,
+        1000
+      ],
+      "result": "\u001b[1m\u001b[38;2;99;143;79m[1234 ms] Start\u001b[39m\u001b[22m: Run: x\r\n"
+    },
+    {
+      "name": "terminal/stop at trace",
+      "fn": "logEventToTerminalText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 3,
+          "timestamp": 2234,
+          "text": "Run: x",
+          "startTimestamp": 2000
+        },
+        1,
+        1000
+      ],
+      "result": "\u001b[1m\u001b[38;2;143;99;79m[1234 ms] Stop\u001b[39m\u001b[22m (234 ms): Run: x\r\n"
+    },
+    {
+      "name": "plain/start at trace",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "start",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "Run: x"
+        },
+        1
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] Start: Run: x\n"
+    },
+    {
+      "name": "plain/stop at trace",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "stop",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "Run: x",
+          "startTimestamp": 1792975082145
+        },
+        1
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] Stop (234 ms): Run: x\n"
+    },
+    {
+      "name": "plain/raw is timestamped",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "raw",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "chunk"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] chunk\n"
+    },
+    {
+      "name": "plain/escape sequences stripped",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 1792975082379,
+          "text": "\u001b[31mred\u001b[0m 51m"
+        },
+        3
+      ],
+      "result": "[2026-10-26T00:38:02.379Z] red 5\n"
+    },
+    {
+      "name": "plain/below level",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 2,
+          "timestamp": 1792975082379,
+          "text": "hidden"
+        },
+        3
+      ],
+      "result": null
+    },
+    {
+      "name": "plain/progress",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "progress",
+          "name": "Building",
+          "status": "running"
+        },
+        3
+      ],
+      "result": null
+    },
+    {
+      "name": "plain/timestamp in UTC with milliseconds",
+      "fn": "plainLogText",
+      "args": [
+        {
+          "type": "text",
+          "level": 3,
+          "timestamp": 0,
+          "text": "x"
+        },
+        3
+      ],
+      "result": "[1970-01-01T00:00:00.000Z] x\n"
+    }
+  ]
+}

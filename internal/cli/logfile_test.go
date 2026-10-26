@@ -60,6 +60,42 @@ func TestLogWriterTeesToBothFiles(t *testing.T) {
 	}
 }
 
+// A log file holds the log without the terminal format: on a terminal stdout
+// the log is colored and ends its lines in \r\n (TS createTerminalLog), and
+// the file keeps only the text, as --log-file and --terminal-log-file document.
+func TestLogWriterKeepsTheTerminalFormatOutOfTheFile(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "log.txt")
+	w, cleanup, err := logWriter(logPath, "")
+	if err != nil {
+		t.Fatalf("logWriter: %v", err)
+	}
+	line := "[\x1b[1m\x1b[38;2;99;143;79m12 ms\x1b[39m\x1b[22m] took \x1b[1m\x1b[38;2;86;156;214m5\x1b[39m\x1b[22m ms\r\nnext\r\n"
+	if n, err := w.Write([]byte(line)); err != nil || n != len(line) {
+		t.Fatalf("Write = %d, %v; want %d, nil", n, err, len(line))
+	}
+	cleanup()
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "[12 ms] took 5 ms\nnext\n"; string(data) != want {
+		t.Errorf("log file = %q, want %q", data, want)
+	}
+}
+
+// A log file that fails to take a line reports the failure, not a write.
+func TestPlainFileWriterReportsAFailedWrite(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "log.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if n, err := (plainFileWriter{f}).Write([]byte("line\n")); n != 0 || err == nil {
+		t.Errorf("Write = %d, %v; want 0 and the error", n, err)
+	}
+}
+
 // TestLogWriterNoFileFallsBackToStderr confirms that with no paths the writer is
 // os.Stderr and the cleanup is a harmless no-op.
 func TestLogWriterNoFileFallsBackToStderr(t *testing.T) {

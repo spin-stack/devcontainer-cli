@@ -19,6 +19,7 @@ import { getRef, getCollectionRef } from '../../reference/src/spec-configuration
 import { replaceTemplatedValues } from '../../reference/src/spec-configuration/containerTemplatesOCI';
 import { readVersionPrefix, convertMountToVolume, convertMountToVolumeTopLevelElement } from '../../reference/src/spec-node/dockerCompose';
 import { qualifyImageName, isBuildxCacheToInline } from '../../reference/src/spec-node/utils';
+import { logEventToTerminalText, createPlainLog } from '../../reference/src/spec-utils/log';
 
 // escapeQuotesForShell, convertMountToVolume, convertMountToVolumeTopLevelElement
 // and replaceTemplatedValues are module-private in the reference; build.mjs exports them for this bundle.
@@ -82,6 +83,14 @@ const fns: Record<string, (...args: any[]) => any> = {
 	// spec-node/utils.ts
 	qualifyImageName: (s: string) => qualifyImageName(s),
 	isBuildxCacheToInline: (s: string | null) => isBuildxCacheToInline(s ?? undefined),
+	// spec-utils/log.ts: the line the terminal log (stdout a TTY) and the plain
+	// log (stdout not a TTY) write for one event, or null for none.
+	logEventToTerminalText: (e: any, logLevel: number, startTimestamp: number) => logEventToTerminalText(e, logLevel, startTimestamp),
+	plainLogText: (e: any, logLevel: number) => {
+		let text: string | null = null;
+		createPlainLog(t => { text = t; }, () => logLevel).event(e);
+		return text;
+	},
 };
 
 async function main() {

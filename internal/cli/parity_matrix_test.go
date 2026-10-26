@@ -669,7 +669,8 @@ func runShellCommand(ctx context.Context, repoRoot, shellCmd string, env map[str
 // --- Normalization ---
 
 var (
-	reTimestampGo = regexp.MustCompile(`\[\d+ ms\]`)
+	// Both CLIs stamp a piped log line with its ISO time (TS createPlainLog);
+	// only that shape is scrubbed, so a line in another shape stays a mismatch.
 	reTimestampTS = regexp.MustCompile(`\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]`)
 	// Host/tmp path scrubbers stop at structural delimiters (comma, '=', ';', ')')
 	// so a mount spec like source=/home/x,target=/y,type=bind keeps its
@@ -844,7 +845,6 @@ func normalizeTextOpts(raw string, scrubHashes bool) string {
 		}
 
 		// Normalize timestamps
-		line = reTimestampGo.ReplaceAllString(line, "[X ms]")
 		line = reTimestampTS.ReplaceAllString(line, "[X ms]")
 
 		// Normalize paths and IDs
