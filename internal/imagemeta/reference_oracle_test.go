@@ -79,3 +79,16 @@ func TestTSOracleImageMetadata(t *testing.T) {
 		"escapeQuotesForShell": str(escapeQuotesForShell),
 	})
 }
+
+// JSON.stringify writes the -0 that parseInt("-0") makes as 0; so does the
+// merged configuration, byte for byte (DeepEqual cannot tell -0 from 0).
+func TestMergeForwardPortsWritesANegativeZeroAsZero(t *testing.T) {
+	merged := MergeConfiguration([]Entry{{ForwardPorts: []any{"aaaaaaaaaa-0 localhost:1"}}})
+	data, err := json.Marshal(merged.ForwardPorts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "[0]" {
+		t.Errorf("forwardPorts = %s, want [0]", data)
+	}
+}

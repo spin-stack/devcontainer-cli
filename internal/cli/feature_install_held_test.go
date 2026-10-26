@@ -133,7 +133,7 @@ func TestProcessInstallFeatureOCI(t *testing.T) {
 	blobMeta := `{"id":"hello","name":"Hello","options":{"blob":{}},"dependsOn":{"blob/dep":{}},"installsAfter":["blob"],
 		"legacyIds":["blob"],"init":false,"privileged":false,"capAdd":["BLOB"],"securityOpt":["blob"],"entrypoint":"/blob",
 		"mounts":["blob"],"customizations":{"blob":{}}}`
-	annotation := `{"legacyIds":["old-hello"],"dependsOn":{"ghcr.io/owner/coll/dep:1":{}},"installsAfter":["ghcr.io/owner/coll/after"],
+	annotation := `{"legacyIds":["old-hello"],"dependsOn":{"ghcr.io/owner/coll/zdep:1":{},"ghcr.io/owner/coll/dep:1":{}},"installsAfter":["ghcr.io/owner/coll/after"],
 		"options":{"greeting":{"type":"string"}},"init":true,"privileged":true,"capAdd":["SYS_PTRACE"],"securityOpt":["seccomp=unconfined"],
 		"entrypoint":"/ann","mounts":["source=a,target=/a,type=volume"],"customizations":{"vscode":{"extensions":["x"]}}}`
 
@@ -155,6 +155,7 @@ func TestProcessInstallFeatureOCI(t *testing.T) {
 		for name, pair := range map[string][2]any{
 			"legacyIds":      {got.LegacyIds, want.LegacyIds},
 			"dependsOn":      {got.DependsOn, want.DependsOn},
+			"dependsOnKeys":  {got.DependsOnKeys(), []string{"ghcr.io/owner/coll/zdep:1", "ghcr.io/owner/coll/dep:1"}},
 			"installsAfter":  {got.InstallsAfter, want.InstallsAfter},
 			"options":        {got.Options, want.Options},
 			"init":           {got.Init, want.Init},

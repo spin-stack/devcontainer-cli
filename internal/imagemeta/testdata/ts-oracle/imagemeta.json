@@ -997,6 +997,80 @@
       }
     },
     {
+      "name": "forwardPorts parseInt of the text from the tenth character",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "aaaaaaaaaa-5 localhost:1",
+              "aaaaaaaaaa+5 localhost:2",
+              "aaaaaaaaaa-1 localhost:3",
+              "aaaaaaaaaa \t0X1f localhost:4",
+              "aaaaaaaaaa-x localhost:5",
+              "aaaaaaaaaa-0 localhost:6"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          -5,
+          5,
+          -1,
+          31,
+          null,
+          0
+        ]
+      }
+    },
+    {
+      "name": "forwardPorts one digit and hexadecimal edges",
+      "fn": "mergeConfiguration",
+      "args": [
+        {},
+        [
+          {
+            "forwardPorts": [
+              "localhost:7",
+              "localhost:0x",
+              "localhost:0X1f",
+              "localhost:0xg"
+            ]
+          }
+        ]
+      ],
+      "result": {
+        "init": false,
+        "privileged": false,
+        "onCreateCommands": [],
+        "updateContentCommands": [],
+        "postCreateCommands": [],
+        "postStartCommands": [],
+        "postAttachCommands": [],
+        "remoteEnv": {},
+        "containerEnv": {},
+        "portsAttributes": {},
+        "forwardPorts": [
+          7,
+          null,
+          31,
+          null
+        ]
+      }
+    },
+    {
       "name": "hostRequirements per-field max",
       "fn": "mergeConfiguration",
       "args": [
