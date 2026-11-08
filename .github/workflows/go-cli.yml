@@ -74,6 +74,16 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # golangci-lint's analysis of each package, which setup-go does not keep, keyed by content
+      # inside, so any older copy is safe to start from: saved under the commit, restored from the
+      # newest - main's for a pull request.
+      - name: Lint findings, from the last run
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts/golangci-lint
+          key: golangci-lint-${{ github.sha }}
+          restore-keys: golangci-lint-
+
       - run: go tool task lint
       - run: go tool task spec:compliance
       - run: go tool task vuln
