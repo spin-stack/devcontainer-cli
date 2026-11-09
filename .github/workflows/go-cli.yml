@@ -32,6 +32,11 @@ concurrency:
 # request from a fork runs on GitHub's runners instead: its code never reaches spin-stack's AWS
 # account. Only a branch of this repository, which takes write access to push, runs on the fleet.
 
+# go-tools' downloads (sfw, versions) ask GitHub with this: anonymous ones are the first it sheds
+# under load, and they answered 504 for minutes on 2026-11-09.
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
 jobs:
   # What a pull request changed, broken one small edit at a time (go-tools mutate): an
   # edit no test refuses fails, so new code arrives with tests that hold it.
