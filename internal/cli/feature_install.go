@@ -127,12 +127,25 @@ func (r localFeatureRoots) resolve(logger log.Logger, id string) (string, bool, 
 
 // createFeaturesFolder creates the folder the Features are staged in, TS
 // createFeaturesTempFolder: <cacheFolder>/container-features/<cliVersion>-<ms>.
+// The folder is this run's alone: runs started in the same millisecond would
+// otherwise share it, and one run's realignFeatureDirs renames and removes the
+// other's .stage- folders. A name another run holds moves to the next
+// millisecond.
 func createFeaturesFolder() (string, error) {
-	dir := filepath.Join(cacheFolder(), "container-features", fmt.Sprintf("%s-%d", cliVersion(), time.Now().UnixMilli()))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	parent := filepath.Join(cacheFolder(), "container-features")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", fmt.Errorf("create features folder: %w", err)
 	}
-	return dir, nil
+	for ms := time.Now().UnixMilli(); ; ms++ {
+		dir := filepath.Join(parent, fmt.Sprintf("%s-%d", cliVersion(), ms))
+		err := os.Mkdir(dir, 0o755)
+		if err == nil {
+			return dir, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", fmt.Errorf("create features folder: %w", err)
+		}
+	}
 }
 
 // fetchFeatureSetsWithOrder resolves the feature dependency graph through the

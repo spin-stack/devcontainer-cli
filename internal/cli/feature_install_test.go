@@ -460,3 +460,22 @@ func TestReadConfigurationRefusesALocalFeatureOutsideDevcontainer(t *testing.T) 
 	}
 	wantExitCode(t, err, 1)
 }
+
+// Runs started in the same millisecond each get a features folder of their
+// own: a shared one let one run's realignFeatureDirs remove the other's
+// .stage- folders ("stage feature h_0: lstat .../.stage-0: no such file or
+// directory" in the parity lane).
+func TestCreateFeaturesFolderIsTheRunsAlone(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	seen := map[string]bool{}
+	for range 50 {
+		dir, err := createFeaturesFolder()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if seen[dir] {
+			t.Fatalf("%s handed out twice", dir)
+		}
+		seen[dir] = true
+	}
+}

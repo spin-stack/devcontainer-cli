@@ -469,9 +469,9 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		if opts.omitSyntaxDirective {
 			syntax = ""
 		}
-		dstFolder = filepath.Join(cacheFolder(), "container-features", fmt.Sprintf("%s-%d", cliVersion(), time.Now().UnixMilli()))
-		if err := os.MkdirAll(dstFolder, 0o755); err != nil {
-			return nil, fmt.Errorf("create features folder: %w", err)
+		var err error
+		if dstFolder, err = createFeaturesFolder(); err != nil {
+			return nil, err
 		}
 		info = imagemeta.GenerateComposeLabelBuild(baseName, labelMetadata, syntax)
 	default:
