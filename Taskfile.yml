@@ -207,7 +207,8 @@ tasks:
       - go tool refs
       - go tool mutate -stale-exempts
       - task: deadcode
-      - go tool taskgate
+      # The Task running this one, which taskgate asks for the task names a workflow step runs.
+      - go tool taskgate -task {{.TASK_EXE}}
       - go tool sfw check
 
   lint:go:
