@@ -1,5 +1,5 @@
-# Every input this repository pins, written once: `go tool versions check` says what is behind,
-# `go tool versions bump <name>` moves one, and internal/devtools/versions_gate_test.go fails on a
+# Every input this repository pins, written once: `versions check` says what is behind,
+# `versions bump <name>` moves one (go-tools' commands, on the PATH of `go tool task`), and internal/devtools/versions_gate_test.go fails on a
 # pin written anywhere else. GitHub Actions are pinned by commit in the workflows; Dependabot
 # moves those, as go.sum is Go's.
 
@@ -34,3 +34,17 @@
   note: >-
     The released image's base (Dockerfile's DISTROLESS_IMAGE, handed to GoReleaser by task
     release:env). A bump is checked by task release --snapshot and task release:smoke.
+
+- name: task
+  kind: download
+  source: https://github.com/go-task/task/releases/download/v{version}/task_{os}_{arch}.tar.gz
+  version: 3.54.0
+  pins:
+    linux/amd64: 680859dbb4d881a9c72d4d9a8f510825450849af8567deacd7302c01124416fb
+    linux/arm64: d7189d439d4a6058e39e1b2acd7c8b27acd4856691b408f23b242e4294e1df5b
+    darwin/amd64: 0543b0844a725814c0412d3f4bed12873ce9ed0da207b15775f63a97d734aac0
+    darwin/arm64: 12a69fcf37bb8d5bc9150c44f9a936775b73e59ff044c2c245232f198c135637
+  track: github-release https://github.com/go-task/task
+  note: >-
+    The Task `go tool task` runs (go-tools' cmd/task), for every platform a person or a runner
+    works on: no repository compiles it.

@@ -87,7 +87,7 @@ tasks:
   vuln:
     desc: Fail on a vulnerability the code calls and that has a fix, the standard library's included (govulncheck through go-tools' vulngate)
     cmds:
-      - go tool vulngate ./...
+      - vulngate ./...
 
   coverage:
     desc: Hermetic unit coverage — per-package table + enforce the total/package floors
@@ -202,14 +202,14 @@ tasks:
     cmds:
       - go vet ./cmd/... ./internal/...
       - task: lint:go
-      - go tool ctxlife
-      - go tool testquality -allow .github/testquality-allow.txt ./...
-      - go tool refs
-      - go tool mutate -stale-exempts
+      - ctxlife
+      - testquality -allow .github/testquality-allow.txt ./...
+      - refs
+      - mutate -stale-exempts
       - task: deadcode
       # The Task running this one, which taskgate asks for the task names a workflow step runs.
-      - go tool taskgate -task {{.TASK_EXE}}
-      - go tool sfw check
+      - taskgate -task {{.TASK_EXE}}
+      - sfw check
 
   lint:go:
     desc: golangci-lint with .golangci.yml, at the version versions.yaml pins
@@ -222,18 +222,18 @@ tasks:
         -v "$(go env GOMODCACHE)":/go/pkg/mod -v "$(go env GOCACHE)":/cache/go-build
         -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/cache/go-build -e GOLANGCI_LINT_CACHE=/work/artifacts/golangci-lint
         -e HOME=/tmp -e GOTOOLCHAIN=local
-        $(go tool versions ref golangci-lint) golangci-lint run ./cmd/... ./internal/...
+        $(versions ref golangci-lint) golangci-lint run ./cmd/... ./internal/...
 
   deadcode:
     desc: Fail on a function the binaries link and never call, or a package none imports, unless .github/deadcode-allow.txt says why
     cmds:
-      - go tool deadgate -deadcode "$(go tool -n deadcode)" -roots ./cmd/... -packages ./internal/... -allow .github/deadcode-allow.txt -pending .github/deadcode-pending.txt
+      - deadgate -deadcode "$(go tool -n deadcode)" -roots ./cmd/... -packages ./internal/... -allow .github/deadcode-allow.txt -pending .github/deadcode-pending.txt
 
   mutate:
     desc: Break what the change against BASE touched and fail on an edit no test refuses (BASE=origin/main; on a pull request, what it merges into)
     cmds:
       # BASE comes from `task mutate BASE=...` or the environment (the workflow's).
-      - go tool mutate -base "{{.BASE | default "${BASE:-origin/main}"}}" -max 200
+      - mutate -base "{{.BASE | default "${BASE:-origin/main}"}}" -max 200
 
   spec:compliance:
     desc: Verify spec compliance — schema attribute coverage + normative behavior (merge/lifecycle/discovery), excludes Go-only additions
@@ -253,13 +253,13 @@ tasks:
     desc: Rewrite every internal/**/testdata/ts-oracle/*.json with the results of the reference TypeScript functions (tools/tsoracle), run in the node image versions.yaml pins (needs Docker)
     deps: [reference:compile]
     cmds:
-      - go run ./cmd/devtool ts-oracle "$(go tool versions ref node)"
+      - go run ./cmd/devtool ts-oracle "$(versions ref node)"
 
   testdata:ts-oracle:check:
     desc: Fail when a testdata/ts-oracle golden differs from what the reference TypeScript functions return
     deps: [reference:compile]
     cmds:
-      - TS_ORACLE_IMAGE="$(go tool versions ref node)" go test ./internal/devtools -run '^TestTSOracleGoldensMatchTheReference$' -count=1 -v
+      - TS_ORACLE_IMAGE="$(versions ref node)" go test ./internal/devtools -run '^TestTSOracleGoldensMatchTheReference$' -count=1 -v
 
   reference:
     desc: Install and compile the TypeScript parity oracle
@@ -281,7 +281,7 @@ tasks:
       # must be in the inventory (needs reference/ checked out, so it lives here).
       - go test ./internal/cli -run TestOracleFlagCoverage -count=1
       # The ts-oracle goldens must be what the reference's functions return.
-      - TS_ORACLE_IMAGE="$(go tool versions ref node)" go test ./internal/devtools -run '^TestTSOracleGoldensMatchTheReference$' -count=1
+      - TS_ORACLE_IMAGE="$(versions ref node)" go test ./internal/devtools -run '^TestTSOracleGoldensMatchTheReference$' -count=1
       - PARITY_REPORT_FILE={{.ROOT_DIR}}/artifacts/parity-contract.json PARITY_STRICT=true PARITY_LANE=contract PARITY_SKIP_DOCKER=true PARITY_SKIP_NETWORK=true go test ./internal/cli -run TestParityMatrix -count=1 -timeout 10m -v {{.CLI_ARGS}}
 
   parity:semantic:
@@ -410,14 +410,14 @@ tasks:
         msg: goreleaser is required
     env:
       DISTROLESS_IMAGE:
-        sh: go tool versions ref distroless
+        sh: versions ref distroless
     cmds:
       - goreleaser release --clean {{.CLI_ARGS}}
 
   release:env:
     desc: "CI-ONLY: export what GoReleaser reads from versions.yaml (DISTROLESS_IMAGE) to $GITHUB_ENV"
     cmds:
-      - echo "DISTROLESS_IMAGE=$(go tool versions ref distroless)" >> "$GITHUB_ENV"
+      - echo "DISTROLESS_IMAGE=$(versions ref distroless)" >> "$GITHUB_ENV"
 
   # The release workflow's own steps. What only the workflow knows - the dispatch input, the
   # prepare job's outputs, the published digest - comes in the environment.
@@ -512,8 +512,8 @@ tasks:
           node-pty: true
         verifyDepsBeforeRun: error
         EOF
-      - go tool sfw pnpm import
-      - go tool sfw pnpm install --frozen-lockfile
+      - sfw pnpm import
+      - sfw pnpm install --frozen-lockfile
 
   reference:compile:
     internal: true
