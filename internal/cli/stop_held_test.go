@@ -20,6 +20,7 @@ type fakeEngine struct {
 	mu         sync.Mutex
 	containers map[string]map[string]string
 	stopFails  bool
+	listFails  bool
 	calls      []string
 }
 
@@ -69,6 +70,11 @@ func (e *fakeEngine) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		slices.Sort(want)
 		e.record("list " + strings.Join(want, ","))
+		if e.listFails {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"message":"cannot list"}`)
+			return
+		}
 		items := []map[string]string{}
 		for id, labels := range e.containers {
 			if hasLabels(labels, want) {
@@ -216,6 +222,42 @@ func TestStopWithNoContainerSucceedsWithoutDoingAnything(t *testing.T) {
 		if !strings.HasPrefix(c, "list ") {
 			t.Errorf("engine call %q with no container to act on", c)
 		}
+	}
+}
+
+func TestStopOrDownReportsALookupTheEngineRefused(t *testing.T) {
+	engine := startFakeEngine(t, map[string]map[string]string{})
+	engine.listFails = true
+	cli, _ := fakeDockerCLI(t, false, 0)
+
+	got := runStopOrDownForTest(t, stopOpts{workspaceFolder: t.TempDir(), dockerPath: cli}, true)
+
+	assertResult(t, got, map[string]any{"outcome": "error"})
+	if msg, _ := got["message"].(string); !strings.HasPrefix(msg, "Command failed: docker ps ") {
+		t.Errorf("message = %q, want the failed container lookup", msg)
+	}
+	for _, c := range engine.recorded() {
+		if !strings.HasPrefix(c, "list ") {
+			t.Errorf("engine call %q after the lookup failed", c)
+		}
+	}
+}
+
+func TestStopOrDownReportsAContainerItCannotInspect(t *testing.T) {
+	engine := startFakeEngine(t, map[string]map[string]string{})
+	cli, composeCalls := fakeDockerCLI(t, false, 0)
+
+	got := runStopOrDownForTest(t, stopOpts{containerID: "gone", dockerPath: cli}, false)
+
+	assertResult(t, got, map[string]any{"outcome": "error"})
+	if msg, _ := got["message"].(string); !strings.HasPrefix(msg, "inspect container gone: ") {
+		t.Errorf("message = %q, want the inspect failure", msg)
+	}
+	if calls := engine.recorded(); len(calls) != 0 {
+		t.Errorf("engine calls = %v after the inspect failed", calls)
+	}
+	if calls := composeCalls(); calls != nil {
+		t.Errorf("docker CLI ran %v", calls)
 	}
 }
 
