@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -20,5 +21,16 @@ func TestBuilderDetectionIgnoresAFailedBuildx(t *testing.T) {
 	c2 := &Client{DockerPath: "docker", Log: log.Null, Runner: ls}
 	if got := c2.FindDockerDriverBuilder(t.Context()); got != "" {
 		t.Errorf("FindDockerDriverBuilder after a failed ls = %q, want empty", got)
+	}
+}
+
+func TestFindDockerDriverBuilderWhenTheContextCannotBeRead(t *testing.T) {
+	rr := &recordingRunner{responses: []cannedResponse{
+		{err: errors.New("exec docker: no such file")},
+		{stdout: []byte("NAME DRIVER\nremote* docker-container running\ndefault docker running\n")},
+	}}
+	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
+	if got := c.FindDockerDriverBuilder(t.Context()); got != "default" {
+		t.Errorf("FindDockerDriverBuilder with no current context = %q, want the first docker-driver builder", got)
 	}
 }

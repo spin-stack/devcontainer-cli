@@ -23,6 +23,7 @@ type cannedResponse struct {
 	stdout []byte
 	stderr []byte
 	code   int
+	err    error
 }
 
 func (r *recordingRunner) Run(_ context.Context, stream io.Writer, name string, args ...string) ([]byte, []byte, int, error) {
@@ -34,7 +35,7 @@ func (r *recordingRunner) Run(_ context.Context, stream io.Writer, name string, 
 			_, _ = stream.Write(resp.stdout)
 			_, _ = stream.Write(resp.stderr)
 		}
-		return resp.stdout, resp.stderr, resp.code, nil
+		return resp.stdout, resp.stderr, resp.code, resp.err
 	}
 	return nil, nil, 0, nil
 }
