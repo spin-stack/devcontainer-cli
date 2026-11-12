@@ -165,8 +165,11 @@ func TestForbiddenChallengeIsInspected(t *testing.T) {
 }
 
 // TS fails the authentication when `new URL(realm)` throws, as it does for a
-// relative realm; Go refuses such a realm under hardening as unparsable.
-func TestRelativeRealmIsUnparsableUnderHardening(t *testing.T) {
+// relative realm, with or without hardening. Go fails it in both modes too:
+// under hardening this transport refuses it as unparsable; without hardening
+// it passes the challenge on and oras-go's validateRealm rejects a realm whose
+// scheme is not http or https. Only the error text differs from TS.
+func TestHardeningRefusesARelativeRealmAsUnparsable(t *testing.T) {
 	policy, err := NewAuthPolicy(true, nil, log.Null)
 	if err != nil {
 		t.Fatal(err)

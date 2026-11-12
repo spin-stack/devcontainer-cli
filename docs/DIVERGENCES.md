@@ -134,6 +134,92 @@ touches a compared surface, reflected in the parity matrix.
   TS writes in its `devcontainer-feature.json` order. The parsed values are the same; the
   parity matrix's `key_order` cases hold the orders that match.
 
+The entries below fix upstream bugs that are still present upstream; each names the
+upstream issue it fixes.
+
+- **GPU detection also asks `nvidia-container-cli`.** With `--gpu-availability detect`
+  (the default), TS `checkDockerSupportForGPU` enables the GPU whenever `docker info`
+  lists the `nvidia` runtime. The runtime is often installed on machines without a GPU
+  (cloud images carry it), and `up` then fails starting a container with `--gpus all`
+  (upstream #319). This CLI also requires `nvidia-container-cli info` to succeed when
+  that binary is on `PATH`; without the binary it decides from `docker info` alone, as TS
+  does (`TestCheckGPUAvailability_NvidiaCLIProbe`, `internal/cli/upstream_fixes_test.go`).
+- **`build [path]` builds the workspace at `path`.** TS declares the positional
+  `build [path]` but `doBuild` never reads it, so `devcontainer build ./project` builds
+  the current folder (upstream #8). This CLI takes the path as the workspace folder when
+  `--workspace-folder` is not given; the flag wins when both are
+  (`TestBuildPositionalPathIsTheWorkspace`, `internal/cli/build_repo_held_test.go`).
+- **A Dockerfile's own `<Dockerfile>.dockerignore` applies when the CLI builds a
+  Dockerfile it generated.** BuildKit reads the ignore file next to the Dockerfile it is
+  given. TS builds a Dockerfile it writes in a folder of its own (to add Features and the
+  metadata label, also for a Compose service), so the user's
+  `.devcontainer/Dockerfile.dockerignore` is not read and the files it excludes are sent
+  in the build context (upstream #969). This CLI copies the ignore file next to every
+  Dockerfile it generates (`TestCopyDockerignore`,
+  `TestBuildAndExtendComposeDockerfileService` in `internal/cli/compose_up_held_test.go`,
+  and `TestE2E_SiblingDockerignore` in `internal/cli/e2e_fixes_test.go`).
+- **A `LABEL devcontainer.metadata` in the Dockerfile is kept.** TS builds the image's
+  metadata label from the base image's label and the configuration and writes it over the
+  image, so a `LABEL devcontainer.metadata=…` written in the built stage of the user's
+  Dockerfile is lost (upstream #1225). This CLI merges that stage's entries between the
+  base image's and the configuration's (`TestStageLabelsDevcontainerMetadata` and
+  `TestStageLabelsReadsTheNamedStage` in `internal/docker`, `TestDockerfileImageMetadata`
+  in `internal/cli/build_held_test.go`).
+- **`build --label` applies to a Docker Compose configuration.** `docker compose build`
+  takes no labels, and TS drops `--label` for a Compose configuration without a word
+  (upstream #930). This CLI applies the labels with one more build, `FROM <image>`, tagged
+  with the `--image-name` values or, without them, the image's own name
+  (`TestE2E_ComposeBuildLabel`, `internal/cli/e2e_fixes_test.go`).
+- **`features generate-docs` and `templates generate-docs` document the folders they are
+  given.** TS takes every entry of the project folder as an item folder: pointed at a
+  single Feature or Template folder it looks for metadata under each of its files and
+  documents nothing, and each top-level file (a `README.md`, a `LICENSE`) is reported with
+  a `not found … Skipping...` warning (upstream #876). This CLI documents the folder itself
+  when it holds `devcontainer-<feature|template>.json`, and otherwise reads only its
+  sub-folders, skipping files without a word (`TestGenerateDocs_SingleFeatureFolder`,
+  `TestGenerateDocs_IgnoresTopLevelFiles`, `internal/cli/collection_commands_test.go`).
+  The metadata is also read strictly: TS's `jsonc.parse` recovers from syntax errors and
+  documents whatever it could read, while this CLI logs `Failed to parse <file>` and skips
+  an item whose metadata is not valid JSONC; comments and trailing commas are accepted as
+  in TS (`TestGenerateDocs_SkipsMetadataThatIsNotValidJSONC`), for the same reason a
+  devcontainer.json that is not valid JSONC fails to load.
+- **Host variables in a Feature's `containerEnv` are resolved in the image's `ENV`
+  lines.** TS writes a Feature's `containerEnv` into the Features Dockerfile as given, so
+  `"containerEnv": {"CACHE": "${localEnv:HOME}/.cache"}` becomes
+  `ENV CACHE="${localEnv:HOME}/.cache"`, which BuildKit rejects (`unsupported modifier
+  (:H) in substitution`) (upstream #308). This CLI resolves `${localEnv:…}`,
+  `${localWorkspaceFolder}` and the other host variables before it writes the `ENV` line,
+  as it does for the configuration's own `containerEnv`
+  (`TestExtendImageWithFeaturesResolvesFeatureHostVars` in
+  `internal/cli/feature_install_nodocker_held_test.go`, `TestComposeFeatureSets` in
+  `internal/cli/compose_up_held_test.go`).
+- **The Linux default credential helper is `secretservice`.** When the Docker config
+  has no `auths`, `credHelpers` or `credsStore` for any registry, TS falls back to
+  `docker-credential-pass` when `pass` is on `PATH` and otherwise to
+  `docker-credential-secret`, a binary that does not exist, so the fallback never finds a
+  credential. This CLI falls back to `docker-credential-secretservice`, the
+  libsecret helper; the `pass` choice is unchanged (`TestPlatformDefaultHelperFollowsPass`,
+  `TestDockerConfigWithAuthSkipsPlatformDefault` in `internal/oci/auth_held_test.go`,
+  `TestDefaultCredentialHelperName` in `internal/oci/auth_helper_test.go`).
+- **A credential helper that does not answer within 15 seconds is skipped.** TS waits
+  for a helper for as long as it runs, so a helper blocked on a locked keyring or an
+  unanswered prompt hangs the command. This CLI stops the helper after 15 seconds, warns
+  (`Credential helper "<name>" timed out after 15s for "<registry>"; skipping it …`) and
+  goes on without that credential (`GITHUB_TOKEN` or anonymous access)
+  (`TestCredentialHelperThatHangsTimesOut`, `internal/oci/auth_held_test.go`).
+- **`up --remove-existing-container` removes the container first.** TS removes the
+  existing container only when it looks for it to reuse, after the disallowed-Features
+  check and after `initializeCommand` has run, so a failing `initializeCommand` or a
+  disallowed Feature leaves the old container in place although the flag asked for it to
+  go (upstream #844). This CLI removes it before both
+  (`TestE2E_RemoveExistingBeforeInitialize`, `internal/cli/e2e_fixes_test.go`).
+- **`updateRemoteUserUID` changes the UID of a user without a home folder.** The TS
+  `updateUID.Dockerfile` runs `chown -R $NEW_UID:$NEW_GID $HOME_FOLDER` unconditionally
+  and unquoted, so a remote user whose home folder does not exist (a system user created
+  with `--no-create-home`) fails the image update, and a home path with spaces is split
+  (upstream #109). This CLI's Dockerfile chowns the home folder only when it exists, and
+  quotes it (`TestE2E_UpdateUIDSystemUser`, `internal/cli/e2e_fixes_test.go`).
+
 ## Firm decisions & scope
 
 - **Platform: Linux only** (amd64 / arm64). Windows and macOS are not targets — no
@@ -170,7 +256,12 @@ touches a compared surface, reflected in the parity matrix.
   gain), interactive `docker exec -it`, and the credential-helper protocol (external
   executables by design). These shell-outs receive the command's `context.Context` (via
   `exec.CommandContext`), so a deadline/cancel — or `Ctrl-C` — aborts an in-flight
-  `build`/`compose` subprocess rather than orphaning it.
+  `build`/`compose` subprocess rather than orphaning it. One consequence is visible in
+  the log: TS runs every engine operation through the `docker` CLI (`plainExec`) and logs
+  each one as a `Start: Run: docker …` / `Stop (N ms): Run: docker …` pair (`start` and
+  `stop` records with `--log-format json`). An operation this CLI performs through the
+  Docker Engine SDK (inspecting, listing, creating, starting and removing containers,
+  lifecycle hooks) writes no such pair; the shell-outs above log a `Run: …` line.
 
 ## Accepted limitations
 
@@ -199,8 +290,9 @@ oversight.
 - **Cloud registry auth matrix is out of default CI scope.** The hermetic auth paths
   (401→bearer, credential-helper protocol, `DEVCONTAINERS_OCI_AUTH`, `GITHUB_TOKEN`) are
   unit-tested; a real ACR (identity/refresh) / ECR / authenticated-GHCR matrix is
-  secrets-gated and non-blocking. Credential helpers are Linux-only
-  (`secretservice`/`pass`).
+  secrets-gated and non-blocking. The platform default credential helper, used when the
+  Docker config names none, is the Linux one only (`pass`, else `secretservice`; see
+  *The Linux default credential helper is `secretservice`* above).
 - **TS→Go metadata interop** is exercised by `TestMetadataInteropTSToGo`, which builds
   the same configuration with the oracle and with this CLI and compares the merged
   `devcontainer.metadata` labels; it runs when the oracle is compiled (`task reference`)
@@ -213,3 +305,23 @@ oversight.
 - **Legacy Feature fallback via GitHub Releases** is not implemented; feature resolution
   is OCI-first (the supported path for v2 features). A configuration that references one fails with the
   resolution error (read-configuration included) instead of silently omitting the Feature.
+- **Mermaid node ids differ from TS.** `features info dependencies` and
+  `features resolve-dependencies` print the dependency graph as a Mermaid flowchart. TS
+  names each node with the first six hex digits of the SHA-256 of `JSON.stringify` of the
+  whole graph node (`generateMermaidNode`), which includes the resolved Feature set and
+  its metadata and the node's `dependsOn` / `installsAfter` lists, in the order a
+  JavaScript object keeps. This CLI hashes the node's type, user Feature id, options,
+  round priority and aliases instead, since reproducing TS's bytes would mean
+  reproducing that whole object in insertion order. The graph's nodes, edges and labels
+  are the same and each edge points at its node's own id; the parity harness replaces
+  the ids with `<NODE>` (`reMermaidNode` in `normalizeStringOpts`,
+  `internal/cli/parity_matrix_test.go`) for `features-info.dependencies-text` and
+  `features.resolve-dependencies-success`.
+- **A Feature or Template reference whose digest fails validation is refused.** For
+  `<ref>@sha256:<hex>` where `<hex>` does not match the version pattern (empty, or
+  starting with `-`), TS `getRef` logs `Digest for input '…' failed validation` and still
+  returns the reference, where its other checks (the digest's form and algorithm, the
+  tag) return no reference. This CLI refuses the reference (`digest "…" does not match expected
+  pattern`), because accepting it would weaken validation; a valid digest behaves as in
+  TS. The `internal/oci/testdata/ts-oracle/ref.json` golden records both cases
+  (`ghcr.io/x/y/z@sha256:`, `ghcr.io/x/y/z@sha256:-bad`), checked by `TestTSOracleRef`.
