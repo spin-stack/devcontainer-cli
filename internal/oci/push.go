@@ -79,23 +79,17 @@ func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tag
 		return nil, err
 	}
 
-	var publishedTags []string
 	for _, tag := range tags {
 		if err := repo.PushReference(ctx, manifestDesc, bytes.NewReader(manifestBytes), tag); err != nil {
-			c.log.Write(fmt.Sprintf("Failed to push tag %s: %v", tag, err), log.LevelWarning)
-			continue
+			c.log.Write(fmt.Sprintf("Failed to PUT manifest for tag %s\n%v", tag, err), log.LevelError)
+			return nil, fmt.Errorf("push tag %s of %s: %w", tag, ref.Resource, err)
 		}
-		publishedTags = append(publishedTags, tag)
 		c.log.Write(fmt.Sprintf("Published tag: %s", tag), log.LevelInfo)
-	}
-
-	if len(publishedTags) == 0 {
-		return nil, fmt.Errorf("failed to publish any tags")
 	}
 
 	return &PushResult{
 		Digest:        manifestDesc.Digest.String(),
-		PublishedTags: publishedTags,
+		PublishedTags: tags,
 	}, nil
 }
 
