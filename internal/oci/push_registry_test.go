@@ -13,43 +13,24 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 )
 
-// fakeOCIRegistry is a minimal in-memory OCI distribution registry served over
-// httptest. It speaks just enough of the pull/push protocol to drive oras-go
-// (blob HEAD/upload, manifest PUT, tags list) and, crucially, lets a test:
-//
-//   - require Bearer auth so the full 401 -> WWW-Authenticate: Bearer -> token
-//     endpoint -> retry loop runs against a real HTTP server (the registry:3
-//     testcontainer only exercises Basic auth); and
-//   - inject a mid-loop manifest failure (failTags) to reproduce the
-//     no-rollback partial-publish risk in PushArtifact's tag loop.
-//
-// It is addressed as localhost (httptest), so Ref.Scheme() flips PlainHTTP on and
-// no TLS is needed.
 type fakeOCIRegistry struct {
 	mu     sync.Mutex
-	srvURL string // set by start(); used to build the Bearer realm URL
+	srvURL string
 
-	// blobs indexed by digest; manifests indexed by tag/reference.
 	blobs     map[string][]byte
 	manifests map[string][]byte
 
-	// requireBearer turns on the token-auth challenge. wantUser/wantPass are the
-	// Basic credentials the /token endpoint accepts.
 	requireBearer      bool
 	wantUser, wantPass string
 	issuedToken        string
 
-	// failTags: manifest PUT for any of these references returns 500, simulating a
-	// partial failure part-way through the publish loop. failAllManifests fails
-	// every manifest PUT.
 	failTags         map[string]bool
 	failAllManifests bool
 
-	// Observed activity, for assertions.
 	tokenRequests int
-	putManifestOK []string // references successfully stored
+	putManifestOK []string
 	blobUploads   int
-	blobHeadHits  int // HEAD requests that found an existing blob
+	blobHeadHits  int
 }
 
 func newFakeOCIRegistry() *fakeOCIRegistry {
@@ -89,7 +70,6 @@ func (r *fakeOCIRegistry) handle(w http.ResponseWriter, req *http.Request) {
 
 	path := req.URL.Path
 
-	// Token endpoint: validate Basic creds, issue a bearer token.
 	if path == "/token" {
 		r.tokenRequests++
 		user, pass, ok := req.BasicAuth()
@@ -101,7 +81,6 @@ func (r *fakeOCIRegistry) handle(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// The API-version probe and every data path require auth when Bearer is on.
 	if !r.authorized(req) {
 		r.challenge(w)
 		return
@@ -138,7 +117,6 @@ func (r *fakeOCIRegistry) handle(w http.ResponseWriter, req *http.Request) {
 func (r *fakeOCIRegistry) handleBlobUpload(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case http.MethodPost:
-		// Start an upload session; oras will PUT the content next.
 		w.Header().Set("Location", req.URL.Path+"session-id")
 		w.Header().Set("Docker-Upload-UUID", "session-id")
 		w.WriteHeader(http.StatusAccepted)

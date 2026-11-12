@@ -16,7 +16,7 @@ type stopOpts struct {
 	idLabels        []string
 	containerID     string
 	dockerPath      string
-	removeVolumes   bool // down only
+	removeVolumes   bool
 }
 
 func newStopCmd() *cobra.Command {
@@ -76,8 +76,6 @@ func addStopFlags(cmd *cobra.Command, opts *stopOpts) {
 }
 
 func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) error {
-	// The workspace defaults to the current directory. It is only looked at
-	// when neither --container-id nor --id-label names the container.
 	if opts.workspaceFolder == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
@@ -91,12 +89,9 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 
 	id := resolveWorkspaceContainer(ctx, engine, opts)
 	if id == "" {
-		// Nothing to do — already gone. Not an error (idempotent).
 		return writeSuccessJSON(out, map[string]any{"outcome": "success", "result": "no-container-found"})
 	}
 
-	// Compose services carry the project label; operate on the whole project so
-	// sibling services (db, cache, …) are handled too, not just the dev container.
 	project := ""
 	if insp, ierr := engine.InspectContainer(ctx, id); ierr == nil && insp.Config != nil {
 		project = insp.Config.Labels["com.docker.compose.project"]
@@ -134,11 +129,6 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 	})
 }
 
-// resolveWorkspaceContainer finds the dev container for a workspace: a directly
-// given --container-id, else --id-label, else the workspace's container —
-// disambiguated by --config (config_file label) when a project has multiple
-// devcontainer.json configs, falling back to local_folder. all=true so a stopped
-// container is still found (down after a prior stop).
 func resolveWorkspaceContainer(ctx context.Context, engine *docker.EngineClient, opts stopOpts) string {
 	if opts.containerID != "" {
 		return opts.containerID
@@ -147,8 +137,6 @@ func resolveWorkspaceContainer(ctx context.Context, engine *docker.EngineClient,
 	if opts.configPath != "" {
 		configFile = resolvePath(opts.configPath)
 	}
-	// A failed lookup is no container here, as it was before lookups reported
-	// their failure.
 	id, _ := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
 	return id
 }

@@ -1,20 +1,3 @@
-// Package cli parity matrix.
-//
-// Runtime cases run in parallel, bounded by `go test -parallel N`. Isolation is
-// per case: single-container cases use unique --id-label parity.case values, and
-// compose cases get a unique COMPOSE_PROJECT_NAME (see parityEnv); build cache/
-// output cases use a unique BUILDX_BUILDER instead of touching the global buildx
-// default. A few cases that assert a specific compose project name opt out via
-// no_compose_isolation, and cases that can't be isolated set serial: true.
-//
-// Recommended invocation for the full runtime lane (docker required):
-//
-//	PARITY_LANE=all go test ./internal/cli -run TestParityMatrix -parallel 2 -timeout 40m
-//
-// Higher -parallel is faster but overloads the docker daemon on contended runners
-// and transiently fails compose/heavy cases (which match in isolation), so the gate
-// (task parity:runtime) defaults to -parallel 2 for determinism; raise via
-// PARITY_PARALLEL on idle/beefy runners.
 package cli
 
 import (
@@ -39,66 +22,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- YAML types ---
-
 type parityMatrix struct {
 	InitialCases []parityCase `yaml:"initial_cases"`
 }
 
 type parityCase struct {
-	ID              string   `yaml:"id"`
-	Lane            string   `yaml:"lane"`
-	Command         string   `yaml:"command"`
-	Priority        string   `yaml:"priority"`
-	DockerRequired  bool     `yaml:"docker_required"`
-	NetworkRequired bool     `yaml:"network_required"`
-	TSCmd           string   `yaml:"ts_cmd"`
-	SetupCmd        string   `yaml:"setup_cmd"`
-	VerifyCmd       string   `yaml:"verify_cmd"`
-	CleanupCmd      string   `yaml:"cleanup_cmd"`
-	Asserts         []string `yaml:"asserts"`
-	Class           string   `yaml:"class"`
-	CurrentStatus   string   `yaml:"current_status"`
-	Notes           string   `yaml:"notes"`
-	// NoComposeIsolation opts a case out of the injected per-case
-	// COMPOSE_PROJECT_NAME (used to isolate parallel runtime cases). Set it for
-	// cases that exercise compose project-name resolution, or whose reuse logic
-	// is sensitive to the project name.
-	NoComposeIsolation bool `yaml:"no_compose_isolation"`
-	// Serial forces a case to run sequentially (no t.Parallel). Used for the few
-	// runtime cases that can't be isolated for parallel execution.
-	Serial bool `yaml:"serial"`
-	// Lock names a Docker resource the case shares with other cases and cannot
-	// isolate; cases with the same lock run one at a time, still in parallel
-	// with every other case. See parityLocks.
-	Lock string `yaml:"lock"`
-	// CompareHashes keeps sha256/hex digests UNSCRUBBED so they are compared
-	// exactly between TS and Go. Set it for cases whose digests are deterministic
-	// and meaningful (resolve-dependencies installOrder resource@digest,
-	// read-configuration featuresConfiguration manifest/computed digests, lockfile
-	// integrity) — otherwise a wrong Go digest normalizes to <HASH> and passes.
-	// Leave it false where digests are non-deterministic (tarball push mtime).
-	CompareHashes bool `yaml:"compare_hashes"`
-	// CompareNulls keeps JSON null values instead of dropping them, so a field TS
-	// emits as null but Go omits (or vice versa) is caught instead of comparing
-	// equal. Set it for result-envelope cases where present-null vs absent-key is
-	// a real shape divergence.
-	CompareNulls bool `yaml:"compare_nulls"`
-	// Arm64Required marks a case that needs arm64 container emulation (QEMU/binfmt
-	// on an amd64 host). arm64 runtime is EXPERIMENTAL and unsupported for now, so
-	// these are skipped (skipped-arm64) unless PARITY_ARM64=true is set explicitly —
-	// they never fail the strict gate.
-	Arm64Required bool `yaml:"arm64_required"`
-	// ExpectInfraFailure marks a failure-intended case whose TS side fails with an
-	// infra-looking error that IS the expected behavior (e.g. an invalid --platform
-	// makes docker fail at the metadata layer). Without this, isInfraError would
-	// classify TS's failure as an unusable-oracle skip → inconclusive; with it, when
-	// Go also failed the harness compares exit codes instead.
-	ExpectInfraFailure bool `yaml:"expect_infra_failure"`
-	// KeyOrder names JSON objects in the result on stdout whose keys must come in
-	// TS's order, which stdout_normalized cannot see (it sorts keys): "" is the
-	// result itself, "configuration" its configuration property, and so on.
-	KeyOrder []string `yaml:"key_order"`
+	ID                 string   `yaml:"id"`
+	Lane               string   `yaml:"lane"`
+	Command            string   `yaml:"command"`
+	Priority           string   `yaml:"priority"`
+	DockerRequired     bool     `yaml:"docker_required"`
+	NetworkRequired    bool     `yaml:"network_required"`
+	TSCmd              string   `yaml:"ts_cmd"`
+	SetupCmd           string   `yaml:"setup_cmd"`
+	VerifyCmd          string   `yaml:"verify_cmd"`
+	CleanupCmd         string   `yaml:"cleanup_cmd"`
+	Asserts            []string `yaml:"asserts"`
+	Class              string   `yaml:"class"`
+	CurrentStatus      string   `yaml:"current_status"`
+	Notes              string   `yaml:"notes"`
+	NoComposeIsolation bool     `yaml:"no_compose_isolation"`
+	Serial             bool     `yaml:"serial"`
+	Lock               string   `yaml:"lock"`
+	CompareHashes      bool     `yaml:"compare_hashes"`
+	CompareNulls       bool     `yaml:"compare_nulls"`
+	Arm64Required      bool     `yaml:"arm64_required"`
+	ExpectInfraFailure bool     `yaml:"expect_infra_failure"`
+	KeyOrder           []string `yaml:"key_order"`
 }
 
 type paritySideResult struct {
@@ -197,17 +147,9 @@ func writeParityReport(path string, snapshot map[parityOutcome][]string) error {
 	return nil
 }
 
-// parityLocks are the shared resources a case can name in `lock`.
-//
-// feature-content-image: without BuildKit, both CLIs build a Feature's files
-// into the fixed tag dev_container_feature_content_temp (TS containerFeatures.ts
-// getFeaturesBuildOptions) and build FROM it, so two such builds at once can
-// take each other's Features.
 var parityLocks = map[string]*sync.Mutex{
 	"feature-content-image": {},
 }
-
-// --- Main test ---
 
 func TestParityMatrix(t *testing.T) {
 	repoRoot := findRepoRoot(t)
@@ -243,9 +185,6 @@ func TestParityMatrix(t *testing.T) {
 	cliTS := envOr("CLI_TS", defaultParityTSCLI(repoRoot))
 	cliGO := envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer"))
 	defaultTimeout := 60 * time.Second
-	// Runtime lane default; overridable via PARITY_RUNTIME_TIMEOUT (e.g. "10m")
-	// so CI can grant headroom to QEMU-emulated arm64 cases without slowing the
-	// amd64 cases here.
 	runtimeTimeout := 300 * time.Second
 	if v := os.Getenv("PARITY_RUNTIME_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -253,36 +192,21 @@ func TestParityMatrix(t *testing.T) {
 		}
 	}
 
-	// Check TS CLI exists
 	if _, err := os.Stat(filepath.Join(repoRoot, "reference", "dist", "spec-node", "devContainersSpecCLI.js")); err != nil {
 		t.Skip("TS reference not compiled (reference/dist not found). Run: git submodule update --init && task ts:compile")
 	}
-	// Check Go CLI exists
 	if _, err := os.Stat(cliGO); err != nil {
 		t.Skip("Go CLI not built. Run: task build")
 	}
 
 	dockerAvailable := isDockerAvailable()
 
-	// The runtime lane's update-UID and cache-export builds run
-	// `docker build --platform` against locally-built images, which the legacy
-	// graph-driver builder cannot resolve — only the containerd image store can.
-	// Without it the TS oracle fails those builds while the Go CLI (which omits
-	// --platform) succeeds, producing false TS-vs-Go divergences. Enforce the
-	// store up front — including on a direct `go test` that skips the Taskfile
-	// precondition — so a misconfigured daemon fails loudly with a fix, not as a
-	// confusing per-case divergence.
 	runtimeLane := os.Getenv("PARITY_LANE") != "" && os.Getenv("PARITY_SKIP_DOCKER") != "true"
 	if runtimeLane && dockerAvailable && !hasContainerdImageStore() {
 		t.Fatal("parity runtime lane requires the containerd image store (docker build --platform against local images). " +
 			"Enable it with `task ci:prepare-runner`, or add {\"features\":{\"containerd-snapshotter\":true}} to /etc/docker/daemon.json and restart Docker.")
 	}
 
-	// Sharding: split the selected cases round-robin across parallel CI jobs, so
-	// N runners (with independent docker daemons) share the wall-clock. Inert when
-	// PARITY_SHARD_TOTAL is unset or <= 1. Cases in other shards stay not-selected,
-	// which the strict gate ignores (it only fails on inconclusive cases), so each
-	// shard gates its own subset and the union covers everything exactly once.
 	shardIndex, shardTotal := parityShard(t)
 	selected := 0
 
@@ -290,13 +214,9 @@ func TestParityMatrix(t *testing.T) {
 		if !matchesFilter(tc) {
 			continue
 		}
-		// With no explicit lane, runtime is intentionally outside this invocation.
-		// Keep it as not-selected rather than creating a misleading skipped subtest.
 		if tc.Lane == "runtime" && os.Getenv("PARITY_LANE") == "" {
 			continue
 		}
-		// Round-robin over the selected set (stable matrix order); consecutive
-		// cases land on different shards, which spreads the heavy build.* cases.
 		caseIndex := selected
 		selected++
 		if !inShard(caseIndex, shardIndex, shardTotal) {
@@ -311,9 +231,6 @@ func TestParityMatrix(t *testing.T) {
 				}
 				report.record(tc.ID, outcome)
 			}()
-			// Cases run in parallel (bounded by `go test -parallel N`); per-case
-			// COMPOSE_PROJECT_NAME + id-labels isolate runtime cases. A few cases
-			// that can't be isolated opt into serial execution.
 			if !tc.Serial {
 				t.Parallel()
 			}
@@ -326,8 +243,6 @@ func TestParityMatrix(t *testing.T) {
 				outcome = paritySkippedNetwork
 				t.Skip("network required")
 			}
-			// arm64 runtime is experimental and unsupported for now; skip unless
-			// explicitly opted in (needs arm64 emulation, e.g. QEMU/binfmt).
 			if tc.Arm64Required && os.Getenv("PARITY_ARM64") != "true" {
 				outcome = paritySkippedArm64
 				t.Skip("arm64 experimental (set PARITY_ARM64=true to run; requires arm64 emulation)")
@@ -349,9 +264,6 @@ func TestParityMatrix(t *testing.T) {
 			tsStatus := classifyParitySide(tsCtx.Err(), tsRes.Stdout, tsRes.Stderr, tsRes.ExitCode)
 			tsCancel()
 
-			// Always run the Go side, even when TS is skipped — a TS-side infra/timeout
-			// must never silently delete Go's coverage. We decide what to do with
-			// the results afterwards.
 			goCtx, goCancel := context.WithTimeout(t.Context(), perCaseTimeout)
 			goRes := runParitySide(t, goCtx, repoRoot, cliGO, tc, "go")
 			goStatus := classifyParitySide(goCtx.Err(), goRes.Stdout, goRes.Stderr, goRes.ExitCode)
@@ -360,14 +272,7 @@ func TestParityMatrix(t *testing.T) {
 				t.Fatalf("Go timed out")
 			}
 
-			// TS unavailable as an oracle (infra/timeout): record it (auditable) but
-			// don't compare. Go still ran, so its coverage is not silently lost.
-			// When Go hit the SAME environment limit (e.g. arm64 on an amd64 host) that
-			// is a shared skip, not a Go bug.
 			if tsStatus.Skip {
-				// A failure-intended case whose TS side fails with an infra-looking
-				// error IS the expected behavior (e.g. invalid --platform). When Go
-				// also failed, compare exit codes instead of marking inconclusive.
 				if !tc.ExpectInfraFailure || !tsStatus.Infra || goRes.ExitCode == 0 {
 					outcome = parityInconclusive
 					t.Skipf("TS %s (Go exit %d) [case=%s]", tsStatus.Reason, goRes.ExitCode, tc.ID)
@@ -380,18 +285,12 @@ func TestParityMatrix(t *testing.T) {
 
 			asserts := setFrom(tc.Asserts)
 
-			// Skip when TS fails due to infra but Go succeeds; this is not a product mismatch.
 			if tsRes.ExitCode != 0 && goRes.ExitCode == 0 && tsStatus.Infra {
 				outcome = parityInconclusive
 				t.Skipf("TS infra error (exit %d) [case=%s]", tsRes.ExitCode, tc.ID)
 				return
 			}
 
-			// Outcome-intent check, now that TS is a usable oracle:
-			//  - success case, TS exit 0, Go non-zero → real regression (RED).
-			//  - success case, BOTH failed → we can't tell a product bug from an
-			//    environment limit; mark inconclusive (visible SKIP, not a silent pass).
-			//  - failure case, TS non-zero, Go exit 0 → real regression (RED).
 			if expectSuccess, known := caseExpectsOutcome(tc.ID); known {
 				if expectSuccess && goRes.ExitCode != 0 {
 					if tsRes.ExitCode == 0 {
@@ -408,14 +307,12 @@ func TestParityMatrix(t *testing.T) {
 				}
 			}
 
-			// Exit code
 			if asserts["exit_code"] && tsRes.ExitCode != goRes.ExitCode {
 				t.Errorf("exit code: TS=%d Go=%d", tsRes.ExitCode, goRes.ExitCode)
 			}
 
 			scrubHashes := !tc.CompareHashes
 
-			// Non-zero exit path
 			if tsRes.ExitCode != 0 && goRes.ExitCode != 0 {
 				if asserts["stdout_normalized"] {
 					tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes, tc.CompareNulls)
@@ -425,8 +322,6 @@ func TestParityMatrix(t *testing.T) {
 					}
 				}
 				if asserts["stderr_normalized"] {
-					// Normalized as stdout is: a reason that names a per-side temporary
-					// path (an output folder, a workspace) differs only by that path.
 					tsReason := normalizeStringOpts(extractErrorReason(tsRes.Stdout, tsRes.Stderr), scrubHashes)
 					goReason := normalizeStringOpts(extractErrorReason(goRes.Stdout, goRes.Stderr), scrubHashes)
 					if tsReason != goReason {
@@ -436,7 +331,6 @@ func TestParityMatrix(t *testing.T) {
 				return
 			}
 
-			// Success path
 			if asserts["stdout_normalized"] {
 				tsNorm := normalizeOutputOpts(tsRes.Stdout, scrubHashes, tc.CompareNulls)
 				goNorm := normalizeOutputOpts(goRes.Stdout, scrubHashes, tc.CompareNulls)
@@ -445,9 +339,6 @@ func TestParityMatrix(t *testing.T) {
 				}
 			}
 
-			// stdout_text compares stdout as text, only scrubbing paths and hashes,
-			// so what stdout_normalized's JSON parse hides (how a string is
-			// escaped) is compared byte for byte.
 			if asserts["stdout_text"] {
 				tsText := normalizeStringOpts(tsRes.Stdout, scrubHashes)
 				goText := normalizeStringOpts(goRes.Stdout, scrubHashes)
@@ -508,10 +399,6 @@ func TestParityMatrix(t *testing.T) {
 	}
 }
 
-// caseExpectsOutcome infers the intended outcome from the case id naming
-// convention: "...-success" is success-intended (exit 0), while the failure/
-// invalid-invocation family is failure-intended (non-zero). The second return is
-// false when the id carries no clear intent (don't assert an outcome then).
 func caseExpectsOutcome(id string) (expectSuccess bool, known bool) {
 	switch {
 	case strings.Contains(id, "-success"):
@@ -527,8 +414,6 @@ func caseExpectsOutcome(id string) (expectSuccess bool, known bool) {
 	}
 	return false, false
 }
-
-// --- CLI execution ---
 
 func runParitySide(t *testing.T, ctx context.Context, repoRoot, cli string, tc parityCase, side string) paritySideResult {
 	t.Helper()
@@ -574,14 +459,7 @@ func runParitySide(t *testing.T, ctx context.Context, repoRoot, cli string, tc p
 	return result
 }
 
-// parityInfraRetries bounds how many times a side is re-run when it fails with a
-// transient build/environment error. The runtime lane's docker builds flake on
-// contended CI runners (BuildKit "failed to solve", a registry hiccup, or a
-// container-setup failure surfaced as `Command failed: docker build`), which then
-// shows up as a false TS-vs-Go divergence (one side's build flaked while the other
-// succeeded). A single retry absorbs the flake. Retrying is safe: a deterministic
-// product failure reproduces on every attempt and still fails the case.
-const parityInfraRetries = 2 // total attempts, not extra retries
+const parityInfraRetries = 2
 
 func runParityCLI(ctx context.Context, repoRoot, cli, cmdArgs string, env map[string]string) (stdout, stderr string, exitCode int) {
 	return runWithInfraRetry(ctx, parityInfraRetries, func() (string, string, int) {
@@ -589,16 +467,11 @@ func runParityCLI(ctx context.Context, repoRoot, cli, cmdArgs string, env map[st
 	})
 }
 
-// runWithInfraRetry re-runs run while it fails with a retryable transient error,
-// up to maxAttempts total. It stops early on success, on a non-retryable failure,
-// or once the context is done (so a retry never runs past the per-case deadline).
 func runWithInfraRetry(ctx context.Context, maxAttempts int, run func() (stdout, stderr string, exitCode int)) (stdout, stderr string, exitCode int) {
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
 	for attempt := 1; ; attempt++ {
-		// Always allow the first attempt; after that, don't start new work once the
-		// per-case context is done.
 		if attempt > 1 && ctx.Err() != nil {
 			return
 		}
@@ -631,11 +504,6 @@ func runParityCLIOnce(ctx context.Context, repoRoot, cli, cmdArgs string, env ma
 	return outBuf.String(), errBuf.String(), exitCode
 }
 
-// runParitySetup runs a case's setup_cmd and returns the KEY=VALUE lines it
-// prints. A setup that fails with a transient build error is re-run like the
-// measured command (runWithInfraRetry): setups bring a container up, and two
-// cases building Features without BuildKit at once race on the fixed
-// dev_container_feature_content_temp image both CLIs build.
 func runParitySetup(ctx context.Context, repoRoot, setupCmd string, env map[string]string) (map[string]string, error) {
 	var err error
 	stdout, stderr, exitCode := runWithInfraRetry(ctx, parityInfraRetries, func() (string, string, int) {
@@ -697,16 +565,8 @@ func runShellCommand(ctx context.Context, repoRoot, shellCmd string, env map[str
 	return outBuf.String(), errBuf.String(), exitCode, err
 }
 
-// --- Normalization ---
-
 var (
-	// Both CLIs stamp a piped log line with its ISO time (TS createPlainLog);
-	// only that shape is scrubbed, so a line in another shape stays a mismatch.
-	reTimestampTS = regexp.MustCompile(`\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]`)
-	// Host/tmp path scrubbers stop at structural delimiters (comma, '=', ';', ')')
-	// so a mount spec like source=/home/x,target=/y,type=bind keeps its
-	// target/type for comparison instead of collapsing everything after the host
-	// prefix into one token.
+	reTimestampTS      = regexp.MustCompile(`\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]`)
 	reHostPath         = regexp.MustCompile(`/Users/[^\s"'\n,;=)]+`)
 	reHomePath         = regexp.MustCompile(`/home/[^\s"'\n,;=)]+`)
 	reTmpPath          = regexp.MustCompile(`/tmp/[^\s"'\n,;=)]+`)
@@ -736,8 +596,6 @@ func normalizeStringOpts(s string, scrubHashes bool) string {
 	s = reVarFolders.ReplaceAllString(s, "<TMP_PATH>")
 	if scrubHashes {
 		s = reSHA256.ReplaceAllString(s, "sha256:<HASH>")
-		// Only scrub hex-looking runs that actually contain a hex letter — a pure
-		// decimal run (epoch-ms, large uid) is a real value and must stay comparable.
 		s = reHexID.ReplaceAllStringFunc(s, func(m string) string {
 			if strings.ContainsAny(m, "abcdef") {
 				return "<ID>"
@@ -745,10 +603,7 @@ func normalizeStringOpts(s string, scrubHashes bool) string {
 			return m
 		})
 	}
-	// Mermaid node hashes are internally-consistent but not byte-identical across
-	// TS/Go, so they are always scrubbed (independent of scrubHashes).
 	s = reMermaidNode.ReplaceAllString(s, "<NODE>[")
-	// Normalize parity side identifiers in image/container names
 	s = reParitySideSuffix.ReplaceAllString(s, "-<SIDE>$2")
 	return s
 }
@@ -761,14 +616,12 @@ func normalizeOutputOpts(raw string, scrubHashes, keepNulls bool) string {
 		return ""
 	}
 
-	// Try JSON parse (UseNumber preserves numeric precision)
 	if parsed, ok := decodeJSONNumber(raw); ok {
 		normalized := normalizeValueOpts(parsed, scrubHashes, keepNulls)
 		out, _ := json.Marshal(normalized)
 		return string(out)
 	}
 
-	// TS occasionally prefixes JSON with banner/noise on stderr/stdout; recover the payload.
 	if candidate := extractJSONCandidate(raw); candidate != "" && candidate != raw {
 		if parsed, ok := decodeJSONNumber(candidate); ok {
 			normalized := normalizeValueOpts(parsed, scrubHashes, keepNulls)
@@ -777,7 +630,6 @@ func normalizeOutputOpts(raw string, scrubHashes, keepNulls bool) string {
 		}
 	}
 
-	// Fallback: normalize as text
 	return normalizeStringOpts(raw, scrubHashes)
 }
 
@@ -830,18 +682,12 @@ func normalizeEmbeddedJSONOpts(raw string, scrubHashes, keepNulls bool) any {
 
 func parseEmbeddedJSON(raw string) (any, bool) {
 	t := strings.TrimSpace(raw)
-	// Only treat a string as an embedded JSON *document* when it is an object or
-	// array. Parsing bare scalars ("123", "true", "1.0") would coerce a string
-	// into a number/bool and hide string-vs-typed divergences that Docker and
-	// downstream tooling care about.
 	if !strings.HasPrefix(t, "{") && !strings.HasPrefix(t, "[") {
 		return nil, false
 	}
 	return decodeJSONNumber(t)
 }
 
-// decodeJSONNumber parses JSON with UseNumber so large/precise numbers survive
-// the round-trip instead of being coerced through float64.
 func decodeJSONNumber(raw string) (any, bool) {
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
@@ -852,9 +698,7 @@ func decodeJSONNumber(raw string) (any, bool) {
 	return nil, false
 }
 
-// sortedMap returns a json.RawMessage with sorted keys.
 func sortedMap(m map[string]any) map[string]any {
-	// json.Marshal already sorts keys in Go 1.12+
 	return m
 }
 
@@ -863,7 +707,6 @@ func normalizeTextOpts(raw string, scrubHashes bool) string {
 	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimRight(line, "\r")
 
-		// Strip noise lines
 		skip := false
 		for _, pattern := range stripLines {
 			if strings.Contains(line, pattern) {
@@ -875,16 +718,12 @@ func normalizeTextOpts(raw string, scrubHashes bool) string {
 			continue
 		}
 
-		// Normalize timestamps
 		line = reTimestampTS.ReplaceAllString(line, "[X ms]")
 
-		// Normalize paths and IDs
 		line = normalizeStringOpts(line, scrubHashes)
 
-		// Normalize dockerfile size
 		line = reDockerfileB.ReplaceAllString(line, "transferring dockerfile: <N>B")
 
-		// Skip blank lines
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -894,12 +733,9 @@ func normalizeTextOpts(raw string, scrubHashes bool) string {
 	return strings.Join(lines, "\n")
 }
 
-// --- Error reason extraction ---
-
 func extractErrorReason(stdout, stderr string) string {
 	text := stderr
 
-	// Try JSON stdout for error outcome
 	var parsed map[string]any
 	jsonStdout := strings.TrimSpace(stdout)
 	if candidate := extractJSONCandidate(jsonStdout); candidate != "" {
@@ -917,7 +753,6 @@ func extractErrorReason(stdout, stderr string) string {
 
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 
-	// Invalid choice patterns
 	if m := matchChoiceYargs(text); m != "" {
 		return m
 	}
@@ -928,42 +763,32 @@ func extractErrorReason(stdout, stderr string) string {
 		return m
 	}
 
-	// Missing required
 	re := regexp.MustCompile(`(?m)Missing required argument:\s*(.+)$`)
 	if match := re.FindStringSubmatch(text); len(match) > 1 {
 		return "missing-required|" + normalizeRequired(strings.Split(match[1], "\n")[0])
 	}
 
-	// Unmatched format
 	re = regexp.MustCompile(`(?m)Unmatched argument format:\s*(.+)$`)
 	if match := re.FindStringSubmatch(text); len(match) > 1 {
 		return "invalid-format|" + strings.TrimSpace(match[1])
 	}
 
-	// Parse error — match both Go and TS variants
 	if strings.Contains(text, "Failed to parse Feature identifier") ||
 		strings.Contains(text, "failed validation") {
 		return "parse-error|feature-identifier"
 	}
 
-	// Implications
 	re = regexp.MustCompile(`Implications failed:\s*\n?\s*(.+)`)
 	if match := re.FindStringSubmatch(text); len(match) > 1 {
 		return "implications|" + strings.TrimSpace(match[1])
 	}
 
-	// Fallback: last meaningful line, ignoring the version banner (only TS emits
-	// it) and Node.js stack frames (0.88 lets a few error paths throw with a
-	// trace). This lets a TS "Error: X" + trace line up with a Go "X" message,
-	// and a banner-only silent-exit line up with Go's empty stderr.
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	for _, line := range slices.Backward(lines) {
 		line := strings.TrimSpace(line)
 		if line == "" || isBannerLine(line) || isStackFrame(line) {
 			continue
 		}
-		// Strip the TS log timestamp prefix ("[2026-...Z] ") and a leading
-		// "Error: " so a TS-thrown error lines up with Go's plain message.
 		line = reLogTimestamp.ReplaceAllString(line, "")
 		return strings.TrimPrefix(line, "Error: ")
 	}
@@ -972,13 +797,10 @@ func extractErrorReason(stdout, stderr string) string {
 
 var reLogTimestamp = regexp.MustCompile(`^\[[^\]]*\]\s*`)
 
-// isBannerLine reports whether a line is the CLI version banner
-// ("[ts] @devcontainers/cli X. Node.js ...") that only the TS CLI prints.
 func isBannerLine(line string) bool {
 	return strings.Contains(line, "@devcontainers/cli") && strings.Contains(line, "Node.js")
 }
 
-// isStackFrame reports whether a line is a Node.js stack frame ("at ...").
 func isStackFrame(line string) bool {
 	return strings.HasPrefix(line, "at ")
 }
@@ -1051,11 +873,6 @@ func normalizeRequired(raw string) string {
 	return strings.Join(clean, ",")
 }
 
-// --- Helpers ---
-
-// jsonKeyOrder is the keys of the JSON object at path in the document data, in
-// the order data lists them: "" is the document itself, "a.b" the object at
-// property b of property a, and "a.0" the first element of the array a.
 func jsonKeyOrder(data, path string) ([]string, error) {
 	raw := json.RawMessage(data)
 	if path != "" {
@@ -1169,14 +986,8 @@ func parityEnv(caseID, side, repoRoot string, isolateCompose bool) map[string]st
 		"PARITY_CASE_ID":   sanitizeEnvValue(caseID),
 		"PARITY_SIDE":      side,
 		"PARITY_REPO_ROOT": repoRoot,
-		// The CLI a setup_cmd must invoke is the SAME binary under test for this
-		// lane, not a hardcoded path: the coverage lane sets CLI_GO to the
-		// instrumented binary and never builds ./devcontainer, so a setup_cmd that
-		// hard-coded ${PARITY_REPO_ROOT}/devcontainer fails there (missing binary →
-		// no container → "Dev container not found"). Mirror the cliGO/cliTS defaults
-		// (lines above) so setup and the measured command always agree.
-		"PARITY_CLI_GO": envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer")),
-		"PARITY_CLI_TS": envOr("CLI_TS", defaultParityTSCLI(repoRoot)),
+		"PARITY_CLI_GO":    envOr("CLI_GO", filepath.Join(repoRoot, "devcontainer")),
+		"PARITY_CLI_TS":    envOr("CLI_TS", defaultParityTSCLI(repoRoot)),
 		// Newer BuildKit attaches provenance/SBOM attestations by default, wrapping
 		// the feature-content image in an attestation manifest list. That breaks the
 		// TS CLI's `COPY --from=dev_containers_feature_content_source ...` feature
@@ -1186,21 +997,11 @@ func parityEnv(caseID, side, repoRoot string, isolateCompose bool) map[string]st
 		"BUILDX_NO_DEFAULT_ATTESTATIONS": "1",
 	}
 	if isolateCompose {
-		// Give each case its own compose project so parallel runtime cases that
-		// share a fixture don't manage each other's containers. The name is the
-		// SAME for both sides: ts and go run sequentially within a case (ts's
-		// deferred cleanup runs before go starts), so they never overlap, and a
-		// side-independent name keeps the emitted composeProjectName identical
-		// across sides for output comparison. Cases that assert a specific
-		// project name (compose `name:`, env-var, derived) opt out via
-		// no_compose_isolation.
 		env["COMPOSE_PROJECT_NAME"] = composeProjectName(caseID)
 	}
 	return env
 }
 
-// composeProjectName builds a valid, unique-per-case compose project name
-// ([a-z0-9_-]).
 func composeProjectName(caseID string) string {
 	var b strings.Builder
 	b.WriteString("dc")
@@ -1278,17 +1079,10 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// inShard reports whether the case at caseIndex (its position in the selected
-// stream) belongs to shard index of total. total <= 1 means no sharding (every
-// case runs). The modulo partitions the stream into disjoint shards whose union
-// is the whole set.
 func inShard(caseIndex, index, total int) bool {
 	return total <= 1 || caseIndex%total == index
 }
 
-// parityShard reads PARITY_SHARD_INDEX / PARITY_SHARD_TOTAL for CI sharding.
-// Total defaults to 1 (no sharding). An invalid pair fails the test so a
-// misconfigured matrix is loud rather than silently skipping cases.
 func parityShard(t *testing.T) (index, total int) {
 	total = 1
 	if v := os.Getenv("PARITY_SHARD_TOTAL"); v != "" {
@@ -1315,9 +1109,6 @@ func isDockerAvailable() bool {
 	return cmd.Run() == nil
 }
 
-// hasContainerdImageStore reports whether the Docker daemon has the containerd
-// image store enabled (daemon.json {"features":{"containerd-snapshotter":true}}),
-// which surfaces as an io.containerd.snapshotter driver in `docker info`.
 func hasContainerdImageStore() bool {
 	out, err := exec.Command("docker", "info", "--format", "{{json .DriverStatus}}").Output()
 	if err != nil {
@@ -1337,10 +1128,6 @@ func matchesFilter(tc parityCase) bool {
 		selected(tc.CurrentStatus, os.Getenv("PARITY_STATUS"))
 }
 
-// selected reports whether value passes a filter. An empty filter or "all"
-// matches everything; otherwise the filter is a comma-separated allowlist and
-// value must equal one of its (trimmed) entries. The list form lets CI run the
-// cases affected by a change, e.g. PARITY_COMMAND="up,build".
 func selected(value, filter string) bool {
 	if filter == "" || filter == "all" {
 		return true
@@ -1359,9 +1146,6 @@ func selectedSubstring(value, filter string) bool {
 
 func isInfraError(stdout, stderr string) bool {
 	combined := stdout + stderr
-	// Anchored to unambiguous environment signals. Note "docker buildx" was
-	// removed: it also appears in the build command's yargs --output help text, so
-	// any build flag-validation error was being misclassified as infra and skipped.
 	infraPatterns := []string{
 		"no match for platform",
 		"failed to solve",
@@ -1376,15 +1160,6 @@ func isInfraError(stdout, stderr string) bool {
 	return false
 }
 
-// isRetryableFailure reports whether a non-zero CLI result looks like a transient
-// build/environment failure worth re-running, as opposed to a stable product
-// divergence. It is deliberately BROADER than isInfraError: a retry is safe (a
-// deterministic failure reproduces on the next attempt and still goes RED), so it
-// also matches the container-setup / `docker build` wrapper a flaky BuildKit or
-// registry hiccup surfaces without a recognizable low-level signal. Do NOT use it
-// to mark a side an unusable oracle — classifyParitySide/isInfraError must stay
-// narrow so a real divergence is never silently skipped; use this only to decide a
-// retry.
 func isRetryableFailure(stdout, stderr string) bool {
 	if isInfraError(stdout, stderr) {
 		return true

@@ -12,9 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
-// Prefixes of the compose override files the TS CLI writes to the persisted
-// folder (dockerCompose.ts startContainer). They are recorded in the container's
-// com.docker.compose.project.config_files label and restored by prefix.
 const (
 	composeBuildOverridePrefix    = "docker-compose.devcontainer.build"
 	composeFeaturesOverridePrefix = "docker-compose.devcontainer.containerFeatures"
@@ -26,8 +23,6 @@ const (
 // CRLF file's version line has no trailing \r).
 var composeVersionLineRe = regexp.MustCompile(`(?m)(?:^|[\r\x{2028}\x{2029}])[\t\n\v\f\r \x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]*(version:[^\n\r\x{2028}\x{2029}]*)`)
 
-// readComposeVersionPrefix returns the first compose file's `version:` line
-// followed by a blank line, or "" (TS readVersionPrefix).
 func readComposeVersionPrefix(composeFiles []string) (string, error) {
 	if len(composeFiles) == 0 {
 		return "", nil
@@ -43,19 +38,14 @@ func readComposeVersionPrefix(composeFiles []string) (string, error) {
 	return string(m[1]) + "\n\n", nil
 }
 
-// composeMount is the subset of the TS Mount the compose override uses.
 type composeMount struct {
 	Type     string
 	Source   string
 	Target   string
 	External bool
-	// ReadOnly renders the volume with ":ro". TS convertMountToVolume drops
-	// readonly; Go keeps it (upstream #881, see TestMetadataMounts_ReadonlyObject).
 	ReadOnly bool
 }
 
-// composeVolumeSpec is TS convertMountToVolume ("[source:]target"), plus ":ro"
-// for a read-only mount (upstream #881).
 func composeVolumeSpec(m composeMount) string {
 	volume := m.Target
 	if m.Source != "" {
@@ -67,8 +57,6 @@ func composeVolumeSpec(m composeMount) string {
 	return volume
 }
 
-// composeTopLevelVolume is TS convertMountToVolumeTopLevelElement: a named
-// volume's entry under the override's top-level volumes.
 func composeTopLevelVolume(m composeMount) string {
 	volume := "\n  " + m.Source + ":"
 	if m.External {
@@ -77,11 +65,6 @@ func composeTopLevelVolume(m composeMount) string {
 	return volume
 }
 
-// composeMountsFromMetadata converts merged-config mounts (strings or objects)
-// and --mount values the way TS generateFeaturesComposeOverrideContent does:
-// strings go through parseMount (`key=value` pairs, src/dst/destination
-// normalized), objects are taken as they are. ${devcontainerId} was already
-// substituted by resolve.
 func composeMountsFromMetadata(entries []any, resolve func(string) (string, error)) ([]composeMount, error) {
 	mounts := make([]composeMount, 0, len(entries))
 	for _, entry := range entries {
@@ -116,8 +99,6 @@ func composeMountsFromMetadata(entries []any, resolve func(string) (string, erro
 	return mounts, nil
 }
 
-// parseComposeMountString is TS parseMount: comma-separated key=value pairs with
-// src → source and dst/destination → target.
 func parseComposeMountString(spec string) composeMount {
 	var m composeMount
 	for part := range strings.SplitSeq(spec, ",") {
@@ -141,26 +122,21 @@ func parseComposeMountString(spec string) composeMount {
 	return m
 }
 
-// composeFeaturesOverride holds the inputs of TS generateFeaturesComposeOverrideContent.
 type composeFeaturesOverride struct {
 	VersionPrefix     string
 	Service           string
 	UpdatedImageName  string
 	OriginalImageName string
 	Merged            *imagemeta.MergedConfig
-	// ServiceEntrypoint/ServiceCommand are the compose service's entrypoint and
-	// command (nil when the service does not set them).
 	ServiceEntrypoint []string
 	ServiceCommand    []string
-	// ImageEntrypoint/ImageCmd are the image's Config.Entrypoint/Cmd.
-	ImageEntrypoint []string
-	ImageCmd        []string
-	Labels          []string
-	Mounts          []composeMount
-	GPU             bool
+	ImageEntrypoint   []string
+	ImageCmd          []string
+	Labels            []string
+	Mounts            []composeMount
+	GPU               bool
 }
 
-// jsonString is JSON.stringify for a string (no HTML escaping).
 func jsonString(v any) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -169,8 +145,6 @@ func jsonString(v any) string {
 	return strings.TrimSuffix(buf.String(), "\n")
 }
 
-// escapeComposeDollar is TS's `.replace(/\$/g, '$$$$')`: $ → $$ so compose does
-// not interpolate it.
 func escapeComposeDollar(s string) string {
 	return strings.ReplaceAll(s, "$", "$$")
 }
@@ -191,7 +165,7 @@ func generateComposeFeaturesOverride(in composeFeaturesOverride) string {
 	userCommand := []string{}
 	if !overrideCommand {
 		if in.ServiceEntrypoint != nil {
-			userEntrypoint = in.ServiceEntrypoint // $ already escaped.
+			userEntrypoint = in.ServiceEntrypoint
 		} else {
 			for _, c := range in.ImageEntrypoint {
 				userEntrypoint = append(userEntrypoint, escapeComposeDollar(c))
@@ -199,7 +173,7 @@ func generateComposeFeaturesOverride(in composeFeaturesOverride) string {
 		}
 		switch {
 		case in.ServiceCommand != nil:
-			userCommand = in.ServiceCommand // $ already escaped.
+			userCommand = in.ServiceCommand
 		case in.ServiceEntrypoint != nil:
 			// Ignore image CMD per docker-compose.yml spec.
 		default:
@@ -208,7 +182,6 @@ func generateComposeFeaturesOverride(in composeFeaturesOverride) string {
 			}
 		}
 	}
-	// TS emits `command:` unless userCommand is the compose command itself.
 	emitCommand := overrideCommand || in.ServiceCommand == nil
 
 	var b strings.Builder
@@ -297,17 +270,12 @@ func generateComposeFeaturesOverride(in composeFeaturesOverride) string {
 	return b.String()
 }
 
-// composeBuildOverride holds the inputs of the build override TS
-// buildAndExtendDockerCompose writes.
 type composeBuildOverride struct {
-	VersionPrefix string
-	Service       string
-	// Image is the `image:` set for an image-only service ("" for none).
-	Image      string
-	Dockerfile string
-	// Target is the overridden build target ("" when the service sets none).
-	Target string
-	// Context is the build context set when the service has none ("" for none).
+	VersionPrefix       string
+	Service             string
+	Image               string
+	Dockerfile          string
+	Target              string
 	Context             string
 	BuildKitInlineCache bool
 	BuildArgs           [][2]string
@@ -315,7 +283,6 @@ type composeBuildOverride struct {
 	CacheFrom           []string
 }
 
-// buildContent is TS buildOverrideContent; empty when there is no feature build.
 func (in composeBuildOverride) buildContent() string {
 	if in.Dockerfile == "" {
 		return ""
@@ -350,9 +317,6 @@ func (in composeBuildOverride) buildContent() string {
 	return b.String()
 }
 
-// generateComposeBuildOverride renders the build override YAML like TS
-// buildAndExtendDockerCompose, or "" when TS writes no build override (no
-// feature build and no --cache-from).
 func generateComposeBuildOverride(in composeBuildOverride) string {
 	content := in.buildContent()
 	if content == "" && len(in.CacheFrom) == 0 {

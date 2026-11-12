@@ -9,10 +9,10 @@ func TestExtractDockerfile(t *testing.T) {
 		name               string
 		dockerfile         string
 		wantStages         int
-		wantImages         []string // nil = skip per-stage image check
-		wantPreambleVer    string   // "" = skip
-		wantPreambleInstrs int      // -1 = skip
-		wantFirstInstrName string   // "" = skip
+		wantImages         []string
+		wantPreambleVer    string
+		wantPreambleInstrs int
+		wantFirstInstrName string
 	}{
 		{
 			name:               "single_stage",
@@ -79,9 +79,6 @@ FROM ${BASE}
 	}
 }
 
-// TestStageLabelsDevcontainerMetadata guards #1225: the parser must expose a
-// `LABEL devcontainer.metadata` from the (final) build stage so the CLI can
-// preserve it instead of clobbering it with its own computed label.
 func TestStageLabelsDevcontainerMetadata(t *testing.T) {
 	df := ExtractDockerfile("FROM ubuntu:22.04\n" +
 		"LABEL maintainer=me\n" +
@@ -95,14 +92,12 @@ func TestStageLabelsDevcontainerMetadata(t *testing.T) {
 		t.Errorf("maintainer label = %q", labels["maintainer"])
 	}
 
-	// A Dockerfile without the label yields no metadata entry.
 	df2 := ExtractDockerfile("FROM ubuntu:22.04\nRUN echo hi\n")
 	if v, ok := df2.StageLabels("")["devcontainer.metadata"]; ok {
 		t.Errorf("unexpected devcontainer.metadata = %q", v)
 	}
 }
 
-// A named stage's labels are its own, not the final stage's.
 func TestStageLabelsOfANamedStage(t *testing.T) {
 	df := ExtractDockerfile("FROM alpine AS base\nLABEL a=base\nFROM base\nLABEL a=final\n")
 	if got := df.StageLabels("base")["a"]; got != "base" {

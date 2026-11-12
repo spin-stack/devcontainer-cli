@@ -4,10 +4,6 @@ import (
 	"testing"
 )
 
-// TestFindBaseImage_EnvVariable checks that a two-stage Dockerfile whose second
-// stage is `FROM $BASE` parses into two stages (ENV in a stage does not feed FROM
-// resolution). Kept standalone — it asserts stage parsing, not a base-image value,
-// so it doesn't fit the TestFindBaseImage table.
 func TestFindBaseImage_EnvVariable(t *testing.T) {
 	dockerfile := `FROM debian
 ENV BASE=custom-image

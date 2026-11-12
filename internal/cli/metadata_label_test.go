@@ -10,10 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
-// The configuration's label entry is TS pick(config.raw, pickConfigProperties):
-// variables stay unresolved, properties the label does not record (runArgs,
-// image, features) are left out, and --omit-config-remote-env-from-metadata drops
-// remoteEnv.
 func TestConfigLabelEntryPicksTheRawConfig(t *testing.T) {
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(`{
@@ -49,8 +45,6 @@ func TestConfigLabelEntryPicksTheRawConfig(t *testing.T) {
 	}
 }
 
-// A container gets "[]" without metadata (TS JSON.stringify of no entries); an
-// image build gets no label at all, as TS's Dockerfile has no LABEL line.
 func TestMetadataLabelsWithoutEntries(t *testing.T) {
 	if got := containerMetadataLabel(nil); got != "[]" {
 		t.Errorf("container label = %q, want []", got)
@@ -66,11 +60,6 @@ func TestMetadataLabelsWithoutEntries(t *testing.T) {
 	}
 }
 
-// TS getImageMetadataFromContainer: the container's label entries, substituted;
-// for a container with every id label, which records the configuration's entry,
-// only the configuration's updateable properties follow, so its hooks do not
-// run twice; for any other the Features' entries and the configuration's; no
-// label gives the configuration's entry alone.
 func TestImageMetadataFromContainer(t *testing.T) {
 	cfg := &config.DevContainer{RemoteUser: "me", UserEnvProbe: "none", RemoteEnv: map[string]*string{"A": strPtr("b")}}
 	cfg.PostCreateCommand = config.LifecycleCommand{}
@@ -119,9 +108,6 @@ func TestImageMetadataFromContainer(t *testing.T) {
 	}
 }
 
-// TS findContainerAndIdLabels: the --id-label values, else the workspace
-// folder's and config file's labels, the config file's only for a container
-// that has one.
 func TestContainerIDLabels(t *testing.T) {
 	if got := containerIDLabels([]string{"a=b"}, nil, "/ws", "/ws/c.json"); !reflect.DeepEqual(got, []string{"a=b"}) {
 		t.Errorf("provided = %v", got)
@@ -133,15 +119,11 @@ func TestContainerIDLabels(t *testing.T) {
 	if got := containerIDLabels(nil, map[string]string{}, "/ws", "/ws/c.json"); !reflect.DeepEqual(got, []string{"devcontainer.local_folder=/ws"}) {
 		t.Errorf("older container = %v", got)
 	}
-	// Without a workspace folder or a config file, TS's template literal
-	// writes undefined (--container-id alone).
 	if got := containerIDLabels(nil, withConfig, "", ""); !reflect.DeepEqual(got, []string{"devcontainer.local_folder=undefined", "devcontainer.config_file=undefined"}) {
 		t.Errorf("no workspace folder or config file = %v", got)
 	}
 }
 
-// The label's entries get the host substitutions, and ${devcontainerId} only
-// with id labels to compute it from.
 func TestHostMetadataSubstitution(t *testing.T) {
 	hostSub := config.HostSubContext{Env: map[string]string{"U": "me"}}
 	entries := []imagemeta.Entry{{RemoteUser: "${localEnv:U}", ContainerEnv: map[string]string{"ID": "${devcontainerId}"}}}

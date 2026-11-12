@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// scriptRunner is a programmable exec.Runner: fn decides the response from the
-// command's args, and every call is recorded for assertions.
 type scriptRunner struct {
 	fn    func(args []string) (stdout, stderr []byte, code int, err error)
 	calls [][]string
@@ -21,7 +19,6 @@ func (s *scriptRunner) Run(_ context.Context, _ io.Writer, _ string, args ...str
 	return s.fn(args)
 }
 
-// healthyDocker answers every probe as a fully-configured host.
 func healthyDocker(args []string) ([]byte, []byte, int, error) {
 	switch {
 	case has(args, "info") && has(args, "{{.ServerVersion}}"):
@@ -47,7 +44,7 @@ func bigDisk(string) (uint64, error) { return 100 << 30, nil }
 
 func TestRunAllHealthy(t *testing.T) {
 	env := &Env{Runner: &scriptRunner{fn: healthyDocker}, DiskFree: bigDisk, ProbeDir: t.TempDir(),
-		SELinuxEnforcePath: "/nonexistent/selinux/enforce"} // deterministic: SELinux "not enabled"
+		SELinuxEnforcePath: "/nonexistent/selinux/enforce"}
 	rep := Run(t.Context(), env)
 
 	if rep.Overall != StatusOK {
@@ -122,7 +119,7 @@ func TestCacheExportUnsupportedIsFixableWarn(t *testing.T) {
 func TestBuildxAndComposeMissingAreWarn(t *testing.T) {
 	env := &Env{
 		Runner: &scriptRunner{fn: func(args []string) ([]byte, []byte, int, error) {
-			if has(args, "buildx") { // version + build both unavailable
+			if has(args, "buildx") {
 				return nil, []byte("unknown command"), 1, nil
 			}
 			if has(args, "compose") {
@@ -143,7 +140,7 @@ func TestBuildxAndComposeMissingAreWarn(t *testing.T) {
 func TestDiskSpaceLowWarns(t *testing.T) {
 	env := &Env{
 		Runner:   &scriptRunner{fn: healthyDocker},
-		DiskFree: func(string) (uint64, error) { return 1 << 30, nil }, // 1 GiB < 5 GiB floor
+		DiskFree: func(string) (uint64, error) { return 1 << 30, nil },
 		ProbeDir: t.TempDir(),
 	}
 	rep := Run(t.Context(), env)

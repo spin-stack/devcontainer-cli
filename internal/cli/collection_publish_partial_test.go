@@ -13,10 +13,6 @@ import (
 	"oras.land/oras-go/v2/registry/remote/errcode"
 )
 
-// TestPublishCollection_AbortsOnTagListError covers the finding that publish must
-// NOT treat a failed tag lookup as an empty registry: a non-404 error (auth, 5xx,
-// network) has to abort the item — otherwise mobile aliases would be recomputed
-// off an empty list and could clobber existing ones.
 func TestPublishCollection_AbortsOnTagListError(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
@@ -35,15 +31,11 @@ func TestPublishCollection_AbortsOnTagListError(t *testing.T) {
 	if exit, ok := errors.AsType[*coreerrors.ExitCodeError](err); !ok || exit.Code != 1 {
 		t.Fatalf("err = %v, want exit code 1 from the tag-list error (TS getPublishedTags -> process.exit(1))", err)
 	}
-	// The artifact must NOT have been pushed — we aborted before computing tags.
 	if len(reg.pushed) != 0 {
 		t.Fatalf("artifact pushed despite a tag-list error: %v", reg.pushed)
 	}
 }
 
-// TestPublishCollection_TreatsNotFoundAsFirstPublish covers the complementary
-// case: a 404 from the tag listing means the repository does not exist yet, so
-// the item publishes normally as a first publish.
 func TestPublishCollection_TreatsNotFoundAsFirstPublish(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
@@ -66,10 +58,6 @@ func TestPublishCollection_TreatsNotFoundAsFirstPublish(t *testing.T) {
 	}
 }
 
-// TestPublishCollection_CollectionMetadataFailureExits: every item publishes but
-// the collection-metadata push fails, and publish exits 1 without printing the
-// result, as TS doPublishMetadata's caller does ("(!) ERR: Failed to publish
-// '<registry>/<namespace>'", process.exit(1) before console.log).
 func TestPublishCollection_CollectionMetadataFailureExits(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
@@ -97,10 +85,6 @@ func TestPublishCollection_CollectionMetadataFailureExits(t *testing.T) {
 	}
 }
 
-// A namespace of one segment is a valid collection (TS getCollectionRef takes
-// the namespace as the whole path), so its metadata is published to
-// <registry>/<namespace>. Go used to parse it as an item reference, fail, and
-// skip the collection metadata silently.
 func TestPublishCollection_SingleSegmentNamespacePublishesMetadata(t *testing.T) {
 	target := t.TempDir()
 	writeSeamFeature(t, filepath.Join(target, "src"), "good", "1.0.0")
@@ -114,8 +98,6 @@ func TestPublishCollection_SingleSegmentNamespacePublishesMetadata(t *testing.T)
 	}
 }
 
-// A namespace that is no valid repository path cannot name a collection: TS
-// exits 1 with "(!) Could not parse provided collection identifier".
 func TestPublishCollection_InvalidCollectionNamespaceExits(t *testing.T) {
 	target := t.TempDir()
 	writeSeamFeature(t, filepath.Join(target, "src"), "good", "1.0.0")
@@ -130,17 +112,12 @@ func TestPublishCollection_InvalidCollectionNamespaceExits(t *testing.T) {
 	}
 }
 
-// TestPublishCollection_SkipsAlreadyPublishedVersion covers the skip branch:
-// when the exact version already exists in the registry, publishOne must NOT push
-// the artifact again, must NOT count a failure, and must still report the item
-// (as {}), matching the TS CLI's "already exists, skipping" path.
 func TestPublishCollection_SkipsAlreadyPublishedVersion(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
 	writeSeamFeature(t, src, "good", "1.0.0")
 
 	reg := &fakeRegistry{
-		// The registry already has 1.0.0 for this resource.
 		published: map[string][]string{"ghcr.io/me/features/good": {"1.0.0"}},
 		failIDs:   map[string]bool{},
 	}
@@ -153,15 +130,11 @@ func TestPublishCollection_SkipsAlreadyPublishedVersion(t *testing.T) {
 		t.Fatalf("artifact was pushed despite the version already existing: %v", reg.pushed)
 	}
 
-	// TS reports an item it skipped as an empty object.
 	if got := strings.TrimSpace(out.out.String()); got != `{"good":{}}` {
 		t.Fatalf("stdout = %s, want {\"good\":{}}", got)
 	}
 }
 
-// TestPublishCollection_RepublishesLegacyIds covers the feature-only legacyIds
-// aliasing: a feature with legacyIds is republished under each alias resource, so
-// old references keep resolving. Templates do not get this treatment.
 func TestPublishCollection_RepublishesLegacyIds(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")
@@ -193,7 +166,6 @@ func TestPublishCollection_RepublishesLegacyIds(t *testing.T) {
 		t.Errorf("pushed %d resources, want %d: %v", len(reg.pushed), len(want), reg.pushed)
 	}
 
-	// TS reports the aliases inside the item as publishedLegacyIds, not as items.
 	var result map[string]map[string]any
 	if err := json.Unmarshal(out.out.Bytes(), &result); err != nil {
 		t.Fatalf("stdout not JSON: %v", err)

@@ -9,10 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A Template is a dockerfile Template when its devcontainer.json names the
-// legacy dockerFile or a build.dockerfile, either one alone (TS
-// isDockerFileConfig); image wins over both, and a config with none of the
-// three is refused.
 func TestAddTemplatePropsType(t *testing.T) {
 	for name, tc := range map[string]struct {
 		config, want string

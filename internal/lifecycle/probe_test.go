@@ -8,9 +8,9 @@ func TestParseEnvOutput(t *testing.T) {
 	tests := []struct {
 		name        string
 		output      string
-		want        map[string]string // exact key/value assertions
-		wantPresent []string          // keys that must exist (value not checked)
-		wantLen     int               // -1 to skip the total-length assertion
+		want        map[string]string
+		wantPresent []string
+		wantLen     int
 	}{
 		{
 			name: "simple",
@@ -36,7 +36,6 @@ ANOTHER=other`,
 				"SIMPLE":  "value",
 				"ANOTHER": "other",
 			},
-			// BASH_FUNC should capture the multi-line value
 			wantPresent: []string{"BASH_FUNC_module%%"},
 			wantLen:     -1,
 		},
@@ -95,17 +94,14 @@ NEXT=value`,
 }
 
 func TestMergePaths(t *testing.T) {
-	// Base entries missing from the shell PATH are inserted in relative order.
 	got := mergePaths("/opt/bin:/usr/bin", "/usr/local/bin:/usr/bin:/bin", true)
 	if got != "/usr/local/bin:/opt/bin:/usr/bin:/bin" {
 		t.Errorf("got %q", got)
 	}
-	// Non-root skips /sbin dirs.
 	got = mergePaths("/usr/bin", "/usr/local/sbin:/usr/bin:/sbin", false)
 	if got != "/usr/bin" {
 		t.Errorf("non-root sbin skip: got %q", got)
 	}
-	// Root keeps /sbin dirs.
 	got = mergePaths("/usr/bin", "/usr/bin:/sbin", true)
 	if got != "/usr/bin:/sbin" {
 		t.Errorf("root sbin: got %q", got)

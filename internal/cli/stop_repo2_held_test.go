@@ -7,9 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The commands that take an optional positional path refuse a second one, as
-// the TS CLI's yargs parser (.strict()) refuses arguments its commands do not
-// declare; nothing is run.
 func TestPathCommandsRefuseASecondPositional(t *testing.T) {
 	for name, newCmd := range map[string]func() *cobra.Command{
 		"stop":                    newStopCmd,

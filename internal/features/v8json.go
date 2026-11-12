@@ -13,8 +13,6 @@ import (
 // V8 parses a JavaScript string, so positions, columns and the quoted context
 // count UTF-16 code units; a lone surrogate V8 would quote comes out as U+FFFD.
 
-// v8JSONSyntaxError is the message JSON.parse(src) throws with, or "" when src
-// is valid JSON.
 func v8JSONSyntaxError(src string) string {
 	p := &v8Parser{s: utf16.Encode([]rune(src))}
 	if p.value() && !p.check(tokEOS) {
@@ -42,7 +40,6 @@ const (
 	tokRBrace
 )
 
-// tokenOf is V8's one_char_json_tokens: the token a character starts.
 func tokenOf(c uint16) jsonToken {
 	switch {
 	case c == '"':
@@ -75,8 +72,6 @@ func tokenOf(c uint16) jsonToken {
 	return tokIllegal
 }
 
-// The message templates V8 reports with a position (message-template.h), up
-// to " at position".
 const (
 	msgPropNameOrRBrace       = "Expected property name or '}' in JSON"
 	msgDoubleQuotedPropName   = "Expected double-quoted property name in JSON"
@@ -95,8 +90,6 @@ const (
 	msgUnexpectedString       = "Unexpected string in JSON"
 )
 
-// kMaxContextCharacters: how much of a long source an "Unexpected token"
-// message quotes on each side of the token.
 const v8ContextCharacters = 10
 
 type v8Parser struct {
@@ -105,8 +98,6 @@ type v8Parser struct {
 	err string
 }
 
-// peek is SkipWhitespace: it moves past whitespace and returns the token the
-// next character starts (EOS at the end).
 func (p *v8Parser) peek() jsonToken {
 	for ; p.pos < len(p.s); p.pos++ {
 		if t := tokenOf(p.s[p.pos]); t != tokWhitespace {
@@ -116,7 +107,6 @@ func (p *v8Parser) peek() jsonToken {
 	return tokEOS
 }
 
-// check consumes the next token when it is t.
 func (p *v8Parser) check(t jsonToken) bool {
 	if p.peek() == t {
 		p.pos++
@@ -125,7 +115,6 @@ func (p *v8Parser) check(t jsonToken) bool {
 	return false
 }
 
-// expect consumes the next token, which must be t, else reports msg.
 func (p *v8Parser) expect(t jsonToken, msg string) bool {
 	if p.check(t) {
 		return true
@@ -134,7 +123,6 @@ func (p *v8Parser) expect(t jsonToken, msg string) bool {
 	return false
 }
 
-// value parses one JSON value (ParseJsonValue).
 func (p *v8Parser) value() bool {
 	switch p.peek() {
 	case tokString:
@@ -185,13 +173,10 @@ func (p *v8Parser) value() bool {
 	return false
 }
 
-// property parses a property key and its colon; missing is the message for a
-// missing key.
 func (p *v8Parser) property(missing string) bool {
 	return p.expect(tokString, missing) && p.scanString() && p.expect(tokColon, msgColonAfterPropName)
 }
 
-// literal is ScanLiteral: the first character of word already matched.
 func (p *v8Parser) literal(word string) bool {
 	for i := 1; i < len(word); i++ {
 		p.pos++
@@ -208,7 +193,6 @@ func (p *v8Parser) literal(word string) bool {
 	return true
 }
 
-// scanString is ScanJsonString, from just after the opening quote.
 func (p *v8Parser) scanString() bool {
 	for ; p.pos < len(p.s); p.pos++ {
 		switch c := p.s[p.pos]; {
@@ -228,8 +212,6 @@ func (p *v8Parser) scanString() bool {
 	return false
 }
 
-// escape checks the escape sequence whose backslash is at pos, leaving pos on
-// its last character.
 func (p *v8Parser) escape() bool {
 	p.pos++
 	if p.pos == len(p.s) || p.s[p.pos] > 0xff {
@@ -253,7 +235,6 @@ func (p *v8Parser) escape() bool {
 	return false
 }
 
-// number is ParseJsonNumber's validation.
 func (p *v8Parser) number() bool {
 	if p.s[p.pos] == '-' {
 		p.pos++
@@ -296,7 +277,6 @@ func (p *v8Parser) isDigit() bool {
 	return p.pos < len(p.s) && '0' <= p.s[p.pos] && p.s[p.pos] <= '9'
 }
 
-// digits consumes a run of decimal digits, reporting whether there was one.
 func (p *v8Parser) digits() bool {
 	start := p.pos
 	for p.isDigit() {
@@ -309,8 +289,6 @@ func isHexDigit(c uint16) bool {
 	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
-// reportUnexpectedCharacter reports the character at pos by the token it
-// starts.
 func (p *v8Parser) reportUnexpectedCharacter() {
 	if p.pos == len(p.s) {
 		p.report(tokEOS, "")
@@ -319,8 +297,6 @@ func (p *v8Parser) reportUnexpectedCharacter() {
 	p.report(tokenOf(p.s[p.pos]), "")
 }
 
-// report is ReportUnexpectedToken: msg, a positioned template, wins over the
-// token's own message (LookUpErrorMessageForJsonToken).
 func (p *v8Parser) report(t jsonToken, msg string) {
 	switch {
 	case msg == "" && t == tokEOS:
@@ -338,8 +314,6 @@ func (p *v8Parser) report(t jsonToken, msg string) {
 	p.err = fmt.Sprintf("%s at position %d (line %d column %d)", msg, p.pos, line, column)
 }
 
-// unexpectedToken is the message for an unexpected character, quoting the
-// source, or for a long source the context around the character.
 func (p *v8Parser) unexpectedToken() string {
 	src := p.text(0, len(p.s))
 	switch src {
@@ -363,8 +337,6 @@ func (p *v8Parser) text(from, to int) string {
 	return string(utf16.Decode(p.s[from:to]))
 }
 
-// location is CalculateFileLocation: the 1-based line and column of pos, with
-// "\r\n", "\r" and "\n" each ending a line.
 func (p *v8Parser) location() (line, column int) {
 	line, lineStart := 1, 0
 	for i, c := range p.s[:p.pos] {
@@ -372,7 +344,6 @@ func (p *v8Parser) location() (line, column int) {
 		case '\r':
 			line, lineStart = line+1, i+1
 		case '\n':
-			// The '\n' of a "\r\n" ends no second line.
 			if i == 0 || p.s[i-1] != '\r' {
 				line++
 			}

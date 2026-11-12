@@ -10,9 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// The goldens are the lines the reference log handlers write for one event
-// (go tool task testdata:ts-oracle): the terminal log when stdout is a TTY, the
-// plain log otherwise, and the JSON log for --log-format json.
 func TestTSOracleLog(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/log.json", map[string]oracletest.Func{
 		"logEventToTerminalText": func(args []json.RawMessage) (any, error) {
@@ -49,7 +46,6 @@ func TestTSOracleLog(t *testing.T) {
 	})
 }
 
-// written is what a handler wrote, or nil (TS undefined) when it wrote nothing.
 func written(s string) any {
 	if s == "" {
 		return nil

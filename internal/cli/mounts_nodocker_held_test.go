@@ -4,8 +4,6 @@ import (
 	"testing"
 )
 
-// The mounts of image metadata are exactly its entries, in order, each with
-// ${devcontainerId} resolved; an invalid entry fails them all.
 func TestMountsFromMetadata(t *testing.T) {
 	got, err := mountsFromMetadata([]any{
 		"type=volume,source=a-${devcontainerId},target=/a",

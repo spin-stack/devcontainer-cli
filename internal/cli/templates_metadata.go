@@ -67,8 +67,6 @@ func runTemplatesMetadata(ctx context.Context, out Output, templateID, logLevel 
 	return nil
 }
 
-// compactTemplateMetadata matches JSON.stringify(JSON.parse(annotation)): it
-// removes insignificant whitespace while retaining the source object's key order.
 func compactTemplateMetadata(metadataJSON string) (string, error) {
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, []byte(metadataJSON)); err != nil {

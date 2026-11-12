@@ -12,8 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle"
 )
 
-// TSOracleGoldens lists every internal/**/testdata/ts-oracle/*.json of fsys
-// (the repository root), sorted.
 func TSOracleGoldens(fsys fs.FS) ([]string, error) {
 	var files []string
 	err := fs.WalkDir(fsys, "internal", func(p string, d fs.DirEntry, err error) error {
@@ -30,10 +28,6 @@ func TSOracleGoldens(fsys fs.FS) ([]string, error) {
 	return files, err
 }
 
-// RefreshTSOracleGoldens sends the cases of every golden (path -> content) to
-// oracle in one request and returns each golden rewritten with the results
-// oracle recorded. oracle reads and writes the tools/tsoracle protocol:
-// {"cases":[{"fn","args"}]} in, the same cases with "result" or "error" out.
 func RefreshTSOracleGoldens(goldens map[string][]byte, oracle func(request []byte) ([]byte, error)) (map[string][]byte, error) {
 	paths := slices.Sorted(maps.Keys(goldens))
 	type call struct {

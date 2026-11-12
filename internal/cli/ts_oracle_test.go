@@ -11,9 +11,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// The ts-oracle goldens are the results of the reference functions
-// themselves (go tool task testdata:ts-oracle).
-
 func tsFindBaseImage(args []json.RawMessage) (any, error) {
 	var content, target string
 	var buildArgs, platformArgs map[string]string
@@ -41,21 +38,16 @@ func TestTSOracleDockerfile(t *testing.T) {
 			if err := oracletest.Args(args, &content); err != nil {
 				return nil, err
 			}
-			// TS answers true, false or 'unknown'; every caller tests it for truthiness.
 			return oracletest.Truthiness(dockerfileSupportsBuildContexts(docker.ExtractDockerfile(content))), nil
 		},
-		// internal/docker's test asserts these.
 		"ensureDockerfileHasFinalStageName": nil,
 		"isBuildxCacheToInline":             nil,
 	}
 	oracletest.Run(t, "testdata/ts-oracle/dockerfile.json", impls)
-	// The same findBaseImage cases internal/docker's FindBaseImage answers.
 	oracletest.Run(t, "../docker/testdata/ts-oracle/dockerfile.json", impls)
 }
 
 func TestTSOracleCompose(t *testing.T) {
-	// mount is a TS Mount or mount string, as composeMountsFromMetadata takes
-	// the merged configuration's mounts.
 	mount := func(args []json.RawMessage) (composeMount, error) {
 		var m any
 		if err := oracletest.Args(args, &m); err != nil {

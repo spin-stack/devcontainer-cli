@@ -15,13 +15,7 @@ import (
 	"testing"
 )
 
-// differentialRuntimeKnown lists, per command, the fixtures whose result still
-// differs from the oracle's, each with the reason. Like differentialKnown it can
-// only shrink: a listed fixture that matches fails the test, so a fix removes
-// its line.
 var differentialRuntimeKnown = map[string]map[string]string{
-	// docs/DIVERGENCES.md: Features backed by GitHub Releases (v1, owner/repo/id)
-	// are not implemented; the configuration fails instead of resolving them.
 	"up": {
 		"dockerfile-with-syntax":           "legacy GitHub Release Feature (accepted limitation)",
 		"dockerfile-with-target":           "legacy GitHub Release Feature (accepted limitation)",
@@ -38,27 +32,14 @@ var differentialRuntimeKnown = map[string]map[string]string{
 	},
 }
 
-// TestDifferentialUp runs `up` on every upstream fixture with the TS oracle and
-// with this CLI, one after the other on copies of the fixture, and compares what
-// a user of the container sees: the command's JSON result, the container's and
-// its image's configuration (user, env, entrypoint, command, labels with the
-// parsed devcontainer.metadata, mounts, init, privileged, capabilities, security
-// options) and the remote user's `id` inside the container. Hand-written parity
-// cases compare what someone thought of; this compares everything a fixture
-// exercises. Like TestDifferentialReadConfiguration it needs the compiled
-// oracle, Docker and the network, and runs when PARITY_DIFFERENTIAL is set.
 func TestDifferentialUp(t *testing.T) {
 	runDifferentialRuntime(t, "up", differentialUpSnapshot)
 }
 
-// TestDifferentialBuild runs `build` on every upstream fixture with both CLIs
-// and compares the command's JSON result and the built image's configuration.
 func TestDifferentialBuild(t *testing.T) {
 	runDifferentialRuntime(t, "build", differentialBuildSnapshot)
 }
 
-// differentialSnapshot runs one CLI's command on the workspace ws and returns
-// what is compared, normalized for that workspace.
 type differentialSnapshot func(t *testing.T, cli []string, ws string) map[string]any
 
 func runDifferentialRuntime(t *testing.T, command string, snapshot differentialSnapshot) {
@@ -108,9 +89,6 @@ func runDifferentialRuntime(t *testing.T, command string, snapshot differentialS
 	}
 }
 
-// differentialWorkspace copies the fixture to <tmp>/<side>/ws: both sides see a
-// workspace folder named ws, so names derived from its basename only differ by
-// the path hash, which the snapshots normalize.
 func differentialWorkspace(t *testing.T, fixture, side string) string {
 	t.Helper()
 	ws := filepath.Join(t.TempDir(), side, "ws")
@@ -144,8 +122,6 @@ func differentialUpSnapshot(t *testing.T, cli []string, ws string) map[string]an
 	return snap
 }
 
-// differentialImageName is the --image-name both sides build, one after the
-// other: the image is removed between them.
 const differentialImageName = "devcontainer-differential:latest"
 
 func differentialBuildSnapshot(t *testing.T, cli []string, ws string) map[string]any {
@@ -160,8 +136,6 @@ func differentialBuildSnapshot(t *testing.T, cli []string, ws string) map[string
 	return snap
 }
 
-// runDifferentialCLI runs the CLI and returns its exit code and the last stdout
-// line decoded as JSON (the raw line when it is not JSON).
 func runDifferentialCLI(t *testing.T, cli []string, args ...string) (int, any) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), cli[0], append(cli[1:], args...)...)
@@ -187,9 +161,6 @@ func runDifferentialCLI(t *testing.T, cli []string, args ...string) (int, any) {
 	return code, out
 }
 
-// differentialCleanup removes what a run left behind for the workspace: its
-// containers, their compose projects (containers, networks, volumes) and the
-// images built for them, so the other side starts from the same state.
 func differentialCleanup(t *testing.T, ws string) {
 	t.Helper()
 	out, _ := exec.Command("docker", "ps", "-aq", "--filter", "label=devcontainer.local_folder="+ws).Output()
@@ -232,8 +203,6 @@ func dockerInspect(t *testing.T, kind, id string) map[string]any {
 	return v[0]
 }
 
-// containerView is the part of a container's configuration a dev container's
-// user depends on.
 func containerView(c map[string]any) map[string]any {
 	cfg, host := asMap(c["Config"]), asMap(c["HostConfig"])
 	var mounts []any
@@ -261,7 +230,6 @@ func containerView(c map[string]any) map[string]any {
 	}
 }
 
-// imageView is the part of an image's configuration the container inherits.
 func imageView(img map[string]any) map[string]any {
 	cfg := asMap(img["Config"])
 	return map[string]any{
@@ -273,9 +241,6 @@ func imageView(img map[string]any) map[string]any {
 	}
 }
 
-// viewLabels keeps the labels with the devcontainer.metadata JSON parsed, and
-// drops compose's bookkeeping labels whose values are hashes, versions or
-// absolute paths of compose's own.
 func viewLabels(labels map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range labels {
@@ -297,28 +262,18 @@ func viewLabels(labels map[string]any) map[string]any {
 }
 
 var (
-	differentialHashRe  = regexp.MustCompile(`(vsc-ws-)[0-9a-f]{64}`)
-	differentialDigest  = regexp.MustCompile(`sha256:[0-9a-f]{64}`)
-	differentialHexIDRe = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
-	// The compose override files both CLIs write are named
-	// docker-compose.devcontainer.build-<ms>.yml and
-	// docker-compose.devcontainer.containerFeatures-<ms>-<uuid>.yml.
-	differentialOverrideRe = regexp.MustCompile(`(docker-compose\.devcontainer\.\w+)-\d+(?:-[0-9a-f-]{36})?`)
-	// ${devcontainerId} hashes the id labels, which hold the workspace path.
+	differentialHashRe           = regexp.MustCompile(`(vsc-ws-)[0-9a-f]{64}`)
+	differentialDigest           = regexp.MustCompile(`sha256:[0-9a-f]{64}`)
+	differentialHexIDRe          = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
+	differentialOverrideRe       = regexp.MustCompile(`(docker-compose\.devcontainer\.\w+)-\d+(?:-[0-9a-f-]{36})?`)
 	differentialDevcontainerIDRe = regexp.MustCompile(`(dind-var-lib-docker-)[0-9a-v]{52}`)
 )
 
-// normalizeDifferential replaces what legitimately differs between the two
-// runs: the workspace path, the path hash in image names, the features folder's
-// version-and-time segment, the compose override file's time and uuid, the
-// devcontainerId (a hash of the workspace's id labels), and digests and ids.
 func normalizeDifferential(v any, ws string) any {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return v
 	}
-	// The workspace first, then its parent (<tmp>/<side>), which a fixture can
-	// mount through ${localWorkspaceFolder}/..
 	s := strings.ReplaceAll(string(data), ws, "<WS>")
 	s = strings.ReplaceAll(s, filepath.Dir(ws), "<WS>/..")
 	s = differentialHashRe.ReplaceAllString(s, "${1}<HASH>")

@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// read-configuration reports each Feature set's sourceInformation as TS builds
-// it in processFeatureIdentifier: type first, then the location, then the
-// user's reference. Go field names must not leak into the output.
 func TestSourceInformationJSONMatchesTS(t *testing.T) {
 	tests := []struct {
 		name string

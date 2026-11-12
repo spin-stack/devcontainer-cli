@@ -20,8 +20,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// A --config that does not exist fails with the read error itself, which the
-// CLI reports as the missing config (TS: "Dev container config (...) not found.").
 func TestLoadReportsAMissingConfigFile(t *testing.T) {
 	ws := t.TempDir()
 	missing := filepath.Join(ws, "nope.json")
@@ -31,12 +29,6 @@ func TestLoadReportsAMissingConfigFile(t *testing.T) {
 	}
 }
 
-// The config file path is the --config file, else the one found in the
-// workspace or, with only an override, the workspace's default path, else
-// without a workspace the override file (TS resolveWithLocalFolder's
-// configPath; readDevContainerConfigFile reads overrideConfigFile ??
-// configFile but keeps configFile) - never a "configFilePath" property of the
-// file - and it is what host substitution errors name.
 func TestLoadSetsTheConfigFilePath(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, "base.json")
@@ -78,8 +70,6 @@ func TestLoadSetsTheConfigFilePath(t *testing.T) {
 	}
 }
 
-// workspaceFolder and workspaceMount are reported with their host variables
-// resolved (TS getWorkspaceConfiguration reads the substituted config).
 func TestLoadResolvesWorkspaceFolderAndMount(t *testing.T) {
 	ws := filepath.Join(t.TempDir(), "proj")
 	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")
@@ -100,9 +90,6 @@ func TestLoadResolvesWorkspaceFolderAndMount(t *testing.T) {
 	}
 }
 
-// With --mount-workspace-git-root a workspace below its Git root mounts the
-// root and works in the subfolder (TS getWorkspaceConfiguration); without it
-// the workspace mounts by itself.
 func TestComputeWorkspaceConfigWorksInTheGitRootsSubfolder(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "repo")
 	sub := filepath.Join(root, "a", "b")
@@ -123,8 +110,6 @@ func TestComputeWorkspaceConfigWorksInTheGitRootsSubfolder(t *testing.T) {
 	}
 }
 
-// An empty COMPOSE_FILE is no COMPOSE_FILE, and a .env's COMPOSE_FILE comes
-// next (TS getDockerComposeFilePaths: `if (envComposeFile)`, then the .env file).
 func TestDockerComposeFilePathsFromTheDotEnv(t *testing.T) {
 	dir := t.TempDir()
 	c := &DevContainer{ConfigFilePath: filepath.Join(dir, "devcontainer.json")}

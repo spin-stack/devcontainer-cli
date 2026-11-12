@@ -10,12 +10,12 @@ func TestGPURequested(t *testing.T) {
 		raw  string
 		want bool
 	}{
-		{``, false},           // absent
-		{`null`, false},       // null
-		{`false`, false},      // explicit false must NOT enable GPUs
-		{`true`, true},        // required
-		{`"optional"`, true},  // optional → requested (availability decides)
-		{`{"cores":1}`, true}, // object form
+		{``, false},
+		{`null`, false},
+		{`false`, false},
+		{`true`, true},
+		{`"optional"`, true},
+		{`{"cores":1}`, true},
 	}
 	for _, tt := range tests {
 		got := gpuRequested(json.RawMessage(tt.raw))

@@ -33,7 +33,6 @@ func readCollection(t *testing.T, outDir string) string {
 	return string(data)
 }
 
-// tarFile returns a file's content from a packaged .tgz.
 func tarFile(t *testing.T, archive, name string) string {
 	t.Helper()
 	f, err := os.Open(archive)
@@ -43,7 +42,6 @@ func tarFile(t *testing.T, archive, name string) string {
 	defer f.Close()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		// createTarArchive writes a plain tar, as node-tar does without gzip.
 		f.Seek(0, io.SeekStart)
 		return tarEntry(t, tar.NewReader(f), name)
 	}
@@ -71,11 +69,6 @@ func exitCode(err error) int {
 	return -1
 }
 
-// A collection is the folder's entries in name order, without those starting
-// with '.'; one without devcontainer-feature.json is skipped (TS warns). A
-// Feature with legacyIds gets currentId, in the collection and in the packaged
-// devcontainer-feature.json, written as JSON.stringify(…, null, 4) (no HTML
-// escaping of '&').
 func TestPackageFeatureCollectionAsTS(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "b", "devcontainer-feature.json"), `{"id":"b","version":"1.0.0","name":"B & co", /* jsonc */ "legacyIds":["old-b"]}`, 0o644)
@@ -119,17 +112,11 @@ func TestPackageFeatureCollectionAsTS(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(out, "devcontainer-feature-hidden.tgz")); err == nil {
 		t.Error("a folder starting with '.' was packaged")
 	}
-	// The source is left as it was: the metadata is completed in a copy.
 	if data, _ := os.ReadFile(filepath.Join(src, "b", "devcontainer-feature.json")); strings.Contains(string(data), "currentId") {
 		t.Error("the source devcontainer-feature.json was rewritten")
 	}
 }
 
-// What fails a TS package fails it here, with exit code 1: a Feature without
-// install.sh, an item missing id/version/name (TS returns, it does not skip it),
-// a collection with nothing to package - including a parent folder whose items
-// are under src/, which TS does not descend into - and an output folder that
-// exists without -f. A target that does not exist is an error.
 func TestPackageFailuresAsTS(t *testing.T) {
 	newOut := func() string { return filepath.Join(t.TempDir(), "out") }
 
@@ -169,10 +156,6 @@ func TestPackageFailuresAsTS(t *testing.T) {
 	}
 }
 
-// A Template's metadata gains type, files (a folder's own files before its
-// sub-folders'), fileCount and featureIds (the resources of its OCI Features, in
-// the config's order), and an optionalPaths "dir/*" whose folder holds one file
-// names that file - TS addsAdditionalTemplateProps.
 func TestPackageTemplateAddsTSProps(t *testing.T) {
 	src := t.TempDir()
 	tpl := filepath.Join(src, "tpl")
@@ -217,7 +200,6 @@ func TestPackageTemplateAddsTSProps(t *testing.T) {
 	}
 }
 
-// writeCollectionMetadata surfaces a failed write instead of a false success.
 func TestWriteCollectionMetadata_WriteError(t *testing.T) {
 	if err := writeCollectionMetadata(filepath.Join(t.TempDir(), "does-not-exist"), "feature", nil); err == nil {
 		t.Fatal("expected an error writing into a missing directory")

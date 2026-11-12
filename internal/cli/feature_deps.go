@@ -13,11 +13,6 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// renderDependencyMermaid resolves the dependency graph rooted at the given
-// feature ids through the unified features.BuildDependencyGraph builder and
-// renders it as a mermaid flowchart (TS generateMermaidDiagram). It is used by
-// `features info` (single OCI root). Node hashes are internally consistent but
-// need not match the TS hashes byte-for-byte — the parity harness scrubs them.
 func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []string) string {
 	userFeatures := make([]features.DevContainerFeature, 0, len(roots))
 	for _, r := range roots {
@@ -34,11 +29,6 @@ func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []str
 	return features.GenerateMermaidDiagram(graph)
 }
 
-// newMetadataProcessFeature returns a read-only processFeature seam that resolves
-// a feature only far enough to read its dependency metadata (id, legacyIds,
-// dependsOn, installsAfter). It does not stage install content, so it is cheap
-// enough for the resolve-dependencies and mermaid consumers. OCI metadata is read
-// annotation-first with a blob fallback, matching the TS getOCIFeatureMetadata.
 func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local localFeatureRoots, lockfile *features.Lockfile) features.ProcessFeature {
 	return func(node *features.FNode) (*features.Set, error) {
 		id := node.UserFeatureID
@@ -77,7 +67,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 				Features:   []features.Feature{meta},
 			}, nil
 
-		default: // OCI (and legacy shorthand resolved to OCI)
+		default:
 			resolvedID, _ := features.ResolveID(id, false)
 			ref, err := oci.ParseRef(resolvedID)
 			if err != nil {
@@ -119,16 +109,12 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 	}
 }
 
-// readOCIFeatureMetadata reads a feature's metadata annotation-first, falling
-// back to the extracted devcontainer-feature.json blob when the manifest omits
-// the dev.containers.metadata annotation (TS getOCIFeatureMetadata).
 func readOCIFeatureMetadata(client oci.Registry, ref *oci.Ref, manifest *oci.ManifestContainer) features.Feature {
 	if mj, ok := manifest.Manifest.Annotations["dev.containers.metadata"]; ok && mj != "" {
 		var meta features.Feature
 		json.Unmarshal([]byte(mj), &meta)
 		return meta
 	}
-	// Blob fallback: fetch and extract the layer to read devcontainer-feature.json.
 	if len(manifest.Manifest.Layers) == 0 {
 		return features.Feature{}
 	}
@@ -140,8 +126,6 @@ func readOCIFeatureMetadata(client oci.Registry, ref *oci.Ref, manifest *oci.Man
 	return meta
 }
 
-// featureMetadataFromTarball extracts a Feature tarball and reads its
-// devcontainer-feature.json; a tarball without one has empty metadata.
 func featureMetadataFromTarball(blob []byte) (features.Feature, error) {
 	tmp, err := os.MkdirTemp("", "devcontainer-feature-meta-")
 	if err != nil {
@@ -162,8 +146,6 @@ func featureMetadataFromTarball(blob []byte) (features.Feature, error) {
 	return meta, nil
 }
 
-// ociAnnotationID is the id in the manifest's metadata annotation, or "" when
-// the annotation is missing, empty or not JSON (none of which unmarshal).
 func ociAnnotationID(manifest *oci.ManifestContainer) string {
 	var meta features.Feature
 	if json.Unmarshal([]byte(manifest.Manifest.Annotations["dev.containers.metadata"]), &meta) != nil {
@@ -188,9 +170,6 @@ func readLocalFeatureMetadata(dir string) (features.Feature, error) {
 	return meta, nil
 }
 
-// readTarballFeatureMetadata downloads a direct tarball, checks it against the
-// lockfile as TS getTgzFeatureMetadata does while building the graph, and reads
-// its devcontainer-feature.json.
 func readTarballFeatureMetadata(logger log.Logger, tarballURL string, lockfile *features.Lockfile) (features.Feature, error) {
 	blobData, digest, err := downloadFeatureTarball(context.Background(), logger, tarballURL, osEnvMap())
 	if err != nil {

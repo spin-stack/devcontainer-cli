@@ -8,8 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// tsRef is a TS OCIRef: tag is undefined (out of the JSON) for a digest
-// reference, digest for any other.
 func tsRef(r *Ref) map[string]string {
 	out := map[string]string{
 		"scheme": r.Scheme(), "id": r.ID, "owner": r.Owner, "namespace": r.Namespace,
@@ -23,9 +21,6 @@ func tsRef(r *Ref) map[string]string {
 	return out
 }
 
-// TestTSOracleRef asserts ref.go and QualifyImageName against the reference
-// functions' results (go tool task testdata:ts-oracle). TS returns undefined
-// where ParseRef and ParseCollectionRef fail.
 func TestTSOracleRef(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/ref.json", map[string]oracletest.Func{
 		"getRef": func(args []json.RawMessage) (any, error) {
@@ -63,8 +58,6 @@ func TestTSOracleRef(t *testing.T) {
 	})
 }
 
-// TS getRef splits the digest on every colon and wants exactly two parts, so
-// a second colon is a malformed digest, even after a valid hex.
 func TestParseRefDigestWithASecondColon(t *testing.T) {
 	_, err := ParseRef("ghcr.io/a/b@sha256:" + strings.Repeat("a", 64) + ":def")
 	if err == nil || !strings.Contains(err.Error(), "invalid digest format") {

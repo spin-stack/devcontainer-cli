@@ -14,8 +14,6 @@ import (
 
 //go:generate go tool mockgen -destination=mock_command_executor_test.go -package=lifecycle github.com/devcontainers/cli/internal/lifecycle CommandExecutor
 
-// expectInOrder makes exec expect exactly commands, one after another; the one
-// equal to failOn fails with "command failed: <command>", the others succeed.
 func expectInOrder(exec *MockCommandExecutor, failOn string, commands ...string) {
 	calls := make([]any, len(commands))
 	for i, c := range commands {
@@ -28,8 +26,6 @@ func expectInOrder(exec *MockCommandExecutor, failOn string, commands ...string)
 	gomock.InOrder(calls...)
 }
 
-// exitedOne is the *CommandError ShellExecutor returns for a command that
-// exits 1.
 func exitedOne(command string) error { return &CommandError{Command: command, ExitCode: 1} }
 
 func TestRunHooks(t *testing.T) {
@@ -69,7 +65,6 @@ func TestRunHooks(t *testing.T) {
 				PostStartCommands:  []any{"echo postStart"},
 			},
 			opts: RunOptions{SkipPostAttach: true},
-			// postStart runs, postAttach skipped
 			want: []string{"echo postStart"},
 		},
 		{
@@ -80,7 +75,6 @@ func TestRunHooks(t *testing.T) {
 				PostCreateCommands:    []any{"echo postCreate"},
 			},
 			opts: RunOptions{SkipNonBlocking: true},
-			// Default waitFor is updateContentCommand → stops after that
 			want: []string{"echo onCreate", "echo updateContent"},
 		},
 		{
@@ -91,7 +85,6 @@ func TestRunHooks(t *testing.T) {
 				PostCreateCommands:    []any{"echo postCreate"},
 			},
 			opts: RunOptions{Prebuild: true},
-			// Prebuild stops after updateContentCommand
 			want: []string{"echo onCreate", "echo updateContent"},
 		},
 		{
@@ -136,7 +129,7 @@ func TestCommandToString(t *testing.T) {
 	}{
 		{"echo hello", "echo hello"},
 		{[]any{"npm", "install"}, "'npm' 'install'"},
-		{map[string]any{"a": "cmd1", "b": "cmd2"}, ""}, // contains both but order varies
+		{map[string]any{"a": "cmd1", "b": "cmd2"}, ""},
 		{nil, ""},
 	}
 
@@ -146,7 +139,6 @@ func TestCommandToString(t *testing.T) {
 			continue
 		}
 		if tt.want != "" && got != tt.want {
-			// For map case, just verify both commands are present
 			if _, ok := tt.input.(map[string]any); ok {
 				if !strings.Contains(got, "cmd1") || !strings.Contains(got, "cmd2") {
 					t.Errorf("commandToString(%v) = %q, expected both cmd1 and cmd2", tt.input, got)
@@ -162,8 +154,8 @@ func TestInstallDotfiles(t *testing.T) {
 	tests := []struct {
 		name            string
 		config          DotfilesConfig
-		wantContains    []string // substrings expected in the one command; none runs when empty
-		wantNotContains []string // substrings that must NOT appear in it
+		wantContains    []string
+		wantNotContains []string
 	}{
 		{
 			name:   "empty repo",
@@ -175,7 +167,6 @@ func TestInstallDotfiles(t *testing.T) {
 				Repository: "owner/dotfiles",
 				TargetPath: "~/dotfiles",
 			},
-			// should auto-prefix GitHub URL and search for install.sh
 			wantContains: []string{"github.com/owner/dotfiles.git", "install.sh"},
 		},
 		{
@@ -188,7 +179,6 @@ func TestInstallDotfiles(t *testing.T) {
 			wantContains: []string{"my-setup.sh"},
 		},
 		{
-			// upstream #683: a leading ~/ in the install command must expand.
 			name: "install command with leading ~/ expands to $HOME",
 			config: DotfilesConfig{
 				Repository:     "owner/dotfiles",
@@ -217,22 +207,16 @@ func TestInstallDotfiles(t *testing.T) {
 }
 
 func TestCommandToString_ArrayQuoted(t *testing.T) {
-	// Array form must preserve each argument literally (no re-tokenization, no
-	// variable expansion) via shell quoting.
 	got := commandToString([]any{"echo", "hello world", "$HOME", "a'b"})
 	want := `'echo' 'hello world' '$HOME' 'a'\''b'`
 	if got != want {
 		t.Errorf("commandToString(array) = %q, want %q", got, want)
 	}
-	// String form passes through unchanged (runs via shell).
 	if s := commandToString("echo $HOME"); s != "echo $HOME" {
 		t.Errorf("commandToString(string) = %q", s)
 	}
 }
 
-// Object-syntax hooks run in parallel and their errors are aggregated. The
-// aggregate must still expose the underlying *CommandError via errors.As, so
-// run_user_commands can special-case it exactly like the sequential path.
 func TestExecuteCommand_ParallelPreservesCommandError(t *testing.T) {
 	cmd := map[string]any{
 		"one": "run-one",
@@ -257,10 +241,6 @@ func TestExecuteCommand_ParallelPreservesCommandError(t *testing.T) {
 	}
 }
 
-// A failed command's error says which command it was and where it comes from,
-// as TS runLifecycleCommand's ContainerError: the hook alone for a single
-// command, "<name> of <hook>" for one of an object's parallel commands, and
-// "Feature '<id>'" for a Feature's command.
 func TestHookErrorDescribesTheCommandAndItsOrigin(t *testing.T) {
 	merged := &imagemeta.MergedConfig{
 		PostCreateCommands: []any{"ok", map[string]any{"a": "ok", "b": "fails-b", "c": "fails-c"}},
@@ -287,7 +267,6 @@ func TestHookErrorDescribesTheCommandAndItsOrigin(t *testing.T) {
 		t.Fatalf("feature: err = %v", err)
 	}
 
-	// A command appended without an origin (the config's own) is devcontainer.json's.
 	merged = &imagemeta.MergedConfig{PostStartCommands: []any{"fails"}}
 	exec = NewMockCommandExecutor(gomock.NewController(t))
 	exec.EXPECT().Exec("fails").Return(exitedOne("fails"))
@@ -297,8 +276,6 @@ func TestHookErrorDescribesTheCommandAndItsOrigin(t *testing.T) {
 	}
 }
 
-// MergeConfiguration records each command's origin: a Feature entry's id, or
-// devcontainer.json for the entry without one (TS lifecycleCommandOriginMapFromMetadata).
 func TestMergeRecordsCommandOrigins(t *testing.T) {
 	m := imagemeta.MergeConfiguration([]imagemeta.Entry{
 		{ID: "./myfeat", PostCreateCommand: "a"},
@@ -313,9 +290,6 @@ func TestMergeRecordsCommandOrigins(t *testing.T) {
 	}
 }
 
-// TS runs an array command without a shell, and its failure names the
-// arguments joined with spaces; a string command's names /bin/sh -c. The same
-// holds for an array among an object's parallel commands.
 func TestArrayCommandFailureNamesItsArguments(t *testing.T) {
 	failing := func() CommandExecutor {
 		exec := NewMockCommandExecutor(gomock.NewController(t))

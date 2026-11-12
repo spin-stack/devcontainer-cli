@@ -69,24 +69,18 @@ func realTemplatesApplyCmd() *cobra.Command {
 	return cmd
 }
 
-// templateSelection validates the apply flags and turns them into the template
-// to apply: --template-id is required, --template-args must be a JSON object of
-// strings, and --features a JSON array; --omit-paths is best-effort, as in TS.
 func templateSelection(templateID, templateArgs, featuresJSON, omitPaths string) (templates.SelectedTemplate, error) {
 	if templateID == "" {
 		return templates.SelectedTemplate{}, fmt.Errorf("Missing required argument: --template-id")
 	}
-	// A nil options map is applied as an empty one.
 	var options map[string]string
 	if templateArgs != "" {
 		if err := jsonc.Unmarshal([]byte(templateArgs), &options); err != nil {
-			// TS emits a fixed message (no parser detail) so both the
-			// non-object and malformed-JSON paths canonicalize identically.
 			return templates.SelectedTemplate{}, fmt.Errorf("Invalid template arguments provided.")
 		}
 	}
 	var omit []string
-	_ = jsonc.Unmarshal([]byte(omitPaths), &omit) // empty or malformed omits nothing
+	_ = jsonc.Unmarshal([]byte(omitPaths), &omit)
 	var featureOpts []templates.TemplateFeatureOption
 	if featuresJSON != "" {
 		if err := json.Unmarshal([]byte(featuresJSON), &featureOpts); err != nil {

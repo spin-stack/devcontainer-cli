@@ -9,45 +9,35 @@ import (
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 )
 
-// Dockerfile is a parsed Dockerfile projected from BuildKit's AST into the small
-// shape the CLI needs (base-image resolution, final-stage naming).
 type Dockerfile struct {
 	Preamble      Preamble
 	Stages        []Stage
 	StagesByLabel map[string]*Stage
 }
 
-// Preamble is the content before any FROM statement.
 type Preamble struct {
-	Version      string // tag from # syntax=docker/dockerfile:X.Y (or "latest")
+	Version      string
 	Directives   map[string]string
-	Instructions []Instruction // the global ARGs
+	Instructions []Instruction
 }
 
-// Stage is a single FROM ... block.
 type Stage struct {
 	From         From
 	Instructions []Instruction
 }
 
-// From is a parsed FROM statement.
 type From struct {
 	Platform string
 	Image    string
 	Label    string
 }
 
-// Instruction is a parsed ARG, ENV, or USER statement.
 type Instruction struct {
-	Instruction string // "ARG", "ENV", "USER"
+	Instruction string
 	Name        string
 	Value       string
 }
 
-// ExtractDockerfile parses a Dockerfile with BuildKit's real parser (line
-// continuations, comments, heredocs and escapes handled correctly) and projects
-// it into the internal structs. Surrounding quotes are trimmed from images and
-// ARG/ENV values so downstream comparisons see the unquoted form.
 func ExtractDockerfile(content string) *Dockerfile {
 	df := &Dockerfile{
 		Preamble:      Preamble{Directives: map[string]string{}},
@@ -118,10 +108,6 @@ func stageLabel(s *instructions.Stage) string {
 	return s.Name
 }
 
-// StageLabels returns the LABEL key/value pairs declared in the named build
-// stage (or the final stage when name is ""), with later labels overriding
-// earlier ones. Used to recover a user's `LABEL devcontainer.metadata` from the
-// Dockerfile so the CLI-stamped metadata label does not clobber it.
 func (d *Dockerfile) StageLabels(name string) map[string]string {
 	var st *Stage
 	if name != "" {
@@ -142,8 +128,6 @@ func (d *Dockerfile) StageLabels(name string) map[string]string {
 	return labels
 }
 
-// syntaxVersion extracts the tag of a docker/dockerfile syntax directive
-// ("docker/dockerfile:1.4" -> "1.4", no tag -> "latest", other frontend -> "").
 func syntaxVersion(syntax string) string {
 	s := strings.TrimPrefix(syntax, "docker.io/")
 	if !strings.HasPrefix(s, "docker/dockerfile") {
@@ -167,11 +151,6 @@ func derefTrim(p *string) string {
 	return trimQuotes(*p)
 }
 
-// FindBaseImage is TS findBaseImage: the image the target stage (or the last
-// one) is built from, with the --build-arg values and the automatic BUILD*/
-// TARGET* platform ARGs (platformArgs, TS globalBuildxPlatformArgs), following
-// FROM <stage> to the first image that is no stage; "" when the target is
-// unknown or the stages form a cycle.
 func FindBaseImage(df *Dockerfile, buildArgs map[string]string, target string, platformArgs map[string]string) string {
 	return NewResolver(df, buildArgs, platformArgs).FindBaseImage(target)
 }
@@ -184,22 +163,9 @@ var (
 	// findFromLines is TS dockerfileUtils' /^(?<line>\s*FROM.*)/gmi; JS's . stops
 	// at \r, \u2028 and \u2029 as well as \n.
 	findFromLines = regexp.MustCompile(`(?mi)^[` + jsSpace + `]*FROM[^\n\r\x{2028}\x{2029}]*`)
-	// fromLineLabel is TS dockerfileUtils' parseFromLine:
-	// /FROM\s+(?<platform>--platform=\S+\s+)?(?<image>"?[^\s]+"?)(\s+AS\s+(?<label>[^\s]+))?/i.
 	fromLineLabel = regexp.MustCompile(`(?i)FROM[` + jsSpace + `]+(?:--platform=[^` + jsSpace + `]+[` + jsSpace + `]+)?"?[^` + jsSpace + `]+"?(?:[` + jsSpace + `]+AS[` + jsSpace + `]+([^` + jsSpace + `]+))?`)
 )
 
-// EnsureFinalStageName is TS ensureDockerfileHasFinalStageName: the name of the
-// final build stage, adding " AS <defaultName>" to the last FROM line when it
-// has none (so features can extend a known stage). The modified Dockerfile is
-// returned only when a name was added; otherwise modifiedContent is empty. A
-// Dockerfile without a FROM line, or whose last FROM line does not parse, is
-// TS's error.
-//
-// One deliberate divergence (docs/DIVERGENCES.md): when the last FROM line is
-// continued with a backslash, TS writes " AS <defaultName>" after the
-// backslash, which no builder accepts; this reads the stage's name with
-// BuildKit instead when it has one.
 func EnsureFinalStageName(content, defaultName string) (stageName string, modifiedContent string, err error) {
 	lines := findFromLines.FindAllStringIndex(content, -1) // mutate-exempt: any n < 0 is every match
 	if len(lines) == 0 {
@@ -222,14 +188,11 @@ func EnsureFinalStageName(content, defaultName string) (stageName string, modifi
 	return defaultName, content[:pos] + " AS " + defaultName + content[pos:], nil
 }
 
-// finalStageName is the name BuildKit reads for the last stage, "" when it has
-// none or the Dockerfile does not parse.
 func finalStageName(content string) string {
 	res, err := parser.Parse(strings.NewReader(content))
 	if err != nil {
 		return ""
 	}
-	// instructions.Parse returns no stages with its error.
 	if stages, _, _ := instructions.Parse(res.AST, nil); len(stages) > 0 {
 		return stages[len(stages)-1].Name
 	}

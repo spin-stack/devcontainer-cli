@@ -12,13 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pushStub is a registry whose pushes answer what the test sets per resource
-// (by default every requested tag under a digest), recording each push's
-// annotations.
 type pushStub struct {
 	fakeRegistry
 	results     map[string]*oci.PushResult
-	annotations map[string]string // resource -> dev.containers.metadata
+	annotations map[string]string
 }
 
 func newPushStub() *pushStub {
@@ -38,8 +35,6 @@ func (s *pushStub) PushArtifact(_ context.Context, ref *oci.Ref, _ string, tags 
 	return &oci.PushResult{Digest: "sha256:d1", PublishedTags: tags}, nil
 }
 
-// writeCollectionFeature writes <src>/<id>/devcontainer-feature.json with the
-// given metadata and an install.sh.
 func writeCollectionFeature(t *testing.T, src, id, metadata string) {
 	t.Helper()
 	writeFeature(t, src, id, metadata)
@@ -69,7 +64,6 @@ func TestRequireTarget(t *testing.T) {
 	}
 }
 
-// package <target> packages the folder its one argument names.
 func TestFeaturesPackageCommandPackagesTarget(t *testing.T) {
 	src := t.TempDir()
 	writeCollectionFeature(t, src, "tool", `{"id":"tool","version":"1.0.0","name":"Tool"}`)
@@ -84,8 +78,6 @@ func TestFeaturesPackageCommandPackagesTarget(t *testing.T) {
 	}
 }
 
-// publish <target> checks --namespace before it reaches a registry, for both
-// collection types, and validates --log-level next.
 func TestPublishCommandsRequireNamespace(t *testing.T) {
 	for name, cmd := range map[string]func() *cobra.Command{"features": realFeaturesPublishCmd, "templates": realTemplatesPublishCmd} {
 		c := cmd()
@@ -107,8 +99,6 @@ func TestPublishCommandsRequireNamespace(t *testing.T) {
 	}
 }
 
-// A Feature collection that cannot be packaged adds TS's collection error line;
-// a Template collection does not.
 func TestPublishCollectionPackagingFailureLine(t *testing.T) {
 	for _, c := range []struct {
 		kind string
@@ -126,8 +116,6 @@ func TestPublishCollectionPackagingFailureLine(t *testing.T) {
 	}
 }
 
-// An item whose resource is not a valid reference stops publish, naming the
-// collection type as TS does.
 func TestPublishCollectionUnparsableResource(t *testing.T) {
 	src := t.TempDir()
 	writeCollectionFeature(t, src, "tool", `{"id":"tool","version":"1.0.0","name":"Tool"}`)
@@ -141,7 +129,6 @@ func TestPublishCollectionUnparsableResource(t *testing.T) {
 	}
 }
 
-// The dev.containers.metadata annotation keeps the metadata's own key order.
 func TestPublishCollectionAnnotationKeepsKeyOrder(t *testing.T) {
 	src := t.TempDir()
 	writeCollectionFeature(t, src, "tool", `{"version":"1.0.0","name":"Tool","id":"tool"}`)
@@ -154,9 +141,6 @@ func TestPublishCollectionAnnotationKeepsKeyOrder(t *testing.T) {
 	}
 }
 
-// An item counts as published only with both a digest and at least one tag;
-// otherwise its result is empty and its legacy ids are not published. A
-// published Feature with a single legacy id republishes it.
 func TestPublishCollectionPublishedNeedsDigestAndTags(t *testing.T) {
 	src := t.TempDir()
 	writeCollectionFeature(t, src, "a", `{"id":"a","version":"1.0.0","name":"A","legacyIds":["old-a"]}`)
@@ -187,8 +171,6 @@ func TestPublishCollectionPublishedNeedsDigestAndTags(t *testing.T) {
 	}
 }
 
-// A published Feature is republished under each legacy id; the result lists
-// the ids that were published (digest and a tag), not the others.
 func TestPublishCollectionLegacyIDs(t *testing.T) {
 	src := t.TempDir()
 	writeCollectionFeature(t, src, "tool", `{"id":"tool","version":"1.0.0","name":"Tool","legacyIds":["old1","old2","old3"]}`)
@@ -205,7 +187,6 @@ func TestPublishCollectionLegacyIDs(t *testing.T) {
 	}
 }
 
-// Templates have no legacy ids to republish, even when the metadata lists some.
 func TestPublishCollectionTemplateIgnoresLegacyIDs(t *testing.T) {
 	src := t.TempDir()
 	dir := filepath.Join(src, "tmpl")

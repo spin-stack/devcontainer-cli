@@ -22,7 +22,6 @@ import (
 
 func executeCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
 	t.Helper()
-	// The root command silences usage and errors; the bare subcommand does not.
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -32,8 +31,6 @@ func executeCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error
 	return out.String(), err
 }
 
-// outdated reads the workspace given by --workspace-folder, and the current
-// directory without it.
 func TestOutdatedCmdWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{}`, "")
 	t.Chdir(t.TempDir())
@@ -46,9 +43,6 @@ func TestOutdatedCmdWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	}
 }
 
-// addFeature publishes repo as a Feature whose devcontainer-feature.json is
-// meta (JSON): its manifest carries meta as its metadata annotation and its
-// layer is the Feature's tarball.
 func (r *readRegistry) addFeature(t *testing.T, repo, meta string) {
 	t.Helper()
 	tgz := featureTgzBytes(t, map[string]string{"devcontainer-feature.json": meta, "install.sh": "#!/bin/sh\n"})
@@ -73,10 +67,6 @@ func parseLockfile(t *testing.T, data string) features.Lockfile {
 	return lf
 }
 
-// upgrade --dry-run resolves the Features as build does (TS readFeaturesConfig)
-// and prints their lockfile: each OCI Feature at the version its
-// devcontainer-feature.json records, pinned to its manifest digest, the
-// Features it depends on included, local Features left out.
 func TestUpgradeDryRunPrintsLockfile(t *testing.T) {
 	reg := newReadRegistry(t)
 	h := reg.host
@@ -104,9 +94,6 @@ func TestUpgradeDryRunPrintsLockfile(t *testing.T) {
 	}
 }
 
-// A Feature that cannot be resolved fails upgrade, as it fails TS
-// generateFeaturesConfig, rather than being left out of the lockfile: nothing
-// is printed or written.
 func TestUpgradeFailsOnAnUnresolvableFeature(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
@@ -128,8 +115,6 @@ func TestUpgradeFailsOnAnUnresolvableFeature(t *testing.T) {
 	}
 }
 
-// Without --dry-run the lockfile is written next to the configuration
-// --config names; one that cannot be written fails the command.
 func TestUpgradeWritesLockfileNextToConfig(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
@@ -157,9 +142,6 @@ func TestUpgradeWritesLockfileNextToConfig(t *testing.T) {
 	}
 }
 
-// upgrade truncates the lockfile before writing it (TS upgradeCommand.ts), so a
-// lockfile with the same content in another layout is rewritten canonically,
-// where build and up would leave it alone.
 func TestUpgradeRewritesACosmeticallyDifferentLockfile(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
@@ -187,8 +169,6 @@ func TestUpgradeRewritesACosmeticallyDifferentLockfile(t *testing.T) {
 	}
 }
 
-// A lockfile upgrade can truncate but not read back fails the command, as TS
-// writeLockfile rethrows readLocalFile's EACCES after the truncation.
 func TestUpgradeFailsOnALockfileItCannotReadBack(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a write-only file")
@@ -203,8 +183,6 @@ func TestUpgradeFailsOnALockfileItCannotReadBack(t *testing.T) {
 	}
 }
 
-// upgrade reads the workspace given by --workspace-folder, and the current
-// directory without it.
 func TestUpgradeWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
@@ -219,9 +197,6 @@ func TestUpgradeWorkspaceFolderDefaultsToCwd(t *testing.T) {
 	}
 }
 
-// --feature and --target-version go together, and the target is a bare
-// x / x.y / x.y.z version (TS upgradeCommand.ts .check()); a configuration that
-// cannot be loaded, or a log file that cannot be opened, fails the command.
 func TestUpgradeRejectsBadInvocations(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{}`, "")
 	together := "The '--target-version' and '--feature' flag must be used together."
@@ -246,9 +221,6 @@ func TestUpgradeRejectsBadInvocations(t *testing.T) {
 	}
 }
 
-// A configuration without Features has no Features config to lock, which TS
-// upgrade fails on ("Failed to update lockfile") rather than writing an empty
-// lockfile, with or without --dry-run.
 func TestUpgradeFailsWithoutFeatures(t *testing.T) {
 	for _, feats := range []string{`{}`, `null`} {
 		for _, dryRun := range []bool{false, true} {
@@ -268,7 +240,6 @@ func TestUpgradeFailsWithoutFeatures(t *testing.T) {
 	}
 }
 
-// The keys of a "features" value that is not an object are not Feature ids.
 func TestFeatureKeyOrderFromFileNonObjectFeatures(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
 	writeFile(t, cfg, `{"features":["a","b"]}`, 0o644)
@@ -277,8 +248,6 @@ func TestFeatureKeyOrderFromFileNonObjectFeatures(t *testing.T) {
 	}
 }
 
-// A column is as wide as its widest cell, an empty column has no width, and a
-// cell one shorter than its column is padded by one.
 func TestTextTableWidths(t *testing.T) {
 	got := textTable([][]string{{"", "ab", "x"}, {"", "a", "y"}})
 	if want := "  ab  x\n  a   y"; got != want {
@@ -286,8 +255,6 @@ func TestTextTableWidths(t *testing.T) {
 	}
 }
 
-// The tag or digest is cut at the first ':' or '@' after the last '/', even
-// right after it (TS /[:@][^/]*$/).
 func TestGetFeatureIdWithoutVersionRightAfterSlash(t *testing.T) {
 	for in, want := range map[string]string{"o/@sha256:x": "o/", "@sha256:x": "", "o/:1": "o/"} {
 		if got := getFeatureIdWithoutVersion(in); got != want {
@@ -296,8 +263,6 @@ func TestGetFeatureIdWithoutVersionRightAfterSlash(t *testing.T) {
 	}
 }
 
-// --log-level is one of TS upgrade's choices, error among them, and yargs
-// rejects any other before .check() looks at --feature/--target-version.
 func TestUpgradeLogLevelChoices(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{}`, "")
 	want := `Invalid value "warn" for --log-level. Choose from: error, info, debug, trace`
@@ -309,8 +274,6 @@ func TestUpgradeLogLevelChoices(t *testing.T) {
 	}
 }
 
-// A --config file that does not exist is TS getConfig's "not found" error,
-// naming the resolved path.
 func TestUpgradeMissingConfigIsNotFound(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope.json")
 	want := "Dev container config (" + missing + ") not found."
@@ -319,8 +282,6 @@ func TestUpgradeMissingConfigIsNotFound(t *testing.T) {
 	}
 }
 
-// upgrade logs TS's header once the configuration loads, none when it does
-// not, and nothing of its own after writing the lockfile.
 func TestUpgradeLogsAsTheReference(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.addFeature(t, "ns/tool", `{"id":"tool","version":"1.0.0"}`)
@@ -344,10 +305,6 @@ func TestUpgradeLogsAsTheReference(t *testing.T) {
 	}
 }
 
-// --feature/--target-version pin the Feature in devcontainer.json before the
-// lockfile is generated, as TS updateFeatureVersionInConfig does, also with
-// --dry-run: the first key, in file order, naming the Feature whatever its
-// version is replaced, as a pattern, everywhere in the file's text.
 func TestUpgradePinsTheFeatureVersionInConfig(t *testing.T) {
 	reg := newReadRegistry(t)
 	h := reg.host
@@ -382,9 +339,6 @@ func TestUpgradePinsTheFeatureVersionInConfig(t *testing.T) {
 	}
 }
 
-// Of two keys naming the Feature only the first in file order is replaced;
-// the key is read as a regular expression, so a '.' in it matches any
-// character, and a key that is not a valid one fails the command.
 func TestUpgradeFeatureKeyIsAPattern(t *testing.T) {
 	reg := newReadRegistry(t)
 	h := reg.host
@@ -409,9 +363,6 @@ func TestUpgradeFeatureKeyIsAPattern(t *testing.T) {
 	}
 }
 
-// A configuration with no Feature to pin is left as it is: without Features
-// TS logs so at debug level, and with Features none of which is the one
-// asked for, the unchanged text at trace level.
 func TestUpgradeLeavesAConfigWithoutTheFeature(t *testing.T) {
 	reg := newReadRegistry(t)
 	h := reg.host
@@ -441,9 +392,6 @@ func TestUpgradeLeavesAConfigWithoutTheFeature(t *testing.T) {
 	}
 }
 
-// A local Feature outside the .devcontainer folder fails upgrade as TS
-// processFeatureIdentifier fails it, with or without --dry-run, rather than
-// being written to the lockfile.
 func TestUpgradeRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		ws := writeOutdatedWorkspace(t, `{"../f":{}}`, "")
@@ -462,9 +410,6 @@ func TestUpgradeRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
 	}
 }
 
-// A lockfile upgrade creates gets Node's default mode, 0666 minus the umask,
-// as TS writeLocalFile(lockfilePath, "") gives it before the lockfile is
-// written.
 func TestUpgradeCreatesTheLockfileWithNodesMode(t *testing.T) {
 	old := syscall.Umask(0o002)
 	t.Cleanup(func() { syscall.Umask(old) })

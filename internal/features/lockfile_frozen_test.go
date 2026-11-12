@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// A frozen lockfile fails with TS writeLockfile's own errors: "Lockfile does
-// not exist." when there is none (without writing one) and "Lockfile does not match." when it is stale.
 func TestWriteLockfileFrozenErrors(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "devcontainer.json")
 	err := WriteLockfile(configPath, heldLockfile(), WriteOptions{Frozen: true})

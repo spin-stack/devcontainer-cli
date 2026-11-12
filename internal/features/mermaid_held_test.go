@@ -7,9 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A Feature without legacyIds has one alias, its own id, and TS
-// generateMermaidNode (containerFeaturesOrder.ts) labels it with that one:
-// `featureIdAliases.length > 0`.
 func TestGenerateMermaidDiagramLabelsASingleAlias(t *testing.T) {
 	registry := map[string]stubFeature{"ghcr.io/ns/a": {id: "a", digest: "sha256:a"}}
 	graph, err := BuildDependencyGraph(log.Null, newStubProcessFeature(registry), userFeats("ghcr.io/ns/a:1"), nil, nil)

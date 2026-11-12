@@ -12,10 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A failed fetch with nothing cached caches the empty manifest TS
-// updateControlManifest writes (JSON.stringify(emptyControlManifest,
-// undefined, 2)), so a second call within five minutes reads it instead of
-// fetching again.
 func TestGetControlManifestCachesTheEmptyManifestOnFailure(t *testing.T) {
 	dir := t.TempDir()
 	fetches := 0
@@ -41,9 +37,6 @@ func TestGetControlManifestCachesTheEmptyManifestOnFailure(t *testing.T) {
 	}
 }
 
-// A cache folder that does not exist yet is created (TS updateControlManifest
-// mkdirs it) with mode 0755, the mode the CLI gives every cache folder, less
-// the process umask.
 func TestGetControlManifestCreatesTheCacheFolder(t *testing.T) {
 	umask := processUmask(t)
 	dir := filepath.Join(t.TempDir(), "cache")
@@ -81,8 +74,6 @@ func processUmask(t *testing.T) os.FileMode {
 	return 0
 }
 
-// An advisory whose introducedInVersion or fixedInVersion cannot be parsed
-// applies to no version, as TS fetchFeatureAdvisories filters it out.
 func TestFeatureAdvisoriesSkipUnparsableRanges(t *testing.T) {
 	manifest := &ControlManifest{FeatureAdvisories: []Advisory{
 		{FeatureID: "ghcr.io/o/f/a", IntroducedInVersion: "x", FixedInVersion: "2", Description: "no introduced"},
@@ -94,8 +85,6 @@ func TestFeatureAdvisoriesSkipUnparsableRanges(t *testing.T) {
 	}
 }
 
-// A 300 answer is outside 2xx, so it is a failed fetch worded as TS request
-// words it.
 func TestGetControlManifestRefusesStatus300(t *testing.T) {
 	var buf bytes.Buffer
 	logger := log.New(log.Options{Writer: &buf, Level: log.LevelTrace})

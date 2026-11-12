@@ -26,8 +26,6 @@ func TestParseMountSpec(t *testing.T) {
 }
 
 func TestParseMountSpec_BareRO(t *testing.T) {
-	// "ro" as a bare flag (no =value) must set ReadOnly, and an explicit
-	// volume type must be preserved rather than defaulted to bind.
 	m, err := ParseMountSpec("type=volume,source=vol,target=/data,ro")
 	if err != nil {
 		t.Fatal(err)
@@ -37,10 +35,6 @@ func TestParseMountSpec_BareRO(t *testing.T) {
 	}
 }
 
-// TestCreateContainerArgs_Table asserts the exact `docker create` argument
-// slice for discriminating inputs. Ordering is load-bearing: id-labels first,
-// then mounts/env/caps/security, flags, runArgs (arbitrary devcontainer.json
-// flags) BEFORE the image, then entrypoint, image, and command.
 func TestCreateContainerArgs_Table(t *testing.T) {
 	tests := []struct {
 		name string
@@ -151,9 +145,6 @@ func TestCreateContainerArgs_MountConsistency(t *testing.T) {
 	}
 }
 
-// FuzzParseMountSpec targets user-controlled --mount strings. Beyond not
-// panicking, every accepted result must satisfy the invariants relied on by
-// container creation: a destination and an explicit/defaulted mount type.
 func FuzzParseMountSpec(f *testing.F) {
 	f.Add("type=bind,source=/workspace,target=/workspaces/project,readonly")
 	f.Add("type=volume,source=data,destination=/data")

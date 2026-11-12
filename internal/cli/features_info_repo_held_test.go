@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// info <mode> <feature> takes the mode from its first argument and the
-// Feature from its second.
 func TestFeaturesInfoCommandArguments(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.manifests["ns/tool"] = featureManifest("tool")

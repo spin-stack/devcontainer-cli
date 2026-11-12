@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// The lockfile generated for a Feature records its dependsOn ids, and leaves
-// the key out for a Feature without any, as TS generateLockfile (lockfile.ts)
-// does with `dependsOn.length ? dependsOn : undefined`; the JSON is TS
-// JSON.stringify(lockfile, null, 2).
 func TestGenerateLockfileRecordsDependsOn(t *testing.T) {
 	oci := func(id string, dependsOn map[string]any) *Set {
 		return &Set{

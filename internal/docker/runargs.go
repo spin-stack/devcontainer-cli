@@ -7,13 +7,11 @@ import (
 	"github.com/moby/moby/api/types/mount"
 )
 
-// ParseMountSpec parses a --mount flag value (e.g., "type=bind,source=/a,target=/b").
 func ParseMountSpec(spec string) (mount.Mount, error) {
 	m := mount.Mount{}
 	for part := range strings.SplitSeq(spec, ",") {
 		k, v, ok := strings.Cut(part, "=")
 		if !ok {
-			// Bare boolean flags (e.g. "readonly"/"ro" with no =value).
 			if k == "readonly" || k == "ro" {
 				m.ReadOnly = true
 			}
@@ -41,10 +39,6 @@ func ParseMountSpec(spec string) (mount.Mount, error) {
 	return m, nil
 }
 
-// CreateContainerArgs builds the full `docker create` CLI argument list from
-// structured config, merging in arbitrary runArgs from devcontainer.json.
-// This lets the Docker CLI handle ALL flag parsing (ports, devices, resources,
-// health checks, etc.) instead of reimplementing it.
 func CreateContainerArgs(
 	imageName string,
 	labels []string,
@@ -99,8 +93,6 @@ func CreateContainerArgs(
 		args = append(args, "-u", user)
 	}
 
-	// runArgs go BEFORE the image name — they are arbitrary docker create flags
-	// parsed natively by the Docker CLI.
 	args = append(args, runArgs...)
 
 	if len(entrypoint) > 0 {

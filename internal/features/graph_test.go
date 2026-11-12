@@ -8,22 +8,16 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// stubFeature is an in-memory feature definition keyed by its OCI resource
-// (registry/namespace/id, without a tag).
 type stubFeature struct {
-	id            string // canonical feature id (currentId)
+	id            string
 	digest        string
 	legacyIds     []string
 	dependsOn     map[string]any
 	installsAfter []string
 }
 
-// newStubProcessFeature builds a hermetic processFeature that resolves OCI-style
-// ids ("registry/ns/id:tag") from an in-memory registry keyed by resource. An id
-// not present in the registry resolves to (nil, nil) — "could not be processed".
 func newStubProcessFeature(registry map[string]stubFeature) ProcessFeature {
 	return func(node *FNode) (*Set, error) {
-		// The stub ids carry no registry port, so the tag follows the last colon.
 		resource, tag, _ := strings.Cut(node.UserFeatureID, ":")
 		sf, ok := registry[resource]
 		if !ok {
@@ -95,7 +89,6 @@ func TestBuildDependencyGraph_TransitiveDependsOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The worklist should contain a, b and c (transitively resolved).
 	if len(graph) != 3 {
 		t.Fatalf("worklist size = %d, want 3", len(graph))
 	}
@@ -118,7 +111,6 @@ func TestBuildDependencyGraph_DiamondDedup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// a reached through both b and c but must appear once in the worklist.
 	if len(graph) != 4 {
 		t.Fatalf("worklist size = %d, want 4 (a deduped)", len(graph))
 	}
@@ -128,7 +120,6 @@ func TestBuildDependencyGraph_DiamondDedup(t *testing.T) {
 }
 
 func TestBuildDependencyGraph_DedupByOptions(t *testing.T) {
-	// Same resource+digest but different options → two distinct nodes.
 	registry := map[string]stubFeature{
 		"ghcr.io/ns/a": {id: "a", digest: "sha256:a"},
 	}
@@ -154,8 +145,6 @@ func TestBuildDependencyGraph_SoftDepPruned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// x is processFeature'd (to read legacyIds) but NOT recursively expanded, so
-	// it is not part of the worklist; the dangling soft-dep is pruned.
 	if len(graph) != 1 {
 		t.Fatalf("worklist size = %d, want 1 (soft dep not added)", len(graph))
 	}
@@ -165,7 +154,6 @@ func TestBuildDependencyGraph_SoftDepPruned(t *testing.T) {
 }
 
 func TestBuildDependencyGraph_SoftDepOrders(t *testing.T) {
-	// When the soft dep IS present, it installs first.
 	registry := map[string]stubFeature{
 		"ghcr.io/ns/b": {id: "b", digest: "sha256:b", installsAfter: []string{"ghcr.io/ns/a:1"}},
 		"ghcr.io/ns/a": {id: "a", digest: "sha256:a"},
@@ -180,8 +168,6 @@ func TestBuildDependencyGraph_SoftDepOrders(t *testing.T) {
 }
 
 func TestBuildDependencyGraph_SoftDepAliasMatch(t *testing.T) {
-	// b installsAfter the legacy id "nodejs"; the installed feature's resource is
-	// "node" with legacyIds ["nodejs"]. The soft dep must match via the alias.
 	registry := map[string]stubFeature{
 		"ghcr.io/ns/node":   {id: "node", digest: "sha256:node", legacyIds: []string{"nodejs"}},
 		"ghcr.io/ns/nodejs": {id: "node", digest: "sha256:node", legacyIds: []string{"nodejs"}},
@@ -231,14 +217,12 @@ func TestBuildDependencyGraph_OverridePriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Override is applied during graph build; pass nil to ComputeInstallationOrder.
 	if got, want := orderIDs(t, graph), []string{"c", "a", "b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
 
 func TestBuildDependencyGraph_OverrideAliasMatch(t *testing.T) {
-	// Override references the legacy id; it must match the canonical feature.
 	registry := map[string]stubFeature{
 		"ghcr.io/ns/node":   {id: "node", digest: "sha256:node", legacyIds: []string{"nodejs"}},
 		"ghcr.io/ns/nodejs": {id: "node", digest: "sha256:node", legacyIds: []string{"nodejs"}},

@@ -11,8 +11,6 @@ import (
 	"testing"
 )
 
-// sandbox is a destination folder inside an otherwise empty parent, so a test
-// can tell that an extraction wrote nothing beside it.
 func sandbox(t *testing.T) (parent, dest string) {
 	t.Helper()
 	parent = t.TempDir()
@@ -23,7 +21,6 @@ func sandbox(t *testing.T) (parent, dest string) {
 	return parent, dest
 }
 
-// tree lists every path under dir, relative to it.
 func tree(t *testing.T, dir string) []string {
 	t.Helper()
 	var paths []string
@@ -48,10 +45,6 @@ func reg(name string) tar.Header {
 	return tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644}
 }
 
-// node-tar, which extracts the reference's blobs, skips an entry with a ".."
-// segment (either separator) instead of re-rooting it: "../up.txt" is not
-// written anywhere, not even as destDir/up.txt. A ".." inside a name is no
-// segment.
 func TestExtractTarGzSkipsDotDotEntries(t *testing.T) {
 	parent, dest := sandbox(t)
 	src := writeEntries(t, "x",
@@ -78,15 +71,11 @@ func prefixed(dir string, paths []string) []string {
 	return out
 }
 
-// An absolute path loses its root, Windows roots included as node-tar strips
-// them on every platform, and lands inside destDir.
 func TestExtractTarGzStripsAbsolutePaths(t *testing.T) {
 	parent, dest := sandbox(t)
 	src := writeEntries(t, "x",
 		reg("/abs.txt"), reg("//abs2.txt"), reg(`\back.txt`), reg("c:/drive.txt"), reg("C:rel.txt"),
 		reg("/c:/nested/x.txt"), reg("1:digit.txt"),
-		// Drive letters are ASCII letters only: the neighbours of a-z and A-Z
-		// stay part of the name.
 		reg("a:a.txt"), reg("z:z.txt"), reg("A:A2.txt"), reg("Z:Z2.txt"),
 		reg("`:tick.txt"), reg("{:brace.txt"), reg("@:at.txt"), reg("[:bracket.txt"),
 		tar.Header{Name: "d:", Typeflag: tar.TypeDir, Mode: 0o755},
@@ -106,9 +95,6 @@ func TestExtractTarGzStripsAbsolutePaths(t *testing.T) {
 	}
 }
 
-// A symlink inside destDir that points outside it cannot carry a file or a
-// directory out: the extraction fails, keeps the archive, and nothing appears
-// outside.
 func TestExtractTarGzCannotWriteThroughASymlink(t *testing.T) {
 	for name, entry := range map[string]tar.Header{
 		"file":      reg("link/pwned.txt"),
@@ -139,8 +125,6 @@ func TestExtractTarGzCannotWriteThroughASymlink(t *testing.T) {
 	}
 }
 
-// A symlink entry is not extracted, so a later entry beneath its name is an
-// ordinary path inside destDir and cannot follow it out.
 func TestExtractTarGzDoesNotCreateSymlinkEntries(t *testing.T) {
 	parent, dest := sandbox(t)
 	src := writeEntries(t, "x",

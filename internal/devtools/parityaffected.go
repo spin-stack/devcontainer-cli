@@ -1,7 +1,3 @@
-// Package devtools holds the pure logic behind the repo's CI helper commands
-// (invoked via cmd/devtool). Keeping the decision logic here — rather than in
-// shell scripts — makes it unit-testable; the thin main only wires stdin/stdout,
-// git, and `go tool` around these functions.
 package devtools
 
 import (
@@ -10,18 +6,6 @@ import (
 	"strings"
 )
 
-// ParityAffected maps a set of changed files to the parity runtime commands they
-// can affect, returning one of:
-//
-//	"all"   — run the whole runtime matrix (a shared/core or uncertain file changed)
-//	"none"  — run nothing (only docs/irrelevant files, or no files)
-//	"<csv>" — run only these commands, e.g. "build,up" (a PARITY_COMMAND allowlist)
-//
-// The mapping is deliberately conservative: only files we are confident are
-// command-local narrow the run; everything else falls through to "all". The daily
-// full run is the backstop for any cross-command effect this misses. Ported from
-// the former scripts/parity-affected.sh; the ordering of checks is significant
-// (first match wins, exactly like the shell `case`).
 func ParityAffected(files []string) string {
 	full := false
 	cmds := map[string]bool{}
@@ -39,7 +23,6 @@ func ParityAffected(files []string) string {
 				cmds[c] = true
 			}
 		case fileIgnore:
-			// contributes nothing
 		}
 	}
 
@@ -60,19 +43,14 @@ const (
 	fileCommand
 )
 
-// classifyParityFile mirrors the ordered shell `case` in the original script:
-// the first matching arm wins. Returns the parity commands only for fileCommand.
 func classifyParityFile(f string) (fileKind, []string) {
 	switch {
-	// --- Ignorable: never affect the runtime matrix ------------------------
 	case strings.HasSuffix(f, ".md"),
 		strings.HasPrefix(f, "LICENSE"),
 		f == ".gitignore", f == ".editorconfig", f == ".github/CODEOWNERS",
 		f == ".github/workflows/release.yml", strings.HasPrefix(f, ".goreleaser"):
 		return fileIgnore, nil
 
-	// --- Harness / matrix data / build config → run everything -------------
-	// (listed BEFORE the generic *_test.go ignore so it wins)
 	case f == "docs/parity/parity-matrix.yaml",
 		f == "internal/cli/parity_matrix_test.go",
 		f == "internal/cli/parity_matrix_helpers_test.go",
@@ -80,7 +58,6 @@ func classifyParityFile(f string) (fileKind, []string) {
 		f == ".github/workflows/go-cli.yml":
 		return fileFull, nil
 
-	// --- Isolated leaf command files → just that command's cases -----------
 	case f == "internal/cli/read_configuration.go":
 		return fileCommand, []string{"read-configuration"}
 	case f == "internal/cli/exec.go":
@@ -102,15 +79,12 @@ func classifyParityFile(f string) (fileKind, []string) {
 	case f == "internal/cli/collection_commands.go":
 		return fileCommand, []string{"features", "templates", "features-info", "features-package"}
 
-	// --- A command's own hermetic/e2e tests don't affect the runtime matrix -
 	case strings.HasPrefix(f, "internal/cli/") && strings.HasSuffix(f, "_test.go"):
 		return fileIgnore, nil
 
-	// --- Anything else under the source tree is shared or uncertain → full -
 	case strings.HasPrefix(f, "internal/"), strings.HasPrefix(f, "cmd/"):
 		return fileFull, nil
 
-	// --- Unknown top-level path → be safe ----------------------------------
 	default:
 		return fileFull, nil
 	}

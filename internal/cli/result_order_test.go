@@ -8,13 +8,7 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// read-configuration writes its result, the configuration and the Features
-// configuration in TS's order (readConfiguration's object literal, the
-// document's order with the deprecated properties' customizations and then
-// configFilePath last, FeaturesConfig's literal), as the TS oracle printed
-// for these documents.
 func TestReadConfigurationWritesTSKeyOrder(t *testing.T) {
-	// read-configuration looks for the container; this engine has none.
 	startFakeEngine(t, nil)
 	files := map[string]string{".devcontainer/devcontainer.json": `{
 		// a comment
@@ -56,10 +50,6 @@ func TestReadConfigurationWritesTSKeyOrder(t *testing.T) {
 	}
 }
 
-// A merged configuration has the configuration's properties but the ones
-// mergeConfiguration replaces, each in its place, then the ones it sets, as TS
-// printed for up and set-up with this configuration; customizations moves to
-// mergeConfiguration's place. Unknown keys follow, sorted.
 func TestOrderConfigurationsWritesTSMergedOrder(t *testing.T) {
 	loaded := &config.LoadResult{KeyOrder: []string{"name", "customizations", "image", "remoteUser", "postCreateCommand", "containerEnv"}}
 	fields := func(keys ...string) map[string]any {
@@ -94,8 +84,6 @@ func TestOrderConfigurationsWritesTSMergedOrder(t *testing.T) {
 	}
 }
 
-// A value encoding/json cannot write is the result's error, not a truncated
-// result.
 func TestOrderedObjectReportsAValueItCannotWrite(t *testing.T) {
 	if _, err := json.Marshal(orderedObject{map[string]any{"x": make(chan int)}, nil}); err == nil {
 		t.Error("a channel value was written")

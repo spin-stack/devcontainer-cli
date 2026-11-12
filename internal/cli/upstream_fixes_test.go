@@ -10,8 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/docker"
 )
 
-// mountOrString builds a config.MountOrString from a JSON literal (its internal
-// representation is unexported, so this also exercises the unmarshal path).
 func mountOrString(t *testing.T, jsonLit string) config.MountOrString {
 	t.Helper()
 	var m config.MountOrString
@@ -21,9 +19,6 @@ func mountOrString(t *testing.T, jsonLit string) config.MountOrString {
 	return m
 }
 
-// TestMetadataMounts_ReadonlyObject covers upstream #881: a top-level mount
-// OBJECT with readonly:true must carry the flag through so both the docker and
-// compose renderers emit a read-only mount (previously the struct dropped it).
 func TestMetadataMounts_ReadonlyObject(t *testing.T) {
 	cfg := &config.DevContainer{
 		Mounts: []config.MountOrString{
@@ -42,7 +37,6 @@ func TestMetadataMounts_ReadonlyObject(t *testing.T) {
 		t.Fatalf("#881 readonly not serialized: %v", m)
 	}
 
-	// docker path: CreateContainerArgs must render `readonly` in the --mount spec.
 	mounts, err := mountsFromMetadata(entries, "devid")
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +46,6 @@ func TestMetadataMounts_ReadonlyObject(t *testing.T) {
 		t.Errorf("#881 docker --mount missing readonly: %v", args)
 	}
 
-	// compose path: the volume spec must end in :ro.
 	composeMounts, err := composeMountsFromMetadata(entries, func(s string) (string, error) { return s, nil })
 	if err != nil {
 		t.Fatal(err)
@@ -62,8 +55,6 @@ func TestMetadataMounts_ReadonlyObject(t *testing.T) {
 	}
 }
 
-// TestMetadataMounts_ReadonlyOmittedByDefault guards that a mount without the
-// property does not spuriously become read-only.
 func TestMetadataMounts_ReadonlyOmittedByDefault(t *testing.T) {
 	cfg := &config.DevContainer{
 		Mounts: []config.MountOrString{
@@ -76,29 +67,19 @@ func TestMetadataMounts_ReadonlyOmittedByDefault(t *testing.T) {
 	}
 }
 
-// TestCheckGPUAvailability_NvidiaCLIProbe covers upstream #319: when the nvidia
-// runtime is reported by docker info but nvidia-container-cli reports NO GPU
-// (driver loaded, no device), detect mode must NOT enable the GPU.
 func TestCheckGPUAvailability_NvidiaCLIProbe(t *testing.T) {
-	// checkGPUAvailability's detect path needs a docker info result; without a
-	// real daemon we can only exercise the "all"/"none" shortcuts here plus the
-	// probe override in isolation. Verify the probe override is honored by the
-	// detect branch's decision function.
 	orig := nvidiaContainerCLIInfo
 	t.Cleanup(func() { nvidiaContainerCLIInfo = orig })
 	ctx := context.Background()
 
-	// Tool present, no GPU -> the refined signal wins (false).
 	nvidiaContainerCLIInfo = func(context.Context) (bool, bool) { return true, false }
 	if detectGPU(ctx, true) {
 		t.Error("#319 GPU enabled despite nvidia-container-cli reporting no GPU")
 	}
-	// Tool present, GPU present -> true.
 	nvidiaContainerCLIInfo = func(context.Context) (bool, bool) { return true, true }
 	if !detectGPU(ctx, true) {
 		t.Error("#319 GPU not enabled despite a present GPU")
 	}
-	// Tool absent -> fall back to the docker-info runtime signal (TS parity).
 	nvidiaContainerCLIInfo = func(context.Context) (bool, bool) { return false, false }
 	if !detectGPU(ctx, true) {
 		t.Error("#319 without nvidia-container-cli, must keep TS runtime-only behavior")
@@ -108,8 +89,6 @@ func TestCheckGPUAvailability_NvidiaCLIProbe(t *testing.T) {
 	}
 }
 
-// TestBuildPositionalPath covers upstream #8: the advertised [path] positional
-// is honored as the workspace folder when --workspace-folder is not set.
 func TestBuildPositionalPath(t *testing.T) {
 	cmd := newBuildCmd()
 	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
@@ -120,9 +99,6 @@ func TestBuildPositionalPath(t *testing.T) {
 	}
 }
 
-// TestMountFromMetadata_DevcontainerIdInTarget covers the fix: ${devcontainerId}
-// must resolve in an object mount's target, not only its source (the string form
-// already substitutes the whole spec).
 func TestMountFromMetadata_DevcontainerIdInTarget(t *testing.T) {
 	m, err := mountFromMetadata(map[string]any{
 		"type":   "volume",

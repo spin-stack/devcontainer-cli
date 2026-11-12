@@ -75,7 +75,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 	f.StringVar(&opts.defaultUserEnvProbe, "default-user-env-probe", "loginInteractiveShell", "")
 	f.Bool("stop-for-personalization", false, "")
 	f.Bool("skip-feature-auto-mapping", false, "")
-	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
+	_ = f.MarkHidden("skip-feature-auto-mapping")
 	f.StringVar(&opts.containerSessionDataFolder, "container-session-data-folder", "", "")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "")
 	f.String("user-data-folder", "", "")
@@ -105,7 +105,6 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 		Secrets: secretValuesFromFile(opts.secretsFile),
 	})
 
-	// Try to load config first — provides better error messages
 	var loadResult *config.LoadResult
 	if opts.workspaceFolder != "" {
 		var loadErr error
@@ -120,9 +119,6 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	return runUserCommandsInContainer(ctx, out, opts, logger, loadResult)
 }
 
-// prepareRunUserCommandsOpts validates the run-user-commands flags and defaults
-// --workspace-folder to the current directory when neither it, --container-id
-// nor --id-label says which container to use.
 func prepareRunUserCommandsOpts(opts *runUserCommandsOpts) error {
 	if err := validateIDLabels(opts.idLabels); err != nil {
 		return err
@@ -143,9 +139,6 @@ func prepareRunUserCommandsOpts(opts *runUserCommandsOpts) error {
 	return validateTerminalImplications(opts.terminalColumns, opts.terminalRows)
 }
 
-// runUserCommandsInContainer finds the dev container and runs the lifecycle
-// commands in it. loadResult is the config --workspace-folder loaded, or nil.
-//
 // mutate-lane: TestParityMatrix (run-user-commands.container-config-success,
 // run-user-commands.workspace-image-success,
 // run-user-commands.skip-post-attach-success,
@@ -163,9 +156,6 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 
 	containerID := opts.containerID
 	if containerID == "" {
-		// TS looks the container up by the workspace folder and the
-		// configuration's file (findContainerAndIdLabels); a failed lookup is
-		// its error, described as running the user commands.
 		lookupConfigFile := ""
 		if loadResult != nil {
 			lookupConfigFile = loadResult.Config.ConfigFilePath
@@ -187,14 +177,10 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 		cfg = configFromFlag(opts.configPath, opts.overrideConfig)
 	}
 
-	// Read metadata from container
 	inspect, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
 	}
-	// The merged configuration is the container's metadata (TS
-	// getImageMetadataFromContainer), which records the configuration's entry
-	// for a container the CLI created.
 	hostSub, configFile := config.EnvHostSubContext(), ""
 	if loadResult != nil {
 		hostSub, configFile = loadResult.HostSub, loadResult.Config.ConfigFilePath
@@ -209,10 +195,6 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 		return writeErrorResult(out, err.Error())
 	}
 	merged := imagemeta.MergeConfiguration(allEntries)
-	// TS doRunUserCommands substitutes the container's environment into the
-	// configuration and the merged configuration before it runs anything; a
-	// variable that cannot be resolved is the ContainerError it reports,
-	// naming the configuration's file.
 	var rawConfig any = cfg
 	if loadResult != nil {
 		rawConfig = loadResult.Raw
@@ -254,7 +236,6 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 	})
 
 	if hookErr != nil {
-		// TS run-user-commands reports only the message and description.
 		return writeErrorJSON(out, coreerrors.ToErrorOutput(hookContainerError(hookErr, "", "An error occurred running user commands in the container.")))
 	}
 
@@ -264,10 +245,6 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 	}, runUserCommandsResultKeys...)
 }
 
-// configFromFlag is the config --config names when no --workspace-folder loaded
-// one (the --container-id path); a relative path is taken from the current
-// directory. A config that does not load leaves the container's metadata as the
-// only source, so it yields nil.
 func configFromFlag(configPath, overrideConfig string) *config.DevContainer {
 	if configPath == "" {
 		return nil
@@ -279,8 +256,6 @@ func configFromFlag(configPath, overrideConfig string) *config.DevContainer {
 	return loadResult.Config
 }
 
-// lifecycleRemoteUser is the user the shell server and userEnvProbe run as: the
-// metadata's remoteUser, overridden by the config's, matching the TS CLI.
 func lifecycleRemoteUser(merged *imagemeta.MergedConfig, cfg *config.DevContainer) string {
 	if cfg != nil && cfg.RemoteUser != "" {
 		return cfg.RemoteUser
@@ -288,8 +263,6 @@ func lifecycleRemoteUser(merged *imagemeta.MergedConfig, cfg *config.DevContaine
 	return merged.RemoteUser
 }
 
-// lifecycleUserEnvProbe is the config's userEnvProbe, or the
-// --default-user-env-probe value when the config sets none.
 func lifecycleUserEnvProbe(defaultProbe string, cfg *config.DevContainer) lifecycle.UserEnvProbeStrategy {
 	if cfg != nil && cfg.UserEnvProbe != "" {
 		return lifecycle.UserEnvProbeStrategy(cfg.UserEnvProbe)
@@ -297,10 +270,6 @@ func lifecycleUserEnvProbe(defaultProbe string, cfg *config.DevContainer) lifecy
 	return lifecycle.UserEnvProbeStrategy(defaultProbe)
 }
 
-// lifecycleRemoteEnv is the KEY=VALUE environment the lifecycle commands get, in
-// the order later entries win: the probed environment, the --secrets-file
-// secrets, --remote-env, then the config's remoteEnv, whose null values are left
-// out.
 func lifecycleRemoteEnv(probed map[string]string, secrets, remoteEnvs []string, cfg *config.DevContainer) []string {
 	var env []string
 	for k, v := range probed {

@@ -64,8 +64,6 @@ func TestGenerateLockfile(t *testing.T) {
 	}
 }
 
-// Features supplied only via --additional-features must not be
-// written to the lockfile.
 func TestGenerateLockfile_ExcludesAdditionalFeatures(t *testing.T) {
 	config := &Config{
 		FeatureSets: []*Set{
@@ -116,7 +114,6 @@ func TestGenerateLockfile_Sorted(t *testing.T) {
 	data, _ := json.MarshalIndent(lf, "", "  ")
 	str := string(data)
 
-	// "a-feature" should appear before "z-feature" in serialized output
 	aIdx := indexOf(str, "a-feature")
 	zIdx := indexOf(str, "z-feature")
 	if aIdx >= zIdx {
@@ -208,7 +205,6 @@ func TestWriteLockfile_Frozen_Changed(t *testing.T) {
 	configPath := filepath.Join(dir, "devcontainer.json")
 	lockPath := LockfilePath(configPath)
 
-	// Write initial lockfile
 	os.WriteFile(lockPath, []byte(`{"features":{}}`), 0644)
 
 	lf := &Lockfile{
@@ -232,8 +228,6 @@ func indexOf(s, substr string) int {
 	return -1
 }
 
-// A new lockfile gets Node's default file mode, 0666 less the umask, as TS
-// writeLockfile's fs.writeFile gives it; rewriting one keeps its mode.
 func TestWriteLockfileMode(t *testing.T) {
 	old := syscall.Umask(0o002)
 	t.Cleanup(func() { syscall.Umask(old) })

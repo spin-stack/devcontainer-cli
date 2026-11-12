@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// A key_order path reaches into arrays by index, so a case can pin the key
-// order of an element (featuresConfiguration.featureSets.0.features.0).
 func TestJSONKeyOrderIndexesArrays(t *testing.T) {
 	doc := `{"a":[{"x":1},{"z":1,"y":2}]}`
 	if keys, err := jsonKeyOrder(doc, "a.1"); err != nil || !slices.Equal(keys, []string{"z", "y"}) {

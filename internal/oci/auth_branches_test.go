@@ -9,10 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// installHelper writes a docker-credential-<name> script with the given shell
-// body onto PATH and returns the helper name. Used to drive the untested output
-// branches of getCredentialFromHelper (empty / non-JSON) and the credsStore
-// resolution path.
 func installHelper(t *testing.T, name, body string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -27,10 +23,6 @@ func installHelper(t *testing.T, name, body string) string {
 	return name
 }
 
-// TestGetCredentialFromHelper_OutputBranches covers the two failure branches of
-// getCredentialFromHelper that a well-behaved helper never hits but a broken one
-// does: an empty response and a non-JSON response. Both must yield nil (fall
-// through to anonymous) rather than a malformed credential.
 func TestGetCredentialFromHelper_OutputBranches(t *testing.T) {
 	t.Run("empty output", func(t *testing.T) {
 		helper := installHelper(t, "emptyhelper", "printf ''")
@@ -47,9 +39,6 @@ func TestGetCredentialFromHelper_OutputBranches(t *testing.T) {
 	})
 }
 
-// TestGetCredentialFromDockerConfig_CredsStore covers the global credsStore
-// branch (distinct from a per-registry credHelper): a config that sets only
-// credsStore must invoke that helper for any registry.
 func TestGetCredentialFromDockerConfig_CredsStore(t *testing.T) {
 	helper := installHelper(t, "storehelper", `read reg; printf '{"Username":"su","Secret":"sp"}\n'`)
 

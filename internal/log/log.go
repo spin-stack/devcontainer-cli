@@ -1,4 +1,3 @@
-// Package log provides the CLI's structured, TS-compatible logger.
 package log
 
 import (
@@ -51,7 +50,6 @@ func (l Level) String() string {
 	}
 }
 
-// ParseLevel converts a CLI string flag to a Level.
 func ParseLevel(text string) Level {
 	switch strings.ToLower(text) {
 	case "trace":
@@ -67,20 +65,18 @@ func ParseLevel(text string) Level {
 	}
 }
 
-// Event represents a structured log event, matching the TS LogEvent union.
 type Event struct {
-	Type           string `json:"type"`                     // "text", "raw", "start", "stop", "progress"
-	Level          Level  `json:"level,omitempty"`          // for text/raw/start/stop
-	Timestamp      int64  `json:"timestamp,omitempty"`      // unix millis
-	Text           string `json:"text,omitempty"`           // for text/raw/start/stop
-	StartTimestamp int64  `json:"startTimestamp,omitempty"` // for stop
-	Name           string `json:"name,omitempty"`           // for progress
-	Status         string `json:"status,omitempty"`         // for progress: "running","succeeded","failed"
-	StepDetail     string `json:"stepDetail,omitempty"`     // for progress
-	Channel        string `json:"channel,omitempty"`        // optional grouping
+	Type           string `json:"type"`
+	Level          Level  `json:"level,omitempty"`
+	Timestamp      int64  `json:"timestamp,omitempty"`
+	Text           string `json:"text,omitempty"`
+	StartTimestamp int64  `json:"startTimestamp,omitempty"`
+	Name           string `json:"name,omitempty"`
+	Status         string `json:"status,omitempty"`
+	StepDetail     string `json:"stepDetail,omitempty"`
+	Channel        string `json:"channel,omitempty"`
 }
 
-// Logger is the primary logging interface consumed by all subsystems.
 type Logger interface {
 	Write(text string, level ...Level)
 	Raw(text string, level ...Level)
@@ -89,21 +85,17 @@ type Logger interface {
 	Event(e Event)
 }
 
-// Handler processes log events. Multiple handlers can be combined.
 type Handler interface {
 	HandleEvent(e Event)
 }
 
-// Options configures a new Logger instance.
 type Options struct {
 	Level     Level
-	Format    string // "text" or "json"
+	Format    string
 	Writer    io.Writer
 	Version   string
 	StartTime time.Time
-	// Secrets, when set, are replaced with "********" in every emitted log line
-	// (matching the TS CLI maskSecrets). Pass the secret *values*.
-	Secrets []string
+	Secrets   []string
 }
 
 type logger struct {
@@ -112,8 +104,6 @@ type logger struct {
 	secrets      []string
 }
 
-// New creates a Logger from Options. It selects the appropriate handler
-// based on Format.
 func New(opts Options) Logger {
 	if opts.Writer == nil {
 		opts.Writer = os.Stderr
@@ -122,14 +112,10 @@ func New(opts Options) Logger {
 		opts.StartTime = time.Now()
 	}
 
-	// Default to info when unset, matching the TS CLI default log level.
 	if opts.Level == 0 {
 		opts.Level = LevelInfo
 	}
 
-	// The handler is TS createLogFrom's (spec-node/devContainers.ts): JSON for
-	// --log-format json, the terminal format when stdout is a terminal
-	// (process.stdout.isTTY), the plain format otherwise.
 	var h Handler
 	switch {
 	case opts.Format == "json":
@@ -149,9 +135,6 @@ func New(opts Options) Logger {
 		secrets:      prepareSecrets(opts.Secrets),
 	}
 
-	// Emit the version banner as the first text event, like the TS CLI header
-	// (createLog with omitHeader=false). Only top-level command loggers set
-	// Version; sub-loggers leave it empty to avoid a duplicate banner.
 	if opts.Version != "" {
 		l.Event(Event{
 			Type:      "text",
@@ -164,9 +147,6 @@ func New(opts Options) Logger {
 	return l
 }
 
-// BannerLine builds the startup banner, mirroring the TS CLI format
-// "@devcontainers/cli <ver>. Node.js <ver>. <platform> <release> <arch>." with
-// the Go runtime substituted for Node.
 func BannerLine(version string) string {
 	platform := runtime.GOOS
 	if rel := osRelease(); rel != "" {
@@ -175,7 +155,6 @@ func BannerLine(version string) string {
 	return fmt.Sprintf("@devcontainers/cli %s. Go %s. %s %s.", version, runtime.Version(), platform, runtime.GOARCH)
 }
 
-// osRelease returns the kernel release string (best-effort; empty on failure).
 func osRelease() string {
 	b, err := os.ReadFile("/proc/sys/kernel/osrelease")
 	if err != nil {
@@ -184,8 +163,6 @@ func osRelease() string {
 	return strings.TrimSpace(string(b))
 }
 
-// prepareSecrets drops empty values and sorts by length descending so that
-// longer secrets are masked before any shorter substring of them.
 func prepareSecrets(values []string) []string {
 	out := slices.DeleteFunc(slices.Clone(values), func(v string) bool { return v == "" })
 	slices.SortFunc(out, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
@@ -245,7 +222,6 @@ func (l *logger) Event(e Event) {
 	l.handler.HandleEvent(e)
 }
 
-// Null is a no-op logger.
 var Null Logger = &nullLog{}
 
 type nullLog struct{}
@@ -256,8 +232,6 @@ func (n *nullLog) Start(string, ...Level) int64 { return nowMillis() }
 func (n *nullLog) Stop(string, int64, ...Level) {}
 func (n *nullLog) Event(Event)                  {}
 
-// --- Terminal handler ---
-
 // stdoutIsTerminal reports what TS reads as process.stdout.isTTY: whether the
 // CLI's stdout is a terminal. Like TS, the choice of log format follows stdout
 // even though the log itself goes to stderr.
@@ -265,22 +239,17 @@ func stdoutIsTerminal() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
-// terminalHandler is TS createTerminalLog: logEventToTerminalText
-// (spec-utils/log.ts) with ANSI colors and \r\n line ends.
 type terminalHandler struct {
 	w        io.Writer
 	start    int64
 	minLevel Level
 }
 
-// newTerminalHandler's minLevel is never 0: New defaults it to info.
 func newTerminalHandler(w io.Writer, start time.Time, minLevel Level) Handler {
 	return &terminalHandler{w: w, start: start.UnixMilli(), minLevel: minLevel}
 }
 
 func (h *terminalHandler) HandleEvent(e Event) {
-	// A progress event has no level (0, below any minLevel), so it is never
-	// printed, as in TS.
 	if e.Level < h.minLevel {
 		return
 	}
@@ -299,7 +268,6 @@ func (h *terminalHandler) HandleEvent(e Event) {
 			line = "[" + color(timestampColor, elapsed) + "] Start: " + toTerminalText(e.Text)
 		}
 	case "stop":
-		// TS shows a stop line on the terminal only at trace.
 		if trace {
 			line = color(stopColor, "["+elapsed+"] Stop") + fmt.Sprintf(" (%d ms): ", e.Timestamp-e.StartTimestamp) + toTerminalText(e.Text)
 		}
@@ -309,7 +277,6 @@ func (h *terminalHandler) HandleEvent(e Event) {
 	}
 }
 
-// TS foreground colors (spec-utils/log.ts).
 const (
 	stopColor      = "38;2;143;99;79"
 	startColor     = "38;2;99;143;79"
@@ -317,20 +284,14 @@ const (
 	numberColor    = "38;2;86;156;214"
 )
 
-// color is TS color: s in bold and the given foreground color. TS colors each
-// line of s; every caller passes one line, a timestamp or a number.
 func color(c, s string) string {
 	return "\x1b[1m\x1b[" + c + "m" + s + "\x1b[39m\x1b[22m"
 }
 
-// terminalEscapeSequences is TS terminalEscapeSequences (spec-utils/log.ts).
 var terminalEscapeSequences = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]`)
 
-// newlines matches TS toTerminalText's /\r?\n/g.
 var newlines = regexp.MustCompile(`\r?\n`)
 
-// toTerminalText is TS toTerminalText: the text colorized, every line ending
-// in \r\n, and one \r\n at the end.
 func toTerminalText(text string) string {
 	s := newlines.ReplaceAllString(colorize(text), "\r\n")
 	if !strings.HasSuffix(s, "\r\n") {
@@ -339,8 +300,6 @@ func toTerminalText(text string) string {
 	return s
 }
 
-// colorize is TS colorize: numbers colored outside escape sequences, which are
-// kept as they are.
 func colorize(text string) string {
 	var b strings.Builder
 	last := 0
@@ -368,8 +327,6 @@ func colorizePlainText(text string) string {
 		for j+1 < len(text) && text[j] == '.' && isDigit(text[j+1]) {
 			j = skipDigits(text, j+1) // mutate-exempt: text[j+1] is a digit, so skipping from j+2 ends at the same place
 		}
-		// No shorter match can pass the lookahead: it would end before a
-		// digit or a '.', so a failed number is skipped whole.
 		if j == len(text) || !isWordByte(text[j]) {
 			b.WriteString(text[last:i])
 			b.WriteString(color(numberColor, text[i:j]))
@@ -390,39 +347,27 @@ func skipDigits(s string, i int) int {
 
 func isDigit(c byte) bool { return '0' <= c && c <= '9' }
 
-// isWordByte is the complement of TS's [^A-Za-z0-9_\-\.].
 func isWordByte(c byte) bool {
 	return isDigit(c) || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_' || c == '-' || c == '.'
 }
 
-// StripTerminalFormatting removes what the terminal format adds to a line, its
-// escape sequences and the \r of its \r\n line ends, for a copy of the log
-// that is read as a file (--log-file, --terminal-log-file).
 func StripTerminalFormatting(s string) string {
 	return strings.ReplaceAll(terminalEscapeSequences.ReplaceAllString(s, ""), "\r\n", "\n")
 }
 
-// --- Plain handler ---
-
-// plainHandler is TS createPlainLog: logEventToFileText (spec-utils/log.ts),
-// used when stdout is not a terminal.
 type plainHandler struct {
 	w        io.Writer
 	minLevel Level
 }
 
-// newPlainHandler's minLevel is never 0: New defaults it to info.
 func newPlainHandler(w io.Writer, minLevel Level) Handler {
 	return &plainHandler{w: w, minLevel: minLevel}
 }
 
 func (h *plainHandler) HandleEvent(e Event) {
-	// A progress event has no level (0, below any minLevel), so it is never
-	// printed, as in TS.
 	if e.Level < h.minLevel {
 		return
 	}
-	// new Date(e.timestamp).toISOString()
 	stamp := "[" + time.UnixMilli(e.Timestamp).UTC().Format("2006-01-02T15:04:05.000Z") + "] "
 	var line string
 	switch e.Type {
@@ -431,7 +376,6 @@ func (h *plainHandler) HandleEvent(e Event) {
 	case "start":
 		line = stamp + "Start: " + toLogFileText(e.Text)
 	case "stop":
-		// TS shows a stop line in the plain log at debug and trace.
 		if h.minLevel <= LevelDebug {
 			line = stamp + fmt.Sprintf("Stop (%d ms): ", e.Timestamp-e.StartTimestamp) + toLogFileText(e.Text)
 		}
@@ -441,8 +385,6 @@ func (h *plainHandler) HandleEvent(e Event) {
 	}
 }
 
-// toLogFileText is TS toLogFileText: the text without escape sequences, its
-// last line end replaced with os.EOL (one added when it has none).
 func toLogFileText(text string) string {
 	s := terminalEscapeSequences.ReplaceAllString(text, "")
 	if t, ok := strings.CutSuffix(s, "\r\n"); ok {
@@ -451,10 +393,6 @@ func toLogFileText(text string) string {
 	return strings.TrimSuffix(s, "\n") + eol
 }
 
-// --- JSON handler ---
-
-// jsonHandler is TS createJSONLog: each event as JSON.stringify writes it, on
-// a line of its own.
 type jsonHandler struct {
 	w io.Writer
 }
@@ -466,12 +404,10 @@ func newJSONHandler(w io.Writer) Handler {
 func (h *jsonHandler) HandleEvent(e Event) {
 	data, err := stringify.JSON(e, "")
 	if err != nil {
-		return // an Event is always serializable; drop rather than emit a broken line
+		return
 	}
 	fmt.Fprintf(h.w, "%s\n", data)
 }
-
-// --- Helpers ---
 
 func nowMillis() int64 {
 	return time.Now().UnixMilli()

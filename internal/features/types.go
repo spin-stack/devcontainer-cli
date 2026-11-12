@@ -1,4 +1,3 @@
-// Package features resolves, orders, installs and locks dev container Features.
 package features
 
 import (
@@ -11,7 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/jsonc"
 )
 
-// Set represents a resolved feature with its source and metadata.
 type Set struct {
 	SourceInfo SourceInfo `json:"sourceInformation"`
 	Features   []Feature  `json:"features"`
@@ -20,25 +18,22 @@ type Set struct {
 	ComputedDigest  string `json:"computedDigest,omitempty"`
 }
 
-// Feature represents a single feature within a Set.
 type Feature struct {
-	ID               string         `json:"id"`
-	Version          string         `json:"version,omitempty"`
-	Name             string         `json:"name,omitempty"`
-	Description      string         `json:"description,omitempty"`
-	DocumentationURL string         `json:"documentationURL,omitempty"`
-	Options          map[string]any `json:"options,omitempty"`
-	DependsOn        map[string]any `json:"dependsOn,omitempty"`
-	// DependsOnOrder is the order the metadata lists dependsOn's keys in,
-	// which TS keeps (Object.keys); UnmarshalJSON records it.
+	ID                   string            `json:"id"`
+	Version              string            `json:"version,omitempty"`
+	Name                 string            `json:"name,omitempty"`
+	Description          string            `json:"description,omitempty"`
+	DocumentationURL     string            `json:"documentationURL,omitempty"`
+	Options              map[string]any    `json:"options,omitempty"`
+	DependsOn            map[string]any    `json:"dependsOn,omitempty"`
 	DependsOnOrder       []string          `json:"-"`
 	InstallsAfter        []string          `json:"installsAfter,omitempty"`
 	LegacyIds            []string          `json:"legacyIds,omitempty"`
 	Included             bool              `json:"included"`
 	CachePath            string            `json:"cachePath,omitempty"`
 	ConsecutiveId        string            `json:"consecutiveId,omitempty"`
-	Value                any               `json:"value"` // normalized main value
-	UserOptions          map[string]any    `json:"-"`     // original user option values from config
+	Value                any               `json:"value"`
+	UserOptions          map[string]any    `json:"-"`
 	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
 	Mounts               []any             `json:"mounts,omitempty"`
 	Init                 *bool             `json:"init,omitempty"`
@@ -52,38 +47,16 @@ type Feature struct {
 	PostStartCommand     any               `json:"postStartCommand,omitempty"`
 	PostAttachCommand    any               `json:"postAttachCommand,omitempty"`
 	Customizations       map[string]any    `json:"customizations,omitempty"`
-	// Metadata is the devcontainer-feature.json UnmarshalJSON decoded the
-	// Feature from, as standard JSON; File, when set, is the Feature's
-	// devcontainer-feature.json where it differs from Metadata (an OCI
-	// Feature's metadata comes from its manifest's annotation, the file from
-	// its layer).
-	Metadata json.RawMessage `json:"-"`
-	File     json.RawMessage `json:"-"`
-	// SourceKeys, when set, are the properties TS processFeatureIdentifier
-	// gives the Feature before anything else (LocalFeatureKeys or
-	// OCIFeatureKeys), and the Feature is written as TS builds it (see
-	// MarshalJSON).
-	SourceKeys []string `json:"-"`
+	Metadata             json.RawMessage   `json:"-"`
+	File                 json.RawMessage   `json:"-"`
+	SourceKeys           []string          `json:"-"`
 }
 
-// The properties TS processFeatureIdentifier starts a Feature with: a local
-// or tarball Feature's {id, name, value, included}, an OCI one's
-// {id, included, value} (tryGetOCIFeatureSet).
 var (
 	LocalFeatureKeys = []string{"id", "name", "value", "included"}
 	OCIFeatureKeys   = []string{"id", "included", "value"}
 )
 
-// MarshalJSON writes a Feature with SourceKeys as TS builds it for
-// featuresConfiguration, and one without in the struct's order. TS starts
-// from the SourceKeys properties, spreads the metadata over them when it
-// reads the dependencies (buildDependencyGraph), adds cachePath and
-// consecutiveId (fetchFeatures), spreads the result over the
-// devcontainer-feature.json (applyFeatureConfigToFeature) and moves the
-// deprecated extensions and settings into customizations
-// (updateFromOldProperties). The
-// metadata's own properties, values and key order are kept, those Go has no
-// field for included.
 func (f Feature) MarshalJSON() ([]byte, error) {
 	type plain Feature
 	if f.SourceKeys == nil {
@@ -132,8 +105,6 @@ func (f Feature) MarshalJSON() ([]byte, error) {
 	return out.MarshalJSON()
 }
 
-// metadataObject is the metadata's object, empty when there is none (TS
-// spreads only a metadata it read).
 func metadataObject(data json.RawMessage) (*jsObject, error) {
 	if len(data) == 0 {
 		return newJSObject(), nil
@@ -148,9 +119,6 @@ func metadataObject(data json.RawMessage) (*jsObject, error) {
 	return spreadSource(v), nil
 }
 
-// updateFeatureFromOldProperties is TS updateFromOldProperties
-// (containerFeaturesConfiguration.ts) on a Feature: its extensions and
-// settings move into customizations.vscode.
 func updateFeatureFromOldProperties(original *jsObject) (*jsObject, error) {
 	extensions, _ := original.get("extensions")
 	settings, _ := original.get("settings")
@@ -177,7 +145,6 @@ func updateFeatureFromOldProperties(original *jsObject) (*jsObject, error) {
 	return cp, nil
 }
 
-// orNewObject is obj[k] || (obj[k] = {}), for an object or a new one.
 func orNewObject(obj *jsObject, k string) *jsObject {
 	if v, _ := obj.get(k); jsTruthy(v) {
 		if o, ok := v.(*jsObject); ok {
@@ -189,8 +156,6 @@ func orNewObject(obj *jsObject, k string) *jsObject {
 	return o
 }
 
-// jsConcat is (base || []).concat(v): an array's elements are appended, any
-// other value is; a string base concatenates as a string does.
 func jsConcat(base, v any) (any, error) {
 	if !jsTruthy(base) {
 		base = []any{}
@@ -209,7 +174,6 @@ func jsConcat(base, v any) (any, error) {
 	return nil, fmt.Errorf("TypeError: (vscode.extensions || []).concat is not a function")
 }
 
-// jsString is String(v) for the values a string concat appends.
 func jsString(v any) (string, error) {
 	switch x := v.(type) {
 	case string:
@@ -234,8 +198,6 @@ func jsString(v any) (string, error) {
 	return "[object Object]", nil
 }
 
-// UnmarshalJSON decodes the Feature and records the order of its dependsOn
-// keys in DependsOnOrder.
 func (f *Feature) UnmarshalJSON(data []byte) error {
 	type plain Feature
 	if err := json.Unmarshal(data, (*plain)(f)); err != nil {
@@ -246,10 +208,6 @@ func (f *Feature) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// DependsOnKeys is TS Object.keys(dependsOn) for a Feature decoded from its
-// metadata: the keys of DependsOn in the order DependsOnOrder lists them (a
-// repeated key where it first appears). Keys DependsOnOrder does not list,
-// as for a Feature built in code, follow in sorted order.
 func (f *Feature) DependsOnKeys() []string {
 	keys := make([]string, 0, len(f.DependsOn))
 	listed := make(map[string]bool, len(f.DependsOn))
@@ -267,30 +225,25 @@ func (f *Feature) DependsOnKeys() []string {
 	return keys
 }
 
-// SourceInfo describes where a feature comes from.
 type SourceInfo interface {
 	SourceType() string
 	UserFeatureID() string
 }
 
-// OCISource is a feature from an OCI registry.
 // Its properties are in the order of TS OCISourceInformation as
 // tryGetOCIFeatureSet builds it.
 type OCISource struct {
-	Type string `json:"type"`
-	// Manifest is the manifest as the registry served it (TS manifestObj, its
-	// JSON.parse): see ManifestJSON.
+	Type                        string      `json:"type"`
 	Manifest                    any         `json:"manifest,omitempty"`
 	ManifestDigest              string      `json:"manifestDigest,omitempty"`
 	FeatureRef                  *FeatureRef `json:"featureRef,omitempty"`
 	UserID                      string      `json:"userFeatureId"`
 	UserFeatureIdWithoutVersion string      `json:"userFeatureIdWithoutVersion,omitempty"`
-	// Internal fields not serialized to JSON (used for dependency resolution)
-	Registry  string `json:"-"`
-	Namespace string `json:"-"`
-	ID        string `json:"-"`
-	Resource  string `json:"-"`
-	Tag       string `json:"-"`
+	Registry                    string      `json:"-"`
+	Namespace                   string      `json:"-"`
+	ID                          string      `json:"-"`
+	Resource                    string      `json:"-"`
+	Tag                         string      `json:"-"`
 }
 
 // FeatureRef is TS OCIRef as getRef builds it, its properties in that order.
@@ -307,9 +260,6 @@ type FeatureRef struct {
 	Digest    string `json:"digest,omitempty"`
 }
 
-// ManifestJSON is a manifest as TS keeps it in OCISourceInformation:
-// JSON.parse of the body the registry served, properties in its order. A
-// body that does not parse is written as fallback is.
 func ManifestJSON(body []byte, fallback any) any {
 	if v, err := parseJS(body); err == nil {
 		return v
@@ -320,7 +270,6 @@ func ManifestJSON(body []byte, fallback any) any {
 func (s *OCISource) SourceType() string    { return "oci" }
 func (s *OCISource) UserFeatureID() string { return s.UserID }
 
-// TarballSource is a feature from a direct HTTP tarball URL.
 type TarballSource struct {
 	TarballURI string
 	UserID     string
@@ -329,8 +278,6 @@ type TarballSource struct {
 func (s *TarballSource) SourceType() string    { return "direct-tarball" }
 func (s *TarballSource) UserFeatureID() string { return s.UserID }
 
-// MarshalJSON writes TS DirectTarballSourceInformation, as read-configuration
-// reports it in featuresConfiguration.
 func (s *TarballSource) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Type          string `json:"type"`
@@ -339,7 +286,6 @@ func (s *TarballSource) MarshalJSON() ([]byte, error) {
 	}{s.SourceType(), s.TarballURI, s.UserID})
 }
 
-// LocalSource is a feature from a local file path.
 type LocalSource struct {
 	LocalPath    string
 	ResolvedPath string
@@ -349,8 +295,6 @@ type LocalSource struct {
 func (s *LocalSource) SourceType() string    { return "file-path" }
 func (s *LocalSource) UserFeatureID() string { return s.UserID }
 
-// MarshalJSON writes TS FilePathSourceInformation, as read-configuration
-// reports it in featuresConfiguration.
 func (s *LocalSource) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Type             string `json:"type"`
@@ -359,19 +303,15 @@ func (s *LocalSource) MarshalJSON() ([]byte, error) {
 	}{s.SourceType(), s.ResolvedPath, s.UserID})
 }
 
-// Config holds the fully resolved features configuration.
 type Config struct {
 	FeatureSets []*Set
 }
 
-// DevContainerFeature is a user's feature reference from devcontainer.json.
 type DevContainerFeature struct {
 	UserFeatureID string
-	Options       any // bool | string | map[string]interface{}
+	Options       any
 }
 
-// UserFeaturesToArray converts the features map from devcontainer.json
-// into a slice of DevContainerFeature.
 func UserFeaturesToArray(features map[string]any) []DevContainerFeature {
 	if features == nil {
 		return nil

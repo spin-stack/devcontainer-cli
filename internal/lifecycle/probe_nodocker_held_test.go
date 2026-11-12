@@ -7,8 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// probeShell answers the env probe with probed and the base $PATH query with
-// basePath.
 func probeShell(t *testing.T, probed, basePath string) *fakeShell {
 	return &fakeShell{handler: func(cmd string) (string, int, error) {
 		switch {
@@ -26,9 +24,6 @@ func probeShell(t *testing.T, probed, basePath string) *fakeShell {
 	}}
 }
 
-// The container's sbin entries join the probed PATH for root, by name or as
-// uid 0 (TS mergePaths(shellPath, containerPath, user === 'root' || user === '0')),
-// and for no user, which the exec runs as root; never for another user.
 func TestProbeRemoteEnvMergesSbinForRootOnly(t *testing.T) {
 	for user, want := range map[string]string{
 		"":       "/usr/sbin:/usr/bin",
@@ -46,8 +41,6 @@ func TestProbeRemoteEnvMergesSbinForRootOnly(t *testing.T) {
 	}
 }
 
-// An empty container PATH merges nothing: TS mergePaths runs only when both
-// PATHs are non-empty.
 func TestProbeRemoteEnvKeepsThePathWhenTheContainerHasNone(t *testing.T) {
 	env, err := ProbeRemoteEnv(log.Null, probeShell(t, "PATH=/usr/bin\n", "  "), ProbeLoginShell, "root", "")
 	if err != nil {
@@ -58,7 +51,6 @@ func TestProbeRemoteEnvKeepsThePathWhenTheContainerHasNone(t *testing.T) {
 	}
 }
 
-// A probe that found a single variable is still cached in the session folder.
 func TestProbeRemoteEnvCachesASingleVariable(t *testing.T) {
 	fs := probeShell(t, "HOME=/root\n", "")
 	env, err := ProbeRemoteEnv(log.Null, fs, ProbeLoginShell, "root", "/tmp/sess")

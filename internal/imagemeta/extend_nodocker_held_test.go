@@ -7,10 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 )
 
-// TestParseFeatureFileInfoIgnoresNonObjectOptions: only an options object has
-// keys to order (TS Object.keys of feature.options in getFeatureValueDefaults,
-// reference/src/spec-configuration/containerFeaturesConfiguration.ts); absent,
-// null or array options yield no order.
 func TestParseFeatureFileInfoIgnoresNonObjectOptions(t *testing.T) {
 	for _, doc := range []string{`{"id":"x"}`, `{"id":"x","options":null}`, `{"id":"x","options":["a","b"]}`} {
 		info, err := ParseFeatureFileInfo([]byte(doc))
@@ -23,9 +19,6 @@ func TestParseFeatureFileInfoIgnoresNonObjectOptions(t *testing.T) {
 	}
 }
 
-// TestFeatureEnvVariablesJoinArraysAsJS: an array option value is written as a
-// JS template literal writes it (TS getFeatureEnvVariables,
-// containerFeaturesConfiguration.ts): elements joined by commas, null as empty.
 func TestFeatureEnvVariablesJoinArraysAsJS(t *testing.T) {
 	feat := features.Feature{
 		ID:      "x",
@@ -38,9 +31,6 @@ func TestFeatureEnvVariablesJoinArraysAsJS(t *testing.T) {
 	}
 }
 
-// TestFeatureInstallWrapperScriptRenameWarning: TS getFeatureInstallWrapperScript
-// (containerFeaturesConfiguration.ts) warns about a rename only when the Feature
-// has legacyIds, a currentId, and an id other than that currentId.
 func TestFeatureInstallWrapperScriptRenameWarning(t *testing.T) {
 	const warning = `(!) WARNING: This feature has been renamed. Please update the reference in devcontainer.json to "new".`
 	tests := []struct {
@@ -69,11 +59,6 @@ func TestFeatureInstallWrapperScriptRenameWarning(t *testing.T) {
 	}
 }
 
-// TestGenerateFeaturesBuildOptionsWritesASingleContainerEnv: TS
-// generateContainerEnvs (containerFeaturesConfiguration.ts) writes one ENV line
-// per variable - a lone variable too - escaping quotes and backslashes, and
-// dollar signs only for the config's containerEnv (#{containerEnvMetadata},
-// containerFeatures.ts getFeaturesBuildOptions).
 func TestGenerateFeaturesBuildOptionsWritesASingleContainerEnv(t *testing.T) {
 	fss := []*features.Set{{
 		SourceInfo: &features.OCISource{ID: "go"},

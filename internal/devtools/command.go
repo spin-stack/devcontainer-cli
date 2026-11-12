@@ -14,11 +14,6 @@ import (
 	"time"
 )
 
-// Main runs the devtool command args names (args[0] is the program, args[1] the
-// command) and returns the process's exit code: 2 for a usage error, the code a
-// gate or a probe chose, 1 for any other failure. Each command wires stdin,
-// stdout, git, `go tool` and docker around the pure logic of this package; the
-// children a command starts write to stdout and stderr too.
 func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) < 2 {
 		fmt.Fprintln(stderr, "usage: devtool <command> [args...]")
@@ -61,8 +56,6 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err == nil {
 		return 0
 	}
-	// exitError carries a specific code (gate failures, probe failures); other
-	// errors are usage/infra problems.
 	if ee, ok := err.(exitError); ok {
 		if ee.msg != "" {
 			fmt.Fprintln(stderr, ee.msg)
@@ -80,13 +73,10 @@ type exitError struct {
 
 func (e exitError) Error() string { return e.msg }
 
-// tool is where a command reads its input and writes its output.
 type tool struct {
 	in        io.Reader
 	out, errw io.Writer
 }
-
-// --- parity selection ------------------------------------------------------
 
 func (t tool) parityAffected() error {
 	files, err := readLines(t.in)
@@ -166,7 +156,6 @@ func (t tool) dailyChanged(args []string) error {
 	return nil
 }
 
-// nowEpoch honors DAILY_NOW_EPOCH (tests / reproducibility), else wall clock.
 func nowEpoch() (int, error) {
 	if v := os.Getenv("DAILY_NOW_EPOCH"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -177,8 +166,6 @@ func nowEpoch() (int, error) {
 	}
 	return int(time.Now().Unix()), nil
 }
-
-// --- coverage --------------------------------------------------------------
 
 func (t tool) coverageReport(args []string) error {
 	if len(args) < 1 {
@@ -197,8 +184,6 @@ func (t tool) coverageReport(args []string) error {
 	return nil
 }
 
-// renderCoverage renders a profile file or a covdata directory (converted with
-// `go tool covdata textfmt`) to a Markdown table.
 func (t tool) renderCoverage(src, title string) (string, error) {
 	profile := src
 	if info, err := os.Stat(src); err == nil && info.IsDir() {
@@ -290,8 +275,6 @@ func (t tool) coverageMerge(args []string) error {
 	return nil
 }
 
-// laneDirs returns the non-empty per-lane covdata subdirs under root (skipping the
-// merge output dir itself).
 func laneDirs(root, out string) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -314,8 +297,6 @@ func laneDirs(root, out string) ([]string, error) {
 	return dirs, nil
 }
 
-// --- CI runner side effects ------------------------------------------------
-
 func (t tool) ciPrepareRunner() error {
 	t.printDisk("disk before:")
 	free, err := FreeDisk("/")
@@ -325,12 +306,8 @@ func (t tool) ciPrepareRunner() error {
 	return t.prepareRunner(free)
 }
 
-// prepareRunner makes a runner with free bytes on / ready for the runtime lanes:
-// it deletes the preinstalled SDKs when the runner lacks RunnerDiskRoom, and
-// switches docker to the containerd image store.
 func (t tool) prepareRunner(free uint64) error {
 	if NeedsDiskFreeing(free) {
-		// Free ~25-30GB of preinstalled SDKs; ignore failures (|| true in the script).
 		bloat := []string{
 			"/usr/share/dotnet", "/opt/ghc", "/usr/local/lib/android",
 			"/opt/hostedtoolcache/CodeQL", "/usr/share/swift",
@@ -343,7 +320,6 @@ func (t tool) prepareRunner(free uint64) error {
 		fmt.Fprintf(t.out, "%d GB free: the runner has room, nothing deleted\n", free>>30)
 	}
 
-	// Enable the containerd image store (build-cache export + --platform).
 	tee := exec.Command("sudo", "tee", "/etc/docker/daemon.json")
 	tee.Stdin = strings.NewReader(`{"features":{"containerd-snapshotter":true}}`)
 	tee.Stdout, tee.Stderr = t.out, t.errw
@@ -365,8 +341,6 @@ func (t tool) dockerCacheExport() error {
 	if err := os.WriteFile(filepath.Join(d, "Dockerfile"), []byte("FROM busybox\n"), 0o644); err != nil { // mutate-exempt: only the build below reads the file, as its owner, and it is removed on return
 		return err
 	}
-	// Exit non-zero (silently) iff the builder can't export cache — the caller uses
-	// this as a fast precondition probe.
 	cmd := exec.Command("docker", "buildx", "build",
 		"--cache-to=type=local,dest="+filepath.Join(d, "c"),
 		"-t", "devcontainer-cache-export-probe", d)
@@ -376,10 +350,6 @@ func (t tool) dockerCacheExport() error {
 	return nil
 }
 
-// --- helpers ---------------------------------------------------------------
-
-// readLines splits r into lines. bufio.Scanner's default 64 KiB token limit is
-// far beyond any path git prints (PATH_MAX is 4096).
 func readLines(r io.Reader) ([]string, error) {
 	var lines []string
 	sc := bufio.NewScanner(r)
@@ -417,11 +387,6 @@ func dirEmpty(dir string) (bool, error) {
 	return len(entries) == 0, nil
 }
 
-// --- release ---------------------------------------------------------------
-
-// releaseResolve writes the version, tag and commit to release to $GITHUB_OUTPUT
-// (or stdout), and a line to the job summary. What only the workflow knows comes
-// in the environment: GITHUB_EVENT_NAME, VERSION_INPUT, GITHUB_REF_NAME, GITHUB_SHA.
 func (t tool) releaseResolve() error {
 	in := ReleaseInput{
 		Event:        os.Getenv("GITHUB_EVENT_NAME"),
@@ -453,8 +418,6 @@ func (t tool) releaseResolve() error {
 	return t.appendTo("GITHUB_STEP_SUMMARY", fmt.Sprintf("Releasing %s (version %s) from %s\n", rel.Tag, rel.Version, rel.SHA))
 }
 
-// appendTo appends s to the file the environment variable names, or writes it to
-// stdout outside a workflow.
 func (t tool) appendTo(env, s string) error {
 	path := os.Getenv(env)
 	if path == "" {
@@ -472,13 +435,6 @@ func (t tool) appendTo(env, s string) error {
 	return f.Close()
 }
 
-// --- metrics ---------------------------------------------------------------
-
-// metrics writes artifacts/metrics.json: startup time of the binary against the
-// Node oracle (METRICS_RUNS runs, 30 by default) and the size of the binaries.
-// Every measurement is best effort: one that cannot be taken is null.
-//
-//	devtool metrics <version> <binary> <oracle.js> <out.json>
 func (t tool) metrics(args []string) error {
 	if len(args) != 4 {
 		return fmt.Errorf("usage: devtool metrics <version> <binary> <oracle.js> <out.json>")
@@ -504,8 +460,6 @@ func (t tool) metrics(args []string) error {
 	}
 	m.StartupMs.GoVersion = new(MeanMillis(runs, quiet(bin, "--version")))
 
-	// read-configuration against a minimal image-based workspace: variable
-	// substitution only, no Docker involved.
 	ws, err := os.MkdirTemp("", "devcontainer-metrics-")
 	if err != nil {
 		return err
@@ -555,13 +509,6 @@ func (t tool) metrics(args []string) error {
 	return nil
 }
 
-// tsOracle rewrites every internal/**/testdata/ts-oracle/*.json under root
-// with the answers the reference's own functions give to the golden's
-// requests; with check it writes nothing and fails on a stale golden. Node.js
-// runs in image, the node image versions.yaml pins (the Taskfile hands it in),
-// so the answers do not depend on the host's Node.js: URL parsing, IDNA and
-// JSON.parse messages change between releases.
-//
 // mutate-lane: TestTSOracleGoldensMatchTheReference
 func (t tool) tsOracle(root, image string, check bool) error {
 	root, err := filepath.Abs(root)
@@ -579,6 +526,8 @@ func (t tool) tsOracle(root, image string, check bool) error {
 		return err
 	}
 	defer os.RemoveAll(dir)
+	// Node.js runs in image, not on the host: URL parsing, IDNA and JSON.parse
+	// messages change between Node.js releases.
 	node := func(mounts []string, args ...string) *exec.Cmd {
 		run := []string{"run", "--rm", "-i", "--network=none", "-u", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())}
 		for _, m := range mounts {
@@ -605,9 +554,6 @@ func (t tool) tsOracle(root, image string, check bool) error {
 	}, check, t.errw)
 }
 
-// refreshTSOracleFiles asks oracle for every golden under root and rewrites
-// the ones whose answers changed, naming each on errw; with check it writes
-// nothing and fails naming the stale ones.
 func refreshTSOracleFiles(root string, oracle func(request []byte) ([]byte, error), check bool, errw io.Writer) error {
 	paths, err := TSOracleGoldens(os.DirFS(root))
 	if err != nil {

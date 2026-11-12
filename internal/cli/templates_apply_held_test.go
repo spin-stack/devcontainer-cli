@@ -21,7 +21,6 @@ func TestTemplateSelection(t *testing.T) {
 		t.Errorf("omit paths = %q", sel.OmitPaths)
 	}
 
-	// Empty flags select nothing extra; a malformed --omit-paths omits nothing.
 	bare, err := templateSelection("ghcr.io/o/t/node:1", "", "", "[")
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +47,6 @@ func TestTemplateSelectionRejects(t *testing.T) {
 	}
 }
 
-// A template that cannot be fetched fails the command without printing files.
 func TestTemplatesApplyReportsFetchError(t *testing.T) {
 	cmd := realTemplatesApplyCmd()
 	out := &captureOutput{}

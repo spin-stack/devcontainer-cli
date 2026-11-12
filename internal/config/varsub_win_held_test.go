@@ -2,8 +2,6 @@ package config
 
 import "testing"
 
-// On win32 both '\' and '/' separate the workspace folder's basename, and a
-// folder without one is its own basename.
 func TestLocalWorkspaceFolderBasenameOnWindows(t *testing.T) {
 	for folder, want := range map[string]string{
 		`C:\Users\me\project`: "project",

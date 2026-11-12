@@ -2,13 +2,10 @@ package stringify
 
 import "testing"
 
-// rawMarshaler writes its JSON itself, as the CLI's ordered result objects do.
 type rawMarshaler string
 
 func (r rawMarshaler) MarshalJSON() ([]byte, error) { return []byte(r), nil }
 
-// JSON.stringify writes &, <, > and U+2028/U+2029 as they are, and every
-// other escape as encoding/json does.
 func TestJSONWritesWhatJSONStringifyWrites(t *testing.T) {
 	cases := []struct {
 		name   string

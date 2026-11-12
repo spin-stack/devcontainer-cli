@@ -15,20 +15,16 @@ import (
 	"testing"
 )
 
-// fakeEngine is a Docker Engine API server holding a few containers, so stop
-// and down can run against an engine without Docker. It records the calls the
-// command makes.
 type fakeEngine struct {
 	t          *testing.T
 	mu         sync.Mutex
-	containers map[string]map[string]string // id -> labels; nil labels: inspect has no Config
+	containers map[string]map[string]string
 	stopFails  bool
 	calls      []string
 }
 
 var fakeEnginePath = regexp.MustCompile(`^(?:/v[0-9.]+)?(/.*)$`)
 
-// startFakeEngine serves the fake engine and points DOCKER_HOST at it.
 func startFakeEngine(t *testing.T, containers map[string]map[string]string) *fakeEngine {
 	t.Helper()
 	e := &fakeEngine{t: t, containers: containers}
@@ -120,9 +116,6 @@ func hasLabels(labels map[string]string, want []string) bool {
 	return true
 }
 
-// fakeDockerCLI writes a docker CLI that records its arguments and answers
-// `compose version` (unless composeMissing) and fails `compose ... stop|down`
-// with composeExit. It returns the CLI's path and a reader of what it ran.
 func fakeDockerCLI(t *testing.T, composeMissing bool, composeExit int) (string, func() []string) {
 	t.Helper()
 	dir := t.TempDir()

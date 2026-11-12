@@ -78,15 +78,12 @@ func TestVariableResolverIdentityStrings(t *testing.T) {
 func TestSubstituteTags(t *testing.T) {
 	upper := func(tag string) (string, bool, error) { return strings.ToUpper(tag), true, nil }
 
-	// No tags: input returned unchanged (fast path).
 	if got, _ := substituteTags("plain text", upper); got != "plain text" {
 		t.Errorf("no-tag = %q", got)
 	}
-	// Multiple tags replaced.
 	if got, _ := substituteTags("a ${one} b ${two}", upper); got != "a ONE b TWO" {
 		t.Errorf("multi = %q", got)
 	}
-	// Unhandled tag kept verbatim so a later phase can resolve it.
 	keepFoo := func(tag string) (string, bool, error) {
 		if tag == "foo" {
 			return "", false, nil
@@ -96,19 +93,15 @@ func TestSubstituteTags(t *testing.T) {
 	if got, _ := substituteTags("${foo}:${bar}", keepFoo); got != "${foo}:X" {
 		t.Errorf("verbatim = %q", got)
 	}
-	// Unterminated "${" is kept as-is.
 	if got, _ := substituteTags("before ${tag", upper); got != "before ${tag" {
 		t.Errorf("unterminated = %q", got)
 	}
-	// replace errors abort and propagate.
 	boom := errors.New("boom")
 	if _, err := substituteTags("${x}", func(string) (string, bool, error) { return "", false, boom }); !errors.Is(err, boom) {
 		t.Errorf("error prop = %v", err)
 	}
 }
 
-// The id is the hash in base 32 padded to 52 digits, also when the hash's
-// leading digits are zeros.
 func TestComputeDevContainerIDIsPaddedTo52Digits(t *testing.T) {
 	padded := false
 	for i := 0; i < 200; i++ {
@@ -124,8 +117,6 @@ func TestComputeDevContainerIDIsPaddedTo52Digits(t *testing.T) {
 	}
 }
 
-// Only a letter followed by a colon is a drive (node path.win32.basename):
-// '{' lowercases past 'z', so `{:foo` keeps its colon.
 func TestWinBasenameDrive(t *testing.T) {
 	for in, want := range map[string]string{`C:foo`: "foo", `c:\a\b\`: "b", `1:foo`: "1:foo", `C:`: "", `{:foo`: "{:foo", "@:foo": "@:foo"} {
 		if got := winBasename(in); got != want {

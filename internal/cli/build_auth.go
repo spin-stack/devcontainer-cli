@@ -7,14 +7,7 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// bridgeBuildAuth resolves credentials for every registry a build touches (base
-// image, push tags, cache import/export) via the CLI's credential chain and, when
-// any resolve, returns the subprocess env (DOCKER_CONFIG=<tmp>) plus a cleanup
-// func. It returns (nil, no-op) when there is nothing to bridge, leaving the
-// build's ambient auth untouched. Errors are swallowed (best-effort): a build
-// that would have worked anonymously must not fail because auth bridging did.
 func bridgeBuildAuth(logger log.Logger, baseImage string, tags, cacheFrom []string, cacheTo string) (env []string, cleanup func()) {
-	// With no registry to bridge, ResolveBuildAuth resolves nothing and is not ok.
 	regs := collectBuildRegistries(baseImage, tags, cacheFrom, cacheTo)
 	dir, clean, ok, err := oci.ResolveBuildAuth(osEnvMap(), regs, logger)
 	if err != nil || !ok {
@@ -23,7 +16,6 @@ func bridgeBuildAuth(logger log.Logger, baseImage string, tags, cacheFrom []stri
 	return []string{"DOCKER_CONFIG=" + dir}, clean
 }
 
-// collectBuildRegistries returns the deduped registry hosts referenced by a build.
 func collectBuildRegistries(baseImage string, tags, cacheFrom []string, cacheTo string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -64,9 +56,6 @@ func registryHostFromImageRef(ref string) string {
 	return ""
 }
 
-// registryCacheRef pulls the image reference out of a buildx cache spec. A
-// registry cache is written as "type=registry,ref=<image>[,...]"; anything else
-// (type=local/inline/gha, or a bare image) is returned as-is.
 func registryCacheRef(spec string) string {
 	spec = strings.TrimSpace(spec)
 	if spec == "" || !strings.Contains(spec, "=") {

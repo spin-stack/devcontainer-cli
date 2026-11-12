@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// MemberNames keeps the document's order, which the disallowed-Feature check
-// needs to report the first feature as TS Object.keys does; a field that is not
-// an object, a missing field, or a document that is not an object gives nil.
 func TestMemberNamesKeepsDocumentOrder(t *testing.T) {
 	doc := []byte("\ufeff{\n // comment\n \"image\": \"x\",\n \"features\": {\"z\": {}, \"a\": true, \"m\": {},},\n}")
 	if got := MemberNames(doc, "features"); !slices.Equal(got, []string{"z", "a", "m"}) {
@@ -25,8 +22,6 @@ func TestMemberNamesKeepsDocumentOrder(t *testing.T) {
 	}
 }
 
-// Names keeps the top-level object's document order; a document that is not
-// an object, or not JSON, gives nil.
 func TestNamesKeepsDocumentOrder(t *testing.T) {
 	doc := []byte("\ufeff{\n // comment\n \"name\": \"x\",\n \"image\": \"y\",\n \"capAdd\": [],\n}")
 	if got := Names(doc); !slices.Equal(got, []string{"name", "image", "capAdd"}) {

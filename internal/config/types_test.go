@@ -205,9 +205,6 @@ func TestStringOrStrings_Array(t *testing.T) {
 	}
 }
 
-// updateFromOldProperties follows TS updateFromOldProperties: extensions are
-// appended, settings merged under the existing ones (which win), devPort moved
-// only when customizations.vscode has none, and the input is left untouched.
 func TestUpdateFromOldProperties(t *testing.T) {
 	tests := []struct {
 		name string
@@ -258,7 +255,6 @@ func TestFeatures(t *testing.T) {
 }
 
 func TestParseFixture_WithJSONC(t *testing.T) {
-	// Simulates a JSONC fixture with comments
 	input := []byte(`{
 		// Dev container config
 		"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
@@ -284,10 +280,6 @@ func TestParseFixture_WithJSONC(t *testing.T) {
 	}
 }
 
-// TestPortAttrsSpecFields locks all five spec-defined portsAttributes properties
-// (label, protocol, onAutoForward, requireLocalPort, elevateIfNeeded) through a
-// parse → re-marshal round-trip. protocol and requireLocalPort were previously
-// dropped, silently losing them from read-configuration and the metadata label.
 func TestPortAttrsSpecFields(t *testing.T) {
 	const input = `{
 		"image": "ubuntu",
@@ -319,7 +311,6 @@ func TestPortAttrsSpecFields(t *testing.T) {
 		t.Errorf("otherPortsAttributes = %+v", c.OtherPortsAttributes)
 	}
 
-	// Re-marshal must preserve protocol and requireLocalPort (the regression).
 	out, err := json.Marshal(c)
 	if err != nil {
 		t.Fatal(err)

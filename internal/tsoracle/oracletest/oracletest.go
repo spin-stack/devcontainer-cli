@@ -1,5 +1,3 @@
-// Package oracletest asserts Go ports against the testdata/ts-oracle goldens
-// (package tsoracle) in tests.
 package oracletest
 
 import (
@@ -16,20 +14,12 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle"
 )
 
-// ErrThrows is returned by a Go port's adapter for a case where the TS
-// function throws and the Go port fails with its own message.
 var ErrThrows = errors.New("throws")
 
-// OptionalString is a Go string result whose "" stands for both an empty
-// string and TS undefined (null): ports that return "" for "no value" where
-// TS callers only test the result's truthiness.
 type OptionalString string
 
-// Truthiness is a Go bool result that ports a TS result its callers only test
-// for truthiness (true, false or 'unknown', say).
 type Truthiness bool
 
-// truthy is JavaScript's Boolean(v) for a JSON value.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -45,12 +35,8 @@ func truthy(v any) bool {
 	}
 }
 
-// Func adapts a Go port to a TS function's arguments and JSON result.
 type Func func(args []json.RawMessage) (any, error)
 
-// Run asserts every case of the golden at path against impls. Every fn in the
-// file needs an entry; a nil entry marks a function another package's test
-// asserts from the same golden.
 func Run(t *testing.T, path string, impls map[string]Func) {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -80,9 +66,6 @@ func Run(t *testing.T, path string, impls map[string]Func) {
 	}
 }
 
-// verdict is the failure for a case whose comparison found mismatch ("" when
-// the Go port returned what TS did): a mismatch, or a match where the case
-// records a divergence.
 func verdict(c tsoracle.Case, mismatch string) string {
 	switch {
 	case c.Divergence != "" && mismatch == "":
@@ -93,7 +76,6 @@ func verdict(c tsoracle.Case, mismatch string) string {
 	return ""
 }
 
-// check is "" when the Go port returns what TS did, else the difference.
 func check(impl Func, c tsoracle.Case) string {
 	got, err := impl(c.Args)
 	if c.Error != "" {
@@ -153,8 +135,6 @@ func argsText(c tsoracle.Case) string {
 	return string(bytes.Join(parts, []byte(", ")))
 }
 
-// Args decodes a case's arguments into ptrs, in order; a missing argument
-// leaves its target as it is.
 func Args(args []json.RawMessage, ptrs ...any) error {
 	if len(args) > len(ptrs) {
 		return fmt.Errorf("%d arguments, the adapter reads %d", len(args), len(ptrs))

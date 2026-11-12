@@ -22,8 +22,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// cacheFolder mirrors the TS getCacheFolder: <tmp>/devcontainercli-<user> on
-// Linux, <tmp>/devcontainercli elsewhere.
 func cacheFolder() string {
 	base := "devcontainercli"
 	if runtime.GOOS == "linux" {
@@ -34,15 +32,6 @@ func cacheFolder() string {
 	return filepath.Join(os.TempDir(), base)
 }
 
-// enforceDisallowedFeatures blocks a configured feature that the containers.dev
-// control manifest reports as problematic, as TS ensureNoDisallowedFeatures does
-// on every config read. The first disallowed feature in the order the JSON lists
-// them is reported. stopRunning, when given (up, with its id labels), stops the
-// workspace's container if it is running, and the error says so; build passes
-// nil, as TS build passes no id labels.
-//
-// cfg.Features is expected to already include any --additional-features (merged
-// in by mergeAdditionalFeatures), which TS lists after the config's own.
 func enforceDisallowedFeatures(ctx context.Context, cfg *config.DevContainer, additionalFeatures string, logger log.Logger, stopRunning func(context.Context) bool) *coreerrors.ContainerError {
 	if cfg == nil || len(cfg.Features) == 0 {
 		return nil
@@ -73,10 +62,6 @@ func enforceDisallowedFeatures(ctx context.Context, cfg *config.DevContainer, ad
 	}
 }
 
-// featureIDsInOrder lists cfg.Features as TS Object.keys({...config.features,
-// ...additionalFeatures}) does: the config file's features in document order,
-// then the additional features in theirs. A key neither document lists (an
-// --override-config one) follows, sorted.
 func featureIDsInOrder(cfg *config.DevContainer, additionalFeatures string) []string {
 	var ids []string
 	seen := map[string]bool{}
@@ -98,9 +83,6 @@ func featureIDsInOrder(cfg *config.DevContainer, additionalFeatures string) []st
 	return ids
 }
 
-// stopRunningContainer is TS ensureNoDisallowedFeatures' stop: the workspace's
-// container, found by its id labels, is stopped with no grace period when it is
-// running. It reports whether it stopped one.
 func stopRunningContainer(engine *docker.EngineClient, idLabels []string) func(context.Context) bool {
 	return func(ctx context.Context) bool {
 		ids, err := engine.ListContainers(ctx, true, idLabels)
@@ -115,10 +97,6 @@ func stopRunningContainer(engine *docker.EngineClient, idLabels []string) func(c
 	}
 }
 
-// logFeatureAdvisories warns about the fetched OCI features with an advisory
-// for their version, as TS generateFeaturesConfig does after fetching them
-// (logFeatureAdvisories). The control manifest is read only when there is an
-// OCI feature to check.
 func logFeatureAdvisories(ctx context.Context, logger log.Logger, sets []*features.Set) {
 	if !slices.ContainsFunc(sets, func(s *features.Set) bool {
 		_, ok := s.SourceInfo.(*features.OCISource)
@@ -138,8 +116,6 @@ func writeFeatureAdvisories(logger log.Logger, manifest *features.ControlManifes
 	}
 }
 
-// controlManifestClient is the proxy- and CA-aware client for the control
-// manifest, with the 30-second timeout the CLI always gave that request.
 func controlManifestClient() *http.Client {
 	return &http.Client{Transport: httpx.NewTransport(), Timeout: 30 * time.Second}
 }

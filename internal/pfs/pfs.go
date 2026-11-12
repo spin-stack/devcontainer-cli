@@ -1,4 +1,3 @@
-// Package pfs provides small filesystem helpers (safe tar extraction, file access).
 package pfs
 
 import (
@@ -11,14 +10,6 @@ import (
 	"strings"
 )
 
-// ExtractTarGz extracts a tar archive (gzip-compressed or plain) into destDir,
-// treating entry paths as node-tar's extract does for the reference CLI
-// (containerCollectionsOCI.ts getBlob): an entry whose path has a ".."
-// segment is skipped, and an absolute path has its root stripped so it lands
-// inside destDir. Only directories and regular files are extracted. Every
-// write goes through an os.Root on destDir, so a symlink already inside
-// destDir cannot redirect one outside it: that fails the extraction. The
-// archive file at archivePath is removed on success.
 func ExtractTarGz(archivePath, destDir string) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -31,7 +22,6 @@ func ExtractTarGz(archivePath, destDir string) error {
 		defer gzr.Close()
 		defer f.Close()
 	} else {
-		// Not gzip — reopen as a plain tar stream.
 		f.Close()
 		f2, err := os.Open(archivePath)
 		if err != nil {
@@ -118,7 +108,6 @@ func isASCIILetter(c byte) bool {
 	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
 }
 
-// IsFile returns true if path exists and is a regular file.
 func IsFile(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -127,7 +116,6 @@ func IsFile(path string) bool {
 	return !info.IsDir()
 }
 
-// IsDir returns true if path exists and is a directory.
 func IsDir(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -136,7 +124,6 @@ func IsDir(path string) bool {
 	return info.IsDir()
 }
 
-// Resolve resolves a relative path against a base.
 func Resolve(base string, rel string) string {
 	if filepath.IsAbs(rel) {
 		return rel

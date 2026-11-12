@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// KeyOrder is the configuration document's top-level order, then the override
-// document's.
 func TestLoadKeepsTheDocumentKeyOrder(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "devcontainer.json")

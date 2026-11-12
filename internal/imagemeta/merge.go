@@ -13,38 +13,30 @@ import (
 	"unicode/utf16"
 )
 
-// MergedConfig holds the result of merging devcontainer.json config with
-// image metadata entries. Lifecycle hooks are accumulated as arrays.
 type MergedConfig struct {
-	ConfigFilePath any `json:"configFilePath,omitempty"`
-	// Image is part of the mergedConfiguration output (spread from the config in
-	// TS), but NOT part of the devcontainer.metadata label entry — it is set by the
-	// caller from the config, not derived from metadata entries.
-	Image                string             `json:"image,omitempty"`
-	RemoteUser           string             `json:"remoteUser,omitempty"`
-	ContainerUser        string             `json:"containerUser,omitempty"`
-	UserEnvProbe         string             `json:"userEnvProbe,omitempty"`
-	OverrideCommand      *bool              `json:"overrideCommand,omitempty"`
-	Init                 *bool              `json:"init"`
-	Privileged           *bool              `json:"privileged"`
-	WaitFor              string             `json:"waitFor,omitempty"`
-	ShutdownAction       string             `json:"shutdownAction,omitempty"`
-	HostRequirements     any                `json:"hostRequirements,omitempty"`
-	UpdateRemoteUserUID  *bool              `json:"updateRemoteUserUID,omitempty"`
-	CapAdd               []string           `json:"capAdd,omitempty"`
-	SecurityOpt          []string           `json:"securityOpt,omitempty"`
-	PortsAttributes      map[string]any     `json:"portsAttributes"`
-	OtherPortsAttributes any                `json:"otherPortsAttributes,omitempty"`
-	ForwardPorts         []any              `json:"forwardPorts,omitempty"`
-	ContainerEnv         map[string]string  `json:"containerEnv"`
-	RemoteEnv            map[string]*string `json:"remoteEnv"`
-	Customizations       map[string][]any   `json:"customizations,omitempty"`
-	Mounts               []any              `json:"mounts,omitempty"`
-	Entrypoints          []string           `json:"entrypoints,omitempty"`
-	OnCreateCommands     []any              `json:"onCreateCommands"`
-	// CommandOrigins is, per hook name, where each of its commands comes from -
-	// a Feature's id or "devcontainer.json" - in the order of the commands, as
-	// TS lifecycleCommandOriginMapFromMetadata records it for error messages.
+	ConfigFilePath        any                 `json:"configFilePath,omitempty"`
+	Image                 string              `json:"image,omitempty"`
+	RemoteUser            string              `json:"remoteUser,omitempty"`
+	ContainerUser         string              `json:"containerUser,omitempty"`
+	UserEnvProbe          string              `json:"userEnvProbe,omitempty"`
+	OverrideCommand       *bool               `json:"overrideCommand,omitempty"`
+	Init                  *bool               `json:"init"`
+	Privileged            *bool               `json:"privileged"`
+	WaitFor               string              `json:"waitFor,omitempty"`
+	ShutdownAction        string              `json:"shutdownAction,omitempty"`
+	HostRequirements      any                 `json:"hostRequirements,omitempty"`
+	UpdateRemoteUserUID   *bool               `json:"updateRemoteUserUID,omitempty"`
+	CapAdd                []string            `json:"capAdd,omitempty"`
+	SecurityOpt           []string            `json:"securityOpt,omitempty"`
+	PortsAttributes       map[string]any      `json:"portsAttributes"`
+	OtherPortsAttributes  any                 `json:"otherPortsAttributes,omitempty"`
+	ForwardPorts          []any               `json:"forwardPorts,omitempty"`
+	ContainerEnv          map[string]string   `json:"containerEnv"`
+	RemoteEnv             map[string]*string  `json:"remoteEnv"`
+	Customizations        map[string][]any    `json:"customizations,omitempty"`
+	Mounts                []any               `json:"mounts,omitempty"`
+	Entrypoints           []string            `json:"entrypoints,omitempty"`
+	OnCreateCommands      []any               `json:"onCreateCommands"`
 	CommandOrigins        map[string][]string `json:"-"`
 	UpdateContentCommands []any               `json:"updateContentCommands"`
 	PostCreateCommands    []any               `json:"postCreateCommands"`
@@ -52,9 +44,6 @@ type MergedConfig struct {
 	PostAttachCommands    []any               `json:"postAttachCommands"`
 }
 
-// MergeConfiguration merges image metadata entries with the devcontainer config.
-// Entries are processed in order; the last entry has highest priority for scalars.
-// This matches the TS mergeConfiguration() in imageMetadata.ts.
 func MergeConfiguration(entries []Entry) *MergedConfig {
 	entries = nonEmptyEntries(entries)
 	m := &MergedConfig{
@@ -70,12 +59,8 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		CommandOrigins:        map[string][]string{},
 	}
 
-	// Process entries in order. For lifecycle hooks, iterate all.
-	// For scalars, the last non-empty value wins (iterate in reverse for scalars).
 	for _, e := range entries {
-		// Lifecycle hooks — collect every truthy command (TS `if (command)`), so an
-		// empty-string command is skipped rather than emitted as a spurious "" entry.
-		origin := cmp.Or(e.ID, "devcontainer.json") // only Features have ids in the metadata
+		origin := cmp.Or(e.ID, "devcontainer.json")
 		collect := func(hook string, list *[]any, command any) {
 			if isNonEmptyCommand(command) {
 				*list = append(*list, command)
@@ -88,36 +73,23 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		collect("postStartCommand", &m.PostStartCommands, e.PostStartCommand)
 		collect("postAttachCommand", &m.PostAttachCommands, e.PostAttachCommand)
 
-		// Entrypoints — collect ALL non-empty entrypoints (TS collectOrUndefined has
-		// NO de-dup): two features that register the same entrypoint script must both
-		// run, so appendUnique would wrongly drop one.
 		if e.Entrypoint != "" {
 			m.Entrypoints = append(m.Entrypoints, e.Entrypoint)
 		}
 
-		// Arrays — union
 		m.CapAdd = appendUnique(m.CapAdd, e.CapAdd)
 		m.SecurityOpt = appendUnique(m.SecurityOpt, e.SecurityOpt)
-		// forwardPorts/mounts accumulate here and are de-duplicated after the loop.
 		m.ForwardPorts = append(m.ForwardPorts, e.ForwardPorts...)
 		m.Mounts = append(m.Mounts, e.Mounts...)
 
-		// Maps — merge (later wins)
 		maps.Copy(m.ContainerEnv, e.ContainerEnv)
 		maps.Copy(m.RemoteEnv, e.RemoteEnv)
-		// customizations are grouped by key into arrays (one entry per metadata
-		// entry that sets that key), matching TS. This preserves every feature's
-		// extensions/settings instead of last-wins-clobbering them.
 		for k, v := range e.Customizations {
 			m.Customizations[k] = append(m.Customizations[k], v)
 		}
-		// portsAttributes — later entries override matching keys (Object.assign).
 		maps.Copy(m.PortsAttributes, e.PortsAttributes)
 	}
 
-	// init/privileged are OR across all entries (true if any entry requests it),
-	// matching TS imageMetadata.some(...). Previously last-non-nil-wins could drop
-	// a feature's init:true and the container started without tini.
 	initVal, privilegedVal := false, false
 	for _, e := range entries {
 		if e.Init != nil && *e.Init {
@@ -130,7 +102,6 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 	m.Init = &initVal
 	m.Privileged = &privilegedVal
 
-	// Scalars — last non-empty wins (iterate in reverse)
 	for _, e := range slices.Backward(entries) {
 
 		if m.RemoteUser == "" && e.RemoteUser != "" {
@@ -159,28 +130,17 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		}
 	}
 
-	// mounts: keep the LAST mount per target (TS mergeMounts de-dupes by target),
-	// so a later feature/config mount overrides an earlier one to the same path.
 	m.Mounts = dedupeMountsByTarget(m.Mounts)
-	// forwardPorts: de-dupe, treating the number N and the string "localhost:N" as
-	// the same port (TS mergeForwardPorts normalizes then Set-de-dupes).
 	m.ForwardPorts = dedupeForwardPorts(m.ForwardPorts)
-	// hostRequirements: per-field max across all entries (TS mergeHostRequirements),
-	// not last-wins of the whole object.
 	m.HostRequirements = mergeHostRequirements(entries)
 
 	return m
 }
 
-// isNonEmptyCommand reports whether a lifecycle command is "truthy" the way TS
-// treats it: a nil or empty-string command is skipped; arrays/objects are kept.
 func isNonEmptyCommand(cmd any) bool {
 	return cmd != nil && cmd != ""
 }
 
-// mountTarget returns the container-side target of a mount (object or string
-// spec), used as the de-dup key. A string with no target= key is its own key so
-// distinct strings never collide.
 func mountTarget(mnt any) string {
 	switch v := mnt.(type) {
 	case map[string]any:
@@ -207,7 +167,7 @@ func dedupeMountsByTarget(mounts []any) []any {
 	for i, mnt := range mounts {
 		lastIdx[mountTarget(mnt)] = i
 	}
-	var out []any // nil without mounts, as the merge leaves Mounts then
+	var out []any
 	for i, mnt := range mounts {
 		if lastIdx[mountTarget(mnt)] == i {
 			out = append(out, mnt)
@@ -216,14 +176,9 @@ func dedupeMountsByTarget(mounts []any) []any {
 	return out
 }
 
-// dedupeForwardPorts is TS mergeForwardPorts over the concatenated
-// forwardPorts: a number N becomes "localhost:N", the values are de-duplicated
-// as a JS Set does (strings, booleans and null by value, objects never), and a
-// string /localhost:\d+/ finds anywhere becomes parseInt of its text from the
-// tenth character on (null where that is NaN). Every other value stays as it is.
 func dedupeForwardPorts(ports []any) []any {
 	seen := make(map[any]bool, len(ports))
-	var out []any // nil without ports, as the merge leaves ForwardPorts then
+	var out []any
 	for _, p := range ports {
 		port := normalizeForwardPort(p)
 		switch port.(type) {
@@ -238,7 +193,6 @@ func dedupeForwardPorts(ports []any) []any {
 	return out
 }
 
-// normalizeForwardPort is TS `typeof port === 'number' ? `localhost:${port}` : port`.
 func normalizeForwardPort(p any) any {
 	switch v := p.(type) {
 	case float64:
@@ -250,7 +204,6 @@ func normalizeForwardPort(p any) any {
 	return p
 }
 
-// localhostPort is TS mergeForwardPorts' /localhost:\d+/, unanchored.
 var localhostPort = regexp.MustCompile(`localhost:[0-9]`)
 
 // denormalizePort is TS `/localhost:\d+/.test(port) ? parseInt(port.substring('localhost:'.length)) : port`
@@ -269,13 +222,8 @@ func denormalizePort(port any) any {
 	return n
 }
 
-// jsSpaceChars are the characters JS parseInt skips before a number.
 const jsSpaceChars = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 
-// jsParseInt is JS parseInt(s) without a radix: leading white space, a sign,
-// then hexadecimal digits after 0x or 0X, else decimal digits, up to the
-// first other character. ok is false for NaN; a zero is +0, which is how
-// JSON.stringify writes -0.
 func jsParseInt(s string) (float64, bool) {
 	s = strings.TrimLeft(s, jsSpaceChars)
 	neg := false
@@ -315,16 +263,11 @@ func allDigits(s string) bool {
 	return true
 }
 
-// byteUnits are the [tgmk]b suffixes of the TS parseBytes grammar and the
-// number of bytes each multiplies by.
 var byteUnits = []struct {
 	suffix string
 	size   float64
 }{{"tb", 1 << 40}, {"gb", 1 << 30}, {"mb", 1 << 20}, {"kb", 1 << 10}}
 
-// parseBytes mirrors the TS parseBytes, /^(\d+)([tgmk]b)?$/ times the unit:
-// "8gb" -> 8589934592, unrecognized -> 0. The count is a JS number, a float64,
-// so a count too large for an int64 stays as large as TS makes it.
 func parseBytes(s string) float64 {
 	unit := 1.0
 	for _, u := range byteUnits {
@@ -342,8 +285,6 @@ func parseBytes(s string) float64 {
 	return n * unit
 }
 
-// jsNumberString is `${n}` for a byte count parseBytes returned, as JS
-// Number.prototype.toString writes it.
 func jsNumberString(n float64) string {
 	if n > math.MaxFloat64 {
 		return "Infinity"
@@ -373,9 +314,6 @@ func hrString(v any) string {
 	return "0"
 }
 
-// mergeHostRequirements takes the per-field max of cpus/memory/storage and merges
-// gpu across all entries, matching TS mergeHostRequirements. Returns nil when no
-// entry sets any requirement.
 func mergeHostRequirements(entries []Entry) any {
 	if len(entries) == 0 {
 		// TS takes Math.max() of no values, -Infinity, which is truthy: cpus
@@ -417,9 +355,6 @@ func mergeHostRequirements(entries []Entry) any {
 	return res
 }
 
-// mergeGPURequirements ports TS mergeGpuRequirements: undefined/false yields the
-// other; two "optional" stay "optional"; otherwise take the per-field max of the
-// object forms (a non-object contributes {}).
 func mergeGPURequirements(a, b any) any {
 	if a == nil || a == false {
 		return b
@@ -450,7 +385,6 @@ func mergeGPURequirements(a, b any) any {
 	return res
 }
 
-// appendUnique appends items from src to dst, skipping duplicates.
 func appendUnique(dst, src []string) []string {
 	seen := make(map[string]bool, len(dst))
 	for _, s := range dst {
@@ -465,9 +399,6 @@ func appendUnique(dst, src []string) []string {
 	return dst
 }
 
-// nonEmptyEntries drops the entries that set no property, as TS
-// getDevcontainerMetadata does (`.filter(config => Object.keys(config).length)`):
-// a config with nothing to contribute adds no entry to the merge or the label.
 func nonEmptyEntries(entries []Entry) []Entry {
 	out := make([]Entry, 0, len(entries))
 	for _, e := range entries {

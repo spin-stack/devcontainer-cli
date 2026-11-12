@@ -10,10 +10,6 @@ import (
 	"testing"
 )
 
-// clearProxyEnv sets every proxy-related variable (upper and lower case) to a
-// controlled value so the test is not perturbed by the developer's environment.
-// httpproxy.FromEnvironment reads these fresh on every request, so t.Setenv makes
-// the proxy behavior deterministic.
 func clearProxyEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
@@ -35,7 +31,7 @@ func TestNewTransportProxySelection(t *testing.T) {
 		httpProxy string
 		noProxy   string
 		target    string
-		wantProxy string // "" means no proxy (direct)
+		wantProxy string
 	}{
 		{name: "http proxy used", httpProxy: "http://proxy.local:3128", target: "http://registry.example.com/v2/", wantProxy: "http://proxy.local:3128"},
 		{name: "no_proxy excludes host", httpProxy: "http://proxy.local:3128", noProxy: "example.com", target: "http://registry.example.com/v2/", wantProxy: ""},
@@ -73,9 +69,6 @@ func TestNewTransportProxySelection(t *testing.T) {
 	}
 }
 
-// TestNewTransportRoutesThroughProxy proves the transport actually dials the
-// proxy for a real request: an httptest server stands in for the proxy, and a
-// plain-HTTP request to a non-loopback host must arrive at it.
 func TestNewTransportRoutesThroughProxy(t *testing.T) {
 	clearProxyEnv(t)
 
@@ -89,8 +82,6 @@ func TestNewTransportRoutesThroughProxy(t *testing.T) {
 	t.Setenv("HTTP_PROXY", proxy.URL)
 
 	client := &http.Client{Transport: NewTransport()}
-	// registry.internal never resolves; if the proxy is honored the request goes
-	// to the httptest proxy instead and never touches DNS.
 	resp, err := client.Get("http://registry.internal/v2/")
 	if err != nil {
 		t.Fatalf("request did not go through the proxy: %v", err)
@@ -102,9 +93,6 @@ func TestNewTransportRoutesThroughProxy(t *testing.T) {
 	}
 }
 
-// TestNewTransportTrustsExtraCA proves NODE_EXTRA_CA_CERTS is honored end to end:
-// an HTTPS server with a self-signed cert is only reachable when its CA is loaded
-// into the transport — the exact failure mode behind a TLS-intercepting proxy.
 func TestNewTransportTrustsExtraCA(t *testing.T) {
 	clearProxyEnv(t)
 
@@ -113,14 +101,12 @@ func TestNewTransportTrustsExtraCA(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Without the extra CA, the self-signed server cert is untrusted.
 	t.Setenv("NODE_EXTRA_CA_CERTS", "")
 	t.Setenv("SSL_CERT_FILE", "")
 	if _, err := (&http.Client{Transport: NewTransport()}).Get(srv.URL); err == nil {
 		t.Fatal("expected TLS failure without the extra CA")
 	}
 
-	// Write the server's cert as a PEM bundle and point NODE_EXTRA_CA_CERTS at it.
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	if err := os.WriteFile(caFile, certPEM, 0o600); err != nil {
@@ -138,13 +124,11 @@ func TestNewTransportTrustsExtraCA(t *testing.T) {
 	}
 }
 
-// Guard: the transport must never disable TLS verification.
 func TestNewTransportDoesNotSkipTLSVerify(t *testing.T) {
 	tr := NewTransport()
 	if tr.TLSClientConfig != nil && tr.TLSClientConfig.InsecureSkipVerify {
 		t.Fatal("NewTransport must not set InsecureSkipVerify")
 	}
-	// Sanity: a fresh transport with no extra CA env has no custom RootCAs.
 	clearProxyEnv(t)
 	t.Setenv("NODE_EXTRA_CA_CERTS", "")
 	t.Setenv("SSL_CERT_FILE", "")

@@ -10,34 +10,23 @@ import (
 	"strings"
 )
 
-// modPrefix is this module's import prefix; report rows strip it, and gate keys
-// are matched under <modPrefix>internal/<key>.
 const modPrefix = "github.com/devcontainers/cli/"
 
-// PkgCov is statement-weighted coverage for one package (or the synthetic TOTAL).
 type PkgCov struct {
-	Pkg     string // import path, or "TOTAL"
-	Covered int    // covered statements
-	Total   int    // total statements
+	Pkg     string
+	Covered int
+	Total   int
 }
 
-// Pct is the statement-weighted percentage, rounded to one decimal to match
-// `go tool cover` / the former pkgcov.awk (the gate compares this rounded value).
 func (p PkgCov) Pct() float64 {
 	if p.Total == 0 {
 		return 0
 	}
-	// Round to 1 decimal exactly as fmt "%.1f" would, so String() and numeric
-	// comparisons never disagree at a boundary.
 	rounded := fmt.Sprintf("%.1f", float64(p.Covered)*100/float64(p.Total))
 	v, _ := strconv.ParseFloat(rounded, 64) // mutate-exempt: ParseFloat reads any bitSize but 32 as 64
 	return v
 }
 
-// ParseProfile aggregates a Go cover profile (text format) into weighted
-// per-package coverage plus a TOTAL. Statement-weighted, not a mean of per-file
-// ratios — matching `go tool cover`. Ported from pkgcov.awk. Packages are returned
-// sorted by import path; total is the module-wide row.
 func ParseProfile(r io.Reader) (pkgs []PkgCov, total PkgCov, err error) {
 	cov := map[string]int{}
 	tot := map[string]int{}
@@ -57,8 +46,6 @@ func ParseProfile(r io.Reader) (pkgs []PkgCov, total PkgCov, err error) {
 		if len(fields) < 3 {
 			continue
 		}
-		// "import/path/file.go:1.1,3.2" -> "import/path" (package import path): the
-		// file and its positions hold no '/'.
 		p := path.Dir(fields[0])
 		stmts, _ := strconv.Atoi(fields[1])
 		count, _ := strconv.Atoi(fields[2])
@@ -80,9 +67,6 @@ func ParseProfile(r io.Reader) (pkgs []PkgCov, total PkgCov, err error) {
 	return pkgs, PkgCov{Pkg: "TOTAL", Covered: gCov, Total: gTot}, nil
 }
 
-// RenderReport renders a per-package coverage table plus the module total as
-// GitHub-flavored Markdown. Returns the "no data" form when there are no packages.
-// Ported from coverage-report.sh.
 func RenderReport(pkgs []PkgCov, total PkgCov, title string) string {
 	if len(pkgs) == 0 {
 		return fmt.Sprintf("### Coverage — %s\n\n_(no coverage data)_\n", title)
@@ -98,18 +82,12 @@ func RenderReport(pkgs []PkgCov, total PkgCov, title string) string {
 	return b.String()
 }
 
-// GateResult is one floor check; OK false means the floor was missed (or the
-// package had no data).
 type GateResult struct {
 	Key  string
 	Line string
 	OK   bool
 }
 
-// CoverageGate enforces coverage floors: a floor for "TOTAL" checks the module
-// total, any other key <k> checks the package at <modPrefix>internal/<k>. Returns
-// one result per floor (in the given order) and ok=false if any failed. Ported
-// from coverage-gate.sh.
 func CoverageGate(pkgs []PkgCov, total PkgCov, floors []Floor) (results []GateResult, ok bool) {
 	byPkg := map[string]PkgCov{total.Pkg: total}
 	for _, p := range pkgs {
@@ -142,14 +120,11 @@ func CoverageGate(pkgs []PkgCov, total PkgCov, floors []Floor) (results []GateRe
 	return results, ok
 }
 
-// Floor is a "<key>=<min>" coverage threshold.
 type Floor struct {
 	Key string
 	Min float64
 }
 
-// ParseFloors parses "TOTAL=48 cli=28 docker=77" style specs (already split into
-// args). A malformed spec is an error so a typo in the Taskfile fails loudly.
 func ParseFloors(specs []string) ([]Floor, error) {
 	floors := make([]Floor, 0, len(specs))
 	for _, s := range specs {

@@ -17,8 +17,6 @@ import (
 
 func discardLogger() log.Logger { return log.New(log.Options{Writer: io.Discard}) }
 
-// The deprecated --experimental-frozen-lockfile and --frozen-lockfile both
-// make the Feature build verify the lockfile, as TS effectiveFrozenLockfile.
 func TestBuildFrozenLockfileReachesTheFeatureBuild(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string
@@ -187,9 +185,6 @@ func TestBuildxSecrets(t *testing.T) {
 	}
 }
 
-// --buildkit never skips BuildKit detection, so the build runs as if buildx
-// were absent even when the Docker CLI has it. The fake --docker-path reports
-// buildx, and both cases stop at the flag check before any Docker build.
 func TestRunBuildBuildKitNeverIgnoresBuildx(t *testing.T) {
 	bin := t.TempDir()
 	docker := filepath.Join(bin, "docker")
@@ -227,9 +222,6 @@ func TestRunBuildBuildKitNeverIgnoresBuildx(t *testing.T) {
 	}
 }
 
-// The Dockerfile build targets the config's target when it names one, else
-// the final stage, named when it has no name; a Dockerfile without FROM is
-// TS's error.
 func TestPrepareDockerfileBuildStage(t *testing.T) {
 	ws := writeConfigFixture(t, map[string]string{
 		".devcontainer/Dockerfile": "FROM alpine:3 AS base\nFROM base\n",
@@ -257,9 +249,6 @@ func TestPrepareDockerfileBuildStage(t *testing.T) {
 	}
 }
 
-// A Compose build without --image-name reports its image as a string, as TS
-// doBuild does (imageNameResult = originalImageName); with --image-name, and
-// for any other configuration, the names are an array.
 func TestBuildResultImageName(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

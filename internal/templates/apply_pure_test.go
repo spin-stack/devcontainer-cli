@@ -31,7 +31,6 @@ func TestSubstituteTemplateOptions_Pure(t *testing.T) {
 	if got := substituteTemplateOptions(in, opts); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	// whitespace inside the braces is tolerated.
 	if got := substituteTemplateOptions("${templateOption: imageVariant }", opts); got != "bookworm" {
 		t.Errorf("whitespace variant = %q", got)
 	}
@@ -48,7 +47,6 @@ func TestApplyOptionDefaults(t *testing.T) {
 		}
 	}`), 0644)
 
-	// User provided imageVariant → kept; others filled from defaults (or skipped).
 	got := applyOptionDefaults(pfs.OSFS{}, dir, map[string]string{"imageVariant": "bullseye"}, log.Null)
 	if got["imageVariant"] != "bullseye" {
 		t.Errorf("imageVariant = %q (user value should win)", got["imageVariant"])
@@ -61,9 +59,6 @@ func TestApplyOptionDefaults(t *testing.T) {
 	}
 }
 
-// TS fetchTemplate fills a default only for an option of type "string" or
-// "boolean" whose default is truthy, as the default's JS string
-// (containerTemplatesOCI.ts, "Auto-replace default values").
 func TestApplyOptionDefaultsTakesTruthyDefaultsOfStringAndBooleanOptions(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "devcontainer-template.json"), []byte(`{
@@ -117,7 +112,6 @@ func TestApplyOptionDefaults_JSONCMetadata(t *testing.T) {
 }
 
 func TestApplyOptionDefaults_NoMetadata(t *testing.T) {
-	// Missing devcontainer-template.json → returns the user options unchanged.
 	dir := t.TempDir()
 	got := applyOptionDefaults(pfs.OSFS{}, dir, map[string]string{"a": "b"}, log.Null)
 	if len(got) != 1 || got["a"] != "b" {

@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// builderRunner answers `buildx inspect` with inspect and every other docker
-// call with rest.
 func builderRunner(inspectCode int, rest func() ([]byte, []byte, int, error)) *scriptRunner {
 	return &scriptRunner{fn: func(args []string) ([]byte, []byte, int, error) {
 		if has(args, "inspect") {
@@ -59,8 +57,6 @@ func TestEnsureCacheBuilderActions(t *testing.T) {
 	}
 }
 
-// Only a fixable cache-export result is remediated automatically; anything else
-// is reported for manual action, whatever its name or Fixable flag.
 func TestSetupRemediatesOnlyAFixableCacheExport(t *testing.T) {
 	sr := builderRunner(1, func() ([]byte, []byte, int, error) { return nil, nil, 0, nil })
 	report := Report{Results: []Result{

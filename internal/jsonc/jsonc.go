@@ -1,4 +1,3 @@
-// Package jsonc parses JSON with comments and trailing commas (JSONC), as used by devcontainer.json.
 package jsonc
 
 import (
@@ -17,7 +16,6 @@ func stripBOM(data []byte) []byte {
 	return bytes.TrimPrefix(data, utf8BOM)
 }
 
-// Unmarshal parses JSONC (JSON with comments and trailing commas) into v.
 func Unmarshal(data []byte, v any) error {
 	std, err := hujson.Standardize(stripBOM(data))
 	if err != nil {
@@ -26,14 +24,10 @@ func Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(std, v)
 }
 
-// StripComments removes JSONC comments and trailing commas,
-// returning valid standard JSON bytes.
 func StripComments(data []byte) ([]byte, error) {
 	return hujson.Standardize(stripBOM(data))
 }
 
-// Names returns the names of the members of the top-level JSONC object, in
-// the order the document lists them; nil when the document is not an object.
 func Names(data []byte) []string {
 	v, err := hujson.Parse(stripBOM(data))
 	if err != nil {
@@ -42,9 +36,6 @@ func Names(data []byte) []string {
 	return objectNames(v)
 }
 
-// MemberNames returns the names of the members of the object at field of the
-// top-level JSONC object, in the order the document lists them; nil when the
-// document or the field is not an object.
 func MemberNames(data []byte, field string) []string {
 	v, err := hujson.Parse(stripBOM(data))
 	if err != nil {
@@ -62,7 +53,6 @@ func MemberNames(data []byte, field string) []string {
 	return nil
 }
 
-// objectNames returns the member names of v, nil when v is not an object.
 func objectNames(v hujson.Value) []string {
 	obj, ok := v.Value.(*hujson.Object)
 	if !ok {

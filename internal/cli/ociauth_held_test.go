@@ -8,9 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// Storing the policy keeps the command context it is stored on: a cancelled
-// command (Ctrl-C) must still cancel the registry traffic that reads the
-// policy from the same context. A caller without a context gets one.
 func TestWithOCIAuthPolicyKeepsTheContext(t *testing.T) {
 	policy, err := oci.NewAuthPolicy(true, nil, log.Null)
 	if err != nil {
@@ -31,8 +28,6 @@ func TestWithOCIAuthPolicyKeepsTheContext(t *testing.T) {
 	}
 }
 
-// A context holding a nil policy reads as the default policy (hardening off,
-// as the reference CLI defaults --oci-auth-hardening), never as nil.
 func TestOCIAuthPolicyIgnoresAStoredNil(t *testing.T) {
 	policy := ociAuthPolicy(withOCIAuthPolicy(context.Background(), nil))
 	if policy == nil {

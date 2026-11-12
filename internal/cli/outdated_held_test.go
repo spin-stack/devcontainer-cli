@@ -11,8 +11,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-// writeOutdatedWorkspace writes <ws>/.devcontainer/devcontainer.json with the
-// given features object, and the lockfile when lock is not empty.
 func writeOutdatedWorkspace(t *testing.T, features, lock string) string {
 	t.Helper()
 	ws := t.TempDir()
@@ -33,9 +31,6 @@ func runOutdatedFor(t *testing.T, opts outdatedOpts) (string, error) {
 	return out.out.String(), err
 }
 
-// outdated reports, for each versioned Feature, the newest version its tag
-// wants, the newest published one, and the current one (the lockfile's when it
-// pins one); Features with no published versions, and local ones, are left out.
 func TestOutdatedReportsVersions(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.tags["ns/multi"] = []string{"1.0.0", "1.2.0", "2.0.0", "latest"}
@@ -51,7 +46,6 @@ func TestOutdatedReportsVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// stdout is no terminal: TS's JSON.stringify writes it on one line.
 	if strings.Count(got, "\n") != 1 || strings.Contains(got, "  ") {
 		t.Errorf("json output = %q, want one unindented line", got)
 	}
@@ -66,8 +60,6 @@ func TestOutdatedReportsVersions(t *testing.T) {
 		h + "/ns/single:3": {Current: "3.1.0", Wanted: "3.1.0", WantedMajor: "3", Latest: "3.1.0", LatestMajor: "3"},
 		h + "/ns/blank:1":  {Current: "1.0.0", Wanted: "1.0.0", WantedMajor: "1", Latest: "1.0.0", LatestMajor: "1"},
 	}
-	// The Features follow the configuration's order, as TS loadVersionInfo
-	// reorders them, not the ids' sorted order.
 	if keys, err := jsonKeyOrder(got, "features"); err != nil || !slices.Equal(keys, []string{h + "/ns/multi:1", h + "/ns/single:3", h + "/ns/blank:1"}) {
 		t.Errorf("features order = %v, %v; want the configuration's", keys, err)
 	}
@@ -90,8 +82,6 @@ func TestOutdatedReportsVersions(t *testing.T) {
 	}
 }
 
-// With no Features there is nothing to look up: an empty result in JSON, and
-// in text the table TS writes with no rows, its header alone.
 func TestOutdatedWithoutFeatures(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{}`, "")
 	if got, err := runOutdatedFor(t, outdatedOpts{workspaceFolder: ws, outputFormat: "json"}); err != nil || got != "{\"features\":{}}\n" {
@@ -102,8 +92,6 @@ func TestOutdatedWithoutFeatures(t *testing.T) {
 	}
 }
 
-// --config names the configuration to read, wherever it is; a configuration
-// that cannot be loaded, or a log file that cannot be opened, fails the command.
 func TestOutdatedConfigAndFailures(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.tags["ns/tool"] = []string{"1.0.0"}
@@ -132,7 +120,6 @@ func TestHighestSatisfyingTagSingleVersion(t *testing.T) {
 	}
 }
 
-// Keys of the file that the features map does not hold are not listed.
 func TestOrderedFeatureKeysOnlyListsFeatures(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
 	if err := os.WriteFile(cfg, []byte(`{"features":{"b":{},"gone":{},"a":{}}}`), 0o644); err != nil {
@@ -144,9 +131,6 @@ func TestOrderedFeatureKeysOnlyListsFeatures(t *testing.T) {
 	}
 }
 
-// A lockfile that is not JSON fails outdated as it fails the reference's:
-// exit code 1 and nothing on stdout, the SyntaxError's stack logged at debug
-// level only (outdated's catch writes it with output.write).
 func TestOutdatedFailsOnAMalformedLockfile(t *testing.T) {
 	ws := writeOutdatedWorkspace(t, `{"ghcr.io/devcontainers/features/node:1":{}}`, "not json")
 	const stack = `SyntaxError: Unexpected token 'o', "not json" is not valid JSON`

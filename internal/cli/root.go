@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewRootCommand creates the root `devcontainer` command with all subcommands.
 func NewRootCommand() *cobra.Command {
 	cfg := product.Get()
 
@@ -21,17 +20,11 @@ func NewRootCommand() *cobra.Command {
 		Use:     cfg.Name,
 		Short:   "Dev Container CLI",
 		Version: cfg.Version,
-		// Disable default completion command
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
-		// Match yargs: boolean-negation disabled, strict mode
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Validate the global OCI auth flags before any subcommand runs and stash
-		// the resulting policy on the context (yargs `.check()` equivalent).
-		// `exec` parses its own flags (DisableFlagParsing), so it applies the
-		// policy itself once its flags are parsed.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.DisableFlagParsing {
 				return nil
@@ -40,13 +33,10 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 
-	// Print just the bare version (e.g. "0.74.0"), matching the TS CLI (yargs
-	// .version()) instead of Cobra's "<name> version <v>" template.
 	root.SetVersionTemplate("{{.Version}}\n")
 
 	addOCIAuthFlags(root)
 
-	// Register subcommands
 	root.AddCommand(
 		newReadConfigurationCmd(),
 		newBuildCmd(),
@@ -68,11 +58,6 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
-// Execute runs the CLI. The command tree is driven by a context that is
-// cancelled on SIGINT/SIGTERM so an in-flight `up`/`build` can unwind cleanly
-// on Ctrl-C instead of being killed mid-operation.
-//
-// Its exit status is held by the parity lane, which runs the built binary:
 // mutate-lane: TestParityMatrix (exec.workspace-image-nonzero-exit passes an
 // ExitCodeError's code through as 7, exec.container-not-found prints the error
 // and exits 1, and every success case exits 0).

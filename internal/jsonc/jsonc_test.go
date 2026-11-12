@@ -21,7 +21,6 @@ func TestUnmarshal(t *testing.T) {
 			wantImage: "ubuntu",
 		},
 		{
-			// Editors on Windows may prepend a UTF-8 BOM; the Node CLI accepts it.
 			name:      "UTF8BOM",
 			input:     append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"image": "ubuntu"}`)...),
 			wantImage: "ubuntu",
@@ -82,7 +81,6 @@ func TestStripComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// hujson replaces comments with whitespace; verify the result is valid JSON
 	var m map[string]any
 	if err := Unmarshal(out, &m); err != nil {
 		t.Fatalf("stripped output is not valid JSON: %v", err)
@@ -124,9 +122,6 @@ func TestUnmarshal_AllFixtures(t *testing.T) {
 	t.Logf("parsed %d fixtures successfully", count)
 }
 
-// FuzzStandardizePreservesMeaning checks the contract that accepted JSONC is
-// converted into valid JSON without changing the decoded value. The seed corpus
-// includes the syntax extensions and BOM behavior accepted by devcontainer.json.
 func FuzzStandardizePreservesMeaning(f *testing.F) {
 	f.Add([]byte(`{"image":"ubuntu"}`))
 	f.Add([]byte("\xef\xbb\xbf{\"image\":\"ubuntu\",}"))

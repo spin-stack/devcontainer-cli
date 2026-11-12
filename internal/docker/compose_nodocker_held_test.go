@@ -2,10 +2,6 @@ package docker
 
 import "testing"
 
-// A service built without an image is tagged "<project>-<service>", and
-// "<project>_<service>" by Compose before 2.8.0, as TS getDefaultImageName
-// decides with isEarlierVersion(version, [2, 8, 0]): a missing version
-// component counts as 0, and an unknown version is a current Compose.
 func TestDefaultImageNameFollowsTheComposeVersion(t *testing.T) {
 	for _, tc := range []struct {
 		version []int

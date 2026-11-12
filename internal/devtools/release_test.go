@@ -6,10 +6,6 @@ import (
 	"testing"
 )
 
-// TestResolveRelease covers what the former release:resolve shell decided: a tag
-// push releases its tag; a dispatch releases its input (one leading v dropped) or
-// the day's next CalVer, rejects a version outside [0-9A-Za-z.+-], and refuses a
-// tag that already exists.
 func TestResolveRelease(t *testing.T) {
 	exists := func(tags ...string) func(string) bool {
 		return func(tag string) bool {

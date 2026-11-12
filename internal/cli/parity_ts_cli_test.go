@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// The oracle's node is the one on this process's PATH, named by its absolute
-// path, so a login shell's PATH cannot swap it for another node.
 func TestDefaultParityTSCLIUsesThisProcessNode(t *testing.T) {
 	dir := t.TempDir()
 	node := filepath.Join(dir, "node")

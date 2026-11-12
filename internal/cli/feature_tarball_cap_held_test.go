@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// A body up to the cap is read whole; one byte more is an error, never a
-// truncated tarball.
 func TestReadCappedFailsInsteadOfTruncating(t *testing.T) {
 	data, err := readCapped(strings.NewReader("12345"), 5)
 	if err != nil || string(data) != "12345" {

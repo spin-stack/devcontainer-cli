@@ -45,8 +45,6 @@ func TestPrepareRunUserCommandsOptsRejectsInvalidFlags(t *testing.T) {
 	}
 }
 
-// Without --workspace-folder, --container-id or --id-label the workspace is the
-// current directory; any of them says which container to use instead.
 func TestPrepareRunUserCommandsOptsDefaultsTheWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -96,7 +94,7 @@ func TestRunUserCommands_InvalidFlag_PreDocker(t *testing.T) {
 
 func TestRunUserCommands_ConfigLoadError_PreDocker(t *testing.T) {
 	opts := validRunUserCommandsOpts()
-	opts.workspaceFolder = t.TempDir() // no devcontainer.json
+	opts.workspaceFolder = t.TempDir()
 	out := &captureOutput{}
 	err := runUserCommands(t.Context(), out, opts)
 	ece := asExitCode(t, err)
@@ -111,10 +109,6 @@ func TestRunUserCommands_ConfigLoadError_PreDocker(t *testing.T) {
 	}
 }
 
-// A container lookup that fails is TS's error: the failed `docker ps` by the
-// workspace folder's and the configuration's labels as the message, running
-// the user commands as the description. Go reported "Dev container not
-// found.".
 func TestRunUserCommandsFailedContainerLookup(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "unix:///nonexistent/devcontainer-cli-test.sock")
 	opts := validRunUserCommandsOpts()
@@ -190,8 +184,6 @@ func TestLifecycleUserEnvProbe(t *testing.T) {
 	}
 }
 
-// Later entries win, so the order is the precedence: probe, secrets,
-// --remote-env, then the config's remoteEnv.
 func TestLifecycleRemoteEnvOrder(t *testing.T) {
 	probed := map[string]string{"PATH": "/probed"}
 	secrets := []string{"TOKEN=s"}

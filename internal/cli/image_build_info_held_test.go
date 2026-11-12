@@ -17,16 +17,13 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// fakeEngineAPI is a Docker engine with local images, images a pull makes
-// local, and containers. The docker.API methods it does not override are
-// not expected to be called.
 type fakeEngineAPI struct {
 	docker.API
-	images     map[string]string // name -> image inspect JSON
+	images     map[string]string
 	pullable   map[string]string
 	pulls      []string
-	containers map[string]string // id -> container inspect JSON
-	listed     [][]string        // label filters of each ContainerList
+	containers map[string]string
+	listed     [][]string
 	list       func(labels []string) []string
 }
 
@@ -78,7 +75,6 @@ func (f *fakeEngineAPI) ContainerList(_ context.Context, opts mobyclient.Contain
 
 func (f *fakeEngineAPI) Close() error { return nil }
 
-// emptyPull is a pull whose progress stream is empty.
 type emptyPull struct{ mobyclient.ImagePullResponse }
 
 func (emptyPull) Read([]byte) (int, error) { return 0, io.EOF }
@@ -87,7 +83,6 @@ func (emptyPull) Close() error             { return nil }
 func TestNewImageInspectorWithoutEngine(t *testing.T) {
 	insp := newImageInspector(context.Background(), log.Null, nil)
 	insp.pullInterval = 0
-	// An invalid name fails the registry inspect without contacting a registry.
 	got, err := insp.inspect(context.Background(), "Not A Valid Name")
 	if !errors.Is(err, errDockerEngineUnavailable) || got != nil {
 		t.Fatalf("inspect = %+v, %v; want the pull to fail with %v", got, err, errDockerEngineUnavailable)
@@ -132,7 +127,6 @@ func TestNewImageInspectorPullsWhatTheRegistryCannotInspect(t *testing.T) {
 }
 
 func TestImageBuildInfoComposeBuildWithoutContext(t *testing.T) {
-	// A build without a context builds from the first compose file's folder.
 	dir := writeConfigFixture(t, map[string]string{"compose/compose.yml": "services: {}\n", "compose/Dockerfile": "FROM ctx-base:1\n"})
 	cfg := &config.DevContainer{ConfigFilePath: filepath.Join(dir, "devcontainer.json"), DockerComposeFile: []string{"compose/compose.yml"}, Service: "app"}
 	f := &fakeImages{registry: map[string]*oci.ImageConfig{"ctx-base:1": metaImage("dev", "from-context")}}

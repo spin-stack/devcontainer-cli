@@ -17,9 +17,9 @@ func TestIsGitHubTarballURI(t *testing.T) {
 	cases := map[string]bool{
 		"https://github.com/owner/repo/releases/download/v1/feat.tgz": true,
 		"https://api.github.com/repos/owner/repo/releases/assets/1":   true,
-		"https://raw.githubusercontent.com/owner/repo/main/feat.tgz":  false, // not github.com host
+		"https://raw.githubusercontent.com/owner/repo/main/feat.tgz":  false,
 		"https://example.com/feat.tgz":                                false,
-		"http://github.com/owner/repo/feat.tgz":                       false, // http, not https
+		"http://github.com/owner/repo/feat.tgz":                       false,
 	}
 	for u, want := range cases {
 		if got := isGitHubTarballURI(u); got != want {
@@ -32,9 +32,9 @@ func TestIsPlainHTTPURL(t *testing.T) {
 	cases := map[string]bool{
 		"http://example.com/feat.tgz":  true,
 		"https://example.com/feat.tgz": false,
-		"https://localhost:8080/x.tgz": true, // localhost even over https
+		"https://localhost:8080/x.tgz": true,
 		"http://localhost/x.tgz":       true,
-		"https://127.0.0.1:5000/x.tgz": false, // only the literal "localhost" host is special
+		"https://127.0.0.1:5000/x.tgz": false,
 	}
 	for u, want := range cases {
 		if got := isPlainHTTPURL(u); got != want {
@@ -44,7 +44,6 @@ func TestIsPlainHTTPURL(t *testing.T) {
 }
 
 func TestFeatureRequestHeaders(t *testing.T) {
-	// Always a devcontainer User-Agent.
 	h := featureRequestHeaders("https://example.com/x.tgz", nil, nil)
 	if h["User-Agent"] != "devcontainer" {
 		t.Errorf("User-Agent = %q, want devcontainer", h["User-Agent"])
@@ -53,20 +52,17 @@ func TestFeatureRequestHeaders(t *testing.T) {
 		t.Error("non-GitHub URL must not get an Authorization header")
 	}
 
-	// GitHub URL + token → bearer auth.
 	h = featureRequestHeaders("https://github.com/o/r/releases/download/v1/f.tgz",
 		map[string]string{"GITHUB_TOKEN": "secret"}, nil)
 	if h["Authorization"] != "Bearer secret" {
 		t.Errorf("Authorization = %q, want 'Bearer secret'", h["Authorization"])
 	}
 
-	// GitHub URL without a token → no auth header (not an empty bearer).
 	h = featureRequestHeaders("https://github.com/o/r/f.tgz", map[string]string{}, nil)
 	if _, ok := h["Authorization"]; ok {
 		t.Error("GitHub URL without GITHUB_TOKEN must not set Authorization")
 	}
 
-	// Non-GitHub URL never leaks the token.
 	h = featureRequestHeaders("https://example.com/f.tgz",
 		map[string]string{"GITHUB_TOKEN": "secret"}, nil)
 	if _, ok := h["Authorization"]; ok {
@@ -74,9 +70,6 @@ func TestFeatureRequestHeaders(t *testing.T) {
 	}
 }
 
-// TestDownloadFeatureTarball_HeadersAndDigest exercises the real HTTP path
-// against a local server: it must send the devcontainer UA + bearer token and
-// return the correct sha256 digest.
 func TestDownloadFeatureTarball_HeadersAndDigest(t *testing.T) {
 	payload := []byte("fake-tarball-bytes")
 	var gotUA, gotAuth string
@@ -88,8 +81,6 @@ func TestDownloadFeatureTarball_HeadersAndDigest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// The test server is not a github.com host, so no auth is expected here; use
-	// the header helper test above for the GitHub-auth branch. Verify UA + digest.
 	data, digest, err := downloadFeatureTarball(context.Background(), nil, srv.URL, map[string]string{"GITHUB_TOKEN": "secret"})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +101,6 @@ func TestDownloadFeatureTarball_HeadersAndDigest(t *testing.T) {
 	}
 }
 
-// TestDownloadFeatureTarball_Non2xx verifies non-2xx responses surface an error.
 func TestDownloadFeatureTarball_Non2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -123,11 +113,9 @@ func TestDownloadFeatureTarball_Non2xx(t *testing.T) {
 	}
 }
 
-// TestDownloadFeatureTarball_2xxAccepted verifies a 2xx that is not 200 (e.g. 206)
-// is accepted, matching the TS 200-299 range.
 func TestDownloadFeatureTarball_2xxAccepted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent) // 204, still 2xx
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 
@@ -136,10 +124,6 @@ func TestDownloadFeatureTarball_2xxAccepted(t *testing.T) {
 	}
 }
 
-// A direct tarball whose digest is not the lockfile's fails while resolving its
-// metadata - what resolve-dependencies and the graph TS builds before installing
-// read - with TS fetchContentsAtTarballUri's error, unwrapped. A tarball the
-// lockfile does not pin, or pins to its digest, resolves.
 func TestDirectTarballDigestCheckedAgainstTheLockfile(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not-a-real-tarball"))

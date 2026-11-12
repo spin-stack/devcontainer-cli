@@ -12,9 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/lifecycle"
 )
 
-// hostShell is a lifecycle.ContainerExecutor that runs each command with the
-// host's sh, HOME set to home, so the marker scripts up runs in a container run
-// for real. err, when set, is returned instead of running anything.
 type hostShell struct {
 	home     string
 	err      error
@@ -42,8 +39,6 @@ func hostShellServer(t *testing.T, h *hostShell) *lifecycle.ShellServer {
 	return lifecycle.NewShellServer(t.Context(), h, "c1", "")
 }
 
-// The markers live in the container user's $HOME/.devcontainer; a HOME that
-// cannot be read, or is empty, leaves no folder.
 func TestResolveContainerUserDataFolder(t *testing.T) {
 	home := t.TempDir()
 	if got := resolveContainerUserDataFolder(hostShellServer(t, &hostShell{home: home})); got != home+"/.devcontainer" {
@@ -57,8 +52,6 @@ func TestResolveContainerUserDataFolder(t *testing.T) {
 	}
 }
 
-// failingShell answers every command with exit code 1 and HOME's value on
-// stdout, as a shell whose printf failed after writing would.
 type failingShell struct{}
 
 func (failingShell) ExecInContainer(context.Context, string, string, []string, string) (string, string, int, error) {
@@ -71,9 +64,6 @@ func TestResolveContainerUserDataFolderOfAFailedProbe(t *testing.T) {
 	}
 }
 
-// A hook runs once per timestamp: the first ask writes the marker and runs it,
-// the same timestamp again does not, and a new one (a new container or start)
-// runs it again. An unknown timestamp runs it without touching the marker.
 func TestMarkerShouldRunOncePerTimestamp(t *testing.T) {
 	folder := filepath.Join(t.TempDir(), ".devcontainer")
 	h := &hostShell{home: t.TempDir()}
@@ -102,7 +92,6 @@ func TestMarkerShouldRunOncePerTimestamp(t *testing.T) {
 	}
 }
 
-// A marker that cannot be checked does not run the hook.
 func TestMarkerShouldRunWhenTheExecFails(t *testing.T) {
 	server := hostShellServer(t, &hostShell{err: errors.New("exec failed")})
 	if markerShouldRun(server, "/nowhere", "postCreateCommand", "ts") {

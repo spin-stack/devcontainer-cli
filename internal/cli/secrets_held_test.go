@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// The values masked in logs are exactly the secrets file's values; no file, an
-// unreadable one or a malformed one masks nothing.
 func TestSecretValuesFromFile(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "secrets.json")

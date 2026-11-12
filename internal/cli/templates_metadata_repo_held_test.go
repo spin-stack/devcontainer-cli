@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// templateManifest is a Template manifest whose annotations are the given
-// JSON object body.
 func templateManifest(annotations string) []byte {
 	return []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
 		`"config":{"mediaType":"application/vnd.devcontainers","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},` +
@@ -27,8 +25,6 @@ func runTemplatesMetadataCmd(t *testing.T, templateID string) (string, error) {
 	return out.String(), err
 }
 
-// templates metadata <id> prints the manifest's metadata annotation as
-// JSON.stringify(JSON.parse(annotation)) does: compacted, keys in source order.
 func TestTemplatesMetadataPrintsTheAnnotation(t *testing.T) {
 	reg := newReadRegistry(t)
 	metadata := `{ "id": "tpl", "version": "1.0.0", "a": [1, 2] }`
@@ -43,8 +39,6 @@ func TestTemplatesMetadataPrintsTheAnnotation(t *testing.T) {
 	}
 }
 
-// Every failure prints an empty object on stdout, as TS does before exiting 1,
-// and returns the reason.
 func TestTemplatesMetadataFailures(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.manifests["ns/none"] = templateManifest(`"other":"x"`)

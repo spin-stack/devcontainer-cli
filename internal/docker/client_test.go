@@ -42,7 +42,6 @@ func TestBuildArgs(t *testing.T) {
 				Dockerfile:  "Dockerfile",
 				ContextPath: ".",
 			},
-			// --push present, --load absent
 			want: []string{"buildx", "build", "--push", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "."},
 		},
 		{
@@ -53,7 +52,6 @@ func TestBuildArgs(t *testing.T) {
 				Dockerfile:  "Dockerfile",
 				ContextPath: ".",
 			},
-			// --output present, --load absent
 			want: []string{"buildx", "build", "--output", "type=docker", "--build-arg", "BUILDKIT_INLINE_CACHE=1", "-f", "Dockerfile", "."},
 		},
 		{
@@ -113,7 +111,6 @@ func TestBuildArgs(t *testing.T) {
 			want: []string{"build", "-f", "Dockerfile", "--build-arg", "NODE_VERSION=18", "."},
 		},
 		{
-			// Legacy build with multiple --cache-from sources, in order.
 			name: "CacheFrom",
 			opts: BuildOptions{
 				Dockerfile:  "Dockerfile",
@@ -123,7 +120,6 @@ func TestBuildArgs(t *testing.T) {
 			want: []string{"build", "-f", "Dockerfile", "--cache-from", "img:cache1", "--cache-from", "img:cache2", "."},
 		},
 		{
-			// Empty ContextPath must default to "." as the final positional arg.
 			name: "DefaultContext",
 			opts: BuildOptions{
 				Dockerfile: "Dockerfile",
@@ -131,7 +127,6 @@ func TestBuildArgs(t *testing.T) {
 			want: []string{"build", "-f", "Dockerfile", "."},
 		},
 		{
-			// ExtraArgs are appended verbatim, immediately before the context path.
 			name: "ExtraArgs",
 			opts: BuildOptions{
 				Dockerfile:  "Dockerfile",
@@ -141,10 +136,6 @@ func TestBuildArgs(t *testing.T) {
 			want: []string{"build", "-f", "Dockerfile", "--build-context", "shared=/tmp/shared", "--add-host", "foo:127.0.0.1", "/ctx"},
 		},
 		{
-			// buildx: --platform + --push are mutually consistent (no --load),
-			// and --cache-to / cache-from / tags all coexist in a realistic combo.
-			// With an inline cache-to, BUILDKIT_INLINE_CACHE=1 is omitted (it is
-			// redundant/rejected there) — matching TS isBuildxCacheToInline.
 			name: "BuildxPlatformPushCombo",
 			opts: BuildOptions{
 				UseBuildx:   true,

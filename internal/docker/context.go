@@ -8,16 +8,6 @@ import (
 	"path/filepath"
 )
 
-// resolveDockerContextHost returns the Docker endpoint host of the active Docker
-// CLI context by reading the context store directly — no `docker` binary — matching
-// the Docker CLI's own resolution order:
-//
-//	DOCKER_CONTEXT env → ~/.docker/config.json "currentContext" → "default"
-//
-// The "default" context has no stored endpoint, so "" is returned and the caller
-// falls back to the SDK's env-based default socket. It is only consulted when
-// DOCKER_HOST is unset (that rung forces "default"), so DOCKER_HOST/-H handling
-// lives in the caller.
 func resolveDockerContextHost() string {
 	configDir := dockerConfigDir()
 	name := activeContextName(configDir)
@@ -45,8 +35,6 @@ func resolveDockerContextHost() string {
 	return meta.Endpoints.Docker.Host
 }
 
-// dockerConfigDir returns the Docker CLI config directory: $DOCKER_CONFIG, else
-// ~/.docker.
 func dockerConfigDir() string {
 	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
 		return d
@@ -58,8 +46,6 @@ func dockerConfigDir() string {
 	return filepath.Join(home, ".docker")
 }
 
-// activeContextName resolves the active context name: $DOCKER_CONTEXT, else the
-// "currentContext" field of config.json, else "default".
 func activeContextName(configDir string) string {
 	if c := os.Getenv("DOCKER_CONTEXT"); c != "" {
 		return c

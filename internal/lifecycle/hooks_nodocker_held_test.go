@@ -12,7 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// lockedLog records Write lines; parallel commands write from goroutines.
 type lockedLog struct {
 	log.Logger
 	mu    sync.Mutex
@@ -31,8 +30,6 @@ func (l *lockedLog) has(s string) bool {
 	return slices.Contains(l.lines, s)
 }
 
-// skipPostAttach skips postAttachCommand alone, and the dotfiles hook runs once,
-// right after postCreateCommand (TS runLifecycleHooks / installDotfiles).
 func TestRunHooksSkipsOnlyPostAttachAndInstallsDotfilesAfterPostCreate(t *testing.T) {
 	merged := &imagemeta.MergedConfig{
 		OnCreateCommands:      []any{"onCreate"},
@@ -65,10 +62,6 @@ func TestRunHooksSkipsOnlyPostAttachAndInstallsDotfilesAfterPostCreate(t *testin
 	}
 }
 
-// A parallel command's "Running <name> of <hook> from <origin>..." header is
-// printed once it succeeded, never for one that failed (TS runLifecycleCommand
-// prints it with the command's output on success); the failure gets TS's
-// "failed with exit code" line.
 func TestParallelCommandHeaderOnlyForSuccess(t *testing.T) {
 	l := &lockedLog{Logger: log.Null}
 	cmd := map[string]any{"a": "ok-a", "b": "fails-b"}
@@ -89,8 +82,6 @@ func TestParallelCommandHeaderOnlyForSuccess(t *testing.T) {
 	}
 }
 
-// TS runLifecycleCommand writes "failed with exit code N" only when the error
-// carries a code (`if (err?.code)`): exit code 1 is reported, 0 is not.
 func TestFailureLineNeedsANonZeroExitCode(t *testing.T) {
 	const line = "postStartCommand from devcontainer.json failed with exit code 1. Skipping any further user-provided commands."
 	exitsWith := func(code int) CommandExecutor {
@@ -112,8 +103,6 @@ func TestFailureLineNeedsANonZeroExitCode(t *testing.T) {
 	}
 }
 
-// commandToString drops empty and null values: a nested object value joins its
-// non-empty commands with " && ", and null is no command at all.
 func TestCommandToStringSkipsEmptyAndNull(t *testing.T) {
 	if got := commandToString(nil); got != "" {
 		t.Errorf("commandToString(nil) = %q, want empty", got)

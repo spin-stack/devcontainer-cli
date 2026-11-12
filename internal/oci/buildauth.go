@@ -8,21 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// ResolveBuildAuth resolves credentials for the given registries using the same
-// chain as the CLI's own registry operations (DEVCONTAINERS_OCI_AUTH → docker
-// config / credential helpers → GITHUB_TOKEN) and, when any resolve, writes a
-// self-contained temporary docker config.json suitable for a `docker build`
-// subprocess. Callers point DOCKER_CONFIG at the returned directory.
-//
-// The temp config carries ONLY the resolved `auths` (no credsStore/credHelpers):
-// getCredential already materializes tokens from every source — including the
-// user's credential store — so a static auths entry both wins Docker's lookup
-// precedence and covers store-backed registries, without inheriting a credsStore
-// that would otherwise shadow the injected entries.
-//
-// ok is false (dir "", no-op cleanup) when no credentials resolved; the caller
-// then leaves the build's ambient auth untouched — so this never regresses a
-// build that already authenticates via the environment.
 func ResolveBuildAuth(env map[string]string, registries []string, logger log.Logger) (dir string, cleanup func(), ok bool, err error) {
 	noop := func() {}
 
@@ -34,11 +19,6 @@ func ResolveBuildAuth(env map[string]string, registries []string, logger log.Log
 		}
 		seen[reg] = true
 		cred := getCredential(env, reg, logger)
-		// Skip only when there is no usable credential at all. A token-only
-		// credential (identitytoken / OAuth refresh token, e.g. ACR) has an empty
-		// base64Encoded but a non-empty refreshToken — the old `base64Encoded == ""`
-		// guard dropped it, so the build subprocess authenticated anonymously and
-		// the base-image pull failed even though the CLI's own auth worked.
 		if cred == nil || (cred.base64Encoded == "" && cred.refreshToken == "") {
 			continue
 		}

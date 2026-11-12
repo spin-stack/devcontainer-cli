@@ -8,10 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// The major.minor tag follows the highest published version with the same
-// major and the same minor (TS getSemanticTags' `${major}.${minor}.x` range,
-// publishCommandImpl.ts): neither a published 2.3.5 nor a published 1.4.0
-// holds back 1.3.
 func TestSemanticTagsMajorMinorRangeIsBothParts(t *testing.T) {
 	for _, tt := range []struct {
 		published []string
@@ -30,9 +26,6 @@ func TestSemanticTagsMajorMinorRangeIsBothParts(t *testing.T) {
 	}
 }
 
-// The pushed manifest is the one TS calculateManifestAndContentDigest
-// (containerCollectionsOCIPush.ts) builds: schemaVersion 2, and a layer titled
-// devcontainer-<collectionType>-<id>.tgz.
 func TestPushArtifactManifest(t *testing.T) {
 	reg := newFakeOCIRegistry()
 	registry := reg.start(t)

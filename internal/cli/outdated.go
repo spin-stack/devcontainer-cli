@@ -27,17 +27,10 @@ import (
 	"golang.org/x/term"
 )
 
-// bareVersion is a bare semver-ish target: x / x.y / x.y.z
-// (TS: /^\d+(\.\d+(\.\d+)?)?$/ in upgradeCommand.ts).
 var bareVersion = regexp.MustCompile(`^\d+(\.\d+(\.\d+)?)?$`)
 
-// isBareVersion reports whether s is a bare semver-ish target.
 func isBareVersion(s string) bool { return bareVersion.MatchString(s) }
 
-// getFeatureIdWithoutVersion strips the trailing ":tag" or "@digest" from a user
-// feature id, leaving the full id path (TS getFeatureIdWithoutVersion, /[:@][^/]*$/).
-// The delimiter is the first ':' or '@' after the last '/', so a registry port
-// (localhost:5000/...) is preserved and a digest '@' wins over a later ':'.
 func getFeatureIdWithoutVersion(featureID string) string {
 	start := strings.LastIndexByte(featureID, '/') + 1
 	for i := start; i < len(featureID); i++ {
@@ -58,7 +51,6 @@ func newOutdatedCmd() *cobra.Command {
 			if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 				return err
 			}
-			// 0.88: workspace-folder defaults to cwd when not provided.
 			if opts.workspaceFolder == "" {
 				opts.workspaceFolder, _ = os.Getwd()
 			}
@@ -80,7 +72,6 @@ func newOutdatedCmd() *cobra.Command {
 	return cmd
 }
 
-// outdatedOpts holds the flags for the `outdated` command.
 type outdatedOpts struct {
 	workspaceFolder string
 	configPath      string
@@ -101,9 +92,6 @@ type outdatedEntry struct {
 	LatestMajor string `json:"latestMajor,omitempty"`
 }
 
-// highestSatisfyingTag returns the newest published version a feature tag resolves
-// to: for "latest"/empty the newest overall, for a version tag (e.g. "2") the newest
-// within that major. versions must be sorted ascending. "" if none match.
 func highestSatisfyingTag(versions []*semver.Version, tag string) string {
 	if len(versions) == 0 {
 		return ""
@@ -127,8 +115,6 @@ func highestSatisfyingTag(versions []*semver.Version, tag string) string {
 	return ""
 }
 
-// resolvePublishedVersions fetches and returns a feature ref's published semver
-// tags, sorted ascending.
 func resolvePublishedVersions(ociClient oci.Registry, ref *oci.Ref) []*semver.Version {
 	tags, err := ociClient.GetPublishedTags(ref)
 	if err != nil {
@@ -144,19 +130,13 @@ func resolvePublishedVersions(ociClient oci.Registry, ref *oci.Ref) []*semver.Ve
 	return versions
 }
 
-// outdatedHeader is the header row of outdated's text table.
 var outdatedHeader = []string{"Feature", "Current", "Wanted", "Latest"}
 
-// writeOutdatedJSON writes outdated's JSON result as TS does:
-// JSON.stringify(outdated, undefined, process.stdout.isTTY ? '  ' : undefined),
-// indented only when stdout is a terminal.
 func writeOutdatedJSON(w io.Writer, payload map[string]any) {
 	data, _ := stringify.JSON(payload, outdatedIndent(w))
 	fmt.Fprintln(w, string(data))
 }
 
-// outdatedIndent is the indent of outdated's JSON on w: two spaces when w is
-// a terminal (Node's isTTY, an isatty check), none otherwise.
 func outdatedIndent(w io.Writer) string {
 	if f, ok := w.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
 		return "  "
@@ -164,7 +144,6 @@ func outdatedIndent(w io.Writer) string {
 	return ""
 }
 
-// majorOf returns the major version of a semver string, or "" if unparseable.
 func majorOf(v string) string {
 	if v == "" {
 		return ""
@@ -205,7 +184,6 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 		if opts.outputFormat == "json" {
 			writeOutdatedJSON(out.Stdout(), map[string]any{"features": map[string]any{}})
 		} else {
-			// TS writes its table with no rows: the header alone.
 			fmt.Fprintln(out.Stdout(), textTable([][]string{outdatedHeader}))
 		}
 		return nil
@@ -213,10 +191,6 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 
 	ociClient := newOCIClient(ctx, logger)
 
-	// Lockfile pins the concrete "current" version when present (matches TS
-	// loadVersionInfo: current = lockfileVersion || wanted). One that cannot be
-	// read fails the command as TS outdated's catch does: the error's stack
-	// logged at debug level, nothing on stdout, exit code 1.
 	lockfile, _, err := features.ReadLockfile(cfg.ConfigFilePath)
 	if err != nil {
 		logger.Write(errorStack(err), log.LevelDebug)
@@ -230,10 +204,8 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
-			// Not a versionable OCI feature (local path, etc.) — TS omits these.
 			continue
 		}
-		// Published versions. Features with no versions are omitted (as TS does).
 		versions := resolvePublishedVersions(ociClient, ref)
 		if len(versions) == 0 {
 			continue
@@ -242,7 +214,6 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 		latest := versions[len(versions)-1].Original()
 		wanted := highestSatisfyingTag(versions, ref.Tag)
 
-		// current = lockfile version if pinned, else the resolved wanted version.
 		current := wanted
 		if lockfile != nil {
 			if e, ok := lockfile.Features[id]; ok && e.Version != "" {
@@ -260,8 +231,6 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	}
 
 	if opts.outputFormat == "json" {
-		// TS reorders resolved.features to the order the configuration lists
-		// the Features in (loadVersionInfo), which JSON.stringify keeps.
 		fields := make(map[string]any, len(result))
 		for id, e := range result {
 			fields[id] = e
@@ -269,11 +238,6 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 		ordered := orderedObject{fields: fields, order: orderedFeatureKeys(cfg.ConfigFilePath, cfg.Features)}
 		writeOutdatedJSON(out.Stdout(), map[string]any{"features": ordered})
 	} else {
-		// Text table. Rows follow the order features were declared in the config
-		// (TS reorders resolved.features back to config order), and the Feature
-		// column shows the full user id without its version tag/digest. Formatting
-		// mirrors npm's text-table (min column widths, 2-space separator, left
-		// aligned, trailing whitespace stripped per row).
 		rows := [][]string{outdatedHeader}
 		for _, id := range orderedFeatureKeys(cfg.ConfigFilePath, cfg.Features) {
 			e, ok := result[id]
@@ -293,7 +257,6 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	return nil
 }
 
-// dashIfEmpty renders an empty column value as "-" (TS maps undefined → '-').
 func dashIfEmpty(s string) string {
 	if s == "" {
 		return "-"
@@ -301,10 +264,6 @@ func dashIfEmpty(s string) string {
 	return s
 }
 
-// orderedFeatureKeys returns the feature ids in the order they appear in the
-// devcontainer.json (Go maps are unordered, so the raw file is re-read). Any key
-// present in features but not recovered from the file is appended sorted, so the
-// caller never silently drops a feature.
 func orderedFeatureKeys(configFilePath string, features map[string]any) []string {
 	ordered, _ := featureKeyOrderFromFile(configFilePath)
 
@@ -329,8 +288,6 @@ func orderedFeatureKeys(configFilePath string, features map[string]any) []string
 	return result
 }
 
-// featureKeyOrderFromFile parses configFilePath and returns the keys of its
-// top-level "features" object in document order.
 func featureKeyOrderFromFile(configFilePath string) ([]string, error) {
 	if configFilePath == "" {
 		return nil, nil
@@ -344,7 +301,6 @@ func featureKeyOrderFromFile(configFilePath string) ([]string, error) {
 		return nil, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(std))
-	// Opening brace of the top-level object.
 	if _, err := dec.Token(); err != nil {
 		return nil, err
 	}
@@ -361,7 +317,6 @@ func featureKeyOrderFromFile(configFilePath string) ([]string, error) {
 			}
 			continue
 		}
-		// "features" value must be an object; read its keys in order.
 		tok, err := dec.Token()
 		if err != nil {
 			return nil, err
@@ -388,9 +343,6 @@ func featureKeyOrderFromFile(configFilePath string) ([]string, error) {
 	return nil, nil
 }
 
-// textTable formats rows the way npm's text-table does: each column padded to
-// its max cell width, cells separated by two spaces, left-aligned, with trailing
-// whitespace trimmed from each line.
 func textTable(rows [][]string) string {
 	var widths []int
 	for _, row := range rows {
@@ -421,8 +373,6 @@ func textTable(rows [][]string) string {
 	return strings.Join(lines, "\n")
 }
 
-// upgradeLogLevels are the choices TS featuresUpgradeOptions declares for
-// --log-level, which, unlike the other commands', include error.
 var upgradeLogLevels = []string{"error", "info", "debug", "trace"}
 
 func newUpgradeCmd() *cobra.Command {
@@ -443,14 +393,9 @@ func newUpgradeCmd() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Upgrade lockfile",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// --log-level is a yargs choice, validated before .check() runs.
 			if err := validateEnum("log-level", logLevel, upgradeLogLevels); err != nil {
 				return err
 			}
-			// --feature/--target-version are the dependabot-oriented flags: they
-			// must be supplied together, and --target-version must be a bare
-			// x / x.y / x.y.z version. TS validates this in yargs .check() before
-			// the handler runs (upgradeCommand.ts), so exit 1 with the same text.
 			if (feature != "") != (targetVersion != "") {
 				return fmt.Errorf("The '--target-version' and '--feature' flag must be used together.")
 			}
@@ -458,7 +403,6 @@ func newUpgradeCmd() *cobra.Command {
 				return fmt.Errorf("Invalid version '%s'.  Must be in the form of 'x', 'x.y', or 'x.y.z'", targetVersion)
 			}
 
-			// 0.88: workspace-folder defaults to cwd when not provided.
 			if workspaceFolder == "" {
 				workspaceFolder, _ = os.Getwd()
 			}
@@ -477,16 +421,12 @@ func newUpgradeCmd() *cobra.Command {
 
 			loadResult, err := config.LoadDevContainerConfig(ws, cp, "")
 			if errors.Is(err, fs.ErrNotExist) {
-				// A --config file that does not exist is TS getConfig's "not found".
 				return &coreerrors.ContainerError{Description: fmt.Sprintf("Dev container config (%s) not found.", cp)}
 			}
 			if err != nil {
 				return err
 			}
 
-			// TS writes its log header with the first event, which every run
-			// that gets past loading the configuration logs (at trace level
-			// at least), and none that fails to load it.
 			logger := log.New(log.Options{
 				Version: cliVersion(),
 				Level:   log.ParseLevel(logLevel),
@@ -496,9 +436,6 @@ func newUpgradeCmd() *cobra.Command {
 
 			cfg := loadResult.Config
 
-			// --feature/--target-version first pin the Feature's version in
-			// devcontainer.json, with or without --dry-run, and the lockfile
-			// is then generated from the configuration read again.
 			if feature != "" {
 				logger.Write(fmt.Sprintf("Updating '%s' to '%s' in devcontainer.json", feature, targetVersion), log.LevelInfo)
 				if err := updateFeatureVersionInConfig(logger, cfg, feature, targetVersion); err != nil {
@@ -510,16 +447,8 @@ func newUpgradeCmd() *cobra.Command {
 				cfg = loadResult.Config
 			}
 
-			// The lockfile sits next to the configuration, whose path a loaded
-			// configuration always carries.
 			lockfilePath := cfg.ConfigFilePath
 
-			// The Features are resolved as build resolves them, without the
-			// lockfile (TS readFeaturesConfig: generateFeaturesConfig with
-			// noLockfile): dependencies included, and a Feature that cannot be
-			// resolved fails the command. A configuration without Features has
-			// no Features config, which TS reports as a failure rather than
-			// writing an empty lockfile.
 			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, localFeatureRoots{filepath.Dir(lockfilePath), ws}, false, nil, nil)
 			if err != nil {
 				return err
@@ -535,9 +464,6 @@ func newUpgradeCmd() *cobra.Command {
 				return nil
 			}
 
-			// TS truncates any existing lockfile before writing it
-			// (upgradeCommand.ts), so the new one is always written in its
-			// canonical form, even over one that differs only cosmetically.
 			if err := os.WriteFile(features.LockfilePath(lockfilePath), nil, 0o666); err != nil {
 				return err
 			}
@@ -554,8 +480,8 @@ func newUpgradeCmd() *cobra.Command {
 	f.BoolVar(&dryRun, "dry-run", false, "Write to stdout.")
 	f.StringVarP(&feature, "feature", "f", "", "")
 	f.StringVarP(&targetVersion, "target-version", "v", "", "")
-	_ = f.MarkHidden("feature")        // hidden aliased flag (TS parity: alias -f)
-	_ = f.MarkHidden("target-version") // hidden aliased flag (TS parity: alias -v)
+	_ = f.MarkHidden("feature")
+	_ = f.MarkHidden("target-version")
 	_ = dockerPath
 	_ = composePath
 
@@ -563,12 +489,6 @@ func newUpgradeCmd() *cobra.Command {
 	return cmd
 }
 
-// updateFeatureVersionInConfig pins the configured Feature that is feature,
-// whatever its version, to targetVersion in the configuration file, as TS
-// updateFeatureVersionInConfig does: the first Feature key, in the order the
-// file lists them, whose id without its version is feature's is replaced,
-// read as a regular expression, everywhere in the file's text by
-// "<feature without version>:<targetVersion>".
 func updateFeatureVersionInConfig(logger log.Logger, cfg *config.DevContainer, feature, targetVersion string) error {
 	configPath := cfg.ConfigFilePath
 	if cfg.Features == nil {
@@ -608,9 +528,6 @@ func updateFeatureVersionInConfig(logger log.Logger, cfg *config.DevContainer, f
 	return os.WriteFile(configPath, []byte(updated), 0o644)
 }
 
-// errorStack is how the reference logs an error it catches (err.stack, frames
-// left out): a lockfile error as the JavaScript error TS throws, any other
-// with its message.
 func errorStack(err error) string {
 	if lerr, ok := errors.AsType[*features.LockfileError](err); ok {
 		return lerr.Stack()

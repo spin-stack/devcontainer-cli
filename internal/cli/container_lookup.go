@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// containerLister is the narrow seam resolveContainerID needs (satisfied by
-// *docker.EngineClient), so the lookup is unit-testable without a daemon.
 type containerLister interface {
 	ListContainers(ctx context.Context, all bool, labelFilters []string) ([]string, error)
 }
@@ -32,7 +30,6 @@ func (e *containerListError) Error() string {
 
 func (e *containerListError) Unwrap() error { return e.err }
 
-// listContainers is ListContainers with a failure as a containerListError.
 func listContainers(ctx context.Context, engine containerLister, labels []string) ([]string, error) {
 	ids, err := engine.ListContainers(ctx, true, labels)
 	if err != nil {
@@ -41,15 +38,6 @@ func listContainers(ctx context.Context, engine containerLister, labels []string
 	return ids, nil
 }
 
-// resolveContainerID finds a workspace's dev container. Explicit idLabels win.
-// Otherwise it prefers the [local_folder, config_file] label filter so that
-// multiple devcontainer.json configs in one project (e.g. .devcontainer/frontend
-// and .devcontainer/backend, each its own container) resolve to the RIGHT one,
-// and falls back to local_folder alone for a container created without a
-// config_file label (older runs / --id-label-only) — mirroring the TS CLI's
-// old/new id-label scheme. Returns "" when nothing matches, and the first
-// lookup that fails as a containerListError, as TS's findContainerAndIdLabels
-// throws.
 func resolveContainerID(ctx context.Context, engine containerLister, workspaceFolder, configFile string, idLabels []string) (string, error) {
 	if len(idLabels) > 0 {
 		ids, err := listContainers(ctx, engine, idLabels)
@@ -79,8 +67,6 @@ func resolveContainerID(ctx context.Context, engine containerLister, workspaceFo
 	return ids[0], nil
 }
 
-// failingLister is the containerLister without a Docker engine: every lookup
-// fails with the engine's error.
 type failingLister struct{ err error }
 
 func (f failingLister) ListContainers(context.Context, bool, []string) ([]string, error) {

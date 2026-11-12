@@ -12,17 +12,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestOCIAuthGlobalFlagValidation pins the yargs `.check()` behavior the reference
-// CLI applies to the global OCI auth flags: --allow-cross-origin-auth-host needs
-// --oci-auth-hardening, entries must be '<registry-host>=<auth-host>' pairs of
-// bare authorities, and the error message is the one users see (exit code 1).
 func TestOCIAuthGlobalFlagValidation(t *testing.T) {
-	// read-configuration looks for the container; this engine has none.
 	startFakeEngine(t, nil)
 	tests := []struct {
 		name string
 		args []string
-		want string // "" means the flags are accepted
+		want string
 	}{
 		{
 			name: "allow list requires hardening",
@@ -93,9 +88,6 @@ func TestOCIAuthGlobalFlagValidation(t *testing.T) {
 	}
 }
 
-// TestExecAcceptsGlobalOCIAuthFlags guards the `exec` path: it parses its own
-// flags (DisableFlagParsing), so it must both accept the global flags and apply
-// the same validation, without swallowing the command that follows them.
 func TestExecAcceptsGlobalOCIAuthFlags(t *testing.T) {
 	flags, cmd := splitExecArgs([]string{
 		"--oci-auth-hardening",
@@ -111,7 +103,6 @@ func TestExecAcceptsGlobalOCIAuthFlags(t *testing.T) {
 		t.Errorf("command = %v, want [echo hello]", cmd)
 	}
 
-	// The check runs for exec too, even though the root hook is skipped there.
 	root := NewRootCommand()
 	root.SetArgs([]string{"exec", "--allow-cross-origin-auth-host", "registry.example=auth.example", "echo", "hi"})
 	var out bytes.Buffer
@@ -123,11 +114,7 @@ func TestExecAcceptsGlobalOCIAuthFlags(t *testing.T) {
 	}
 }
 
-// TestReadConfigurationEmitsOCIAuthDiagnostics pins the new output field: the
-// reference CLI emits ociAuthDiagnostics on every read-configuration, even when
-// no registry was contacted.
 func TestReadConfigurationEmitsOCIAuthDiagnostics(t *testing.T) {
-	// read-configuration looks for the container; this engine has none.
 	startFakeEngine(t, nil)
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, ".devcontainer"), 0o755); err != nil {
@@ -160,8 +147,6 @@ func TestReadConfigurationEmitsOCIAuthDiagnostics(t *testing.T) {
 	}
 }
 
-// TestOCIAuthPolicyFlowsFromCommandContext guards the plumbing: the policy built
-// from the global flags must reach the OCI clients a command creates.
 func TestOCIAuthPolicyFlowsFromCommandContext(t *testing.T) {
 	probe := &cobra.Command{
 		Use: "probe",
@@ -181,7 +166,6 @@ func TestOCIAuthPolicyFlowsFromCommandContext(t *testing.T) {
 		t.Fatalf("probe: %v", err)
 	}
 
-	// Without the flag the default policy applies (hardening off).
 	plain := NewRootCommand()
 	plain.AddCommand(&cobra.Command{
 		Use: "probe",
@@ -200,9 +184,6 @@ func TestOCIAuthPolicyFlowsFromCommandContext(t *testing.T) {
 	}
 }
 
-// TestOCIAuthGlobalArgsForwarding pins the re-invocation path: `features test`
-// spawns this binary for each test project's `up`, so the global auth flags must
-// be rendered back into arguments (upstream passes them in-process instead).
 func TestOCIAuthGlobalArgsForwarding(t *testing.T) {
 	tests := []struct {
 		name string

@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// A character device, as a terminal is, counts as a terminal writer; a regular
-// file does not.
 func TestIsTerminalWriterChecksTheFileMode(t *testing.T) {
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {

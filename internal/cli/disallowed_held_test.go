@@ -13,8 +13,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// The workspace's container is stopped, with no grace period, only when it is
-// found and running; the result says whether it was stopped.
 func TestStopRunningContainer(t *testing.T) {
 	running := container.InspectResponse{State: &container.State{Running: true}}
 	exited := container.InspectResponse{State: &container.State{Running: false}}
@@ -46,8 +44,6 @@ func TestStopRunningContainer(t *testing.T) {
 	}
 }
 
-// Without Features there is nothing to check, and the control manifest is
-// neither fetched nor cached.
 func TestEnforceDisallowedFeaturesWithoutFeaturesFetchesNothing(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	for name, cfg := range map[string]*config.DevContainer{"no config": nil, "no features": {Features: map[string]any{}}} {

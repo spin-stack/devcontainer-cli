@@ -15,16 +15,9 @@ var (
 	parityWorkspaceFlag  = regexp.MustCompile(`--workspace-folder\s+(src/test/configs/[^\s"';]+)`)
 	parityConfigFlag     = regexp.MustCompile(`--config\s+(src/test/configs/[^\s"';]+)`)
 	nonEmptyFeaturesJSON = regexp.MustCompile(`"features"\s*:\s*\{\s*"`)
-	// setupWritesFeatures matches a setup_cmd that writes a configuration with
-	// Features itself, its quotes possibly escaped for the shell.
-	setupWritesFeatures = regexp.MustCompile(`\\?"features\\?"\s*:\s*\{\s*\\?"`)
+	setupWritesFeatures  = regexp.MustCompile(`\\?"features\\?"\s*:\s*\{\s*\\?"`)
 )
 
-// A case that builds Features without BuildKit, from a fixture or from a
-// configuration its setup_cmd writes, goes through the shared
-// dev_container_feature_content_temp image, so it must hold the
-// feature-content-image lock; a case that does not, must not, so the lock
-// serializes no more than it has to.
 func TestParityMatrixLocksTheFeatureContentImage(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "parity", "parity-matrix.yaml"))
 	if err != nil {
@@ -61,8 +54,6 @@ func TestParityMatrixLocksTheFeatureContentImage(t *testing.T) {
 	}
 }
 
-// parityCaseConfigs is every devcontainer.json the commands name, by
-// --config or as a --workspace-folder's.
 func parityCaseConfigs(t *testing.T, cmds string) []string {
 	var configs []string
 	for _, m := range parityConfigFlag.FindAllStringSubmatch(cmds, -1) {

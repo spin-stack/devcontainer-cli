@@ -7,7 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// tsSubstitutionContext is a TS SubstitutionContext as the golden writes it.
 type tsSubstitutionContext struct {
 	Platform                 string            `json:"platform"`
 	ConfigFile               string            `json:"configFile"`
@@ -16,10 +15,6 @@ type tsSubstitutionContext struct {
 	Env                      map[string]string `json:"env"`
 }
 
-// TestTSOracleVariableSubstitution asserts varsub.go against the reference
-// functions' results (go tool task testdata:ts-oracle). A divergence in
-// ${devcontainerId} would break every use of it in up/build/exec, and the
-// parity matrix cannot see it: each side runs with its own --id-labels.
 func TestTSOracleVariableSubstitution(t *testing.T) {
 	resolve := func(ctx SubstitutionContext, phase SubstitutionPhase, value any) (any, error) {
 		got, err := NewVariableResolver().Resolve(ctx, phase, value)

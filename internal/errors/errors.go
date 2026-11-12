@@ -1,4 +1,3 @@
-// Package errors defines the CLI's structured error types and JSON error envelope.
 package errors
 
 import (
@@ -6,17 +5,13 @@ import (
 	"fmt"
 )
 
-// ContainerError is the primary error type for the devcontainer CLI.
-// It carries structured metadata that is serialized into the JSON output envelope.
 type ContainerError struct {
 	Description         string
 	OriginalError       error
 	ContainerID         string
 	DisallowedFeatureID string
-	// DidStopContainer is set only by the disallowed-Feature check, which TS
-	// reports as a boolean either way; nil leaves it out of the output.
-	DidStopContainer *bool
-	LearnMoreURL     string
+	DidStopContainer    *bool
+	LearnMoreURL        string
 }
 
 func (e *ContainerError) Error() string {
@@ -30,16 +25,11 @@ func (e *ContainerError) Unwrap() error {
 	return e.OriginalError
 }
 
-// ReferenceError is an error whose message is the reference CLI's own, the
-// message of a plain JavaScript error it throws (a lockfile JSON.parse or fs
-// error, say). up and build report it as TS reports such an error: its
-// message under the command's generic description.
 type ReferenceError interface {
 	error
 	ReferenceError()
 }
 
-// ExitCodeError wraps an error with a specific exit code for the process.
 type ExitCodeError struct {
 	Code int
 	Err  error
@@ -66,7 +56,6 @@ type ErrorOutput struct {
 	LearnMoreURL        string `json:"learnMoreUrl,omitempty"`
 }
 
-// ToErrorOutput converts any error into the standard CLI error JSON envelope.
 func ToErrorOutput(err error) ErrorOutput {
 	ce, ok := AsContainerError(err)
 	if !ok {
@@ -77,7 +66,6 @@ func ToErrorOutput(err error) ErrorOutput {
 		}
 	}
 
-	// TS ContainerError's message is its original error's, else its description.
 	message := ce.Description
 	if ce.OriginalError != nil {
 		message = ce.OriginalError.Error()
@@ -94,9 +82,6 @@ func ToErrorOutput(err error) ErrorOutput {
 	return out
 }
 
-// AsContainerError extracts a *ContainerError from an error chain. It is a thin
-// wrapper over errors.As, so it also traverses errors that implement
-// As(any) bool or the multi-error Unwrap() []error (e.g. errors.Join).
 func AsContainerError(err error) (*ContainerError, bool) {
 	var ce *ContainerError
 	ok := errors.As(err, &ce)

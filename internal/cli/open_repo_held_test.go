@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// openWorkspace writes a workspace whose devcontainer.json names an image, and
-// returns its folder and config path.
 func openWorkspace(t *testing.T) (string, string) {
 	t.Helper()
 	ws := t.TempDir()
@@ -25,7 +23,6 @@ func openWorkspace(t *testing.T) (string, string) {
 	return ws, cfg
 }
 
-// wantOpenURI is the folder URI open builds for ws and its config.
 func wantOpenURI(t *testing.T, ws, cfg string) string {
 	t.Helper()
 	uri, err := devcontainerFolderURI(ws, cfg, "/workspaces/"+filepath.Base(ws))
@@ -47,8 +44,6 @@ func runOpenCmd(t *testing.T, args ...string) (string, string, error) {
 	return out.String(), errOut.String(), err
 }
 
-// open [path] --dry-run prints the folder URI of the workspace the argument
-// names, and on stderr the editor command that would open it.
 func TestOpenDryRunOpensThePositionalWorkspace(t *testing.T) {
 	ws, cfg := openWorkspace(t)
 	t.Chdir(t.TempDir())
@@ -65,7 +60,6 @@ func TestOpenDryRunOpensThePositionalWorkspace(t *testing.T) {
 	}
 }
 
-// --workspace-folder wins over the positional path.
 func TestOpenWorkspaceFlagWinsOverThePositionalPath(t *testing.T) {
 	ws, cfg := openWorkspace(t)
 	stdout, _, err := runOpenCmd(t, t.TempDir(), "--workspace-folder", ws, "--dry-run")
@@ -77,8 +71,6 @@ func TestOpenWorkspaceFlagWinsOverThePositionalPath(t *testing.T) {
 	}
 }
 
-// Without a path open opens the current directory, through the editor
-// --editor names.
 func TestOpenDefaultsToTheCurrentDirectory(t *testing.T) {
 	ws, cfg := openWorkspace(t)
 	t.Chdir(ws)
@@ -95,7 +87,6 @@ func TestOpenDefaultsToTheCurrentDirectory(t *testing.T) {
 	}
 }
 
-// An empty editor falls back to code.
 func TestOpenEmptyEditorIsCode(t *testing.T) {
 	ws, cfg := openWorkspace(t)
 	var out captureOutput
@@ -107,7 +98,6 @@ func TestOpenEmptyEditorIsCode(t *testing.T) {
 	}
 }
 
-// --config names the devcontainer.json the URI carries.
 func TestOpenConfigFlagNamesTheConfigFile(t *testing.T) {
 	ws, _ := openWorkspace(t)
 	other := filepath.Join(ws, "other.json")
@@ -123,7 +113,6 @@ func TestOpenConfigFlagNamesTheConfigFile(t *testing.T) {
 	}
 }
 
-// A workspace without a devcontainer.json fails before any editor runs.
 func TestOpenWithoutAConfigFails(t *testing.T) {
 	stdout, _, err := runOpenCmd(t, t.TempDir(), "--dry-run")
 	if err == nil {
@@ -134,8 +123,6 @@ func TestOpenWithoutAConfigFails(t *testing.T) {
 	}
 }
 
-// writeEditor writes an editor launcher that prints its arguments on stdout, a
-// line on stderr, and exits with code.
 func writeEditor(t *testing.T, code int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "editor")
@@ -146,8 +133,6 @@ func writeEditor(t *testing.T, code int) string {
 	return path
 }
 
-// Without --dry-run open runs the editor with the folder URI, passing its
-// output through.
 func TestOpenRunsTheEditor(t *testing.T) {
 	ws, cfg := openWorkspace(t)
 	editor := writeEditor(t, 0)
@@ -163,7 +148,6 @@ func TestOpenRunsTheEditor(t *testing.T) {
 	}
 }
 
-// An editor that fails fails open.
 func TestOpenFailsWhenTheEditorFails(t *testing.T) {
 	ws, _ := openWorkspace(t)
 	editor := writeEditor(t, 3)

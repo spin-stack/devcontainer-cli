@@ -21,8 +21,6 @@ func parseSample(t *testing.T) ([]PkgCov, PkgCov) {
 	return pkgs, total
 }
 
-// TestParseProfile checks statement-weighted aggregation (covered iff count>0),
-// matching the former pkgcov.awk.
 func TestParseProfile(t *testing.T) {
 	pkgs, total := parseSample(t)
 	want := []PkgCov{
@@ -48,7 +46,6 @@ func TestParseProfile(t *testing.T) {
 	}
 }
 
-// TestRenderReport is a golden check against coverage-report.sh output.
 func TestRenderReport(t *testing.T) {
 	pkgs, total := parseSample(t)
 	want := "### Coverage — sample (total 78.6%)\n\n" +
@@ -68,7 +65,6 @@ func TestRenderReportNoData(t *testing.T) {
 	}
 }
 
-// TestCoverageGate mirrors coverage-gate.sh: pass/fail lines and exit signal.
 func TestCoverageGate(t *testing.T) {
 	pkgs, total := parseSample(t)
 
@@ -118,8 +114,6 @@ func TestParseFloorsInvalid(t *testing.T) {
 	}
 }
 
-// TestPctOfAnEmptyPackage holds the guard a package without statements needs: its
-// coverage is 0, not the NaN of 0/0 that the report and the gate would print.
 func TestPctOfAnEmptyPackage(t *testing.T) {
 	if got := (PkgCov{Pkg: "p"}).Pct(); got != 0 {
 		t.Errorf("Pct of 0 statements = %v, want 0", got)

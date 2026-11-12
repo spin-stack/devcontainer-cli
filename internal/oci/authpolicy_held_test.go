@@ -17,10 +17,6 @@ func untrustedChallenge(w http.ResponseWriter, _ *http.Request) {
 
 const blockedLine = "[httpOci] OCI auth diagnostics: Authentication lookup from registry"
 
-// TS recordOCIAuthDiagnostic (httpOCIRegistry.ts) writes
-// `[httpOci] OCI auth diagnostics: <message>` to the command's output; Go
-// writes it to the logger the policy was built with, or the one SetLogger
-// handed it later, and a nil logger silences it.
 func TestAuthPolicyLogsDiagnosticsToItsLogger(t *testing.T) {
 	t.Run("the logger the policy was built with", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -56,9 +52,9 @@ func TestAuthPolicyLogsDiagnosticsToItsLogger(t *testing.T) {
 			t.Fatal(err)
 		}
 		policy.SetLogger(log.New(log.Options{Writer: &second, Level: log.LevelInfo}))
-		policy.SetLogger(nil) // keeps the logger it had
+		policy.SetLogger(nil)
 		var none *AuthPolicy
-		none.SetLogger(log.Null) // a nil policy ignores it
+		none.SetLogger(log.Null)
 		if _, err := roundTrip(t, policy, "http", "", untrustedChallenge, "/v2/x/manifests/1"); err != nil {
 			t.Fatal(err)
 		}
@@ -68,9 +64,6 @@ func TestAuthPolicyLogsDiagnosticsToItsLogger(t *testing.T) {
 	})
 }
 
-// TS isOCIRegistryOrigin compares URL.origin, which keeps a non-default port,
-// and treats the Docker Hub authorities as one origin only when both URLs are
-// HTTPS and both hosts are Docker Hub's.
 func TestIsRegistryOriginConditions(t *testing.T) {
 	for _, tt := range []struct {
 		u, registry string
@@ -90,9 +83,6 @@ func TestIsRegistryOriginConditions(t *testing.T) {
 	}
 }
 
-// TS normalizeHttpsAuthority lower-cases a bare host[:port] and rejects
-// anything else with "Invalid authority '<authority>'."; an empty authority
-// has no host.
 func TestNormalizeHTTPSAuthority(t *testing.T) {
 	if got, err := normalizeHTTPSAuthority("Reg.Example:5000"); err != nil || got != "reg.example:5000" {
 		t.Errorf("normalizeHTTPSAuthority(Reg.Example:5000) = %q, %v", got, err)
@@ -104,10 +94,6 @@ func TestNormalizeHTTPSAuthority(t *testing.T) {
 	}
 }
 
-// Only token requests are held to the no-redirect rule (TS
-// requestResolvingRedirects guards the token fetch alone): a blob on the
-// registry that redirects to storage, on the host of a known token endpoint,
-// passes under hardening.
 func TestRegistryRedirectBesideTokenEndpointPasses(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://storage.example/blob", http.StatusTemporaryRedirect)
@@ -130,9 +116,6 @@ func TestRegistryRedirectBesideTokenEndpointPasses(t *testing.T) {
 	}
 }
 
-// TS records authServerRedirect when follow-redirects followed the token
-// request, which it does for a 3xx carrying a Location: 300 counts, a 201 or
-// a 400 with a Location header does not.
 func TestTokenRedirectStatusRange(t *testing.T) {
 	for _, tt := range []struct {
 		status int
@@ -165,8 +148,6 @@ func TestTokenRedirectStatusRange(t *testing.T) {
 	}
 }
 
-// TS requestEnsureAuthenticated reads the challenge of a 403 (insufficient
-// scope) as it does a 401's.
 func TestForbiddenChallengeIsInspected(t *testing.T) {
 	policy, err := NewAuthPolicy(false, nil, log.Null)
 	if err != nil {

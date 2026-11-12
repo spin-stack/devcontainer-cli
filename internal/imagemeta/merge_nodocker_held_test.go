@@ -6,11 +6,6 @@ import (
 	"testing"
 )
 
-// TestMergeConfigurationScalarsTakeTheLastEntryThatSetsThem holds every scalar
-// of TS mergeConfiguration (reference/src/spec-node/imageMetadata.ts) that is
-// `reversed.find(entry => entry.<property>)`: the last entry setting it wins and
-// an earlier entry never overrides it, and overrideCommand/updateRemoteUserUID
-// (found by `typeof === 'boolean'`) keep a later false over an earlier true.
 func TestMergeConfigurationScalarsTakeTheLastEntryThatSetsThem(t *testing.T) {
 	m := MergeConfiguration(mustEntries(t, `[
 		{"remoteUser": "u0", "containerUser": "c0", "userEnvProbe": "none", "waitFor": "onCreateCommand",
@@ -43,12 +38,6 @@ func TestMergeConfigurationScalarsTakeTheLastEntryThatSetsThem(t *testing.T) {
 	}
 }
 
-// TestMergeConfigurationHostRequirementsAsTSSerializesThem compares the merged
-// hostRequirements, serialized, with what TS mergeHostRequirements and
-// mergeGpuRequirements (reference/src/spec-node/imageMetadata.ts) produce for
-// the same metadata through JSON.stringify: cpus is always present (0 when no
-// entry sets it), memory/storage are the decimal byte count of the largest
-// value or absent when 0, and gpu follows mergeGpuRequirements.
 func TestMergeConfigurationHostRequirementsAsTSSerializesThem(t *testing.T) {
 	tests := []struct {
 		name, entries, want string
@@ -77,9 +66,6 @@ func TestMergeConfigurationHostRequirementsAsTSSerializesThem(t *testing.T) {
 	}
 }
 
-// TestMergeConfigurationLeavesMountsUnsetWithoutMounts: TS mergeMounts and
-// mergeForwardPorts (reference/src/spec-node/imageMetadata.ts) yield undefined
-// when no entry has mounts or forwardPorts, and a single mount is kept as is.
 func TestMergeConfigurationLeavesMountsUnsetWithoutMounts(t *testing.T) {
 	none := MergeConfiguration([]Entry{{RemoteUser: "x"}})
 	if none.Mounts != nil {

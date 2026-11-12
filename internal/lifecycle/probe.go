@@ -10,7 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// UserEnvProbeStrategy defines how to probe the container's user environment.
 type UserEnvProbeStrategy string
 
 const (
@@ -20,22 +19,15 @@ const (
 	ProbeLoginShell            UserEnvProbeStrategy = "loginShell"
 )
 
-// shellExec is the minimal shell-execution seam ProbeRemoteEnv needs: run a
-// command in the container and return its stdout, exit code, and error.
-// *ShellServer satisfies it; tests inject a fake to exercise the probe
-// hermetically (no Docker).
 type shellExec interface {
 	Exec(cmd string) (string, int, error)
 }
 
-// ProbeRemoteEnv runs a shell command in the container to capture environment variables.
-// If sessionDataFolder is provided, results are cached in a JSON file inside the container.
 func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvProbeStrategy, remoteUser, sessionDataFolder string) (map[string]string, error) {
 	if strategy == ProbeNone || strategy == "" {
 		return map[string]string{}, nil
 	}
 
-	// Try cache first
 	cacheDir := sessionDataFolder
 	if cacheDir != "" {
 		if cached := readEnvCache(shellServer, strategy, cacheDir); cached != nil {
@@ -44,10 +36,6 @@ func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvPr
 		}
 	}
 
-	// Use the user's actual login shell (from /etc/passwd) instead of a
-	// hardcoded "bash" — on alpine/minimal images bash is absent, and the user
-	// may use zsh/fish. Falls back to /bin/sh. Matches the TS CLI, which probes
-	// with containerProperties.shell.
 	shell := getUserShell(shellServer)
 
 	var probeCmd string
@@ -62,10 +50,6 @@ func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvPr
 		probeCmd = "env"
 	}
 
-	// Wrap with `timeout 10` so a shell startup script that waits on stdin does
-	// not hang `up` forever (the TS CLI enforces a 10s userEnvProbe timeout). If
-	// the shell/timeout fails (exit != 0, incl. 124 on timeout), fall back to
-	// plain env.
 	logger.Write(fmt.Sprintf("Probing remote env with strategy %q (shell %s)...", strategy, shell), log.LevelTrace)
 
 	stdout, exitCode, err := shellServer.Exec("timeout 10 " + probeCmd)
@@ -85,14 +69,8 @@ func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvPr
 	}
 
 	result := parseEnvOutput(stdout)
-	// The probed PWD is the shell's working dir, not meaningful for the merged
-	// remote env — drop it, matching the TS CLI.
 	delete(result, "PWD")
 
-	// Merge the probed PATH with the container's base PATH so entries the login
-	// shell dropped (or that only exist in the image env) are preserved — like
-	// the TS CLI mergePaths. The container base PATH is the shell server's own
-	// $PATH (docker exec inherits the image env).
 	if shellPath := result["PATH"]; shellPath != "" {
 		if basePath, _, berr := shellServer.Exec(`printf %s "$PATH"`); berr == nil && strings.TrimSpace(basePath) != "" {
 			isRoot := remoteUser == "" || remoteUser == "root" || remoteUser == "0"
@@ -100,7 +78,6 @@ func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvPr
 		}
 	}
 
-	// Cache if session folder provided
 	if cacheDir != "" && len(result) > 0 {
 		writeEnvCache(shellServer, result, strategy, cacheDir)
 	}
@@ -108,9 +85,6 @@ func ProbeRemoteEnv(logger log.Logger, shellServer shellExec, strategy UserEnvPr
 	return result, nil
 }
 
-// mergePaths merges the container's base PATH into the shell-probed PATH,
-// inserting any missing base entries in their relative order and skipping /sbin
-// directories for non-root users — matching the TS CLI mergePaths.
 func mergePaths(shellPath, containerPath string, rootUser bool) string {
 	result := strings.Split(shellPath, ":")
 	insertAt := 0
@@ -125,14 +99,10 @@ func mergePaths(shellPath, containerPath string, rootUser bool) string {
 	return strings.Join(result, ":")
 }
 
-// isSbinPath reports whether a PATH entry is (or is under) an sbin directory.
 func isSbinPath(entry string) bool {
 	return strings.HasSuffix(entry, "/sbin") || strings.Contains(entry, "/sbin/")
 }
 
-// getUserShell returns the current user's login shell from /etc/passwd, or
-// /bin/sh as a fallback. The shell server already runs as the remoteUser
-// (docker exec -u), so no `su` is needed.
 func getUserShell(s shellExec) string {
 	out, code, err := s.Exec(`getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7`)
 	if err == nil && code == 0 {
@@ -166,8 +136,6 @@ func writeEnvCache(s shellExec, env map[string]string, strategy UserEnvProbeStra
 	_, _, _ = s.Exec(cmd)
 }
 
-// parseEnvOutput parses `env` command output into a map.
-// Handles multi-line values (value continues if next line doesn't contain '=').
 func parseEnvOutput(output string) map[string]string {
 	env := make(map[string]string)
 	lines := strings.Split(output, "\n")
@@ -179,21 +147,17 @@ func parseEnvOutput(output string) map[string]string {
 			continue
 		}
 
-		// Check if this line starts a new KEY=VALUE
 		eqIdx := strings.IndexByte(line, '=')
 		if eqIdx > 0 && !strings.ContainsAny(line[:eqIdx], " \t") {
-			// Save previous entry
 			if currentKey != "" {
 				env[currentKey] = currentValue
 			}
 			currentKey = line[:eqIdx]
 			currentValue = line[eqIdx+1:]
 		} else if currentKey != "" {
-			// Continuation of multi-line value
 			currentValue += "\n" + line
 		}
 	}
-	// Save last entry
 	if currentKey != "" {
 		env[currentKey] = currentValue
 	}
@@ -201,10 +165,6 @@ func parseEnvOutput(output string) map[string]string {
 	return env
 }
 
-// ProbedRemoteEnv probes the remote user's environment in the container with a
-// shell of its own, as the up, set-up, run-user-commands and exec commands do
-// before running anything there. A probe that fails or is disabled yields an
-// empty environment.
 func ProbedRemoteEnv(ctx context.Context, exec ContainerExecutor, logger log.Logger, containerID, remoteUser string, strategy UserEnvProbeStrategy, sessionDataFolder string) map[string]string {
 	if strategy == ProbeNone {
 		return map[string]string{}

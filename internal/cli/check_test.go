@@ -60,9 +60,6 @@ func TestWriteSetupActions(t *testing.T) {
 	}
 }
 
-// TestWarnUncheckedHostSilentOnNonTerminal proves the up/build hint never writes
-// to a captured (non-TTY) stderr — the invariant that keeps it out of the parity
-// harness / scripted output.
 func TestWarnUncheckedHostSilentOnNonTerminal(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	out := &bufOutput{stdout: &stdout, stderr: &stderr}
@@ -78,7 +75,6 @@ func TestIsTerminalWriterFalseForBuffer(t *testing.T) {
 	}
 }
 
-// bufOutput adapts two buffers to the Output seam.
 type bufOutput struct{ stdout, stderr *bytes.Buffer }
 
 func (b *bufOutput) Stdout() io.Writer { return b.stdout }

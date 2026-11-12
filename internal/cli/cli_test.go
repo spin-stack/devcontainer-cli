@@ -28,7 +28,6 @@ func TestRootCommand(t *testing.T) {
 		check func(t *testing.T, out string)
 	}{
 		{"version is bare", []string{"--version"}, func(t *testing.T, out string) {
-			// Bare version output (like the TS CLI), no "<name> version" prefix.
 			got := strings.TrimSpace(out)
 			if got == "" || strings.Contains(got, " ") {
 				t.Errorf("expected bare version output, got %q", out)
@@ -95,7 +94,6 @@ func TestReadConfigurationFixtures(t *testing.T) {
 }
 
 func TestReadConfiguration_AllFixtures(t *testing.T) {
-	// read-configuration looks for the container; this engine has none.
 	startFakeEngine(t, nil)
 	fixturesDir := filepath.Join("..", "..", "src", "test", "configs")
 	if _, err := os.Stat(fixturesDir); os.IsNotExist(err) {
@@ -111,7 +109,6 @@ func TestReadConfiguration_AllFixtures(t *testing.T) {
 		}
 		dir := filepath.Join(fixturesDir, entry.Name())
 
-		// Check if fixture has a devcontainer.json
 		hasConfig := false
 		for _, candidate := range []string{
 			filepath.Join(dir, ".devcontainer", "devcontainer.json"),
@@ -127,8 +124,6 @@ func TestReadConfiguration_AllFixtures(t *testing.T) {
 			continue
 		}
 
-		// Capture stdout via the cli.Output seam (cmd.SetOut) instead of swapping
-		// the global os.Stdout, which is racy across parallel tests.
 		var buf bytes.Buffer
 		root := NewRootCommand()
 		root.SetOut(&buf)

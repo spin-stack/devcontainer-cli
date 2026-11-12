@@ -17,13 +17,11 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// imageRegistry is a read-only httptest registry serving manifests (by tag or
-// digest) and blobs, recording the host and path of every request.
 type imageRegistry struct {
 	mu        sync.Mutex
-	manifests map[string]servedManifest // "<repo>/<reference>"
-	blobs     map[string][]byte         // "<repo>/<digest>"
-	requests  []string                  // "<host><path>"
+	manifests map[string]servedManifest
+	blobs     map[string][]byte
+	requests  []string
 }
 
 type servedManifest struct {
@@ -70,8 +68,6 @@ func (r *imageRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	http.NotFound(w, req)
 }
 
-// addImage stores a config blob and an image manifest for it, returning the
-// manifest descriptor. tag may be empty (manifest reachable by digest only).
 func (r *imageRegistry) addImage(t *testing.T, repo, tag, manifestType string, cfg ImageConfig) ocispec.Descriptor {
 	t.Helper()
 	blob, err := json.Marshal(map[string]any{"architecture": "amd64", "os": "linux", "config": cfg})
@@ -182,8 +178,6 @@ func TestInspectImageInRegistryMissingManifest(t *testing.T) {
 	}
 }
 
-// hostRewriter sends every request to the test server, keeping the original
-// host in the Host header so the registry sees which host was addressed.
 type hostRewriter struct{ target *url.URL }
 
 func (h hostRewriter) RoundTrip(req *http.Request) (*http.Response, error) {

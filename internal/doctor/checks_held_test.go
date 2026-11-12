@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// respond answers every docker invocation with the same outcome.
 func respond(stdout, stderr string, code int, err error) *scriptRunner {
 	return &scriptRunner{fn: func([]string) ([]byte, []byte, int, error) {
 		return []byte(stdout), []byte(stderr), code, err

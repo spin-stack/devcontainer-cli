@@ -8,13 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestWorkflowsDeclarePermissions pins least privilege for GITHUB_TOKEN: every
-// workflow must set `permissions`, either at the top level (covering all of its
-// jobs) or on each job. Without it the token inherits the repository default,
-// which CodeQL reports as "Workflow does not contain permissions" — six jobs of
-// go-cli.yml were flagged that way.
-//
-// A Go test cannot exercise CI, so this asserts the workflow files themselves.
 func TestWorkflowsDeclarePermissions(t *testing.T) {
 	dir := filepath.Join("..", "..", ".github", "workflows")
 	entries, err := os.ReadDir(dir)
@@ -26,9 +19,7 @@ func TestWorkflowsDeclarePermissions(t *testing.T) {
 		Permissions yaml.Node `yaml:"permissions"`
 		Jobs        map[string]struct {
 			Permissions yaml.Node `yaml:"permissions"`
-			// A job that only calls a reusable workflow declares `uses`; its
-			// permissions belong to the called workflow.
-			Uses string `yaml:"uses"`
+			Uses        string    `yaml:"uses"`
 		} `yaml:"jobs"`
 	}
 
@@ -48,7 +39,7 @@ func TestWorkflowsDeclarePermissions(t *testing.T) {
 			t.Fatalf("parse %s: %v", name, err)
 		}
 		if !wf.Permissions.IsZero() {
-			continue // a top-level block covers every job
+			continue
 		}
 		if len(wf.Jobs) == 0 {
 			t.Errorf("%s: no jobs found (parse problem?)", name)
@@ -65,8 +56,6 @@ func TestWorkflowsDeclarePermissions(t *testing.T) {
 	}
 }
 
-// TestGoCLIWorkflowIsReadOnlyByDefault pins the specific grant: the CI workflow's
-// default is read-only, so a job added later cannot silently inherit write access.
 func TestGoCLIWorkflowIsReadOnlyByDefault(t *testing.T) {
 	path := filepath.Join("..", "..", ".github", "workflows", "go-cli.yml")
 	data, err := os.ReadFile(path)

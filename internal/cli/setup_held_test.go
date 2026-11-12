@@ -17,7 +17,6 @@ import (
 	"github.com/moby/moby/api/types/container"
 )
 
-// runSetUpCmd runs `set-up` with args and returns its stdout, stderr and error.
 func runSetUpCmd(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	cmd := newSetUpCmd()
@@ -32,8 +31,6 @@ func runSetUpCmd(t *testing.T, args ...string) (string, string, error) {
 }
 
 func TestSetUpRejectsInvalidFlagsBeforeLookingForTheContainer(t *testing.T) {
-	// No engine is reachable: a flag that passed validation would end in
-	// "Dev container not found." on stdout instead.
 	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:1")
 	for _, tc := range []struct {
 		name string
@@ -99,9 +96,6 @@ func TestSetUpReportsAnUnusableDockerHost(t *testing.T) {
 	}
 }
 
-// TS doSetUp reads --config with no workspace: a file that does not exist is
-// "Dev container config (...) not found.", one that does not load is an error,
-// and only a config's own workspaceFolder gives ${containerWorkspaceFolder}.
 func TestSetUpConfigLoadsTheGivenConfigWithoutAWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "devcontainer.json")
@@ -152,8 +146,6 @@ func TestSetUpConfigLoadsTheGivenConfigWithoutAWorkspace(t *testing.T) {
 	}
 }
 
-// set-up reads --config before it looks for the container, as TS doSetUp
-// does, so a missing config is reported even when the container is missing.
 func TestSetUpReportsAMissingConfigBeforeTheContainer(t *testing.T) {
 	startFakeEngine(t, map[string]map[string]string{})
 	missing := filepath.Join(t.TempDir(), "nope.json")
@@ -192,7 +184,6 @@ func TestSetUpMergedPutsTheConfigOverTheContainerMetadata(t *testing.T) {
 	}
 }
 
-// setUpResultJSON is setUpResult's result as set-up prints it.
 func setUpResultJSON(t *testing.T, loaded *config.LoadResult, entries []imagemeta.Entry, env []string, includeConfig, includeMerged bool) map[string]any {
 	t.Helper()
 	result, err := setUpResult(loaded, entries, &container.Config{Env: env}, includeConfig, includeMerged)
@@ -212,8 +203,6 @@ func setUpResultJSON(t *testing.T, loaded *config.LoadResult, entries []imagemet
 
 func strPtr(s string) *string { return &s }
 
-// loadedConfig is the LoadResult of a config with the given raw properties,
-// read from configFile.
 func loadedConfig(t *testing.T, configFile string, raw map[string]any) *config.LoadResult {
 	t.Helper()
 	var cfg config.DevContainer
@@ -230,10 +219,8 @@ func loadedConfig(t *testing.T, configFile string, raw map[string]any) *config.L
 
 func TestSetUpResultReportsTheConfigurationAsTSDoes(t *testing.T) {
 	loaded := loadedConfig(t, "/ws/.devcontainer/devcontainer.json", map[string]any{
-		"image":     "alpine:3",
-		"remoteEnv": map[string]any{"FROM_CONTAINER": "${containerEnv:FOO}"},
-		// Properties the typed config has no field for, or leaves behind,
-		// are reported as written, as TS reports its configuration.
+		"image":      "alpine:3",
+		"remoteEnv":  map[string]any{"FROM_CONTAINER": "${containerEnv:FOO}"},
 		"foo":        map[string]any{"b": 1.0},
 		"extensions": "",
 	})
@@ -275,8 +262,6 @@ func TestSetUpResultLeavesOutWhatWasNotAskedFor(t *testing.T) {
 	}
 }
 
-// TS substitutes no URI (substitute0), so configFilePath is the file's path
-// as it is, whatever ${containerEnv:...} it reads like.
 func TestSetUpResultLeavesTheConfigFilePathUnsubstituted(t *testing.T) {
 	file := "/ws/${containerEnv:UNSET}/devcontainer.json"
 	loaded := loadedConfig(t, file, map[string]any{"image": "alpine:3"})
@@ -291,9 +276,6 @@ func TestSetUpResultLeavesTheConfigFilePathUnsubstituted(t *testing.T) {
 	}
 }
 
-// A ${containerEnv} without a name is TS's ContainerError, naming the
-// configuration's file, and TS substitutes the configuration and the merged
-// configuration whether or not they are reported.
 func TestSetUpResultReportsAContainerEnvReferenceWithoutAName(t *testing.T) {
 	loaded := loadedConfig(t, "/ws/devcontainer.json", map[string]any{"remoteEnv": map[string]any{"X": "${containerEnv}"}})
 	want := "'${containerEnv}' in devcontainer.json can not be resolved because no environment variable name is given."

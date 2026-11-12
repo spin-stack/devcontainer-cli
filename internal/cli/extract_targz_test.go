@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// writeTarGz builds a .tar.gz from name->content entries (a name ending in "/" is
-// a directory entry) and returns its path.
 func writeTarGz(t *testing.T, entries [][2]string) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -59,14 +57,11 @@ func TestExtractTarGz_Normal(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "sub", "install.sh")); err != nil {
 		t.Errorf("nested file missing: %v", err)
 	}
-	// extractTarGz removes the archive on success.
 	if _, err := os.Stat(arc); !os.IsNotExist(err) {
 		t.Errorf("archive should have been removed, stat err = %v", err)
 	}
 }
 
-// TestExtractTarGz_ZipSlip proves the path-traversal guard: an entry that would
-// escape the destination directory is rejected and no file is written outside.
 func TestExtractTarGz_ZipSlip(t *testing.T) {
 	arc := writeTarGz(t, [][2]string{
 		{"../escaped.txt", "pwned"},
@@ -81,15 +76,11 @@ func TestExtractTarGz_ZipSlip(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a zip-slip rejection, got nil")
 	}
-	// The escaping file must NOT have been created in the parent.
 	if _, statErr := os.Stat(filepath.Join(parent, "escaped.txt")); statErr == nil {
 		t.Error("zip-slip guard failed: a file was written outside the destination")
 	}
 }
 
-// TestExtractTarGz_SymlinkEscape proves that lexical path checks are not the
-// only boundary: an existing link below the extraction directory must not let
-// a regular archive entry write outside it.
 func TestExtractTarGz_SymlinkEscape(t *testing.T) {
 	arc := writeTarGz(t, [][2]string{
 		{"link/escaped.txt", "pwned"},

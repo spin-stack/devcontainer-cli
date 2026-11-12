@@ -28,15 +28,10 @@ import (
 const childEnv = "HTTPX_TRANSPORT_PROBE"
 
 type probe struct {
-	NextProtos []string `json:"nextProtos"`
-	// TrustsSystemAndExtra is true when RootCAs holds exactly the system roots
-	// (SSL_CERT_FILE) plus the NODE_EXTRA_CA_CERTS bundle.
-	TrustsSystemAndExtra bool `json:"trustsSystemAndExtra"`
+	NextProtos           []string `json:"nextProtos"`
+	TrustsSystemAndExtra bool     `json:"trustsSystemAndExtra"`
 }
 
-// TestMain installs a generated CA as this process's system roots
-// (SSL_CERT_FILE, with an empty SSL_CERT_DIR), so tests that compare against
-// the system pool do not depend on the host's trust store.
 func TestMain(m *testing.M) {
 	if os.Getenv(childEnv) != "" {
 		os.Exit(probeTransport())
@@ -74,7 +69,6 @@ func runWithSystemRoots(m *testing.M, dir string) (int, error) {
 	return m.Run(), nil
 }
 
-// probeTransport is the probe process: it reports what NewTransport trusts.
 func probeTransport() int {
 	tr := NewTransport()
 	var p probe
@@ -141,7 +135,6 @@ func testCA(t *testing.T, name string) string {
 func runProbe(t *testing.T, godebug string) probe {
 	t.Helper()
 	cmd := exec.Command(os.Args[0])
-	// SSL_CERT_FILE and SSL_CERT_DIR come from TestMain through os.Environ.
 	cmd.Env = append(os.Environ(),
 		childEnv+"=1",
 		"GODEBUG="+godebug,
@@ -158,9 +151,6 @@ func runProbe(t *testing.T, godebug string) probe {
 	return p
 }
 
-// An extra CA is added to the system roots, not substituted for them (behind a
-// TLS-intercepting proxy some hosts are still reached directly), and the rest
-// of the default TLS config, HTTP/2 negotiation included, is kept.
 func TestNewTransportKeepsSystemRootsAndHTTP2WithExtraCA(t *testing.T) {
 	extra := testCA(t, "corporate-proxy")
 	t.Setenv("NODE_EXTRA_CA_CERTS", extra)
@@ -185,8 +175,6 @@ func TestNewTransportKeepsSystemRootsAndHTTP2WithExtraCA(t *testing.T) {
 	}
 }
 
-// With HTTP/2 disabled the cloned transport has no TLS config; the extra CA must
-// still be installed on a fresh one.
 func TestNewTransportInstallsExtraCAWithoutATLSConfig(t *testing.T) {
 	p := runProbe(t, "http2client=0")
 	if !p.TrustsSystemAndExtra {

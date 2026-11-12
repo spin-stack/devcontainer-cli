@@ -31,8 +31,6 @@ func TestTSOracleGoldens(t *testing.T) {
 	}
 }
 
-// fakeOracle answers parseVersion with its argument's length and throws for
-// "boom", recording the request it was sent.
 func fakeOracle(sent *[]byte) func([]byte) ([]byte, error) {
 	return func(req []byte) ([]byte, error) {
 		*sent = req
@@ -71,7 +69,6 @@ func TestRefreshTSOracleGoldens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// One request, the files' cases in path order, only fn and args.
 	if want := `{"cases":[{"fn":"len","args":["<&>"]},{"fn":"len","args":["ab"]},{"fn":"boom","args":["x"]}]}`; string(sent) != want {
 		t.Errorf("request = %s, want %s", sent, want)
 	}
@@ -103,7 +100,6 @@ func TestRefreshTSOracleGoldens(t *testing.T) {
 	if s := string(got["internal/b/testdata/ts-oracle/b.json"]); !strings.Contains(s, `"error": "it threw"`) || strings.Contains(s, `"result"`) {
 		t.Errorf("b.json = %s, want the thrown error in place of the stale result", s)
 	}
-	// Refreshing a refreshed golden changes nothing.
 	again, err := RefreshTSOracleGoldens(got, fakeOracle(&sent))
 	if err != nil {
 		t.Fatal(err)
@@ -156,8 +152,6 @@ func TestRefreshTSOracleGoldensRejects(t *testing.T) {
 	}
 }
 
-// With no cases the oracle is still asked with a cases array, which the
-// tools/tsoracle protocol requires, not with null.
 func TestRefreshTSOracleGoldensAsksWithAnEmptyCasesArray(t *testing.T) {
 	var asked string
 	_, err := RefreshTSOracleGoldens(map[string][]byte{"g.json": []byte(`{"cases":[]}`)}, func(request []byte) ([]byte, error) {
@@ -172,8 +166,6 @@ func TestRefreshTSOracleGoldensAsksWithAnEmptyCasesArray(t *testing.T) {
 	}
 }
 
-// refreshTSOracleFiles rewrites only the goldens whose answers changed and
-// names them; with check it writes nothing and fails naming the stale ones.
 func TestRefreshTSOracleFiles(t *testing.T) {
 	root := t.TempDir()
 	write := func(p, content string) {
@@ -218,10 +210,6 @@ func TestRefreshTSOracleFiles(t *testing.T) {
 	}
 }
 
-// The recorded goldens are what the reference's functions return today, run in
-// the node image versions.yaml pins, which task parity:contract hands in as
-// TS_ORACLE_IMAGE. It runs where `task reference` has installed the reference
-// and Docker is reachable (the parity CI job).
 func TestTSOracleGoldensMatchTheReference(t *testing.T) {
 	const root = "../.."
 	image := os.Getenv("TS_ORACLE_IMAGE")

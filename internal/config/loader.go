@@ -1,4 +1,3 @@
-// Package config loads, parses and variable-substitutes devcontainer.json configuration.
 package config
 
 import (
@@ -18,9 +17,6 @@ import (
 	"github.com/devcontainers/cli/internal/pfs"
 )
 
-// NotObjectError is a configuration file that parses to something other than a
-// JSON object (null, an array, a scalar), which TS readDevContainerConfigFile
-// rejects with this message.
 type NotObjectError struct {
 	Path string
 }
@@ -29,8 +25,6 @@ func (e *NotObjectError) Error() string {
 	return fmt.Sprintf("Dev container config (%s) must contain a JSON object literal.", e.Path)
 }
 
-// wrapParseError names the file a parse error came from; a NotObjectError
-// already names it, in TS's words, and is returned as it is.
 func wrapParseError(what, path string, err error) error {
 	if _, ok := errors.AsType[*NotObjectError](err); ok {
 		return err
@@ -38,8 +32,6 @@ func wrapParseError(what, path string, err error) error {
 	return fmt.Errorf("%s %s: %w", what, path, err)
 }
 
-// parseConfigObject parses a devcontainer.json document, which must be a JSON
-// object; path is what a NotObjectError names.
 func parseConfigObject(data []byte, path string) (map[string]any, error) {
 	var v any
 	if err := jsonc.Unmarshal(data, &v); err != nil {
@@ -52,9 +44,6 @@ func parseConfigObject(data []byte, path string) (map[string]any, error) {
 	return m, nil
 }
 
-// NotFoundError is returned when no devcontainer.json can be discovered.
-// It is distinguished from parse/other errors so callers (e.g. read-configuration)
-// can mirror the TS CLI, which exits 1 silently when config is absent.
 type NotFoundError struct {
 	Path string
 }
@@ -63,42 +52,22 @@ func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("Dev container config (%s) not found.", e.Path)
 }
 
-// LoadResult contains a loaded and substituted devcontainer configuration.
 type LoadResult struct {
-	Config *DevContainer
-	// Raw is the configuration after host-side substitution, as a map: it keeps
-	// the properties the typed Config has no field for.
-	Raw map[string]any
-	// RawConfig is the configuration as written - deprecated properties moved
-	// into customizations, nothing substituted - which TS keeps as a config's raw
-	// and writes into the devcontainer.metadata label.
+	Config          *DevContainer
+	Raw             map[string]any
 	RawConfig       map[string]any
 	WorkspaceConfig *WorkspaceConfig
-	// HostSub is the host-side substitution context used for the config; reuse it
-	// so Feature metadata (mounts/containerEnv) resolves ${localEnv:…} the same way.
-	HostSub HostSubContext
-	// KeyOrder is the configuration's top-level properties in the order its
-	// document lists them (the override's after the base's), the order TS
-	// writes them in (jsonc.parse keeps it).
-	KeyOrder []string
+	HostSub         HostSubContext
+	KeyOrder        []string
 }
 
-// WorkspaceConfig describes the workspace mount and folder inside the container.
 type WorkspaceConfig struct {
-	WorkspaceFolder string `json:"workspaceFolder"`
-	WorkspaceMount  string `json:"workspaceMount,omitempty"`
-	// AdditionalMounts holds extra bind mounts the workspace needs beyond the
-	// workspace mount itself — currently the Git worktree common dir, so Git
-	// operations work inside the container for `git worktree add --relative-paths`
-	// checkouts (--mount-git-worktree-common-dir).
+	WorkspaceFolder  string   `json:"workspaceFolder"`
+	WorkspaceMount   string   `json:"workspaceMount,omitempty"`
 	AdditionalMounts []string `json:"-"`
-	// NoWorkspaceMount is set when the configuration's workspaceMount is empty
-	// or null: the container gets no workspace mount (TS spawnDevContainer
-	// passes no --mount for a falsy workspaceMount).
-	NoWorkspaceMount bool `json:"-"`
+	NoWorkspaceMount bool     `json:"-"`
 }
 
-// Workspace describes the local workspace.
 type Workspace struct {
 	IsWorkspaceFile       bool
 	WorkspaceOrFolderPath string
@@ -106,7 +75,6 @@ type Workspace struct {
 	ConfigFolderPath      string
 }
 
-// WorkspaceFromPath creates a Workspace from a local folder path.
 func WorkspaceFromPath(folderPath string) *Workspace {
 	ext := filepath.Ext(folderPath)
 	if ext == ".code-workspace" {
@@ -126,9 +94,6 @@ func WorkspaceFromPath(folderPath string) *Workspace {
 	}
 }
 
-// FindConfigFile discovers the devcontainer.json path using the standard search order:
-// 1. .devcontainer/devcontainer.json
-// 2. .devcontainer.json
 func FindConfigFile(configFolderPath string) string {
 	candidates := []string{
 		filepath.Join(configFolderPath, ".devcontainer", "devcontainer.json"),
@@ -142,37 +107,18 @@ func FindConfigFile(configFolderPath string) string {
 	return ""
 }
 
-// MountOptions controls how the workspace is bind-mounted into the container.
 type MountOptions struct {
-	// MountWorkspaceGitRoot mounts the workspace's Git root rather than the
-	// workspace folder itself (--mount-workspace-git-root, default true).
-	MountWorkspaceGitRoot bool
-	// MountGitWorktreeCommonDir additionally mounts a Git worktree's common dir so
-	// Git works in the container for `git worktree add --relative-paths` checkouts
-	// (--mount-git-worktree-common-dir, default false).
+	MountWorkspaceGitRoot     bool
 	MountGitWorktreeCommonDir bool
 }
 
-// LoadDevContainerConfig loads and parses a devcontainer.json file with the
-// default mount behavior (mount the Git root, no worktree common dir). If
-// configPath is empty, it discovers the config file from workspaceFolder.
 func LoadDevContainerConfig(workspaceFolder, configPath, overrideConfigPath string) (*LoadResult, error) {
 	return LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfigPath, MountOptions{MountWorkspaceGitRoot: true})
 }
 
-// LoadDevContainerConfigWithMounts is LoadDevContainerConfig with explicit mount
-// options, so commands that create the container (up) or report its config
-// (read-configuration) can honor --mount-workspace-git-root /
-// --mount-git-worktree-common-dir.
 func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfigPath string, mounts MountOptions) (*LoadResult, error) {
 	workspace := WorkspaceFromPath(workspaceFolder)
 
-	// Discover config path. As TS does (getDevContainerConfigPathIn, then
-	// getDefaultDevContainerConfigPath), a workspace without a devcontainer.json
-	// names its default path when --override-config is given: that path is the
-	// configFilePath relative paths in the override resolve against. Without a
-	// workspace, only the override names the configuration (configPath =
-	// overrideConfigFile), so nothing is discovered in the current directory.
 	if configPath == "" && (workspaceFolder != "" || overrideConfigPath == "") {
 		configPath = FindConfigFile(workspace.ConfigFolderPath)
 		if configPath == "" && overrideConfigPath != "" {
@@ -184,15 +130,6 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		return nil, &NotFoundError{Path: defaultPath}
 	}
 
-	// Read the base config and (when given) deep-merge the override on top.
-	//
-	// NOTE: deliberate Go divergence. TS replaces the config wholesale with the
-	// override file (readDocument(overrideConfigFile ?? configFile)); Go deep-merges
-	// so an orchestrator can supply a partial override without restating the whole
-	// devcontainer.json. When there is no readable base, the override stands alone
-	// (identical to the TS/replace behavior).
-	// The message names the --config file even when an override is read, as TS's
-	// does (uriToFsPath(configFile)).
 	objectPath := cmp.Or(configPath, overrideConfigPath)
 	var raw map[string]any
 	var keyOrder []string
@@ -211,9 +148,6 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	if overrideConfigPath != "" {
 		overrideData, oerr := os.ReadFile(overrideConfigPath)
 		if errors.Is(oerr, fs.ErrNotExist) {
-			// TS reads the override in place of the configuration
-			// (readDocument(overrideConfigFile ?? configFile)): a missing one is the
-			// configuration not found, named by the configuration's path.
 			return nil, &NotFoundError{Path: objectPath}
 		}
 		if oerr != nil {
@@ -227,12 +161,9 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		keyOrder = append(keyOrder, jsonc.Names(overrideData)...)
 	}
 
-	// TS moves the deprecated properties before anything reads the config, so the
-	// raw config, the substituted one and the typed struct all carry the move.
 	raw = updateFromOldProperties(raw)
 	rawConfig := raw
 
-	// Derive the typed struct from the (possibly merged) raw config.
 	var config DevContainer
 	if err := remarshal(raw, &config); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
@@ -245,11 +176,8 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 
 	_, config.workspaceMountSet = raw["workspaceMount"]
 
-	// Compute workspace config using the caller's mount options.
 	wsConfig := computeWorkspaceConfig(workspace, &config, mounts.MountWorkspaceGitRoot, mounts.MountGitWorktreeCommonDir)
 
-	// Apply host-side variable substitution
-	// Trim trailing slash from paths to avoid double-slash in substitution
 	localWS := strings.TrimRight(workspace.RootFolderPath, "/\\")
 	ctx := HostSubContext{
 		Platform:                 currentPlatform(),
@@ -259,8 +187,6 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		ConfigFilePath:           configFilePath,
 	}
 
-	// A variable that cannot be resolved is TS's ContainerError, reported as
-	// it is (no prefix of Go's own).
 	substituted, err := NewVariableResolver().Resolve(SubstitutionContext{HostSubContext: ctx}, PhaseHost, raw)
 	if err != nil {
 		return nil, err
@@ -269,20 +195,13 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		raw = m
 	}
 
-	// Re-unmarshal substituted values into the config struct
-	// We do this by marshaling the substituted raw and unmarshaling again
-	// This ensures all string fields have variables resolved
 	if err := remarshal(raw, &config); err != nil {
 		return nil, fmt.Errorf("apply substitutions: %w", err)
 	}
 
-	// Update workspace folder from config if specified
 	if config.WorkspaceFolder != "" {
 		wsConfig.WorkspaceFolder = config.WorkspaceFolder
 	}
-	// A workspaceMount the configuration sets replaces the computed one, even
-	// when it is empty or null, which mounts no workspace (TS
-	// readDevContainerConfigFile's `'workspaceMount' in config`).
 	if config.workspaceMountSet {
 		wsConfig.WorkspaceMount = config.WorkspaceMount
 		wsConfig.NoWorkspaceMount = config.WorkspaceMount == ""
@@ -300,10 +219,6 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}, nil
 }
 
-// deepMergeConfig deep-merges the override map onto the base map: nested objects
-// are merged recursively; scalars and arrays in the override replace the base.
-// A nil base returns the override (and vice-versa), so it composes cleanly when
-// only one side is present.
 func deepMergeConfig(base, override map[string]any) map[string]any {
 	if base == nil {
 		return override
@@ -327,12 +242,9 @@ func deepMergeConfig(base, override map[string]any) map[string]any {
 	return out
 }
 
-// DockerComposeFilePaths resolves the docker-compose file paths.
-// Follows the TS fallback chain: config → COMPOSE_FILE env → .env file → defaults.
 func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd string) ([]string, error) {
 	configDir := filepath.Dir(config.ConfigFilePath)
 
-	// 1. From config property
 	if len(config.DockerComposeFile) > 0 {
 		paths := make([]string, len(config.DockerComposeFile))
 		for i, f := range config.DockerComposeFile {
@@ -341,7 +253,6 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 		return paths, nil
 	}
 
-	// 2. COMPOSE_FILE env var
 	if composeFile, ok := env["COMPOSE_FILE"]; ok && composeFile != "" {
 		sep := string(os.PathListSeparator)
 		parts := strings.Split(composeFile, sep)
@@ -352,7 +263,6 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 		return paths, nil
 	}
 
-	// 3. .env file
 	envFilePath := filepath.Join(cwd, ".env")
 	if pfs.IsFile(envFilePath) {
 		data, err := os.ReadFile(envFilePath)
@@ -376,7 +286,6 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 		}
 	}
 
-	// 4. Defaults
 	defaults := []string{pfs.Resolve(cwd, "docker-compose.yml")}
 	override := pfs.Resolve(cwd, "docker-compose.override.yml")
 	if pfs.IsFile(override) {
@@ -385,12 +294,7 @@ func DockerComposeFilePaths(config *DevContainer, env map[string]string, cwd str
 	return defaults, nil
 }
 
-// --- Helpers ---
-
 func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWorkspaceGitRoot, mountGitWorktreeCommonDir bool) *WorkspaceConfig {
-	// Docker Compose manages its own mounts, so the workspace folder is the
-	// config's own or `/`, never derived from the host folder (TS
-	// getWorkspaceConfiguration via getRemoteWorkspaceFolder).
 	if config.IsComposeConfig() {
 		folder := config.WorkspaceFolder
 		if folder == "" {
@@ -398,38 +302,24 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 		}
 		return &WorkspaceConfig{WorkspaceFolder: folder}
 	}
-	// With no workspace (up --config without --workspace-folder) nothing is
-	// mounted: the folder and mount are the config's own, possibly empty, as TS
-	// getWorkspaceConfiguration leaves them for an undefined workspace.
 	if workspace.RootFolderPath == "" {
 		return &WorkspaceConfig{WorkspaceFolder: config.WorkspaceFolder, WorkspaceMount: config.WorkspaceMount}
 	}
 	sourceFolder := workspace.RootFolderPath
 
-	// Detect git root for workspace mounting (matches TS getHostMountFolder)
 	if mountWorkspaceGitRoot {
 		if gitRoot := detectGitRoot(sourceFolder); gitRoot != "" {
 			sourceFolder = gitRoot
 		}
 	}
 
-	// 0.88 only appends consistency on non-Linux hosts (macOS/Windows); on Linux
-	// the bind mount carries no consistency= suffix (getWorkspaceConfiguration).
 	consistency := ""
 	if runtime.GOOS != "linux" {
 		consistency = ",consistency=consistent"
 	}
 
-	// The workspace mounts at /workspaces/<basename>. A Git worktree created with
-	// `git worktree add --relative-paths` remaps this so the worktree's relative
-	// gitdir still resolves to the mounted common dir inside the container.
 	containerMountFolder := "/workspaces/" + filepath.Base(sourceFolder)
 	var additionalMounts []string
-	// TS getWorkspaceConfiguration computes the workspace mount, and with it the
-	// worktree common-dir mount, only when the config leaves workspaceFolder or
-	// workspaceMount to it: a config that sets both gets neither. The common dir
-	// lands relative to the computed container mount folder, whatever target a
-	// custom workspaceMount names.
 	hasWorkspaceMount := config.WorkspaceMount != "" || config.workspaceMountSet
 	computed := config.WorkspaceFolder == "" || !hasWorkspaceMount
 	if computed && mountWorkspaceGitRoot && mountGitWorktreeCommonDir {
@@ -439,8 +329,6 @@ func computeWorkspaceConfig(workspace *Workspace, config *DevContainer, mountWor
 		}
 	}
 
-	// workspaceFolder is the container mount folder, plus the workspace's path
-	// relative to the git root when it sits in a subfolder.
 	containerFolder := containerMountFolder
 	if sourceFolder != workspace.RootFolderPath {
 		if rel, err := filepath.Rel(sourceFolder, workspace.RootFolderPath); err == nil {
@@ -478,14 +366,6 @@ func bindMount(source, target, consistency string) string {
 		srcQuote, source, srcQuote, tgtQuote, target, tgtQuote, consistency)
 }
 
-// gitWorktreeCommonDirMount ports getWorkspaceConfiguration's worktree handling:
-// when hostMountFolder is a Git worktree whose `.git` gitlink file points at a
-// RELATIVE gitdir (i.e. created with `git worktree add --relative-paths`), it
-// returns a remapped container mount folder that preserves enough of the host
-// path structure for that relative path to resolve, plus a bind mount that maps
-// the shared common dir (the main repo's `.git`) into the container. ok is false
-// for a normal clone (`.git` is a directory), an absolute gitdir, or a missing
-// gitlink — all cases where no extra mount is needed.
 func gitWorktreeCommonDirMount(hostMountFolder, consistency string) (containerMountFolder, additionalMount string, ok bool) {
 	info, err := os.Stat(filepath.Join(hostMountFolder, ".git"))
 	if err != nil || !info.Mode().IsRegular() {
@@ -503,9 +383,6 @@ func gitWorktreeCommonDirMount(hostMountFolder, consistency string) (containerMo
 	// gitdir points at .git/worktrees/<name>; the common dir is .git, two levels up.
 	gitCommonDir := filepath.Clean(filepath.Join(hostMountFolder, gitdir, "..", ".."))
 
-	// Collect the host path segments from hostMountFolder up to (but not past) the
-	// directory that also contains gitCommonDir, so the container mount keeps just
-	// enough structure for the relative gitdir to resolve.
 	sep := string(os.PathSeparator)
 	var segments []string
 	for current := hostMountFolder; !strings.HasPrefix(gitCommonDir, current+sep) && current != filepath.Dir(current); current = filepath.Dir(current) {
@@ -517,8 +394,6 @@ func gitWorktreeCommonDirMount(hostMountFolder, consistency string) (containerMo
 	return containerMountFolder, bindMount(gitCommonDir, containerGitCommonDir, consistency), true
 }
 
-// parseGitdir extracts the target of a `gitdir: <path>` line from a `.git`
-// gitlink file. No regexp, matching the rest of the package.
 func parseGitdir(content string) (string, bool) {
 	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimRight(line, "\r")
@@ -529,49 +404,30 @@ func parseGitdir(content string) (string, bool) {
 	return "", false
 }
 
-// detectGitRoot finds the git working-tree root for the given path by walking up
-// the directory tree looking for a `.git` entry — no `git` binary.
-//
-// The walk is purely lexical (via filepath.Dir), matching git's `--show-cdup`
-// rather than `--show-toplevel`: it does NOT canonicalize symlinks (on macOS
-// `/tmp` → `/private/tmp`), which would desync sourceFolder from
-// workspace.RootFolderPath and produce a corrupt workspaceFolder (e.g.
-// `/workspaces/x/../../..`) and a different mount. Returns "" when dir is not
-// inside a repository.
 func detectGitRoot(dir string) string {
 	return detectGitRootUntil(dir, "")
 }
 
-// detectGitRootUntil is detectGitRoot with an optional ceiling: the walk stops
-// (returning "") once it has checked stopAt, so it never ascends past it. stopAt
-// == "" walks all the way to the filesystem root. The ceiling exists so tests can
-// bound the walk to an isolated tree instead of depending on no ancestor of the
-// system temp dir happening to contain a `.git`.
 func detectGitRootUntil(dir, stopAt string) string {
 	dir = filepath.Clean(dir)
 	if stopAt != "" {
 		stopAt = filepath.Clean(stopAt)
 	}
 	for {
-		// `.git` is a directory in a normal clone and a regular file (a gitlink)
-		// in a worktree or submodule checkout — accept either.
 		if info, err := os.Stat(filepath.Join(dir, ".git")); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
 			return dir
 		}
 		if dir == stopAt {
-			return "" // reached the ceiling without finding a repo
+			return ""
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "" // reached the filesystem root without finding a repo
+			return ""
 		}
 		dir = parent
 	}
 }
 
-// EnvHostSubContext is the host substitution context without a configuration
-// file: the platform and this process's environment, which TS substitutes a
-// command's empty configuration with ({ platform, env }).
 func EnvHostSubContext() HostSubContext {
 	return HostSubContext{Platform: currentPlatform(), Env: EnvMap(os.Environ())}
 }
@@ -580,12 +436,9 @@ func currentPlatform() string {
 	if IsWindows() {
 		return "win32"
 	}
-	return os.Getenv("GOOS_OVERRIDE") // for testing; falls back to runtime
+	return os.Getenv("GOOS_OVERRIDE")
 }
 
-// EnvMap turns KEY=VALUE entries (os.Environ, a container's Config.Env, id
-// labels) into a map; an entry without '=' is skipped and a repeated key keeps
-// its last value.
 func EnvMap(entries []string) map[string]string {
 	m := make(map[string]string, len(entries))
 	for _, e := range entries {

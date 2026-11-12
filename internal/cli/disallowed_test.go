@@ -14,17 +14,13 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TS reports the first disallowed feature of Object.keys({...config.features,
-// ...additionalFeatures}): the config file's order, then the additional
-// features'. Go iterated a map, so with two disallowed features the reported id
-// was random.
 func TestFeatureIDsInOrderFollowsTheDocuments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "devcontainer.json")
 	os.WriteFile(path, []byte(`{"image":"x","features":{"z/b:1":{},"a/c:1":{}, /* jsonc */ "m/d:1":{}}}`), 0o644)
 	cfg := &config.DevContainer{ConfigFilePath: path, Features: map[string]any{
 		"z/b:1": map[string]any{}, "a/c:1": map[string]any{}, "m/d:1": map[string]any{},
-		"y/add:1": true, "b/add:1": true, // from --additional-features
-		"o/override:1": true, // in neither document
+		"y/add:1": true, "b/add:1": true,
+		"o/override:1": true,
 	}}
 	got := featureIDsInOrder(cfg, `{"y/add:1": true, "b/add:1": true, "z/b:1": false}`)
 	want := []string{"z/b:1", "a/c:1", "m/d:1", "y/add:1", "b/add:1", "o/override:1"}
@@ -33,9 +29,6 @@ func TestFeatureIDsInOrderFollowsTheDocuments(t *testing.T) {
 	}
 }
 
-// up reports the disallowed feature with TS's fields: the feature id, whether it
-// stopped the running container (false included, as TS emits the boolean), and
-// the documentation URL, and the description says the container was stopped.
 func TestEnforceDisallowedFeaturesReportsTSFields(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)

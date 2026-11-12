@@ -9,9 +9,6 @@ import (
 	"time"
 )
 
-// TestHelperProcess is a real child-process endpoint used by OSRunner tests.
-// It deliberately exercises the os/exec boundary (argv, environment, both
-// streams, exit status and cancellation) instead of mocking CommandContext.
 func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_EXEC_HELPER") != "1" {
 		return
@@ -107,8 +104,6 @@ func TestOSRunnerMissingBinaryIsTransportError(t *testing.T) {
 	}
 }
 
-// TestOSRunnerStreamsToWriter proves the stream writer receives the child's
-// output live while the return value still captures it.
 func TestOSRunnerStreamsToWriter(t *testing.T) {
 	var live strings.Builder
 	stdout, _, code, err := helperRunner(t, "EXEC_HELPER_STDERR=warn").Run(
@@ -117,18 +112,14 @@ func TestOSRunnerStreamsToWriter(t *testing.T) {
 	if err != nil || code != 0 {
 		t.Fatalf("Run: err=%v code=%d", err, code)
 	}
-	// The stream writer receives the child's combined stdout+stderr.
 	if got := live.String(); !strings.Contains(got, "hi") || !strings.Contains(got, "warn") {
 		t.Errorf("stream = %q, want it to contain the child's stdout and stderr", got)
 	}
-	// The captured return value still holds stdout independently.
 	if got := string(stdout); got != "hi" {
 		t.Errorf("captured stdout = %q, want hi", got)
 	}
 }
 
-// TestOSRunnerAppliesASingleEnvEntry holds that one entry is enough for Env to
-// reach the child: without it the helper below would not act as the helper.
 func TestOSRunnerAppliesASingleEnvEntry(t *testing.T) {
 	stdout, _, code, err := OSRunner{Env: []string{"GO_WANT_EXEC_HELPER=1"}}.Run(
 		t.Context(), nil, os.Args[0], "-test.run=^TestHelperProcess$", "--", "echo", "alone",

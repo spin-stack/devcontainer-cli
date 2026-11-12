@@ -7,8 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// TestTemplateOptionsAgainstTSOracle holds substituteTemplateOptions to TS
-// replaceTemplatedValues over testdata/ts-oracle/templates.json.
 func TestTemplateOptionsAgainstTSOracle(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/templates.json", map[string]oracletest.Func{
 		"replaceTemplatedValues": func(args []json.RawMessage) (any, error) {

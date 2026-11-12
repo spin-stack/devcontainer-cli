@@ -84,10 +84,6 @@ func readGolden(t *testing.T, parts ...string) string {
 	return string(data)
 }
 
-// TestGenerateFeaturesBuildOptions_MatchesTS compares the generated features
-// Dockerfile, each Feature's devcontainer-features.env and its
-// devcontainer-features-install.sh with the TS output for the same inputs, with
-// BuildKit build contexts and with the temporary content image.
 func TestGenerateFeaturesBuildOptions_MatchesTS(t *testing.T) {
 	for _, name := range []string{"buildkit", "no-buildkit"} {
 		t.Run(name, func(t *testing.T) {
@@ -141,8 +137,6 @@ func TestGenerateFeaturesBuildOptions_MatchesTS(t *testing.T) {
 	}
 }
 
-// TS getFeaturesBuildOptions dockerfilePrefixContent: the syntax line (if any)
-// followed by a newline and the global ARG.
 func TestGenerateFeaturesBuildOptions_Prefix(t *testing.T) {
 	fss := []*features.Set{{SourceInfo: &features.OCISource{}, Features: []features.Feature{{ID: "go", ConsecutiveId: "go_0"}}}}
 	if got := GenerateFeaturesBuildOptions(FeaturesBuildParams{FeatureSets: fss, Syntax: "docker/dockerfile:1.4"}).DockerfilePrefixContent; got != "# syntax=docker/dockerfile:1.4\nARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n" {
@@ -151,15 +145,11 @@ func TestGenerateFeaturesBuildOptions_Prefix(t *testing.T) {
 	if got := GenerateFeaturesBuildOptions(FeaturesBuildParams{FeatureSets: fss}).DockerfilePrefixContent; got != "\nARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n" {
 		t.Errorf("prefix without syntax = %q", got)
 	}
-	// The image user defaults to root, as TS imageBuildInfo.user does.
 	if got := GenerateFeaturesBuildOptions(FeaturesBuildParams{FeatureSets: fss}).BuildArgs["_DEV_CONTAINERS_IMAGE_USER"]; got != "root" {
 		t.Errorf("image user = %q", got)
 	}
 }
 
-// TestExtend_SyntaxDirectiveForBuildContexts: the syntax the caller chose is
-// the first line, and a build-context build declares the feature-content
-// context; without a syntax no directive is forced.
 func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
 	fss := []*features.Set{{
 		SourceInfo: &features.OCISource{ID: "go"},
@@ -181,9 +171,6 @@ func TestExtend_SyntaxDirectiveForBuildContexts(t *testing.T) {
 	}
 }
 
-// TestExtend_BuildSecretsMountedIntoInstall guards #1078 (no TS equivalent):
-// build-secret ids are mounted into each feature-install RUN as
-// --mount=type=secret,id=<id>, and absent when no secrets are provided.
 func TestExtend_BuildSecretsMountedIntoInstall(t *testing.T) {
 	fss := []*features.Set{{
 		SourceInfo: &features.OCISource{ID: "go"},
@@ -242,9 +229,6 @@ func TestExtend_CABundleMountedIntoInstall(t *testing.T) {
 	}
 }
 
-// TS getFeatureValueObject: option defaults in document order, overlaid with
-// the user's object; a string or boolean value sets "version" only when the
-// Feature declares that option.
 func TestFeatureEnvVariables(t *testing.T) {
 	opts := map[string]any{
 		"version": map[string]any{"type": "string", "default": "lts"},

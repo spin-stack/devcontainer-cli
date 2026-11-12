@@ -12,7 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/doctor"
 )
 
-// brokenStdout is an Output whose stdout refuses every write.
 type brokenStdout struct{ captureOutput }
 
 type refusingWriter struct{}
@@ -21,8 +20,6 @@ func (refusingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout 
 
 func (b *brokenStdout) Stdout() io.Writer { return refusingWriter{} }
 
-// Setup checks the system again only when it changed something for real: not
-// in a dry run, and not when every action was a manual hint.
 func TestSetupNeedsRecheck(t *testing.T) {
 	applied := []doctor.Action{{Name: "manual"}, {Name: "builder", Applied: true}}
 	manual := []doctor.Action{{Name: "manual"}}
@@ -44,8 +41,6 @@ func TestSetupNeedsRecheck(t *testing.T) {
 	}
 }
 
-// --json prints the dry-run flag, the actions and the report as one document,
-// and a failed remediation still exits 1 after printing it.
 func TestWriteSetupResultJSON(t *testing.T) {
 	out := &captureOutput{}
 	actions := []doctor.Action{{Name: "buildx", Err: "boom"}}
@@ -69,7 +64,6 @@ func TestWriteSetupResultJSON(t *testing.T) {
 	}
 }
 
-// A stdout that cannot be written fails the command with that error.
 func TestWriteSetupResultJSONWriteError(t *testing.T) {
 	err := writeSetupResult(&brokenStdout{}, &setupOpts{json: true}, nil, sampleReport(), nil)
 	if err == nil || !strings.Contains(err.Error(), "stdout closed") {
@@ -77,8 +71,6 @@ func TestWriteSetupResultJSONWriteError(t *testing.T) {
 	}
 }
 
-// Text mode prints the actions and the table, notes on stderr a state that
-// could not be saved, and succeeds when no remediation failed.
 func TestWriteSetupResultText(t *testing.T) {
 	out := &captureOutput{}
 	actions := []doctor.Action{{Name: "build-cache-export", Applied: true, Message: "created builder"}}
@@ -101,7 +93,6 @@ func TestWriteSetupResultText(t *testing.T) {
 	}
 }
 
-// The table pads its columns two spaces past their widest cell.
 func TestWriteReportTableAlignsTheColumns(t *testing.T) {
 	var buf strings.Builder
 	writeReportTable(&buf, sampleReport())
@@ -114,15 +105,12 @@ func TestWriteReportTableAlignsTheColumns(t *testing.T) {
 	}
 }
 
-// runCheckWithoutDocker runs check against a docker CLI that does not exist,
-// so the daemon check fails, with the check state under stateHome.
 func runCheckWithoutDocker(t *testing.T, out Output, json bool, stateHome string) error {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	return runCheck(t.Context(), out, &checkOpts{json: json, dockerPath: filepath.Join(t.TempDir(), "docker")})
 }
 
-// A failing host prints the table, saves the state and exits 1.
 func TestRunCheckFailingHostExitsOne(t *testing.T) {
 	state := t.TempDir()
 	out := &captureOutput{}
@@ -142,7 +130,6 @@ func TestRunCheckFailingHostExitsOne(t *testing.T) {
 	}
 }
 
-// A state that cannot be saved is a note on stderr, not a failure of its own.
 func TestRunCheckNotesAStateItCouldNotSave(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
@@ -158,8 +145,6 @@ func TestRunCheckNotesAStateItCouldNotSave(t *testing.T) {
 	}
 }
 
-// --json prints the report as JSON and still exits 1 for a failing host; a
-// stdout that cannot be written fails with that error.
 func TestRunCheckJSON(t *testing.T) {
 	out := &captureOutput{}
 	err := runCheckWithoutDocker(t, out, true, t.TempDir())

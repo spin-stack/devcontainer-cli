@@ -18,14 +18,11 @@ import (
 	"github.com/devcontainers/cli/internal/pfs"
 )
 
-// buildTemplateTarGz packs entries (path -> content) into a real gzip tarball,
-// the exact format FetchAndApply expects a template layer blob to be.
 func buildTemplateTarGz(t *testing.T, entries map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	// Deterministic order so partial-write failures land on a predictable file.
 	names := make([]string, 0, len(entries))
 	for n := range entries {
 		names = append(names, n)
@@ -49,12 +46,9 @@ func buildTemplateTarGz(t *testing.T, entries map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// fakeTemplateRegistry is an oci.Registry double for the template fetch side. It
-// serves a single manifest + blob (or an injected error) so FetchAndApply can be
-// driven end-to-end without a real registry.
 type fakeTemplateRegistry struct {
 	blob        []byte
-	layers      []oci.Layer // when nil, a single tar+gzip layer is synthesized
+	layers      []oci.Layer
 	manifestErr error
 	blobErr     error
 }
@@ -100,16 +94,11 @@ func (f *fakeTemplateRegistry) PushCollectionMetadata(ctx context.Context, ref *
 	return nil, fmt.Errorf("PushCollectionMetadata not used")
 }
 
-// failFS wraps a real OSFS and lets a test inject failures into WriteFile /
-// MkdirAll via closures. Everything else (ReadFile, Stat, Walk, Remove) passes
-// through to disk so ExtractTarGz and filepath.Walk operate on real files — the
-// injected failure is the only difference from a normal apply, which is exactly
-// what the partial-write risk needs.
 type failFS struct {
 	pfs.FS
 	onWrite func(path string) error
 	onMkdir func(path string) error
-	writes  []string // paths actually written to disk (post-injection)
+	writes  []string
 }
 
 func (f *failFS) WriteFile(path string, data []byte) error {
@@ -134,9 +123,6 @@ func (f *failFS) MkdirAll(path string) error {
 	return f.FS.MkdirAll(path)
 }
 
-// templateEntries is a minimal but realistic template layer: metadata with a
-// defaulted option, a devcontainer.json using ${templateOption:...}, two more
-// substituted files, and doc files that must be omitted.
 func templateEntries() map[string]string {
 	return map[string]string{
 		"devcontainer-template.json": `{
@@ -165,9 +151,6 @@ func newFetchParams(t *testing.T, fsys pfs.FS, reg oci.Registry, workspace strin
 	}
 }
 
-// TestFetchAndApply_Success is the baseline the failure tests diverge from: a
-// real gzip layer is fetched, extracted, option defaults are filled, and the
-// substituted files land in the workspace with omit files skipped.
 func TestFetchAndApply_Success(t *testing.T) {
 	workspace := t.TempDir()
 	reg := &fakeTemplateRegistry{blob: buildTemplateTarGz(t, templateEntries())}
@@ -178,14 +161,12 @@ func TestFetchAndApply_Success(t *testing.T) {
 		t.Fatalf("FetchAndApply: %v", err)
 	}
 
-	// Metadata + doc files are omitted; the three real files are applied.
 	sort.Strings(applied)
 	want := []string{"./.devcontainer/devcontainer.json", "./Dockerfile", "./scripts/setup.sh"}
 	if strings.Join(applied, ",") != strings.Join(want, ",") {
 		t.Fatalf("applied = %v, want %v", applied, want)
 	}
 
-	// The defaulted option was substituted into the workspace files.
 	df, _ := os.ReadFile(filepath.Join(workspace, "Dockerfile"))
 	if !strings.Contains(string(df), "base:bookworm") {
 		t.Errorf("Dockerfile not substituted with default: %q", df)
@@ -265,10 +246,6 @@ func TestFetchAndApply_CallerTempDirIsPreserved(t *testing.T) {
 	}
 }
 
-// TestFetchAndApply_PartialWorkspaceWrite covers the partial-write risk: a WriteFile
-// that fails mid-Walk. The first workspace file is written, the second fails,
-// and the error must propagate (wrapped) instead of silently leaving a partial
-// workspace unreported. The partial state (one file on disk) is asserted.
 func TestFetchAndApply_PartialWorkspaceWrite(t *testing.T) {
 	workspace := t.TempDir()
 	reg := &fakeTemplateRegistry{blob: buildTemplateTarGz(t, templateEntries())}
@@ -297,9 +274,6 @@ func TestFetchAndApply_PartialWorkspaceWrite(t *testing.T) {
 		t.Fatalf("error = %v, want wrapped 'apply template files' + injected cause", err)
 	}
 
-	// Partial state: exactly one workspace file exists (the write that succeeded
-	// before the failure). This proves the failure is surfaced rather than the
-	// walk silently continuing.
 	var onDisk []string
 	filepath.Walk(workspace, func(p string, info os.FileInfo, _ error) error {
 		if info != nil && !info.IsDir() {
@@ -312,10 +286,6 @@ func TestFetchAndApply_PartialWorkspaceWrite(t *testing.T) {
 	}
 }
 
-// TestFetchAndApply_MergeFeaturesWriteError drives the mergeFeatures error path
-// through FetchAndApply: all template files apply, then merging features into the
-// (now-present) devcontainer.json fails on the config WriteFile, and the error is
-// wrapped as a merge failure.
 func TestFetchAndApply_MergeFeaturesWriteError(t *testing.T) {
 	workspace := t.TempDir()
 	reg := &fakeTemplateRegistry{blob: buildTemplateTarGz(t, templateEntries())}
@@ -323,9 +293,6 @@ func TestFetchAndApply_MergeFeaturesWriteError(t *testing.T) {
 	configPath := filepath.Join(workspace, ".devcontainer", "devcontainer.json")
 	ff := &failFS{FS: pfs.OSFS{}}
 	ff.onWrite = func(path string) error {
-		// Let every template file write succeed (including the first write of the
-		// config during the Walk); fail only the SECOND write to the config, which
-		// is the rewrite mergeFeatures performs after applying files.
 		if path == configPath && contains(ff.writes, configPath) {
 			return fmt.Errorf("config became read-only")
 		}
@@ -349,10 +316,6 @@ func contains(xs []string, x string) bool {
 	return slices.Contains(xs, x)
 }
 
-// TestFetchAndApply_FetchSideErrors covers cross-layer error propagation on the
-// fetch side: each stage (ref parse, manifest, empty manifest, blob, extract)
-// must wrap its failure with the right context instead of panicking or returning
-// a bare error.
 func TestFetchAndApply_FetchSideErrors(t *testing.T) {
 	goodBlob := buildTemplateTarGz(t, templateEntries())
 
@@ -408,9 +371,6 @@ func TestFetchAndApply_FetchSideErrors(t *testing.T) {
 	}
 }
 
-// TestFetchAndApply_WriteTarballError injects a WriteFile failure at the very
-// first write (the downloaded tarball), proving that pre-Walk filesystem errors
-// are wrapped too.
 func TestFetchAndApply_WriteTarballError(t *testing.T) {
 	reg := &fakeTemplateRegistry{blob: buildTemplateTarGz(t, templateEntries())}
 	ff := &failFS{FS: pfs.OSFS{}}
@@ -427,8 +387,6 @@ func TestFetchAndApply_WriteTarballError(t *testing.T) {
 	}
 }
 
-// TestFetchAndApply_MkdirError injects a MkdirAll failure at the extract-dir
-// creation, the first filesystem call in the flow.
 func TestFetchAndApply_MkdirError(t *testing.T) {
 	reg := &fakeTemplateRegistry{blob: buildTemplateTarGz(t, templateEntries())}
 	ff := &failFS{FS: pfs.OSFS{}}
@@ -445,9 +403,6 @@ func TestFetchAndApply_MkdirError(t *testing.T) {
 	}
 }
 
-// TestApplyOptionDefaults_InvalidJSON exercises the metadata-parse error branch:
-// an unparseable devcontainer-template.json must not crash — user options are
-// returned unchanged.
 func TestApplyOptionDefaults_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "devcontainer-template.json"), []byte(`{ this is not json `), 0o644); err != nil {
@@ -459,9 +414,6 @@ func TestApplyOptionDefaults_InvalidJSON(t *testing.T) {
 	}
 }
 
-// TestMergeFeatures_InvalidConfig exercises the JSONC standardize error path: an
-// unparseable devcontainer.json surfaces a wrapped parse error rather than a
-// silent no-op or panic.
 func TestMergeFeatures_InvalidConfig(t *testing.T) {
 	dir := t.TempDir()
 	dcDir := filepath.Join(dir, ".devcontainer")
@@ -478,8 +430,6 @@ func TestMergeFeatures_InvalidConfig(t *testing.T) {
 	}
 }
 
-// TestMergeFeatures_NoConfig covers the branch where no devcontainer.json exists:
-// mergeFeatures logs a warning and returns nil (nothing to merge into).
 func TestMergeFeatures_NoConfig(t *testing.T) {
 	dir := t.TempDir()
 	feats := []TemplateFeatureOption{{ID: "ghcr.io/devcontainers/features/git:1"}}

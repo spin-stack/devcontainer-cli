@@ -45,8 +45,6 @@ func TestGetSemanticTags(t *testing.T) {
 			wantTags:  []string{"1", "1.3", "1.3.0", "latest"},
 		},
 		{
-			// 1.5.0 is newest in the 1.x line (advances "1" and "1.5") but a 2.0.0
-			// exists, so it must NOT move "latest".
 			name:      "newer within older major line does not touch latest",
 			version:   "1.5.0",
 			published: []string{"2", "2.0", "2.0.0", "1", "1.4", "1.4.0", "latest"},

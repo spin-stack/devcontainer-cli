@@ -17,14 +17,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// SemanticTags computes the tags to publish for `version` given the tags
-// already present in the registry, matching the TS CLI getSemanticTags:
-//   - skip=true (nil tags) when the exact version already exists — do not
-//     republish;
-//   - err when `version` is not a valid semantic version;
-//   - the floating tags (major, major.minor, latest) are only included when the
-//     new version is the highest within their range, so a re-publish of an older
-//     version never moves latest/major/major.minor backwards.
 func SemanticTags(version string, publishedTags []string) (tags []string, skip bool, err error) {
 	if slices.Contains(publishedTags, version) {
 		return nil, true, nil
@@ -34,7 +26,6 @@ func SemanticTags(version string, publishedTags []string) (tags []string, skip b
 		return nil, false, fmt.Errorf("version %q is not a valid semantic version", version)
 	}
 
-	// Only full X.Y.Z tags participate in the max-in-range comparison.
 	var pub []*semver.Version
 	for _, t := range publishedTags {
 		if pv, e := semver.StrictNewVersion(t); e == nil {
@@ -64,17 +55,12 @@ func SemanticTags(version string, publishedTags []string) (tags []string, skip b
 	return tags, false, nil
 }
 
-// PushResult holds the result of pushing an artifact to a registry.
 type PushResult struct {
 	Digest        string   `json:"digest"`
 	PublishedTags []string `json:"publishedTags"`
 	Version       string   `json:"version,omitempty"`
 }
 
-// PushArtifact uploads a tarball as an OCI artifact to a registry via oras-go.
-// It creates a manifest with the devcontainer mediatype and pushes the layer +
-// empty config blobs, then the manifest under each computed version tag. oras-go
-// handles auth (pull,push scope negotiation), blob-existence checks and retries.
 func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tags []string, collectionType string, annotations map[string]string) (*PushResult, error) {
 	c.log.Write(fmt.Sprintf("Pushing %s to %s (tags: %s)...", ref.ID, ref.Resource, strings.Join(tags, ", ")), log.LevelInfo)
 	repo, err := c.repository(ref)
@@ -82,7 +68,6 @@ func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tag
 		return nil, err
 	}
 
-	// Read tarball
 	tgzData, err := os.ReadFile(tgzPath)
 	if err != nil {
 		return nil, fmt.Errorf("read tarball: %w", err)
@@ -94,8 +79,6 @@ func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tag
 		return nil, err
 	}
 
-	// Push the manifest under each version tag (PushReference does PUT
-	// /manifests/<tag>, tagging in the same request).
 	var publishedTags []string
 	for _, tag := range tags {
 		if err := repo.PushReference(ctx, manifestDesc, bytes.NewReader(manifestBytes), tag); err != nil {
@@ -116,10 +99,6 @@ func (c *Client) PushArtifact(ctx context.Context, ref *Ref, tgzPath string, tag
 	}, nil
 }
 
-// PushCollectionMetadata publishes the devcontainer-collection.json for a
-// namespace as an OCI artifact tagged `latest`, so containers.dev and the CLI
-// can discover the collection's items — matching the TS CLI doPublishMetadata.
-// The ref should point at the collection (registry/namespace), not an item.
 func (c *Client) PushCollectionMetadata(ctx context.Context, ref *Ref, collectionJSONPath string) (*PushResult, error) {
 	c.log.Write(fmt.Sprintf("Publishing collection metadata to %s...", ref.Resource), log.LevelInfo)
 
@@ -145,7 +124,6 @@ func (c *Client) PushCollectionMetadata(ctx context.Context, ref *Ref, collectio
 	return &PushResult{Digest: manifestDesc.Digest.String(), PublishedTags: []string{"latest"}}, nil
 }
 
-// pushBlobIfAbsent pushes a blob unless the registry already has it.
 func pushBlobIfAbsent(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor, data []byte) error {
 	if exists, err := repo.Blobs().Exists(ctx, desc); err == nil && exists {
 		return nil
@@ -153,9 +131,6 @@ func pushBlobIfAbsent(ctx context.Context, repo *remote.Repository, desc ocispec
 	return repo.Blobs().Push(ctx, desc, bytes.NewReader(data))
 }
 
-// pushArtifactManifest uploads data as the artifact's one layer (titled title)
-// and the empty config the OCI spec requires, and returns the manifest that
-// references them, built with the local types to keep the TS byte layout.
 func pushArtifactManifest(ctx context.Context, repo *remote.Repository, layerMediaType, title string, data []byte, annotations map[string]string) (ocispec.Descriptor, []byte, error) {
 	layerDesc := ocispec.Descriptor{
 		MediaType:   layerMediaType,

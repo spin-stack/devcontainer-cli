@@ -29,7 +29,7 @@ func TestCheck(t *testing.T) {
 		name string
 		impl Func
 		c    tsoracle.Case
-		want string // a substring of the mismatch; "" for a match
+		want string
 	}{
 		{"equal object", returns(map[string]any{"b": 1, "a": "x"}, nil), call("f", `{"a":"x","b":1}`, ""), ""},
 		{"null for nil", returns(nil, nil), call("f", `null`, ""), ""},

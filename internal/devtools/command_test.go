@@ -12,15 +12,11 @@ import (
 	"time"
 )
 
-// TestMain fixes the umask a CI runner has, so the modes of the files the
-// commands leave behind are the ones the tests assert.
 func TestMain(m *testing.M) {
 	syscall.Umask(0o022)
 	os.Exit(m.Run())
 }
 
-// runMain runs one devtool command as the binary would and returns its exit code
-// and what it wrote.
 func runMain(t *testing.T, stdin string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var o, e strings.Builder
@@ -28,9 +24,6 @@ func runMain(t *testing.T, stdin string, args ...string) (code int, stdout, stde
 	return code, o.String(), e.String()
 }
 
-// fakeTools puts an executable per scripts key first on PATH, standing in for a
-// host tool the command starts. Each logs its name and argv, one line per call,
-// to the returned file, then runs its body.
 func fakeTools(t *testing.T, scripts map[string]string) (log string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -75,13 +68,11 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 	}
 }
 
-// gitRepo makes an empty repository in a new directory and enters it, with no
-// user or system configuration to sign or hook its commits. The variables git
-// exports to hooks and `rebase --exec` are cleared, so the tests never write
-// to the repository they run in.
 func gitRepo(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
+	// git exports these to hooks and `rebase --exec`; left set, the tests would
+	// commit to the repository they run in.
 	for _, k := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX"} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -91,8 +82,6 @@ func gitRepo(t *testing.T) {
 	git(t, "init", "-q")
 }
 
-// A repository named by GIT_DIR, as `git rebase --exec` names the one it
-// runs in, is left alone by gitRepo and the commits made after it.
 func TestGitRepoLeavesTheOuterRepositoryAlone(t *testing.T) {
 	outer := t.TempDir()
 	t.Chdir(outer)
@@ -121,7 +110,6 @@ func git(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// commit adds file and commits it at epoch, returning the commit's hash.
 func commit(t *testing.T, file string, epoch int64) string {
 	t.Helper()
 	writeFile(t, file, file)
@@ -144,13 +132,11 @@ func TestMainUsageErrors(t *testing.T) {
 	if code != 1 || out != "" || errOut != "devtool coverage-report: usage: coverage-report <profile|covdata-dir> [title]\n" {
 		t.Errorf("a command's error: code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
-	// ts-oracle takes the node image, the one argument the Taskfile hands in.
 	for _, args := range [][]string{{"ts-oracle"}, {"ts-oracle", "a", "b"}} {
 		if code, out, errOut := runMain(t, "", args...); code != 2 || out != "" || errOut != "usage: devtool ts-oracle <node image>\n" {
 			t.Errorf("%q: code=%d stdout=%q stderr=%q", args, code, out, errOut)
 		}
 	}
-	// With its image it runs, and here, with no reference/ to bundle, fails.
 	if code, _, errOut := runMain(t, "", "ts-oracle", "node:test"); code != 1 || !strings.Contains(errOut, "reference") {
 		t.Errorf("ts-oracle with an image: code=%d stderr=%q, want the missing reference/", code, errOut)
 	}
@@ -245,8 +231,6 @@ const sampleReport = "| Package | Stmts | Coverage |\n|---|---:|---:|\n" +
 	"| internal/docker | 6 | 100.0% |\n" +
 	"| **TOTAL** | **14** | **78.6%** |\n"
 
-// fakeGo stands in for `go tool covdata`: textfmt writes FAKE_PROFILE to its -o
-// file, and merge leaves a file in its -o directory.
 func fakeGo(t *testing.T) (log string) {
 	t.Helper()
 	t.Setenv("FAKE_PROFILE", sampleProfile)
@@ -315,7 +299,6 @@ func TestCoverageGateCommand(t *testing.T) {
 }
 
 func TestCoverageMerge(t *testing.T) {
-	// An edit that took the title for a directory would leave it in the package.
 	t.Chdir(t.TempDir())
 	t.Run("lanes into the default directory", func(t *testing.T) {
 		root := t.TempDir()
@@ -374,8 +357,6 @@ func TestCoverageMerge(t *testing.T) {
 	}
 }
 
-// runnerTools fakes what preparing a runner starts: sudo (tee echoes its stdin,
-// as the real one does), docker and the shell printing the disk.
 func runnerTools(t *testing.T) (log string) {
 	t.Helper()
 	return fakeTools(t, map[string]string{
@@ -525,8 +506,6 @@ func TestReleaseResolve(t *testing.T) {
 	})
 }
 
-// metricsTools fakes the binary measured, in its own directory, and node; each
-// logs its calls, and the binary's read-configuration logs the config it reads.
 func metricsTools(t *testing.T) (bin, log string) {
 	t.Helper()
 	log = fakeTools(t, map[string]string{"node": ""})
@@ -553,7 +532,6 @@ func readMetrics(t *testing.T, path, stdout string) Metrics {
 }
 
 func TestMetrics(t *testing.T) {
-	// An edit that swapped its arguments would write the version as a file here.
 	t.Chdir(t.TempDir())
 	t.Run("everything measured", func(t *testing.T) {
 		bin, log := metricsTools(t)

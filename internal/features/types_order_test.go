@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// DependsOnKeys is TS Object.keys(dependsOn): the metadata's order, a
-// repeated key where it first appears, and keys set in code (not in the
-// metadata) after them, sorted.
 func TestDependsOnKeysKeepsTheMetadataOrder(t *testing.T) {
 	var f Feature
 	if err := json.Unmarshal([]byte(`{"id":"x","dependsOn":{"b":{},"a":{},"b":{"v":1}}}`), &f); err != nil {
@@ -24,12 +21,6 @@ func TestDependsOnKeysKeepsTheMetadataOrder(t *testing.T) {
 	}
 }
 
-// A Feature with SourceKeys is written as TS builds it: the metadata spread
-// over the source's properties, cachePath and consecutiveId added, that
-// spread over the devcontainer-feature.json, deprecated extensions and
-// settings moved. The metadata's properties are its own, those Go has no
-// field for and an empty options included; without SourceKeys the Feature
-// keeps the struct's order.
 func TestFeatureMarshalJSONBuildsTheFeatureAsTS(t *testing.T) {
 	var f Feature
 	meta := `{"version":"1.0.0","containerEnv":{"K":"v"},"id":"x","options":{},"keywords":["k"],"version":"1.0.1","10":1,"2":2}`
@@ -37,7 +28,7 @@ func TestFeatureMarshalJSONBuildsTheFeatureAsTS(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Name, f.Value, f.Included, f.CachePath, f.ConsecutiveId = "./x", map[string]any{"o": "v"}, true, "/c", "x_0"
-	f.CapAdd = []string{"SET_IN_CODE"} // not the metadata's: TS has no such property
+	f.CapAdd = []string{"SET_IN_CODE"}
 	for _, tc := range []struct {
 		name   string
 		source []string
@@ -46,8 +37,6 @@ func TestFeatureMarshalJSONBuildsTheFeatureAsTS(t *testing.T) {
 	}{
 		{"local", LocalFeatureKeys, "", `{"2":2,"10":1,"version":"1.0.1","containerEnv":{"K":"v"},"id":"x","options":{},"keywords":["k"],"name":"./x","value":{"o":"v"},"included":true,"cachePath":"/c","consecutiveId":"x_0"}`},
 		{"oci", OCIFeatureKeys, "", `{"2":2,"10":1,"version":"1.0.1","containerEnv":{"K":"v"},"id":"x","options":{},"keywords":["k"],"included":true,"value":{"o":"v"},"cachePath":"/c","consecutiveId":"x_0"}`},
-		// The file's properties come first, then the Feature's in its order; the
-		// metadata's values win.
 		{"oci with a layer file", OCIFeatureKeys, `{"id":"x","onlyInFile":true,"version":"0.9.0"}`, `{"2":2,"10":1,"id":"x","onlyInFile":true,"version":"1.0.1","included":true,"value":{"o":"v"},"containerEnv":{"K":"v"},"options":{},"keywords":["k"],"cachePath":"/c","consecutiveId":"x_0"}`},
 		{"struct", nil, "", `{"id":"x","version":"1.0.1","name":"./x","included":true,"cachePath":"/c","consecutiveId":"x_0","value":{"o":"v"},"containerEnv":{"K":"v"},"capAdd":["SET_IN_CODE"]}`},
 	} {
@@ -65,10 +54,6 @@ func TestFeatureMarshalJSONBuildsTheFeatureAsTS(t *testing.T) {
 	}
 }
 
-// TS's updateFromOldProperties for Features moves a truthy extensions and
-// settings into customizations.vscode: extensions concatenated after vscode's
-// (a string base concatenates as a string), settings spread under vscode's;
-// devPort is left alone.
 func TestFeatureMarshalJSONMovesDeprecatedProperties(t *testing.T) {
 	for _, tc := range []struct{ meta, want string }{
 		{`{"id":"a","extensions":["x"],"settings":{"s":1,"t":1},"devPort":1,"customizations":{"vscode":{"extensions":["e"],"settings":{"t":2}}}}`,

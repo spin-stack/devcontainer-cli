@@ -11,9 +11,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// fakeDockerOnPath puts a `docker` first on PATH whose `ps` prints ids and
-// whose `rm -f <id>` appends the id to the returned file, the way the runner's
-// cleanup calls the real one.
 func fakeDockerOnPath(t *testing.T, ids string) (psArgs, removed string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -40,7 +37,6 @@ func bufferLogger(buf *bytes.Buffer) log.Logger {
 	return log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: buf})
 }
 
-// Cleanup removes every container the test run labelled, and says how many.
 func TestCleanupTestContainersRemovesLabelledContainers(t *testing.T) {
 	psArgs, removed := fakeDockerOnPath(t, `c1\n`)
 	var logs bytes.Buffer
@@ -56,7 +52,6 @@ func TestCleanupTestContainersRemovesLabelledContainers(t *testing.T) {
 	}
 }
 
-// With no labelled containers there is nothing to remove or announce.
 func TestCleanupTestContainersWithNone(t *testing.T) {
 	_, removed := fakeDockerOnPath(t, ``)
 	var logs bytes.Buffer
@@ -69,8 +64,6 @@ func TestCleanupTestContainersWithNone(t *testing.T) {
 	}
 }
 
-// The workspace a test script enters is opened to every user, files and
-// folders alike, so a non-root remote user can read it.
 func TestMakeWorkspaceAccessible(t *testing.T) {
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "feature")
@@ -90,8 +83,6 @@ func TestMakeWorkspaceAccessible(t *testing.T) {
 	}
 }
 
-// A test script runs through `<self> exec` in the test container, from the
-// mounted workspace, with its output on this process's stdout and stderr.
 func TestTestScriptCommand(t *testing.T) {
 	cmd := testScriptCommand("/bin/devcontainer", "cid", "color/test.sh", "/tmp/devcontainer-test-1")
 	want := []string{"/bin/devcontainer", "exec", "--container-id", "cid", "--", "bash", "-c",
@@ -104,8 +95,6 @@ func TestTestScriptCommand(t *testing.T) {
 	}
 }
 
-// testCollection writes a collection with Features a and b (each with a
-// test.sh), a _global scenario g, and a stray file in test/.
 func testCollection(t *testing.T) string {
 	t.Helper()
 	base := t.TempDir()
@@ -128,7 +117,6 @@ func runTestCommand(t *testing.T, collection string, featuresList []string) (cod
 	return code, out.out.String(), buf.String()
 }
 
-// reportedNames lists the quoted names of the report's result lines, in order.
 func reportedNames(stdout string) []string {
 	var names []string
 	for _, line := range strings.Split(stdout, "\n") {
@@ -140,8 +128,6 @@ func reportedNames(stdout string) []string {
 	return names
 }
 
-// Without --features every Feature folder under test/ is tested (not _global,
-// not a stray file), then the global scenarios; containers are cleaned up.
 func TestRunFeaturesTestCommandDiscoversFeatures(t *testing.T) {
 	_, removed := fakeDockerOnPath(t, `leftover\n`)
 	fakeTestContainers(t, nil, nil, func(string, string) bool { return true })
@@ -157,7 +143,6 @@ func TestRunFeaturesTestCommandDiscoversFeatures(t *testing.T) {
 	}
 }
 
-// --features tests exactly the named Features, and skips the global scenarios.
 func TestRunFeaturesTestCommandNamedFeatures(t *testing.T) {
 	fakeDockerOnPath(t, ``)
 	fakeTestContainers(t, nil, nil, func(string, string) bool { return true })
@@ -170,8 +155,6 @@ func TestRunFeaturesTestCommandNamedFeatures(t *testing.T) {
 	}
 }
 
-// A collection without both src/ and test/ fails with exit 1 and TS's message
-// on stdout, whichever of the two is missing.
 func TestRunFeaturesTestCommandRequiresSrcAndTest(t *testing.T) {
 	for _, present := range []string{"src", "test"} {
 		base := t.TempDir()
@@ -186,7 +169,6 @@ func TestRunFeaturesTestCommandRequiresSrcAndTest(t *testing.T) {
 	}
 }
 
-// With no Feature folder to test, the command fails with exit 1.
 func TestRunFeaturesTestCommandWithoutFeatures(t *testing.T) {
 	base := t.TempDir()
 	for _, d := range []string{"src", filepath.Join("test", "_global")} {
@@ -201,7 +183,6 @@ func TestRunFeaturesTestCommandWithoutFeatures(t *testing.T) {
 	}
 }
 
-// A test/ folder that cannot be listed fails the command with exit 1.
 func TestRunFeaturesTestCommandUnreadableTestFolder(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root lists any folder")

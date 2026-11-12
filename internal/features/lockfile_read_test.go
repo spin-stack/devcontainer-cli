@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// JSON nested deeper than encoding/json decodes (V8 parses it) is still read
-// as a lockfile, and refused for its shape, not taken for an empty one.
 func TestReadLockfileRefusesTooDeepJSON(t *testing.T) {
 	dir := t.TempDir()
 	deep := strings.Repeat("[", 10001) + strings.Repeat("]", 10001)
@@ -22,9 +20,6 @@ func TestReadLockfileRefusesTooDeepJSON(t *testing.T) {
 	}
 }
 
-// A lockfile that cannot be opened fails as fs.readFile fails in the
-// reference: "EACCES: permission denied, open '<path>'", and console.error
-// shows it with Node's error properties.
 func TestReadLockfileUnreadableIsNodesEACCES(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a mode 000 file")
@@ -48,9 +43,6 @@ func TestReadLockfileUnreadableIsNodesEACCES(t *testing.T) {
 	}
 }
 
-// A lockfile that is a directory fails on the read, which Node.js reports
-// without the path; a JSON error is a SyntaxError whose stack console.error
-// prints.
 func TestLockfileErrorForms(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "devcontainer-lock.json"), 0o755); err != nil {
@@ -74,8 +66,6 @@ func TestLockfileErrorForms(t *testing.T) {
 	}
 }
 
-// util.inspect quotes a string in single quotes, else double quotes, else
-// backticks, escaping backslashes and the quote it chose.
 func TestJSQuote(t *testing.T) {
 	for in, want := range map[string]string{
 		`/a/b`:      `'/a/b'`,
@@ -90,7 +80,6 @@ func TestJSQuote(t *testing.T) {
 	}
 }
 
-// An error Node.js would name some other way keeps its own message.
 func TestNodeFSErrorKeepsAnUnnamedError(t *testing.T) {
 	plain := os.ErrClosed
 	if got := nodeFSError(plain); got != plain {

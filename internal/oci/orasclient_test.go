@@ -2,10 +2,6 @@ package oci
 
 import "testing"
 
-// The reference speaks plain HTTP only to a registry whose host is localhost
-// (getRegistryScheme, containerCollectionsOCI.ts); a loopback IP literal gets
-// HTTPS like any other registry. The transport must follow the same scheme the
-// read-configuration output reports (Ref.Scheme).
 func TestRepositoryPlainHTTPOnlyForLocalhost(t *testing.T) {
 	for registry, want := range map[string]bool{
 		"localhost":                true,

@@ -10,10 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// TestTSOracleAuthPolicy asserts the cross-origin auth host parsing and the
-// token realm check against the reference functions' results (go tool task
-// testdata:ts-oracle): authorities go through Node's WHATWG URL parser, so
-// default ports drop, hosts normalize and a path resolving to "/" is accepted.
 func TestTSOracleAuthPolicy(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/authpolicy.json", map[string]oracletest.Func{
 		"parseCrossOriginAuthHosts": func(args []json.RawMessage) (any, error) {
@@ -34,7 +30,6 @@ func TestTSOracleAuthPolicy(t *testing.T) {
 			}
 			return out, nil
 		},
-		// TS returns false when either URL fails to parse.
 		"isAllowedTokenServiceRealm": func(args []json.RawMessage) (any, error) {
 			var realm, registry string
 			var entries []string

@@ -14,11 +14,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// fakeRunner records the command it was asked to run and returns canned output,
-// standing in for a real process so Client.Run can be tested without docker. When
-// err is set it is returned as the run error (binary-not-found / cancelled style).
-// When a stream writer is provided it mirrors a live process by writing the canned
-// output there too, so streaming behavior is exercised through the seam.
 type fakeRunner struct {
 	gotName   string
 	gotArgs   []string
@@ -40,8 +35,6 @@ func (f *fakeRunner) Run(ctx context.Context, stream io.Writer, name string, arg
 	return f.stdout, f.stderr, f.code, f.err
 }
 
-// TestRunUsesRunnerSeam proves docker.Client.Run routes through the
-// injected exec.Runner instead of shelling out.
 func TestRunUsesRunnerSeam(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("hello"), stderr: []byte("warn"), code: 7}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
@@ -58,9 +51,6 @@ func TestRunUsesRunnerSeam(t *testing.T) {
 	}
 }
 
-// TestRunPropagatesRunnerError proves that a process failure from the injected
-// exec.Runner (binary not found, cancelled, ...) surfaces to the caller as a
-// wrapped error rather than a bogus success.
 func TestRunPropagatesRunnerError(t *testing.T) {
 	sentinel := errors.New("exec: \"docker\": executable file not found in $PATH")
 	fr := &fakeRunner{err: sentinel}
@@ -78,9 +68,6 @@ func TestRunPropagatesRunnerError(t *testing.T) {
 	}
 }
 
-// TestBuildWithEnvRoutesThroughRunner proves Build honors opts.Env without
-// disturbing arg assembly (the DOCKER_CONFIG env only affects the real OSRunner;
-// an injected fake still receives the same args and returns its canned result).
 func TestBuildWithEnvRoutesThroughRunner(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("ok"), code: 0}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
@@ -96,9 +83,6 @@ func TestBuildWithEnvRoutesThroughRunner(t *testing.T) {
 	}
 }
 
-// TestBuildStreamsProgressToWriter proves Build opts into streaming: with a
-// ProgressWriter set, the child's output reaches it live (through the seam, so
-// the fake exercises it) while still being captured in the result.
 func TestBuildStreamsProgressToWriter(t *testing.T) {
 	fr := &fakeRunner{stderr: []byte("#1 building\n#2 done\n"), code: 0}
 	var progress bytes.Buffer
@@ -114,17 +98,14 @@ func TestBuildStreamsProgressToWriter(t *testing.T) {
 	if got := progress.String(); !strings.Contains(got, "#1 building") || !strings.Contains(got, "#2 done") {
 		t.Errorf("progress = %q, want the build output streamed live", got)
 	}
-	// The captured copy is still returned (used for the failure message).
 	if got := string(res.Stderr); got != "#1 building\n#2 done\n" {
 		t.Errorf("captured stderr = %q", got)
 	}
 }
 
-// TestBuildWithoutProgressWriterDoesNotStream proves streaming is opt-in: no
-// ProgressWriter means the runner receives a nil stream and nothing leaks out.
 func TestBuildWithoutProgressWriterDoesNotStream(t *testing.T) {
 	fr := &fakeRunner{stderr: []byte("#1 building\n"), code: 0}
-	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr} // no ProgressWriter
+	c := &Client{DockerPath: "docker", Log: log.Null, Runner: fr}
 
 	if _, err := c.Build(t.Context(), BuildOptions{ContextPath: "."}); err != nil {
 		t.Fatalf("Build: %v", err)
@@ -134,8 +115,6 @@ func TestBuildWithoutProgressWriterDoesNotStream(t *testing.T) {
 	}
 }
 
-// TestRunNeverStreams proves plain Run() never streams, even when a
-// ProgressWriter is configured (only Build/compose build+up opt in).
 func TestRunNeverStreams(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("x")}
 	var progress bytes.Buffer
@@ -152,9 +131,6 @@ func TestRunNeverStreams(t *testing.T) {
 	}
 }
 
-// TestComposeBuildStreamsButConfigDoesNot proves compose build opts into
-// streaming while `compose config` never does — its stdout is JSON the CLI
-// parses, so streaming it would be both useless and corrupting.
 func TestComposeBuildStreamsButConfigDoesNot(t *testing.T) {
 	rrC := &recordingRunner{responses: []cannedResponse{{stdout: []byte("{}"), code: 0}}}
 	var cfgProgress bytes.Buffer
@@ -179,9 +155,6 @@ func TestComposeBuildStreamsButConfigDoesNot(t *testing.T) {
 	}
 }
 
-// compose config reads every profile's services from the YAML output, as TS
-// readDockerComposeConfig does, with JSON's value types; a mapping with a
-// non-string key and an empty document still parse.
 func TestComposeConfigReadsEveryProfileFromYAML(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("name: proj\nservices:\n  app:\n    image: debian\n    ports:\n      - target: 80\n    sysctls:\n      1: x\n")}
 	c := &ComposeClient{Command: []string{"docker", "compose"}, Log: log.Null, Runner: fr}
@@ -199,8 +172,6 @@ func TestComposeConfigReadsEveryProfileFromYAML(t *testing.T) {
 	}
 }
 
-// A failing compose config is TS's ContainerError: its description says the
-// Compose configuration could not be retrieved, its message names the command.
 func TestComposeConfigFailureIsTheReferenceContainerError(t *testing.T) {
 	fr := &fakeRunner{stderr: []byte("project name must not be empty"), code: 1}
 	c := &ComposeClient{Command: []string{"docker", "compose"}, Log: log.Null, Runner: fr}
@@ -215,8 +186,6 @@ func TestComposeConfigFailureIsTheReferenceContainerError(t *testing.T) {
 	}
 }
 
-// compose config runs at info and its output is logged, as TS
-// readDockerComposeConfig does.
 func TestComposeConfigLogsTheCommandAtInfoAndItsOutput(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("services:\n  app:\n    image: alpine\n")}
 	lgr, events := jsonLog()
@@ -231,7 +200,6 @@ func TestComposeConfigLogsTheCommandAtInfoAndItsOutput(t *testing.T) {
 	}
 }
 
-// A failing compose config logs its output once, as the error.
 func TestComposeConfigLogsAFailureOnce(t *testing.T) {
 	fr := &fakeRunner{stdout: []byte("out"), stderr: []byte("err"), code: 1}
 	lgr, events := jsonLog()

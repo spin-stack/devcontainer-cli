@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// An --id-label is <name>=<value>: a name and a value on both sides of an '='.
-// TS rejects a label without '=', with an empty name or with an empty value.
 func TestValidateIDLabels(t *testing.T) {
 	for _, ok := range []string{"a=b", "devcontainer.local_folder=/x", "a=b=c"} {
 		if err := validateIDLabels([]string{ok}); err != nil {
@@ -25,7 +23,6 @@ func TestValidateIDLabels(t *testing.T) {
 	}
 }
 
-// A --remote-env needs a name before its '='; an empty value is allowed.
 func TestValidateRemoteEnvs(t *testing.T) {
 	for _, ok := range []string{"A=b", "A=", "A=b=c"} {
 		if err := validateRemoteEnvs([]string{ok}); err != nil {
@@ -56,9 +53,6 @@ func TestValidateMounts(t *testing.T) {
 	}
 }
 
-// --terminal-columns and --terminal-rows imply each other, as yargs .implies():
-// a flag counts when it is given, whatever its value, so a 0 counts too
-// (yargs validation.js keyExists tests hasOwnProperty).
 func TestValidateTerminalImplications(t *testing.T) {
 	absent := givenInt{}
 	given := func(n int) givenInt { return givenInt{value: n, given: true} }
@@ -86,8 +80,6 @@ func TestValidateTerminalImplications(t *testing.T) {
 	}
 }
 
-// A givenInt reads its value as pflag's IntVar does and records that it was
-// given; a value that is no number is an error and leaves it not given.
 func TestGivenIntParsesLikeIntVar(t *testing.T) {
 	var g givenInt
 	if g.String() != "0" || g.Type() != "int" {
@@ -100,7 +92,6 @@ func TestGivenIntParsesLikeIntVar(t *testing.T) {
 	if err := bad.Set("abc"); err == nil || bad.given {
 		t.Errorf("Set(\"abc\") = %v, givenInt %+v; want an error and not given", err, bad)
 	}
-	// A value int cannot hold is an error, never truncated.
 	tooBig := strconv.FormatUint(uint64(math.MaxInt)+1, 10)
 	var big givenInt
 	if err := big.Set(tooBig); err == nil || big.given {
@@ -108,7 +99,6 @@ func TestGivenIntParsesLikeIntVar(t *testing.T) {
 	}
 }
 
-// The first flag whose value is not one of its choices is the one reported.
 func TestValidateEnums(t *testing.T) {
 	if err := validateEnums(enumFlag{"log-level", "debug", logLevels}, enumFlag{"log-format", "json", logFormats}); err != nil {
 		t.Errorf("valid choices: %v", err)

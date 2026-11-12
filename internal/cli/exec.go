@@ -49,9 +49,8 @@ func newExecCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                "exec [cmd] [args...]",
 		Short:              "Execute a command on a running dev container",
-		DisableFlagParsing: true, // Manual parsing to support `exec docker --version`
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, rawArgs []string) error {
-			// Split: flags (--workspace-folder etc.) go to Cobra, rest is the command
 			flagArgs, cmdArgs := splitExecArgs(rawArgs)
 
 			// `exec --help`/`-h` (before the command) prints usage and exits 0,
@@ -63,7 +62,6 @@ func newExecCmd() *cobra.Command {
 				}
 			}
 
-			// Re-enable flag parsing for our flags only
 			cmd.DisableFlagParsing = false
 			if err := cmd.ParseFlags(flagArgs); err != nil {
 				return err
@@ -98,7 +96,7 @@ func newExecCmd() *cobra.Command {
 	f.Bool("mount-git-worktree-common-dir", false, "")
 	f.StringVar(&opts.defaultUserEnvProbe, "default-user-env-probe", "loginInteractiveShell", "")
 	f.Bool("skip-feature-auto-mapping", false, "")
-	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
+	_ = f.MarkHidden("skip-feature-auto-mapping")
 	f.String("user-data-folder", "", "")
 	f.Var(&opts.terminalColumns, "terminal-columns", "")
 	f.Var(&opts.terminalRows, "terminal-rows", "")
@@ -107,11 +105,6 @@ func newExecCmd() *cobra.Command {
 	return cmd
 }
 
-// runExec runs a command in a running dev container through `docker exec`.
-// What it decides is in the helpers below; this is their wiring to the
-// configuration, the engine and the docker CLI, which the parity lane runs with
-// the built binary against real containers:
-//
 // mutate-lane: TestParityMatrix (exec.workspace-image-success,
 // exec.workspace-compose-success, exec.container-config-success,
 // exec.container-metadata-success, exec.workspace-image-json-raw-output-success,
@@ -124,7 +117,6 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
 		return err
 	}
-	// 0.88: default --workspace-folder to cwd when no --container-id/--id-label/--workspace-folder.
 	if execDefaultsToCwd(opts) {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
@@ -151,9 +143,6 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		Writer:  logDst,
 	})
 
-	// 1. The configuration, read before the container is looked for, as TS
-	// exec does: the workspace's, --config's or --override-config's, with or
-	// without --container-id. One that is named but cannot be read fails exec.
 	cwd, _ := os.Getwd()
 	loadResult, loadErr := execLoadConfig(opts, cwd)
 	if loadErr != nil {
@@ -166,7 +155,6 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	}
 	defer engine.Close()
 
-	// 2. Find the container
 	containerID := opts.containerID
 	if containerID == "" {
 		configFile := ""
@@ -183,7 +171,6 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 		return fmt.Errorf("Dev container not found.")
 	}
 
-	// 3. Inspect container
 	inspect, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return fmt.Errorf("Dev container not found.")
@@ -193,23 +180,18 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	}
 	containerCfg := cmp.Or(inspect.Config, &container.Config{})
 
-	// 4-6. The container's env, and its image metadata from the labels.
 	containerEnv := config.EnvMap(containerCfg.Env)
 	var cfg *config.DevContainer
 	hostSub, configFile := config.EnvHostSubContext(), ""
 	if loadResult != nil {
 		cfg, hostSub, configFile = loadResult.Config, loadResult.HostSub, loadResult.Config.ConfigFilePath
 	}
-	// TS getImageMetadataFromContainer, with the host substitutions alone.
 	idLabels := containerIDLabels(opts.idLabels, containerCfg.Labels, resolvePath(opts.workspaceFolder), configFile)
 	entries, err := imageMetadataFromContainer(containerCfg.Labels, cfg, nil, idLabels, hostMetadataSubstitution(hostSub, nil), logger)
 	if err != nil {
 		return err
 	}
 	merged := imagemeta.MergeConfiguration(entries)
-	// TS exec substitutes the container's environment into the merged
-	// configuration before it probes the user environment; a variable that
-	// cannot be resolved fails exec, naming the configuration's file.
 	var rawConfig any
 	if loadResult != nil {
 		rawConfig = loadResult.Raw
@@ -217,20 +199,14 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	if err := checkContainerSubstitution(containerEnv, configFile, rawConfig, merged); err != nil {
 		return err
 	}
-	// The user is the merged configuration's remoteUser - the configuration's,
-	// else the image metadata's - else the container's, else root; the
-	// environment is probed as that user (TS createContainerProperties with
-	// mergedConfig.remoteUser).
 	remoteUser := execRemoteUser(cmp.Or(merged.RemoteUser, containerCfg.User, "root"), cfg)
 
-	// 7-8. Probe the user environment, then merge and substitute it.
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, execProbeStrategy(opts.defaultUserEnvProbe, cfg), "")
 	resolvedRemoteEnv, err := execRemoteEnv(probed, merged.RemoteEnv, cfg, containerEnv)
 	if err != nil {
 		return err
 	}
 
-	// 9-11. Build the docker exec args.
 	remoteWorkspace := ""
 	if loadResult != nil && loadResult.WorkspaceConfig != nil {
 		remoteWorkspace = loadResult.WorkspaceConfig.WorkspaceFolder
@@ -248,13 +224,10 @@ func runExec(ctx context.Context, opts *execOpts, cmdArgs []string) error {
 	return execRunError(execCmd.Run())
 }
 
-// execDefaultsToCwd reports whether exec has nothing to find the container by,
-// so the current directory is the workspace folder.
 func execDefaultsToCwd(opts *execOpts) bool {
 	return opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == ""
 }
 
-// execConfigPath resolves --config against the current directory.
 func execConfigPath(configPath, cwd string) string {
 	if configPath != "" && !filepath.IsAbs(configPath) {
 		return filepath.Join(cwd, configPath)
@@ -262,10 +235,6 @@ func execConfigPath(configPath, cwd string) string {
 	return configPath
 }
 
-// execLoadConfig is TS exec's configuration: none without --workspace-folder,
-// --config or --override-config, else the one they name, which must exist
-// ("Dev container config (…) not found." names --config, else the workspace's
-// default path), even with --container-id.
 func execLoadConfig(opts *execOpts, cwd string) (*config.LoadResult, error) {
 	if opts.workspaceFolder == "" && opts.configPath == "" && opts.overrideConfig == "" {
 		return nil, nil
@@ -282,13 +251,10 @@ func execLoadConfig(opts *execOpts, cwd string) (*config.LoadResult, error) {
 	return loaded, err
 }
 
-// containerRunning reports whether an inspected container is running.
 func containerRunning(state *container.State) bool {
 	return state != nil && state.Running
 }
 
-// execRemoteUser is the user exec probes the environment as and runs as: the
-// configuration's remoteUser, else metadataUser.
 func execRemoteUser(metadataUser string, cfg *config.DevContainer) string {
 	if cfg != nil && cfg.RemoteUser != "" {
 		return cfg.RemoteUser
@@ -296,7 +262,6 @@ func execRemoteUser(metadataUser string, cfg *config.DevContainer) string {
 	return metadataUser
 }
 
-// execProbeStrategy is the configuration's userEnvProbe, else the flag's.
 func execProbeStrategy(flag string, cfg *config.DevContainer) lifecycle.UserEnvProbeStrategy {
 	if cfg != nil && cfg.UserEnvProbe != "" {
 		return lifecycle.UserEnvProbeStrategy(cfg.UserEnvProbe)
@@ -304,10 +269,6 @@ func execProbeStrategy(flag string, cfg *config.DevContainer) lifecycle.UserEnvP
 	return lifecycle.UserEnvProbeStrategy(flag)
 }
 
-// execRemoteEnv merges the remote environment, each layer over the one before:
-// the probed user environment, the image metadata's remoteEnv, the
-// configuration's; a null value leaves the layer below. ${containerEnv:X} is
-// then substituted from the container's environment.
 func execRemoteEnv(probed map[string]string, metadata map[string]*string, cfg *config.DevContainer, containerEnv map[string]string) (map[string]string, error) {
 	resolved := map[string]string{}
 	maps.Copy(resolved, probed)
@@ -338,11 +299,6 @@ func execRemoteEnv(probed map[string]string, metadata map[string]*string, cfg *c
 	return resolved, nil
 }
 
-// execDockerArgs is the `docker exec` command line: interactive, with a TTY
-// when exec runs in one, as the remote user, in the container's workspace
-// folder (remoteCwd, as TS containerProperties.remoteWorkspaceFolder) when
-// known, with the resolved remote environment and then the --remote-env flags,
-// which docker applies last so they win.
 func execDockerArgs(tty bool, remoteUser, remoteWorkspace string, remoteEnv map[string]string, cliEnvs []string, containerID string, cmdArgs []string) []string {
 	args := []string{"exec", "-i"}
 	if tty {
@@ -364,11 +320,6 @@ func execDockerArgs(tty bool, remoteUser, remoteWorkspace string, remoteEnv map[
 	return append(args, cmdArgs...)
 }
 
-// execOutput is where the command's output goes. In JSON mode it is emitted as
-// `raw` log events on the log stream (not written to stdout), matching the TS
-// CLI so the JSON consumer (e.g. the VS Code extension) gets a clean event
-// stream and an empty stdout; both streams become raw events. Otherwise it
-// passes through: docker exec -it inherits the terminal when the CLI runs in one.
 func execOutput(logFormat string, logger log.Logger) (stdout, stderr io.Writer) {
 	if logFormat == "json" {
 		rw := &rawLogWriter{logger: logger}
@@ -377,8 +328,6 @@ func execOutput(logFormat string, logger log.Logger) (stdout, stderr io.Writer) 
 	return os.Stdout, os.Stderr
 }
 
-// execRunError is exec's result for how `docker exec` ended: its exit code (a
-// signal as 128+N), or 1 when it could not run.
 func execRunError(err error) error {
 	if err == nil {
 		return nil
@@ -389,8 +338,6 @@ func execRunError(err error) error {
 	return &coreerrors.ExitCodeError{Code: 1, Err: err}
 }
 
-// execExitCode derives the process exit code for the 128+N contract.
-//
 // os/exec reports ExitCode()==-1 when the child was terminated by a signal
 // rather than exiting normally. That happens here when the host `docker`
 // process itself is signaled (e.g. the terminal delivers SIGINT/SIGTERM to
@@ -409,8 +356,6 @@ func execExitCode(exitErr *exec.ExitError) int {
 	return code
 }
 
-// rawLogWriter emits everything written to it as `raw` log events at debug
-// level, matching how the TS CLI streams exec output under --log-format json.
 // os/exec copies a command's stdout and stderr on separate goroutines, so the
 // mutex serializes writes into whole, non-interleaved raw events.
 type rawLogWriter struct {
@@ -426,9 +371,6 @@ func (w *rawLogWriter) Write(p []byte) (int, error) {
 }
 
 func findContainerByOpts(ctx context.Context, engine *docker.EngineClient, opts *execOpts, configFile string, logger log.Logger) (string, error) {
-	// [local_folder, config_file] disambiguates when a project has multiple
-	// devcontainer.json configs; falls back to local_folder for legacy containers.
-	// A failed lookup fails exec, as TS's findContainerAndIdLabels throws.
 	id, err := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
 	if err != nil || id != "" {
 		return id, err
@@ -465,8 +407,6 @@ func findComposeContainer(ctx context.Context, engine *docker.EngineClient, opts
 	return ""
 }
 
-// splitExecArgs separates devcontainer flags from the command to execute.
-// Matches yargs halt-at-non-option: stops at the first non-flag argument.
 func splitExecArgs(args []string) (flags []string, cmd []string) {
 	valueFlags := map[string]bool{
 		"--workspace-folder": true, "--config": true, "--override-config": true,
@@ -490,7 +430,6 @@ func splitExecArgs(args []string) (flags []string, cmd []string) {
 		}
 		flags = append(flags, arg)
 		i++
-		// If this flag takes a value, consume the next arg too
 		if valueFlags[arg] && i < len(args) {
 			flags = append(flags, args[i])
 			i++
@@ -499,6 +438,5 @@ func splitExecArgs(args []string) (flags []string, cmd []string) {
 	return flags, nil
 }
 
-// Keep imports used
 var _ = json.Marshal
 var _ = strings.Join

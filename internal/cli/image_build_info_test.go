@@ -16,11 +16,9 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// fakeImages backs an imageInspector: images present locally, images the
-// registry knows, and images a pull makes local.
 type fakeImages struct {
 	local, registry, pullable map[string]*oci.ImageConfig
-	pullFailures              int // pulls that fail before one succeeds
+	pullFailures              int
 	localCalls, registryCalls int
 	pulls                     int
 }
@@ -98,8 +96,6 @@ func TestImageInspectorFallbackChain(t *testing.T) {
 	})
 }
 
-// globalBuildxPlatformArgs feeds docker.Resolver the automatic platform ARGs
-// (its resolution is asserted against TS in testdata/ts-oracle/dockerfile.json).
 func TestGlobalBuildxPlatformArgs(t *testing.T) {
 	got := globalBuildxPlatformArgs(ocispec.Platform{OS: "linux", Architecture: "amd64"}, ocispec.Platform{OS: "linux", Architecture: "arm", Variant: "v7"})
 	want := map[string]string{
@@ -213,9 +209,6 @@ func TestImageBuildInfoImagePullFailurePropagates(t *testing.T) {
 	}
 }
 
-// The platform ARGs up and build resolve a Dockerfile's FROM with target the
-// --platform value (os/arch[/variant]), else this host, as TS
-// devContainers.ts targetPlatformInfo; the build platform is always the host.
 func TestBuildxPlatformArgs(t *testing.T) {
 	host := runtime.GOOS + "/" + runtime.GOARCH
 	if got := buildxPlatformArgs(""); got["TARGETPLATFORM"] != host || got["BUILDPLATFORM"] != host || got["TARGETARCH"] != runtime.GOARCH {

@@ -1,4 +1,3 @@
-// Package oci pushes and pulls Features and Templates as OCI registry artifacts.
 package oci
 
 import (
@@ -20,51 +19,22 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// Operation timeouts. These are vars (not consts) so tests can shrink them.
-//
-//   - responseHeaderTimeout bounds a registry that accepts the TCP/TLS connection
-//     but then stops responding: the base transport (a clone of DefaultTransport)
-//     sets a dial and TLS-handshake timeout but NO ResponseHeaderTimeout, so
-//     without this a hung registry blocks the command forever.
-//   - metadataOpTimeout is the overall ceiling for small metadata operations
-//     (manifest/tag list) when the caller supplies no context of its own.
-//   - blobOpTimeout is a generous ceiling for blob downloads (which can be large);
-//     it also backstops a mid-stream stall, which responseHeaderTimeout — only
-//     covering time-to-first-header — does not catch.
 var (
 	responseHeaderTimeout = 30 * time.Second
 	metadataOpTimeout     = 60 * time.Second
 	blobOpTimeout         = 10 * time.Minute
 )
 
-// Client performs OCI registry operations (pull manifest, download blob, list
-// tags, push artifacts) on top of oras-go.
 type Client struct {
-	log log.Logger
-	env map[string]string
-	// authCache is shared across every repository() built by this client so that
-	// a bearer token / auth challenge negotiated for one operation (e.g. a push)
-	// is reused by related operations (e.g. the tag list or manifest fetch that
-	// follows) instead of re-running the 401→WWW-Authenticate→token loop each
-	// time. auth.Cache is safe for concurrent use.
-	authCache auth.Cache
-	// retryClient is the oras retrying HTTP client wired to the shared transport
-	// (httpx.NewTransport): it honors HTTP(S)_PROXY/NO_PROXY and loads extra CA
-	// certs (NODE_EXTRA_CA_CERTS/SSL_CERT_FILE), so registry access behaves like
-	// the plain httpx path — including behind a TLS-intercepting proxy.
+	log         log.Logger
+	env         map[string]string
+	authCache   auth.Cache
 	retryClient *http.Client
-	// authPolicy carries the invocation-wide OCI authentication policy
-	// (--oci-auth-hardening, trusted cross-origin auth hosts) and accumulates the
-	// auth diagnostics reported in the command's JSON output.
-	authPolicy *AuthPolicy
+	authPolicy  *AuthPolicy
 }
 
-// NewClientWithAuthPolicy creates an OCI client with the given auth policy, so every
-// client built for one CLI invocation shares its hardening settings and
-// diagnostics.
 func NewClientWithAuthPolicy(logger log.Logger, env map[string]string, policy *AuthPolicy) *Client {
 	base := httpx.NewTransport()
-	// Cut off a registry that connects but never sends response headers.
 	base.ResponseHeaderTimeout = responseHeaderTimeout
 	return &Client{
 		log:         logger,
@@ -75,11 +45,6 @@ func NewClientWithAuthPolicy(logger log.Logger, env map[string]string, policy *A
 	}
 }
 
-// IsNotFound reports whether err indicates the target repository or reference
-// does not exist (a 404 from the registry), as opposed to an auth, network, or
-// other registry failure. Publishing uses this so a not-yet-created repository
-// is treated as "no tags published", while a real error aborts the publish
-// instead of silently proceeding on an empty tag list.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false
@@ -93,19 +58,13 @@ func IsNotFound(err error) bool {
 	return false
 }
 
-// FetchManifest fetches and validates an OCI manifest using oras-go for
-// transport/auth (bearer-token scope negotiation, retries), keeping the
-// devcontainer-specific validation (config media type must be
-// application/vnd.devcontainers) and result shape.
 func (c *Client) FetchManifest(ref *Ref, expectedDigest string) (*ManifestContainer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), metadataOpTimeout)
 	defer cancel()
 	return c.FetchManifestContext(ctx, ref, expectedDigest)
 }
 
-// FetchManifestContext is FetchManifest with caller-controlled cancellation.
 func (c *Client) FetchManifestContext(ctx context.Context, ref *Ref, expectedDigest string) (*ManifestContainer, error) {
-	// Skip non-domain registries
 	if !strings.Contains(ref.Registry, ".") && !strings.HasPrefix(ref.Registry, "localhost") {
 		return nil, fmt.Errorf("registry %q does not look like a domain", ref.Registry)
 	}
@@ -128,7 +87,6 @@ func (c *Client) FetchManifestContext(ctx context.Context, ref *Ref, expectedDig
 	}
 	defer rc.Close()
 
-	// content.ReadAll verifies the bytes against desc.Digest and desc.Size.
 	body, err := orascontent.ReadAll(rc, desc)
 	if err != nil {
 		return nil, err
@@ -156,14 +114,12 @@ func (c *Client) FetchManifestContext(ctx context.Context, ref *Ref, expectedDig
 	}, nil
 }
 
-// FetchBlob downloads a blob and verifies its digest (via oras-go).
 func (c *Client) FetchBlob(ref *Ref, digest string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), blobOpTimeout)
 	defer cancel()
 	return c.FetchBlobContext(ctx, ref, digest)
 }
 
-// FetchBlobContext is FetchBlob with caller-controlled cancellation.
 func (c *Client) FetchBlobContext(ctx context.Context, ref *Ref, digest string) ([]byte, error) {
 	repo, err := c.repository(ref)
 	if err != nil {
@@ -174,18 +130,15 @@ func (c *Client) FetchBlobContext(ctx context.Context, ref *Ref, digest string) 
 		return nil, err
 	}
 	defer rc.Close()
-	// content.ReadAll verifies the bytes against desc.Digest and desc.Size.
 	return orascontent.ReadAll(rc, desc)
 }
 
-// GetPublishedTags lists all tags for a resource (via oras-go).
 func (c *Client) GetPublishedTags(ref *Ref) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), metadataOpTimeout)
 	defer cancel()
 	return c.GetPublishedTagsContext(ctx, ref)
 }
 
-// GetPublishedTagsContext is GetPublishedTags with caller-controlled cancellation.
 func (c *Client) GetPublishedTagsContext(ctx context.Context, ref *Ref) ([]string, error) {
 	repo, err := c.repository(ref)
 	if err != nil {

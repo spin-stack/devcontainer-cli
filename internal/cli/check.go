@@ -20,9 +20,6 @@ type checkOpts struct {
 	dockerPath string
 }
 
-// newCheckCmd builds `devcontainer check`: it diagnoses the host's Docker /
-// BuildKit environment, prints a ✔/⚠/✖ table with remediation hints, persists
-// the result to the state file, and exits non-zero when a hard check fails.
 func newCheckCmd() *cobra.Command {
 	var opts checkOpts
 	cmd := &cobra.Command{
@@ -45,8 +42,6 @@ func runCheck(ctx context.Context, out Output, opts *checkOpts) error {
 	env := &doctor.Env{DockerPath: opts.dockerPath, CLIVersion: product.Get().Version}
 	report := doctor.Run(ctx, env)
 
-	// Persist best-effort: a diagnostics run must not fail because state could
-	// not be written (read-only HOME, etc.). Surface it as a note in text mode.
 	saveErr := doctor.Save(report)
 
 	if opts.json {
@@ -72,12 +67,6 @@ type setupOpts struct {
 	dockerPath string
 }
 
-// newSetupCmd builds `devcontainer setup`: it runs the same diagnostics and then
-// applies the automatic remediations (creating a cache-capable buildx builder),
-// reporting manual steps for anything it cannot fix without sudo.
-//
-// Note: this is distinct from `set-up` (hyphenated), which sets up an existing
-// container as a dev container.
 func newSetupCmd() *cobra.Command {
 	var opts setupOpts
 	cmd := &cobra.Command{
@@ -102,8 +91,6 @@ func runSetup(ctx context.Context, out Output, opts *setupOpts) error {
 	report := doctor.Run(ctx, env)
 	actions := doctor.Setup(ctx, env, report, opts.dryRun)
 
-	// Re-run diagnostics after remediation so the persisted state reflects the
-	// fixed system (skip when nothing was applied or in dry-run).
 	final := report
 	if setupNeedsRecheck(opts.dryRun, actions) {
 		final = doctor.Run(ctx, env)
@@ -111,15 +98,10 @@ func runSetup(ctx context.Context, out Output, opts *setupOpts) error {
 	return writeSetupResult(out, opts, actions, final, doctor.Save(final))
 }
 
-// setupNeedsRecheck reports whether setup changed the system, so the
-// diagnostics must run again before their state is saved and shown.
 func setupNeedsRecheck(dryRun bool, actions []doctor.Action) bool {
 	return !dryRun && slices.ContainsFunc(actions, func(a doctor.Action) bool { return a.Applied })
 }
 
-// writeSetupResult prints what setup did and the final report, as JSON or as
-// text (with a note when the check state could not be saved), and fails the
-// command with exit code 1 when a remediation failed.
 func writeSetupResult(out Output, opts *setupOpts, actions []doctor.Action, final doctor.Report, saveErr error) error {
 	if opts.json {
 		payload := struct {
@@ -145,7 +127,6 @@ func writeSetupResult(out Output, opts *setupOpts, actions []doctor.Action, fina
 	return nil
 }
 
-// writeReportTable renders the ✔/⚠/✖ table plus per-line remediation hints.
 func writeReportTable(w io.Writer, report doctor.Report) {
 	// mutate-exempt: a minwidth of 1 is below every cell's width plus the padding of 2, tabwidth counts only with '\t' padding, and flag 1 (FilterHTML) re-measures only HTML, which no status symbol or check name holds
 	const minwidth, tabwidth, flags = 0, 0, 0
@@ -162,7 +143,6 @@ func writeReportTable(w io.Writer, report doctor.Report) {
 	fmt.Fprintf(w, "\noverall: %s %s\n", report.Overall.Symbol(), report.Overall)
 }
 
-// writeSetupActions renders the remediation steps taken (or planned in dry-run).
 func writeSetupActions(w io.Writer, actions []doctor.Action, dryRun bool) {
 	if len(actions) == 0 {
 		fmt.Fprintln(w, "Nothing to do — the host is already configured.")
@@ -191,10 +171,6 @@ func writeJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-// warnUncheckedHost emits a one-line, non-blocking hint on interactive stderr
-// when the host was never checked, or a previous `check` found a hard failure.
-// It is gated on a TTY so it never perturbs captured output (parity harness,
-// scripts) — only humans at a terminal see it.
 func warnUncheckedHost(out Output) {
 	if !isTerminalWriter(out.Stderr()) {
 		return
@@ -212,7 +188,6 @@ func warnUncheckedHost(out Output) {
 	}
 }
 
-// isTerminalWriter reports whether w is a character device (a real terminal).
 func isTerminalWriter(w any) bool {
 	f, ok := w.(*os.File)
 	if !ok {

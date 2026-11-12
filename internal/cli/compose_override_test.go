@@ -8,9 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
-// The expected strings below are the output of the TS
-// generateFeaturesComposeOverrideContent template (dockerCompose.ts) for the
-// same inputs, rendered with node from a verbatim copy of the template.
 func TestGenerateComposeFeaturesOverrideMatchesTS(t *testing.T) {
 	boolp := func(b bool) *bool { return &b }
 	tests := []struct {
@@ -19,9 +16,6 @@ func TestGenerateComposeFeaturesOverrideMatchesTS(t *testing.T) {
 		want string
 	}{
 		{
-			// compose-image-without-features: no Features, yet the entrypoint is
-			// wrapped and the image's entrypoint kept (the compose command is
-			// left alone, so no command: line).
 			name: "image without features",
 			in: composeFeaturesOverride{
 				VersionPrefix:     "version: '3.8'\n\n",
@@ -68,8 +62,6 @@ func TestGenerateComposeFeaturesOverrideMatchesTS(t *testing.T) {
 			want: "services:\n  'dev':\n    image: vsc-ws-abc-uid\n    entrypoint: [\"/bin/sh\", \"-c\", \"echo Container started\\n\ntrap \\\"exit 0\\\" 15\\n\n/usr/local/share/docker-init.sh\\n\n/usr/local/share/ssh-init.sh\\n\nexec \\\"$$@\\\"\\n\nwhile sleep 1 & wait $$!; do :; done\", \"-\"]\n    command: []\n    init: true\n    user: vscode\n    environment:\n      - 'A=x$$y'\n      - 'B=line1\\nline2'\n      - 'C=it''s'\n    privileged: true\n    cap_add:\n      - SYS_PTRACE\n      - NET_ADMIN\n    security_opt:\n      - seccomp=unconfined\n    labels:\n      - 'devcontainer.local_folder=/ws'\n      - 'x=a$$b''c'\n    volumes:\n      - /host:/c\n      - vol1:/v1\n      - ext:/v2\n      - /t\n    deploy:\n      resources:\n        reservations:\n          devices:\n            - capabilities: [gpu]\nvolumes:\n  \n  vol1:\n  \n  ext:\n    external: true\n",
 		},
 		{
-			// A compose entrypoint without a command: the image CMD is ignored and
-			// an empty command is set.
 			name: "compose entrypoint without command",
 			in: composeFeaturesOverride{
 				Service:           "app",
@@ -83,8 +75,6 @@ func TestGenerateComposeFeaturesOverrideMatchesTS(t *testing.T) {
 			want: "services:\n  'app':\n    entrypoint: [\"/bin/sh\", \"-c\", \"echo Container started\\n\ntrap \\\"exit 0\\\" 15\\n\n\\n\nexec \\\"$$@\\\"\\n\nwhile sleep 1 & wait $$!; do :; done\", \"-\", \"/ep.sh\", \"a$$b\"]\n    command: []\n",
 		},
 		{
-			// Neither entrypoint nor command in compose: the image's are kept,
-			// with $ escaped for compose interpolation.
 			name: "image entrypoint and cmd",
 			in: composeFeaturesOverride{
 				Service:           "app",
@@ -118,9 +108,6 @@ func TestGenerateComposeBuildOverride(t *testing.T) {
 			want: "",
 		},
 		{
-			// Image-only service with Features (TS buildAndExtendDockerCompose):
-			// image retag, empty context, BuildKit inline cache and the Features
-			// content as an additional build context.
 			name: "image service with build contexts",
 			in: composeBuildOverride{
 				VersionPrefix:       "version: '3.8'\n\n",
@@ -180,10 +167,6 @@ func TestComposeMountsFromMetadata(t *testing.T) {
 	}
 }
 
-// The compose Features Dockerfile is appended to the service's Dockerfile, so
-// the global ARG must be in the prefix (before the service's first FROM), and
-// the Features' content comes from the additional build context or from the
-// temp content image (TS getFeaturesBuildOptions).
 func TestComposeFeaturesBuild(t *testing.T) {
 	fss := []*features.Set{{Features: []features.Feature{{ID: "hello", ConsecutiveId: "hello_0", Value: true}}}}
 	const arg = "ARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n"
@@ -220,8 +203,6 @@ func TestComposeFeaturesBuild(t *testing.T) {
 		t.Errorf("build contexts = %v", ctx.BuildKitContexts)
 	}
 
-	// No Features: only the metadata label, byte for byte TS getImageBuildOptions
-	// (its prefix indents the ARG; the label is getDevcontainerMetadataLabel's).
 	label := imagemeta.GenerateComposeLabelBuild("base", []imagemeta.Entry{{RemoteUser: "dev"}}, "")
 	const tsArg = "    ARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n"
 	if label.DockerfilePrefixContent != "\n"+tsArg {

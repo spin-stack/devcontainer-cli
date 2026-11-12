@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// writeEntries writes a plain tar holding headers in order, each regular file
-// with body as content.
 func writeEntries(t *testing.T, body string, headers ...tar.Header) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "a.tar")
@@ -66,10 +64,10 @@ func TestExtractTarGzModes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for rel, want := range map[string]os.FileMode{
-		"dir":              0o755, // directories are created 0755, not with the entry's mode
+		"dir":              0o755,
 		"nested/deep":      0o755,
 		"nested/deep/file": 0o600,
-		"modeless":         0o644, // no mode in the header: os.Create's default stays
+		"modeless":         0o644,
 		"script.sh":        0o751,
 	} {
 		if got := perm(t, filepath.Join(dest, rel)); got != want {
@@ -79,8 +77,6 @@ func TestExtractTarGzModes(t *testing.T) {
 }
 
 func TestExtractTarGzRefusesARegularFileAtTheRoot(t *testing.T) {
-	// "." names destDir itself; a regular file cannot replace the directory,
-	// and the extraction must say so instead of dropping the entry.
 	src := writeEntries(t, "x", tar.Header{Name: ".", Typeflag: tar.TypeReg, Mode: 0o644})
 	if err := ExtractTarGz(src, t.TempDir()); err == nil {
 		t.Fatal("ExtractTarGz succeeded writing a regular file over destDir")

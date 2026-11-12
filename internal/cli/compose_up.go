@@ -22,38 +22,26 @@ import (
 	"github.com/moby/moby/api/types/image"
 )
 
-// composeAutoAddedStageLabel is the stage name TS buildAndExtendDockerCompose
-// gives the service's final stage (or an image-only service's FROM).
 const composeAutoAddedStageLabel = "dev_container_auto_added_stage_label"
 
-// composeSyntaxLineRe is TS's /^\s*#\s*syntax\s*=.*[\r\n]/ (start of file only).
 var composeSyntaxLineRe = regexp.MustCompile(`^\s*#\s*syntax\s*=.*[\r\n]`)
 
-// composeStart holds what startComposeContainer needs (TS startContainer).
 type composeStart struct {
-	cfg             *config.DevContainer
-	loadResult      *config.LoadResult
-	workspaceFolder string
-	idLabels        []string
-	useBuildx       bool
-	projectName     string
-	composeFiles    []string
-	composeConfig   map[string]any
-	client          *docker.ComposeClient
-	// container is the existing (stopped) service container, nil for none.
-	container *container.InspectResponse
-	// The build command's settings (zero for up): metadataOnImage puts the
-	// metadata label on an image-only service's image even without Features (TS
-	// canAddLabelsToContainer false), buildServices are the services `compose
-	// build` builds (nil for TS up's runServices filter), skipPersistCustoms
-	// leaves the Features' customizations out of the metadata.
+	cfg                *config.DevContainer
+	loadResult         *config.LoadResult
+	workspaceFolder    string
+	idLabels           []string
+	useBuildx          bool
+	projectName        string
+	composeFiles       []string
+	composeConfig      map[string]any
+	client             *docker.ComposeClient
+	container          *container.InspectResponse
 	metadataOnImage    bool
 	buildServices      []string
 	skipPersistCustoms bool
 }
 
-// persistedFolder is TS common.persistedFolder: --user-data-folder, or
-// the CLI cache folder as a fallback.
 func (r *upRunner) persistedFolder() string {
 	if r.opts.userDataFolder != "" {
 		return r.opts.userDataFolder
@@ -61,15 +49,12 @@ func (r *upRunner) persistedFolder() string {
 	return cacheFolder()
 }
 
-// composeService returns the service's entry of the `docker compose config` output.
 func composeService(composeConfig map[string]any, service string) (map[string]any, bool) {
 	services, _ := composeConfig["services"].(map[string]any)
 	svc, ok := services[service].(map[string]any)
 	return svc, ok
 }
 
-// composeStringList reads a compose entrypoint/command: nil when unset, the list
-// as is, or a string split like a shell would (TS shellQuote.parse).
 func composeStringList(v any) []string {
 	switch t := v.(type) {
 	case []any:
@@ -84,8 +69,6 @@ func composeStringList(v any) []string {
 	return nil
 }
 
-// splitShellWords splits s into words honoring single/double quotes and
-// backslash escapes, the subset of shell-quote parsing compose values need.
 func splitShellWords(s string) []string {
 	words := []string{}
 	var cur strings.Builder
@@ -125,7 +108,6 @@ func splitShellWords(s string) []string {
 	return words
 }
 
-// newRandomUUID returns a random (version 4) UUID string.
 func newRandomUUID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
@@ -136,7 +118,6 @@ func newRandomUUID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// persistedComposeFile is TS checkForPersistedFile's result.
 type persistedComposeFile struct {
 	foundLabel, fileExists bool
 	file                   string
@@ -158,9 +139,6 @@ func (r *upRunner) checkPersistedComposeFile(files []string, prefix string) pers
 	return persistedComposeFile{}
 }
 
-// startComposeContainer ports TS startContainer (dockerCompose.ts): restore the
-// override files a stopped container was created with, or (re)generate the build
-// and container overrides — always, with or without Features — then `compose up`.
 func (r *upRunner) startComposeContainer(ctx context.Context, s composeStart) (string, error) {
 	logger, opts := r.log, r.opts
 	cfg := s.cfg
@@ -197,7 +175,6 @@ func (r *upRunner) startComposeContainer(ctx context.Context, s composeStart) (s
 	}
 
 	if s.container == nil || !restored {
-		// With an existing container only recreate the override files; skip the build.
 		noBuild := s.container != nil
 		versionPrefix, err := readComposeVersionPrefix(s.composeFiles)
 		if err != nil {
@@ -256,9 +233,6 @@ func (r *upRunner) startComposeContainer(ctx context.Context, s composeStart) (s
 	return ids[0], nil
 }
 
-// composeServicesFilter is the services `compose build` and `compose up` are
-// given, as in TS: none (the whole project) without runServices, otherwise
-// runServices plus the dev container service.
 func composeServicesFilter(cfg *config.DevContainer) []string {
 	if len(cfg.RunServices) == 0 {
 		return nil
@@ -270,7 +244,6 @@ func composeServicesFilter(cfg *config.DevContainer) []string {
 	return services
 }
 
-// inspectImagePulling is TS inspectDockerImage(..., pullImageOnError=true).
 func (r *upRunner) inspectImagePulling(ctx context.Context, ref string) (image.InspectResponse, error) {
 	info, err := r.engine.InspectImage(ctx, ref)
 	if err == nil {
@@ -282,28 +255,18 @@ func (r *upRunner) inspectImagePulling(ctx context.Context, ref string) (image.I
 	return r.engine.InspectImage(ctx, ref)
 }
 
-// composeExtendResult is what TS buildAndExtendDockerCompose returns.
 type composeExtendResult struct {
 	imageMetadata     []imagemeta.Entry
 	overrideFiles     []string
 	overrideImageName string
-	// labels are "key=value" container labels (the metadata label for an
-	// image-only service without Features).
-	labels []string
+	labels            []string
 }
 
-// composeFeatureSets fetches the configured Features the way
-// extendImageWithFeatures does (lockfile pinning/writing, host substitutions),
-// returning nil when none are configured. The returned folder (TS dstFolder)
-// holds each Feature at its consecutiveId; it is kept because the compose build
-// override references it (TS keeps its features folder too).
 func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult) ([]*features.Set, string, error) {
 	opts := r.opts
 	if len(cfg.Features) > 0 {
 		r.lockfileRead = !opts.noLockfile
 	}
-	// A lockfile that cannot be read fails the compose flow as it fails TS's
-	// (readLockfile rethrows), reported by up and build as their error result.
 	var lockfile *features.Lockfile
 	if cfg.ConfigFilePath != "" && !opts.noLockfile {
 		var err error
@@ -321,8 +284,6 @@ func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContai
 	if err := substituteFeatureHostVars(res.FeatureSets, loadResult.HostSub); err != nil {
 		return nil, "", err
 	}
-	// Written by default, as TS generateFeaturesConfig writes it unless
-	// --no-lockfile is given.
 	if !opts.noLockfile && cfg.ConfigFilePath != "" {
 		lf := features.GenerateLockfile(&features.Config{FeatureSets: res.FeatureSets}, opts.lockfileExcludeIDs)
 		if err := features.WriteLockfile(cfg.ConfigFilePath, lf, features.WriteOptions{Frozen: opts.experimentalFrozenLockfile}); err != nil {
@@ -332,9 +293,6 @@ func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContai
 	return res.FeatureSets, res.TmpDir, nil
 }
 
-// dockerfileSupportsBuildContexts is TS supportsBuildContexts: truthy for a
-// docker/dockerfile frontend >= 1.4 (or untagged/latest/labs) and for an
-// unknown frontend.
 func dockerfileSupportsBuildContexts(df *docker.Dockerfile) bool {
 	if df == nil {
 		return false
@@ -359,9 +317,6 @@ func dockerfileSupportsBuildContexts(df *docker.Dockerfile) bool {
 	return minor >= 4
 }
 
-// buildAndExtendCompose ports TS buildAndExtendDockerCompose: compute the
-// service's image metadata, generate the Features (or metadata-only) Dockerfile
-// and the build override, and run `docker compose build` unless noBuild.
 func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, persisted, versionPrefix string, noBuild bool) (*composeExtendResult, error) {
 	logger, opts := r.log, r.opts
 	cfg := s.cfg
@@ -439,9 +394,6 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		return nil, err
 	}
 
-	// TS getDevcontainerMetadata: the label records the image's entries, the
-	// Features' and the configuration's as written (labelMetadata); the merged
-	// configuration reads them with their variables substituted (metadata).
 	var featureEntries []imagemeta.Entry
 	for _, fs := range featureSets {
 		featureEntries = append(featureEntries, featureMetadataEntry(fs, s.skipPersistCustoms))
@@ -463,11 +415,8 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 	dstFolder := featuresFolder
 	switch {
 	case len(featureSets) == 0 && !svcBuild.HasBuild && !s.metadataOnImage:
-		// TS getExtendImageBuildInfo: no Features and an image (no Dockerfile) →
-		// only the metadata label, added to the container.
 		result.labels = []string{imagemeta.MetadataLabel + "=" + containerMetadataLabel(labelMetadata)}
 	case len(featureSets) == 0:
-		// TS getImageBuildOptions: extend the Dockerfile with the metadata label.
 		syntax := userSyntax
 		if opts.omitSyntaxDirective {
 			syntax = ""
@@ -478,7 +427,6 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		}
 		info = imagemeta.GenerateComposeLabelBuild(baseName, labelMetadata, syntax)
 	default:
-		// TS findContainerUsers over the image + Features + config metadata.
 		containerUser, remoteUser := findContainerUsers(metadata, svcUser, imageUser)
 		// TS: BuildKit build contexts need Compose >= 2.17.0 (the CLI variant is
 		// always Docker: Podman is unsupported, see docs/DIVERGENCES.md).
@@ -516,7 +464,6 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 
 	override := composeBuildOverride{VersionPrefix: versionPrefix, Service: cfg.Service, CacheFrom: opts.cacheFrom}
 	if info != nil {
-		// Avoid retagging a previously pulled image.
 		if !svcBuild.HasBuild {
 			result.overrideImageName = folderImageName(s.workspaceFolder)
 			override.Image = result.overrideImageName
@@ -534,7 +481,6 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 			return nil, fmt.Errorf("write compose Dockerfile: %w", err)
 		}
 		if originalDockerfilePath != "" {
-			// Keep the service Dockerfile's sibling .dockerignore (upstream #969).
 			copyDockerignore(originalDockerfilePath, finalPath)
 		}
 		override.Dockerfile = finalPath
@@ -587,9 +533,6 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 	return result, nil
 }
 
-// updateRemoteUserUID ports TS updateRemoteUserUID for a compose service
-// (dockerCompose.ts startContainer → containerFeatures.ts): rebuild the image
-// with the remote user's UID/GID set to the host user's.
 func (r *upRunner) updateRemoteUserUID(ctx context.Context, merged *imagemeta.MergedConfig, imageName string, imageDetails func() (image.InspectResponse, error), svcUser, workspaceFolder, persisted string) (string, error) {
 	opts := r.opts
 	enabled := opts.updateRemoteUserUIDDefault == "on"
@@ -647,8 +590,6 @@ func (r *upRunner) updateRemoteUserUID(ctx context.Context, merged *imagemeta.Me
 	return fixedImageName, nil
 }
 
-// writeComposeFeaturesOverride ports TS writeFeaturesComposeOverrideFile: render
-// the container override and persist it under <persisted>/docker-compose.
 func (r *upRunner) writeComposeFeaturesOverride(ctx context.Context, s composeStart, updatedImageName, originalImageName string, merged *imagemeta.MergedConfig, versionPrefix string, imageDetails func() (image.InspectResponse, error), svc map[string]any, labels []string, persisted string) (string, error) {
 	logger, opts, cfg := r.log, r.opts, s.cfg
 

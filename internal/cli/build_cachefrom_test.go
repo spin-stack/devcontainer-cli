@@ -7,9 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// TestCacheFromForDockerfileBuild pins the merge of the --cache-from flag with
-// devcontainer.json build.cacheFrom: flag values first, then config values, in
-// order — matching TS singleContainer (additionalCacheFroms, then config.build.cacheFrom).
 func TestCacheFromForDockerfileBuild(t *testing.T) {
 	cfgWith := func(cf ...string) *config.DevContainer {
 		return &config.DevContainer{Build: &config.Build{CacheFrom: config.StringOrStrings(cf)}}
@@ -38,9 +35,6 @@ func TestCacheFromForDockerfileBuild(t *testing.T) {
 	}
 }
 
-// TestCacheFromForDockerfileBuildDoesNotMutateFlag guards against the helper
-// aliasing/appending into the caller's flag slice (which extendImageWithFeatures
-// still passes verbatim for the feature layers).
 func TestCacheFromForDockerfileBuildDoesNotMutateFlag(t *testing.T) {
 	flagBacking := []string{"flag1", "sentinel"}
 	flag := flagBacking[:1]

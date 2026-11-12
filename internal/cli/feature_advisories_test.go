@@ -9,9 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A fetched feature with an active advisory gets TS's FEATURE ADVISORIES
-// warning in the log; one without gets nothing. Go had the advisory matcher but
-// never called it, so the warning TS writes on every features config was lost.
 func TestWriteFeatureAdvisoriesWarnsOnTheLog(t *testing.T) {
 	manifest := &features.ControlManifest{FeatureAdvisories: []features.Advisory{{
 		FeatureID: "ghcr.io/o/f/a", IntroducedInVersion: "1.0.0", FixedInVersion: "1.2.0", Description: "a broke",

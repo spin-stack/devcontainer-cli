@@ -9,9 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// A committed features lockfile pins resolved digests, so changing it changes
-// the cache key (docs/go-only-features.md, read-configuration --cache-key); an
-// empty lockfile, which pins nothing, keys like no lockfile at all.
 func TestComputeCacheKeyFoldsInTheLockfile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "devcontainer.json")
@@ -51,8 +48,6 @@ func TestComputeCacheKeyFoldsInTheLockfile(t *testing.T) {
 	}
 }
 
-// A proxy variable that is set but empty configures no proxy, so it keys like
-// an unset one.
 func TestComputeCacheKeyIgnoresEmptyProxy(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "devcontainer.json")
 	base, err := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), nil)
@@ -64,9 +59,6 @@ func TestComputeCacheKeyIgnoresEmptyProxy(t *testing.T) {
 	}
 }
 
-// A lockfile that is not JSON fails the key instead of keying as if no
-// lockfile were committed: the reference's readLockfile rethrows the parse
-// error, and a key without the lockfile would not track its pinned digests.
 func TestComputeCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "devcontainer.json")
@@ -83,8 +75,6 @@ func TestComputeCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	}
 }
 
-// A lockfile that exists but cannot be read fails the key too: only a missing
-// lockfile (ENOENT) means none is committed.
 func TestComputeCacheKeyFailsOnAnUnreadableLockfile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "devcontainer.json")
@@ -97,8 +87,6 @@ func TestComputeCacheKeyFailsOnAnUnreadableLockfile(t *testing.T) {
 	}
 }
 
-// A Dockerfile-based configuration whose Dockerfile cannot be read fails the
-// key instead of keying as if it had no Dockerfile, naming the file.
 func TestComputeCacheKeyFailsOnAMissingDockerfile(t *testing.T) {
 	dir := t.TempDir()
 	r := &config.LoadResult{Config: &config.DevContainer{

@@ -16,8 +16,6 @@ import (
 	"github.com/devcontainers/cli/internal/doctor"
 )
 
-// openPTY opens a pseudo-terminal: what is written to the returned terminal
-// can be read back from the returned master.
 func openPTY(t *testing.T) (master, terminal *os.File) {
 	t.Helper()
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
@@ -46,8 +44,6 @@ type terminalStderr struct{ terminal *os.File }
 func (terminalStderr) Stdout() io.Writer   { return io.Discard }
 func (o terminalStderr) Stderr() io.Writer { return o.terminal }
 
-// warnOnTerminal runs warnUncheckedHost with a terminal for stderr and the
-// check state under stateHome, and returns what it wrote there.
 func warnOnTerminal(t *testing.T, stateHome string) string {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", stateHome)
@@ -79,9 +75,6 @@ func saveCheckState(t *testing.T, overall doctor.Status) string {
 	return home
 }
 
-// On a terminal, up and build hint at `check` when the host was never checked,
-// warn when the last check failed, and say nothing after a passing check or
-// when the state cannot be read.
 func TestWarnUncheckedHostOnATerminal(t *testing.T) {
 	unreadable := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(unreadable, "devcontainer", "check.json"), 0o755); err != nil {

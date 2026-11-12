@@ -9,9 +9,8 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// FNode is a node in the feature dependency graph.
 type FNode struct {
-	Type             string // "user-provided", "override", "resolved"
+	Type             string
 	UserFeatureID    string
 	Options          any
 	Set              *Set
@@ -21,12 +20,6 @@ type FNode struct {
 	RoundPriority    int
 }
 
-// ComputeInstallationOrder takes resolved feature sets and computes the
-// topological installation order respecting dependsOn (hard) and
-// installsAfter (soft) constraints, plus the overrideFeatureInstallOrder
-// priority BuildDependencyGraph stored in each node's RoundPriority.
-//
-// This is the Go port of computeDependsOnInstallationOrder from containerFeaturesOrder.ts.
 func ComputeInstallationOrder(
 	logger log.Logger,
 	nodes []*FNode,
@@ -36,15 +29,12 @@ func ComputeInstallationOrder(
 		return nil, fmt.Errorf("empty worklist")
 	}
 
-	// Verify all nodes have resolved feature sets
 	for _, n := range nodes {
 		if n.Set == nil {
 			return nil, fmt.Errorf("node %q has no resolved Set", n.UserFeatureID)
 		}
 	}
 
-	// Prune irrelevant soft dependencies:
-	// Remove installsAfter edges where the soft dep doesn't match any node in the worklist.
 	for _, node := range nodes {
 		pruned := make([]*FNode, 0, len(node.InstallsAfter))
 		for _, softDep := range node.InstallsAfter {
@@ -57,14 +47,12 @@ func ComputeInstallationOrder(
 		node.InstallsAfter = pruned
 	}
 
-	// Round-based topological sort
 	worklist := make([]*FNode, len(nodes))
 	copy(worklist, nodes)
 
 	var installOrder []*FNode
 
 	for len(worklist) > 0 {
-		// Find nodes whose deps are all satisfied
 		var round []*FNode
 		for _, node := range worklist {
 			if canInstall(node, installOrder) {
@@ -80,7 +68,6 @@ func ComputeInstallationOrder(
 			return nil, fmt.Errorf("circular dependency detected among: %s", strings.Join(remaining, ", "))
 		}
 
-		// Filter to highest priority in this round
 		maxPriority := 0
 		for _, n := range round {
 			if n.RoundPriority > maxPriority {
@@ -97,17 +84,13 @@ func ComputeInstallationOrder(
 			round = filtered
 		}
 
-		// Remove round nodes from worklist
 		worklist = removeNodes(worklist, round)
 
-		// Sort round lexicographically, keeping equal nodes in place as the TS
-		// Array.prototype.sort (stable) does.
 		slices.SortStableFunc(round, compareNodes)
 
 		installOrder = append(installOrder, round...)
 	}
 
-	// Extract FeatureSets
 	result := make([]*Set, len(installOrder))
 	for i, n := range installOrder {
 		result[i] = n.Set
@@ -115,16 +98,12 @@ func ComputeInstallationOrder(
 	return result, nil
 }
 
-// --- Dependency checks ---
-
 func canInstall(node *FNode, installed []*FNode) bool {
-	// All hard deps must be installed
 	for _, dep := range node.DependsOn {
 		if !slices.ContainsFunc(installed, func(n *FNode) bool { return nodesEqual(n, dep) }) {
 			return false
 		}
 	}
-	// All soft deps must be installed (if they are in the worklist)
 	for _, dep := range node.InstallsAfter {
 		if !satisfiesSoftDep(installed, dep) {
 			return false
@@ -133,13 +112,10 @@ func canInstall(node *FNode, installed []*FNode) bool {
 	return true
 }
 
-// satisfiesSoftDep reports whether one of nodes satisfies softDep.
 func satisfiesSoftDep(nodes []*FNode, softDep *FNode) bool {
 	return slices.ContainsFunc(nodes, func(n *FNode) bool { return nodeSatisfiesSoftDep(n, softDep) })
 }
 
-// nodeSatisfiesSoftDep checks if `node` satisfies `softDep` as a soft dependency.
-// Matching is by resource identity (not options/digest), accounting for legacyIds.
 func nodeSatisfiesSoftDep(node, softDep *FNode) bool {
 	if node.Set == nil || softDep.Set == nil {
 		return false
@@ -159,7 +135,6 @@ func nodeSatisfiesSoftDep(node, softDep *FNode) bool {
 		if ns.Resource == ss.Resource {
 			return true
 		}
-		// Check legacy ID aliases
 		ssPrefix := ss.Registry + "/" + ss.Namespace
 		for _, alias := range softDep.FeatureIDAliases {
 			if ssPrefix+"/"+alias == ns.Resource {
@@ -181,7 +156,6 @@ func nodeSatisfiesSoftDep(node, softDep *FNode) bool {
 	}
 }
 
-// nodesEqual checks if two nodes represent the same feature (same source + options).
 func nodesEqual(a, b *FNode) bool {
 	if a.Set == nil || b.Set == nil {
 		return false
@@ -189,11 +163,6 @@ func nodesEqual(a, b *FNode) bool {
 	return compareNodes(a, b) == 0
 }
 
-// compareNodes compares two nodes for sorting.
-// Returns 0 if equal, <0 if a sorts before b, >0 if after.
-//
-// Both nodes have a Set: nodesEqual checks it first, and
-// ComputeInstallationOrder before it sorts a round.
 func compareNodes(a, b *FNode) int {
 	aSrc := a.Set.SourceInfo
 	bSrc := b.Set.SourceInfo
@@ -207,13 +176,10 @@ func compareNodes(a, b *FNode) int {
 	switch as := aSrc.(type) {
 	case *OCISource:
 		bs := bSrc.(*OCISource)
-		// Short-circuit if digests AND options match (dedup identity is
-		// resource+options, not the input string).
 		if as.ManifestDigest == bs.ManifestDigest && as.ManifestDigest != "" &&
 			optionsCompareTo(a.Options, b.Options) == 0 {
 			return 0
 		}
-		// Compare by resource (accounting for aliases)
 		aRes := as.Registry + "/" + as.Namespace + "/" + as.ID
 		bRes := bs.Registry + "/" + bs.Namespace + "/" + bs.ID
 		if c := strings.Compare(aRes, bRes); c != 0 {
@@ -249,10 +215,6 @@ func compareNodes(a, b *FNode) int {
 	}
 }
 
-// optionsCompareTo compares two feature option values (string | bool |
-// map[string]interface{}), porting the TS optionsCompareTo. It underpins the
-// resource+options dedup identity so two references to the same Feature with
-// different options are treated as distinct.
 func optionsCompareTo(a, b any) int {
 	as, aStr := a.(string)
 	bs, bStr := b.(string)
@@ -293,9 +255,6 @@ func optionsCompareTo(a, b any) int {
 					return c
 				}
 			}
-			// TS also orders an undefined value after a present one, but a JSON
-			// option is never undefined: null, the nil here, is an object to
-			// TS, so like any other pair of differing types it orders nothing.
 		}
 		return 0
 	}
@@ -313,7 +272,6 @@ func boolCompare(a, b bool) int {
 	return -1 // mutate-exempt: compareNodes' callers read only the sign
 }
 
-// typeName mirrors the JS `typeof` used by optionsCompareTo's final fallback.
 func typeName(v any) string {
 	switch v.(type) {
 	case string:

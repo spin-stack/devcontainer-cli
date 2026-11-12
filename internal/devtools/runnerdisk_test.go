@@ -2,8 +2,6 @@ package devtools
 
 import "testing"
 
-// A runner with less than RunnerDiskRoom free deletes its SDKs (GitHub's, about
-// 20 GB free); one with room keeps them (the docker8 fleet's 150 GB volume).
 func TestNeedsDiskFreeing(t *testing.T) {
 	tests := []struct {
 		name string

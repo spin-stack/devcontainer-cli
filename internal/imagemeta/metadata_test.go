@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// The label is JSON.stringify of the entries: &, < and > are written as they
-// are, and each entry's properties in TS's pick order.
 func TestGenerateMetadataLabelWritesWhatJSONStringifyWrites(t *testing.T) {
 	init := true
 	got := GenerateMetadataLabel([]Entry{
@@ -24,8 +22,6 @@ func TestGenerateMetadataLabelWritesWhatJSONStringifyWrites(t *testing.T) {
 	}
 }
 
-// configEntryKeys orders every property of an Entry but id, so MarshalJSON
-// writes all of them.
 func TestEntryKeyOrdersNameEveryProperty(t *testing.T) {
 	typ := reflect.TypeFor[Entry]()
 	for i := range typ.NumField() {

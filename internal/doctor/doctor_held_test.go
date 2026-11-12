@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// nameRunner records the executable each docker call runs.
 type nameRunner struct{ names []string }
 
 func (n *nameRunner) Run(_ context.Context, _ io.Writer, name string, _ ...string) ([]byte, []byte, int, error) {

@@ -10,8 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// buildConfigNotFound runs build with args and returns the path its "config
-// not found" error names.
 func buildConfigNotFound(t *testing.T, args ...string) string {
 	t.Helper()
 	cmd := newBuildCmd()
@@ -31,8 +29,6 @@ func buildConfigNotFound(t *testing.T, args ...string) string {
 	return got.Message
 }
 
-// build [path] builds the workspace the argument names, not the current
-// directory; --workspace-folder wins over the argument.
 func TestBuildPositionalPathIsTheWorkspace(t *testing.T) {
 	ws := t.TempDir()
 	t.Chdir(t.TempDir())
@@ -45,8 +41,6 @@ func TestBuildPositionalPathIsTheWorkspace(t *testing.T) {
 	}
 }
 
-// A build target names the stage to build, and the Dockerfile is used as it
-// is, with no stage name added.
 func TestPrepareDockerfileBuildUsesTheConfiguredTarget(t *testing.T) {
 	dir := t.TempDir()
 	dockerfile := filepath.Join(dir, "Dockerfile")
@@ -67,9 +61,6 @@ func TestPrepareDockerfileBuildUsesTheConfiguredTarget(t *testing.T) {
 	}
 }
 
-// Without a target, the final stage gets a name to build, in a Dockerfile
-// written next to the user's, whether the Dockerfile is named under build or
-// at the top level.
 func TestPrepareDockerfileBuildNamesTheFinalStageWithoutATarget(t *testing.T) {
 	for name, cfg := range map[string]config.DevContainer{
 		"build":     {Build: &config.Build{Dockerfile: "Dockerfile"}},

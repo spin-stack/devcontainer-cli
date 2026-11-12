@@ -8,9 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// The Dockerfile and build context resolve as TS getDockerfilePath and
-// getDockerContextPath do: against the configuration's folder, an absolute
-// path as it is, and without a context the Dockerfile's own folder.
 func TestDockerfileAndContextPaths(t *testing.T) {
 	cfgPath := "/ws/.devcontainer/devcontainer.json"
 	for _, tc := range []struct {
@@ -39,8 +36,6 @@ func TestDockerfileAndContextPaths(t *testing.T) {
 	}
 }
 
-// An absolute build.dockerfile is read where it is by the build and by
-// --cache-key, not joined onto the configuration's folder.
 func TestAbsoluteDockerfileIsReadWhereItIs(t *testing.T) {
 	dockerfile := filepath.Join(t.TempDir(), "Dockerfile")
 	if err := os.WriteFile(dockerfile, []byte("FROM alpine:3 AS base\n"), 0o644); err != nil {

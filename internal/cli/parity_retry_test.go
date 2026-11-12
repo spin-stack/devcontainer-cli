@@ -5,13 +5,6 @@ import (
 	"testing"
 )
 
-// TestIsRetryableFailure guards the classifier that decides whether a non-zero
-// parity side is a transient build/environment flake (retryable) or a stable
-// product divergence (not). The two positive fixtures are the exact signatures
-// that turned dependabot PRs #9/#10 red: a BuildKit "failed to solve" on one
-// side and the reference's container-setup wrapper on the other, while the other
-// side succeeded. The negative fixtures must stay non-retryable so a real CLI
-// contract failure is never masked by a retry.
 func TestIsRetryableFailure(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -30,8 +23,6 @@ func TestIsRetryableFailure(t *testing.T) {
 			wantRetryable: true,
 		},
 		{
-			// PR #10 / main 07-14 signature: TS reference build flaked and the
-			// low-level BuildKit error is hidden behind the generic wrapper.
 			name:          "reference container-setup wrapper",
 			stdout:        `{"description":"An error occurred setting up the container.","message":"Command failed: docker build -f /tmp/x -t vsc-parity-dotfiles --platform linux/amd64 /tmp/x","outcome":"error"}`,
 			wantRetryable: true,
@@ -60,10 +51,6 @@ func TestIsRetryableFailure(t *testing.T) {
 	}
 }
 
-// TestRunWithInfraRetry asserts the retry loop absorbs a transient build flake
-// (success on the second attempt) while never masking a stable failure: a
-// deterministic contract error runs exactly once, and a persistent transient
-// error is retried up to the cap and then surfaced as the final non-zero result.
 func TestRunWithInfraRetry(t *testing.T) {
 	const transient = "ERROR: failed to solve: connection reset by peer"
 	const stable = `{"outcome":"error","message":"Dev container config not found."}`

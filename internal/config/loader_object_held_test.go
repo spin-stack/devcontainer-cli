@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// A devcontainer.json that is not a JSON object fails as TS
-// readDevContainerConfigFile fails it, naming the file; an object loads.
 func TestLoadRejectsAConfigThatIsNotAnObject(t *testing.T) {
 	for _, content := range []string{"null", "[1]", `"image"`, "3"} {
 		ws := t.TempDir()
@@ -43,10 +41,6 @@ func TestLoadRejectsAConfigThatIsNotAnObject(t *testing.T) {
 	}
 }
 
-// TS readDevContainerConfigFile validates no property type: a falsy legacy
-// "extensions", a "devPort" that customizations.vscode already sets (both left
-// in place by updateFromOldProperties) and a "customizations" that is no object
-// load, and the raw configuration keeps them as written.
 func TestLoadAcceptsWrongTypedLegacyAndCustomizationsProperties(t *testing.T) {
 	for _, tc := range []struct {
 		content, key       string
@@ -80,10 +74,6 @@ func TestLoadAcceptsWrongTypedLegacyAndCustomizationsProperties(t *testing.T) {
 	}
 }
 
-// Deliberate divergence (docs/DIVERGENCES.md): a devcontainer.json that is not
-// valid JSONC fails to load, naming the file and where it breaks. TS parses it
-// with jsonc-parser's error recovery and silently keeps what it could read
-// ({bad loads as {}, and {"image": , "remoteUser": "u"} drops "image").
 func TestLoadRejectsAConfigThatIsNotValidJSONC(t *testing.T) {
 	for _, content := range []string{
 		`{bad`,

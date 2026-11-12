@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// readSecretsFile reads a JSON file {"KEY": "VALUE", ...} and returns ["KEY=VALUE", ...].
 func readSecretsFile(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -24,9 +23,6 @@ func readSecretsFile(path string) ([]string, error) {
 	return envs, nil
 }
 
-// secretValuesFromFile returns just the secret values from a secrets file, for
-// log masking. Best-effort: returns nil on any error (the eventual load of the
-// same file surfaces real problems).
 func secretValuesFromFile(path string) []string {
 	if path == "" {
 		return nil
@@ -44,9 +40,6 @@ func secretValuesFromFile(path string) []string {
 	return values
 }
 
-// buildSecretsFromFile reads build secrets ("KEY=VALUE") from a --secrets-file
-// path, or nil when unset/unreadable (a read error is non-fatal — the build
-// proceeds without secrets, matching the main build path).
 func buildSecretsFromFile(path string) []string {
 	if path == "" {
 		return nil
@@ -58,8 +51,6 @@ func buildSecretsFromFile(path string) []string {
 	return secrets
 }
 
-// buildSecretIDs extracts the secret id (the KEY of each "KEY=VALUE") so it can
-// be mounted into a feature-install RUN as --mount=type=secret,id=KEY.
 func buildSecretIDs(secrets []string) []string {
 	ids := make([]string, 0, len(secrets))
 	for _, s := range secrets {

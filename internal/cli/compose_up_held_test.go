@@ -30,7 +30,6 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// A compose entrypoint/command string is split like shell-quote parses it.
 func TestSplitShellWords(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -75,8 +74,6 @@ func TestSortedStringKeys(t *testing.T) {
 	}
 }
 
-// TS supportsBuildContexts: docker/dockerfile >= 1.4, an unversioned or
-// non-numeric tag, or a frontend that is not docker/dockerfile.
 func TestDockerfileSupportsBuildContexts(t *testing.T) {
 	df := func(version, syntax string) *docker.Dockerfile {
 		return &docker.Dockerfile{Preamble: docker.Preamble{Version: version, Directives: map[string]string{"syntax": syntax}}}
@@ -107,7 +104,6 @@ func TestDockerfileSupportsBuildContexts(t *testing.T) {
 	}
 }
 
-// The override file name carries a random version 4 UUID.
 func TestNewRandomUUID(t *testing.T) {
 	re := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	seen := map[string]bool{}
@@ -123,8 +119,6 @@ func TestNewRandomUUID(t *testing.T) {
 	}
 }
 
-// TS checkForPersistedFile: the label names the file, and it is restored only
-// when it is still a regular file.
 func TestCheckPersistedComposeFile(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, composeBuildOverridePrefix+"-1.yml")
@@ -155,9 +149,6 @@ func TestCheckPersistedComposeFile(t *testing.T) {
 	}
 }
 
-// composeFakeEngine is the Docker Engine API the compose flow talks to: images
-// present locally, images a pull brings in, the daemon version and the
-// containers a label lookup finds. A call to any other API method panics.
 type composeFakeEngine struct {
 	docker.API
 	images     map[string]image.InspectResponse
@@ -204,8 +195,6 @@ type composeFakePull struct{ mobyclient.ImagePullResponse }
 func (composeFakePull) Read([]byte) (int, error) { return 0, io.EOF }
 func (composeFakePull) Close() error             { return nil }
 
-// composeFakeRunner records the docker and docker compose processes the flow
-// starts; one whose command line contains failOn exits 1.
 type composeFakeRunner struct {
 	calls  [][]string
 	failOn string
@@ -219,7 +208,6 @@ func (f *composeFakeRunner) Run(_ context.Context, _ io.Writer, name string, arg
 	return nil, nil, 0, nil
 }
 
-// compose returns the arguments of each `docker compose ... <sub> ...` run.
 func (f *composeFakeRunner) compose(sub string) [][]string {
 	var out [][]string
 	for _, c := range f.calls {
@@ -230,7 +218,6 @@ func (f *composeFakeRunner) compose(sub string) [][]string {
 	return out
 }
 
-// dockerBuilds returns the arguments of each `docker build` run.
 func (f *composeFakeRunner) dockerBuilds() [][]string {
 	var out [][]string
 	for _, c := range f.calls {
@@ -241,8 +228,6 @@ func (f *composeFakeRunner) dockerBuilds() [][]string {
 	return out
 }
 
-// composeHarness is a compose project on disk (.devcontainer with a compose
-// file) and an upRunner whose docker, compose and engine are fakes.
 type composeHarness struct {
 	t         *testing.T
 	r         *upRunner
@@ -292,17 +277,15 @@ func newComposeHarness(t *testing.T) *composeHarness {
 		ws: ws, dc: dc, compose: compose, persisted: persisted,
 		engine: engine, run: run, logs: logs,
 		r: &upRunner{
-			log:    logger,
-			docker: &docker.Client{DockerPath: "docker", Log: logger, Runner: run},
-			engine: &docker.EngineClient{API: engine, Log: logger},
-			opts:   &upOpts{workspaceFolder: ws, userDataFolder: persisted, updateRemoteUserUIDDefault: "off", gpuAvailability: "none"},
-			// The fixtures' metadata names no variables.
+			log:        logger,
+			docker:     &docker.Client{DockerPath: "docker", Log: logger, Runner: run},
+			engine:     &docker.EngineClient{API: engine, Log: logger},
+			opts:       &upOpts{workspaceFolder: ws, userDataFolder: persisted, updateRemoteUserUIDDefault: "off", gpuAvailability: "none"},
 			substitute: func(*[]imagemeta.Entry) error { return nil },
 		},
 	}
 }
 
-// start is the composeStart for service app of the given compose config.
 func (h *composeHarness) start(cfg *config.DevContainer, svc map[string]any) composeStart {
 	if cfg.Service == "" {
 		cfg.Service = "app"
@@ -334,7 +317,6 @@ func (h *composeHarness) write(rel, content string) string {
 	return p
 }
 
-// localFeature writes the Feature ./hello next to devcontainer.json.
 func (h *composeHarness) localFeature() map[string]any {
 	h.write("hello/devcontainer-feature.json", `{"id":"hello","version":"1.0.0","name":"Hello","containerEnv":{"HELLO":"${localEnv:HELLO_SRC}"}}`)
 	h.write("hello/install.sh", "#!/bin/sh\n")
@@ -376,8 +358,6 @@ func TestComposeServicesFilter(t *testing.T) {
 	}
 }
 
-// TS inspectDockerImage with pullImageOnError: a missing image is pulled once
-// and inspected again; a failed pull is the error.
 func TestInspectImagePulling(t *testing.T) {
 	h := newComposeHarness(t)
 	ctx := context.Background()
@@ -394,8 +374,6 @@ func TestInspectImagePulling(t *testing.T) {
 	}
 }
 
-// TS updateRemoteUserUID: the image's user is the remote user when nothing
-// names another, and the UID image is built for the image's platform.
 func TestUpdateRemoteUserUIDImageUserAndPlatform(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("updateRemoteUserUID only runs on Linux")
@@ -443,9 +421,6 @@ func TestUpdateRemoteUserUIDImageUserAndPlatform(t *testing.T) {
 	}
 }
 
-// The container override: mounts with ${devcontainerId} resolved plus the
-// --mount values, the image's entrypoint/command where compose sets none, the
-// labels, and the GPU request.
 func TestWriteComposeFeaturesOverride(t *testing.T) {
 	ctx := context.Background()
 	boolp := func(b bool) *bool { return &b }
@@ -590,7 +565,6 @@ func TestWriteComposeFeaturesOverride(t *testing.T) {
 	}
 }
 
-// featureTarball is a gzipped Feature tarball holding id.
 func featureTarball(t *testing.T, id string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -616,9 +590,6 @@ func featureTarball(t *testing.T, id string) []byte {
 	return buf.Bytes()
 }
 
-// The compose flow fetches Features like extendImageWithFeatures: host
-// variables substituted, the lockfile read unless --no-lockfile and written
-// only when asked.
 func TestComposeFeatureSets(t *testing.T) {
 	ctx := context.Background()
 	lr := &config.LoadResult{HostSub: config.HostSubContext{Platform: "linux", Env: map[string]string{"HELLO_SRC": "from-host"}}}
@@ -651,8 +622,6 @@ func TestComposeFeatureSets(t *testing.T) {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			t.Errorf("features folder %q: %v", dir, err)
 		}
-		// The lockfile is written by default (TS generateFeaturesConfig); a
-		// local Feature leaves its features map empty.
 		if got := readFile(t, filepath.Join(h.dc, "devcontainer-lock.json")); got != "{\n  \"features\": {}\n}\n" {
 			t.Errorf("lockfile = %q", got)
 		}
@@ -688,7 +657,6 @@ func TestComposeFeatureSets(t *testing.T) {
 		}
 	})
 	t.Run("existing lockfile", func(t *testing.T) {
-		// Rewritten by default; --no-lockfile leaves it alone.
 		for noLockfile, want := range map[bool]string{false: "{\n  \"features\": {}\n}\n", true: `{"features":{"stale":{}}}`} {
 			h := newComposeHarness(t)
 			h.r.opts.noLockfile = noLockfile
@@ -703,7 +671,6 @@ func TestComposeFeatureSets(t *testing.T) {
 		}
 	})
 	t.Run("malformed lockfile", func(t *testing.T) {
-		// TS readLockfile rethrows the JSON.parse error; --no-lockfile skips it.
 		for _, noLockfile := range []bool{false, true} {
 			h := newComposeHarness(t)
 			h.r.opts.noLockfile = noLockfile
@@ -734,7 +701,6 @@ func TestComposeFeatureSets(t *testing.T) {
 	})
 }
 
-// overrideDockerfile is the `dockerfile:` a build override sets.
 func overrideDockerfile(t *testing.T, override string) string {
 	t.Helper()
 	m := regexp.MustCompile(`(?m)^      dockerfile: (.*)$`).FindStringSubmatch(override)
@@ -744,13 +710,10 @@ func overrideDockerfile(t *testing.T, override string) string {
 	return m[1]
 }
 
-// A Dockerfile service without Features: TS getImageBuildOptions extends the
-// service's Dockerfile with the metadata label, and compose builds it.
 func TestBuildAndExtendComposeDockerfileService(t *testing.T) {
 	h := newComposeHarness(t)
 	h.write("Dockerfile", "# syntax=docker/dockerfile:1.4\nFROM alpine:3\nRUN true\n")
 	h.write("Dockerfile.dockerignore", "secret\n")
-	// No context: the compose file's folder.
 	s := h.start(&config.DevContainer{}, map[string]any{"build": map[string]any{}})
 	s.useBuildx = true
 	res, err := h.r.buildAndExtendCompose(context.Background(), s, h.persisted, "", false)
@@ -786,8 +749,6 @@ func TestBuildAndExtendComposeDockerfileService(t *testing.T) {
 	}
 }
 
-// The service's target is replaced by the extended stage, and its Dockerfile
-// path resolves against the build context unless absolute.
 func TestBuildAndExtendComposeTargetAndDockerfilePath(t *testing.T) {
 	const df = "# syntax=docker/dockerfile:1.4\nFROM alpine:3 AS base\nFROM base AS dev\nFROM base AS other\n"
 	for _, absolute := range []bool{false, true} {
@@ -822,8 +783,6 @@ func TestBuildAndExtendComposeTargetAndDockerfilePath(t *testing.T) {
 	}
 }
 
-// An image service without Features gets the metadata label on the container,
-// and a build override only for --cache-from.
 func TestBuildAndExtendComposeImageService(t *testing.T) {
 	ctx := context.Background()
 	t.Run("label only", func(t *testing.T) {
@@ -884,9 +843,6 @@ func TestBuildAndExtendComposeImageService(t *testing.T) {
 	})
 }
 
-// An image service with Features is built by compose from an override that
-// retags the folder image, gives an empty context and takes the Features'
-// content from a build context or from the temp content image.
 func TestBuildAndExtendComposeImageServiceWithFeatures(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -964,8 +920,6 @@ func TestBuildAndExtendComposeImageServiceWithFeatures(t *testing.T) {
 	}
 }
 
-// With build contexts, a Dockerfile service keeps its own syntax only when its
-// frontend supports them (TS supportsBuildContexts).
 func TestBuildAndExtendComposeDockerfileWithFeaturesSyntax(t *testing.T) {
 	for user, want := range map[string]string{"docker/dockerfile:1.3": "docker/dockerfile:1.4", "docker/dockerfile:1.5": "docker/dockerfile:1.5"} {
 		h := newComposeHarness(t)
@@ -1027,8 +981,6 @@ func TestBuildAndExtendComposeErrors(t *testing.T) {
 	}
 }
 
-// A new container: compose builds the service, the container override is
-// written and `compose up` creates the project with it.
 func TestStartComposeContainerCreates(t *testing.T) {
 	h := newComposeHarness(t)
 	svc := map[string]any{"image": "alpine:3", "command": []any{"sleep", "infinity"}}
@@ -1060,12 +1012,10 @@ func TestStartComposeContainerCreates(t *testing.T) {
 	}
 }
 
-// A stopped container is started with the override files it was created with
-// when they are still there; otherwise they are written again, without a build.
 func TestStartComposeContainerRestoresOverrides(t *testing.T) {
 	tests := []struct {
 		name      string
-		build     string // "": not in the label, "gone": in the label but deleted
+		build     string
 		start     string
 		config    bool
 		labels    bool
@@ -1233,9 +1183,6 @@ func TestStartComposeContainerErrors(t *testing.T) {
 	}
 }
 
-// A service compose builds runs the image compose names it (TS
-// getDefaultImageName), with the remote user's UID updated on top: the
-// override retags the service to the UID image.
 func TestStartComposeContainerBuildServiceUpdatesUID(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("updateRemoteUserUID only runs on Linux")
@@ -1272,8 +1219,6 @@ func TestStartComposeContainerBuildServiceUpdatesUID(t *testing.T) {
 	}
 }
 
-// An image service with Features runs the folder image compose built, so its
-// entrypoint is the one the container override wraps.
 func TestStartComposeContainerImageServiceWithFeatures(t *testing.T) {
 	h := newComposeHarness(t)
 	folder := folderImageName(h.ws)
@@ -1288,7 +1233,6 @@ func TestStartComposeContainerImageServiceWithFeatures(t *testing.T) {
 			override = readFile(t, f)
 		}
 	}
-	// The build override already tags the service with the folder image.
 	if !strings.Contains(override, `"-", "/feature-ep.sh"]`) || strings.Contains(override, "image:") {
 		t.Errorf("container override does not wrap the folder image's entrypoint:\n%s", override)
 	}
@@ -1297,11 +1241,6 @@ func TestStartComposeContainerImageServiceWithFeatures(t *testing.T) {
 	}
 }
 
-// For the build command (TS canAddLabelsToContainer false) an image-only
-// service without Features is still built, with the metadata label on its
-// image: the image's entries and the configuration's as written, while the
-// merged metadata has it substituted; compose builds the dev container
-// service alone.
 func TestBuildAndExtendComposeForTheBuildCommand(t *testing.T) {
 	h := newComposeHarness(t)
 	h.r.configLabel = imagemeta.Entry{RemoteUser: "${localEnv:ME}"}
@@ -1325,8 +1264,6 @@ func TestBuildAndExtendComposeForTheBuildCommand(t *testing.T) {
 		t.Errorf("compose build runs %q, want %q", got, want)
 	}
 
-	// --skip-persisting-customizations-from-features leaves a Feature's
-	// customizations out of the metadata.
 	h.write("custom/devcontainer-feature.json", `{"id":"custom","version":"1.0.0","customizations":{"vscode":{"extensions":["x"]}}}`)
 	h.write("custom/install.sh", "#!/bin/sh\n")
 	for _, skip := range []bool{false, true} {

@@ -18,31 +18,19 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// ComposeClient wraps Docker Compose CLI (v1 or v2).
 type ComposeClient struct {
-	// Command is ["docker", "compose"] (Compose v2).
-	Command []string
-	Version []int // parsed version e.g. [2, 24, 0]
-	Env     []string
-	Log     log.Logger
-	// Runner is the seam over process execution. When nil, a default OS-backed
-	// runner is used.
-	Runner exec.Runner
-	// ProgressWriter, when set, receives `docker compose build`/`up` output live
-	// so the user sees progress as it happens. Leave nil to keep output buffered
-	// (e.g. under --log-format json). `compose config` never streams — its stdout
-	// is JSON that the CLI parses.
+	Command        []string
+	Version        []int
+	Env            []string
+	Log            log.Logger
+	Runner         exec.Runner
 	ProgressWriter io.Writer
 }
 
-// NewComposeClient detects Compose v2 (`docker compose`) and returns a client.
-// Compose v1 (`docker-compose`) is out of scope for this CLI; --docker-compose-path
-// is accepted for flag parity but only surfaces in the not-found error.
 func NewComposeClient(dockerPath, composePath string, env []string, logger log.Logger) (*ComposeClient, error) {
 	if dockerPath == "" {
 		dockerPath = "docker"
 	}
-	// TS dockerComposeCLIConfig logs the command and the version it found.
 	runLine := "Run: " + dockerPath + " compose version --short"
 	start := logger.Start(runLine, log.LevelDebug)
 	out, err := osexec.Command(dockerPath, "compose", "version", "--short").Output()
@@ -72,8 +60,6 @@ func NewComposeClient(dockerPath, composePath string, env []string, logger log.L
 // requested"); docs/DIVERGENCES.md records the difference.
 const bakeFSEntitlement = "BUILDX_BAKE_ENTITLEMENTS_FS"
 
-// withBakeFSEntitlement is env plus BUILDX_BAKE_ENTITLEMENTS_FS=0, unless env or
-// the process environment (lookup) already sets it.
 func withBakeFSEntitlement(env []string, lookup func(string) (string, bool)) []string {
 	if _, ok := lookup(bakeFSEntitlement); ok || slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, bakeFSEntitlement+"=") }) {
 		return env
@@ -81,14 +67,10 @@ func withBakeFSEntitlement(env []string, lookup func(string) (string, bool)) []s
 	return append(slices.Clone(env), bakeFSEntitlement+"=0")
 }
 
-// Run executes a compose command and captures output (no live streaming).
 func (c *ComposeClient) Run(ctx context.Context, args ...string) (*ExecResult, error) {
 	return c.run(ctx, log.LevelDebug, false, args...)
 }
 
-// run executes a compose command, its "Run:" lines logged at level. When
-// stream is true and ProgressWriter is set, the child's output is also
-// forwarded live through the runner. ctx cancels the subprocess.
 func (c *ComposeClient) run(ctx context.Context, level log.Level, stream bool, args ...string) (*ExecResult, error) {
 	fullArgs := append(c.Command[1:], args...)
 
@@ -120,17 +102,10 @@ func (c *ComposeClient) run(ctx context.Context, level log.Level, stream bool, a
 	}, nil
 }
 
-// Config runs `docker compose config` with every profile and returns the
-// parsed project, as TS readDockerComposeConfig does (it reads the YAML output,
-// a missing document being an empty project). A failure is TS's ContainerError:
-// "An error occurred retrieving the Docker Compose configuration.", the
-// message naming the command that failed. Compose's own output is logged.
 func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFile string) (map[string]any, error) {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	args = append(args, "--profile", "*", "config")
 
-	// TS readDockerComposeConfig runs the command with an info-level log and
-	// writes its output to the log.
 	res, err := c.run(ctx, log.LevelInfo, false, args...)
 	if err == nil && res.ExitCode == 0 {
 		c.Log.Write(string(res.Stdout))
@@ -149,8 +124,6 @@ func (c *ComposeClient) Config(ctx context.Context, composeFiles []string, envFi
 	return config, nil
 }
 
-// parseComposeConfig reads `docker compose config`'s YAML into the JSON value
-// types (float64 numbers, map[string]any objects) the callers read.
 func parseComposeConfig(out []byte) (map[string]any, error) {
 	var doc any
 	if err := yaml.Unmarshal(out, &doc); err != nil {
@@ -169,8 +142,6 @@ func parseComposeConfig(out []byte) (map[string]any, error) {
 	return config, nil
 }
 
-// stringKeys turns the map[any]any YAML gives a mapping with a non-string key
-// into a map[string]any, which JSON can represent.
 func stringKeys(v any) any {
 	switch v := v.(type) {
 	case map[string]any:
@@ -191,8 +162,6 @@ func stringKeys(v any) any {
 	return v
 }
 
-// CommandFailedError is a command that exited non-zero; its message is TS
-// runCommandNoPty's, "Command failed: <command line>".
 type CommandFailedError struct {
 	Command  string
 	ExitCode int
@@ -202,7 +171,6 @@ func (e *CommandFailedError) Error() string {
 	return "Command failed: " + e.Command
 }
 
-// Build runs `docker compose build`.
 func (c *ComposeClient) Build(ctx context.Context, composeFiles []string, envFile string, globalArgs, services []string, noCache bool) error {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	args = append(args, globalArgs...)
@@ -222,7 +190,6 @@ func (c *ComposeClient) Build(ctx context.Context, composeFiles []string, envFil
 	return nil
 }
 
-// Up runs `docker compose up`.
 func (c *ComposeClient) Up(ctx context.Context, composeFiles []string, envFile string, globalArgs []string, projectName string, services []string, noRecreate bool) error {
 	args := c.buildGlobalArgs(composeFiles, envFile)
 	if projectName != "" {
@@ -245,8 +212,6 @@ func (c *ComposeClient) Up(ctx context.Context, composeFiles []string, envFile s
 	return nil
 }
 
-// Stop stops the project's services without removing them (`docker compose
-// stop`), so `up` can restart them. Preserves containers, networks and volumes.
 func (c *ComposeClient) Stop(ctx context.Context, composeFiles []string, projectName string) error {
 	args := c.buildGlobalArgs(composeFiles, "")
 	if projectName != "" {
@@ -264,8 +229,6 @@ func (c *ComposeClient) Stop(ctx context.Context, composeFiles []string, project
 	return nil
 }
 
-// Down stops and removes the project's containers and networks (`docker compose
-// down`). When removeVolumes is set, named volumes are removed too (destructive).
 func (c *ComposeClient) Down(ctx context.Context, composeFiles []string, projectName string, removeVolumes bool) error {
 	args := c.buildGlobalArgs(composeFiles, "")
 	if projectName != "" {
@@ -286,17 +249,10 @@ func (c *ComposeClient) Down(ctx context.Context, composeFiles []string, project
 	return nil
 }
 
-// SupportsAdditionalContexts returns true if compose version >= 2.17.0, which
-// added additional_contexts (TS buildAndExtendDockerCompose: `version &&
-// !isEarlierVersion(version, [2, 17, 0])`). An unknown (empty) version is
-// earlier than 2.17.0, so it reports false like TS.
 func (c *ComposeClient) SupportsAdditionalContexts() bool {
 	return !isEarlierVersion(c.Version, []int{2, 17, 0})
 }
 
-// UsesNewProjectNames returns true if compose version >= 1.21.0 (allowed
-// hyphens and underscores in project names), or when the version is unknown
-// (TS useNewProjectName: optimistic default).
 func (c *ComposeClient) UsesNewProjectNames() bool {
 	return len(c.Version) == 0 || !isEarlierVersion(c.Version, []int{1, 21, 0})
 }
@@ -312,8 +268,6 @@ func (c *ComposeClient) buildGlobalArgs(composeFiles []string, envFile string) [
 	return args
 }
 
-// parseComposeVersion extracts the first N[.N]* version found in s (e.g. from
-// "Docker Compose version v2.15.1"), every numeric component like TS parseVersion.
 func parseComposeVersion(s string) []int {
 	i := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
 	if i < 0 {
@@ -335,10 +289,7 @@ func parseComposeVersion(s string) []int {
 	return version
 }
 
-// ToProjectName sanitizes a name for use as a compose project name.
-// Matches TS toProjectName() behavior.
 func ToProjectName(basename string, newProjectName bool) string {
-	// Compose < 1.21 keeps only [a-z0-9]; >= 1.21 also allows [_-].
 	return strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
@@ -350,9 +301,6 @@ func ToProjectName(basename string, newProjectName bool) string {
 	}, strings.ToLower(basename))
 }
 
-// DefaultImageName is the image name Compose gives a service built without an
-// `image:` (TS getDefaultImageName): "<project>-<service>", with "_" before
-// Compose 2.8.0.
 func (c *ComposeClient) DefaultImageName(projectName, service string) string {
 	sep := "-"
 	if len(c.Version) > 0 && isEarlierVersion(c.Version, []int{2, 8, 0}) {
@@ -361,8 +309,6 @@ func (c *ComposeClient) DefaultImageName(projectName, service string) string {
 	return projectName + sep + service
 }
 
-// isEarlierVersion is TS commonUtils.isEarlierVersion: left precedes right,
-// a missing component counting as 0.
 func isEarlierVersion(left, right []int) bool {
 	for i := range max(len(left), len(right)) {
 		var l, r int

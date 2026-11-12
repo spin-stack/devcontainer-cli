@@ -11,7 +11,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// rawCapture records the raw text written to a log.
 type rawCapture struct {
 	log.Logger
 	mu  sync.Mutex
@@ -26,10 +25,6 @@ func (c *rawCapture) Raw(text string, _ ...log.Level) {
 
 func (c *rawCapture) Write(string, ...log.Level) {}
 
-// initializeCommand runs in the workspace folder, and its stdout and stderr go
-// to the log, never to the CLI's stdout, which holds only the JSON result: TS
-// runInitializeCommand runs it through runCommand with the CLI host's cwd and
-// writes every chunk with output.raw.
 func TestRunInitializeCommandLogsItsOutputFromTheWorkspace(t *testing.T) {
 	ws, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
