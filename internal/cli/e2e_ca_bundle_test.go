@@ -34,20 +34,24 @@ func startTLSServer(t *testing.T, ca *testCA) (id, url string) {
 	if err := os.Chmod(certs, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command("docker", "run", "-d", "--rm", "-v", certs+":/certs:ro", e2eBaseImage, "sh", "-c",
+	out, err := exec.Command("docker", "run", "-d", "-v", certs+":/certs:ro", e2eBaseImage, "sh", "-c",
 		"while [ ! -f /certs/ready ]; do sleep 0.1; done; exec openssl s_server -quiet -www -accept 8443 -cert /certs/cert.pem -key /certs/key.pem").CombinedOutput()
 	if err != nil {
 		t.Fatalf("start TLS server: %v\n%s", err, out)
 	}
 	id = strings.TrimSpace(string(out))
 	t.Cleanup(func() { removeByID(id) })
-	ipOut, err := exec.Command("docker", "inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", id).Output()
+	ipOut, err := exec.Command("docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", id).CombinedOutput()
 	if err != nil {
-		t.Fatalf("server address: %v", err)
+		t.Fatalf("server address: %v\n%s\n%s", err, ipOut, serverDiagnostics(id))
 	}
-	ip := net.ParseIP(strings.TrimSpace(string(ipOut)))
+	fields := strings.Fields(string(ipOut))
+	var ip net.IP
+	if len(fields) > 0 {
+		ip = net.ParseIP(fields[0])
+	}
 	if ip == nil {
-		t.Fatalf("server address %q", ipOut)
+		t.Fatalf("server address %q\n%s", ipOut, serverDiagnostics(id))
 	}
 	certPEM, keyPEM := ca.serverPEM(t, ip)
 	writeTestFile(t, filepath.Join(certs, "cert.pem"), certPEM)
@@ -65,10 +69,16 @@ func startTLSServer(t *testing.T, ca *testCA) (id, url string) {
 			return id, "https://" + addr + "/"
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("TLS server at %s never answered: %v", addr, err)
+			t.Fatalf("TLS server at %s never answered: %v\n%s", addr, err, serverDiagnostics(id))
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+func serverDiagnostics(id string) string {
+	state, _ := exec.Command("docker", "inspect", "-f", "{{json .State}} {{json .NetworkSettings.Networks}}", id).CombinedOutput()
+	logs, _ := exec.Command("docker", "logs", id).CombinedOutput()
+	return fmt.Sprintf("state: %s\nlogs: %s", state, logs)
 }
 
 // imageLeaks lists the files of image's own layers among files, and where the
