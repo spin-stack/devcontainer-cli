@@ -77,7 +77,11 @@ func addStopFlags(cmd *cobra.Command, opts *stopOpts) {
 
 func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) error {
 	if opts.workspaceFolder == "" {
-		opts.workspaceFolder, _ = os.Getwd()
+		wd, err := os.Getwd()
+		if err != nil {
+			return writeErrorResult(out, fmt.Sprintf("current directory: %v", err))
+		}
+		opts.workspaceFolder = wd
 	}
 
 	logger := log.New(log.Options{Writer: out.Stderr(), Format: "text"})
@@ -87,13 +91,20 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 	}
 	defer engine.Close()
 
-	id := resolveWorkspaceContainer(ctx, engine, opts)
+	id, err := resolveWorkspaceContainer(ctx, engine, opts)
+	if err != nil {
+		return writeErrorResult(out, err.Error())
+	}
 	if id == "" {
 		return writeSuccessJSON(out, map[string]any{"outcome": "success", "result": "no-container-found"})
 	}
 
+	insp, err := engine.InspectContainer(ctx, id)
+	if err != nil {
+		return writeErrorResult(out, fmt.Sprintf("inspect container %s: %v", id, err))
+	}
 	project := ""
-	if insp, ierr := engine.InspectContainer(ctx, id); ierr == nil && insp.Config != nil {
+	if insp.Config != nil {
 		project = insp.Config.Labels["com.docker.compose.project"]
 	}
 
@@ -129,14 +140,13 @@ func runStopOrDown(ctx context.Context, out Output, opts stopOpts, remove bool) 
 	})
 }
 
-func resolveWorkspaceContainer(ctx context.Context, engine *docker.EngineClient, opts stopOpts) string {
+func resolveWorkspaceContainer(ctx context.Context, engine *docker.EngineClient, opts stopOpts) (string, error) {
 	if opts.containerID != "" {
-		return opts.containerID
+		return opts.containerID, nil
 	}
 	configFile := ""
 	if opts.configPath != "" {
 		configFile = resolvePath(opts.configPath)
 	}
-	id, _ := resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
-	return id
+	return resolveContainerID(ctx, engine, opts.workspaceFolder, configFile, opts.idLabels)
 }
