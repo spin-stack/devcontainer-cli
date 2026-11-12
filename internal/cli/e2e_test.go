@@ -37,9 +37,6 @@ func TestE2E_BuildUpExec_Image(t *testing.T) {
 		t.Fatal("no containerId in up output")
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	_ = cmd
-
 	execCmd := exec.Command("docker", "exec", containerID, "echo", "e2e-test-ok")
 	execOut, err := execCmd.CombinedOutput()
 	if err != nil {
