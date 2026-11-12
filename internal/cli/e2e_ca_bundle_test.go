@@ -28,7 +28,7 @@ const e2eBaseImage = "mcr.microsoft.com/devcontainers/base:ubuntu"
 // builds' RUNs and dev containers reach it by its address, with a certificate
 // for that address signed by ca. The host's firewall may drop a container's
 // traffic to the host, so the server is a container too.
-func startTLSServer(t *testing.T, ca *testCA) (id, url string) {
+func startTLSServer(t *testing.T, ca *testCA) string {
 	t.Helper()
 	certs := t.TempDir()
 	if err := os.Chmod(certs, 0o755); err != nil {
@@ -42,7 +42,7 @@ func startTLSServer(t *testing.T, ca *testCA) (id, url string) {
 	if err != nil {
 		t.Fatalf("start TLS server: %v\n%s%s", err, out, runErr.Bytes())
 	}
-	id = strings.TrimSpace(string(out))
+	id := strings.TrimSpace(string(out))
 	t.Cleanup(func() { removeByID(id) })
 	ipOut, err := exec.Command("docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", id).CombinedOutput()
 	if err != nil {
@@ -69,7 +69,7 @@ func startTLSServer(t *testing.T, ca *testCA) (id, url string) {
 		conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", addr, &tls.Config{RootCAs: pool})
 		if err == nil {
 			conn.Close()
-			return id, "https://" + addr + "/"
+			return "https://" + addr + "/"
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("TLS server at %s never answered: %v\n%s", addr, err, serverDiagnostics(id))
@@ -174,7 +174,7 @@ func uniqueImageName(t *testing.T, prefix string) string {
 // that mounts the secret reach an HTTPS server signed by a CA the image does
 // not trust, and fail without it; the image carries neither the bundle nor its
 // content; the container trusts the server in curl, node and its lifecycle
-// commands; run-user-commands refuses a container created without it.
+// commands, run-user-commands' included, which takes no flag of its own.
 func TestE2E_CABundle(t *testing.T) {
 	if !dockerAvailable() {
 		t.Skip("Docker not available")
@@ -184,7 +184,7 @@ func TestE2E_CABundle(t *testing.T) {
 	// A line of the CA's base64 body: in a file, a layer or a config only if
 	// the bundle was copied there.
 	marker := strings.Split(string(ca.pem), "\n")[1]
-	serverID, url := startTLSServer(t, ca)
+	url := startTLSServer(t, ca)
 	// The server answers any path; a path of this run's own keeps BuildKit from
 	// reusing a RUN an earlier run built, which would pass without the bundle.
 	nonce := make([]byte, 8)
@@ -198,7 +198,8 @@ func TestE2E_CABundle(t *testing.T) {
 		".devcontainer/devcontainer.json": `{
 			"image": "` + e2eBaseImage + `",
 			"features": { "./reach": {} },
-			"postCreateCommand": "` + reach + ` && touch /tmp/post-create-trusted"
+			"postCreateCommand": "` + reach + ` && touch /tmp/post-create-trusted",
+			"postAttachCommand": "` + reach + ` && touch /tmp/post-attach-trusted"
 		}`,
 		".devcontainer/reach/devcontainer-feature.json": `{"id": "reach", "version": "1.0.0", "name": "reach"}`,
 		".devcontainer/reach/install.sh":                "#!/bin/sh\nset -e\n" + reach + "\necho reached > /feature-reached\n",
@@ -247,12 +248,9 @@ func TestE2E_CABundle(t *testing.T) {
 		if out, err := exec.Command("docker", "exec", id, "sh", "-c", "echo x > /run/devcontainer/ca-bundle.crt").CombinedOutput(); err == nil {
 			t.Errorf("the bundle is writable in the container:\n%s", out)
 		}
-		assertOutcome(t, runCLI(t, "run-user-commands", "--container-id", id, "--ca-bundle", bundle), "success")
-		refused := runCLI(t, "run-user-commands", "--container-id", serverID, "--ca-bundle", bundle)
-		assertOutcome(t, refused, "error")
-		if !strings.Contains(refused, "has no CA bundle at /run/devcontainer/ca-bundle.crt") {
-			t.Errorf("run-user-commands on a container without the bundle: %s", refused)
-		}
+		dockerExec(t, id, "rm /tmp/post-attach-trusted")
+		assertOutcome(t, runCLI(t, "run-user-commands", "--container-id", id), "success")
+		dockerExec(t, id, "test -f /tmp/post-attach-trusted")
 	})
 
 	t.Run("node", func(t *testing.T) {

@@ -526,10 +526,6 @@ commands:
         type: string
       secrets-file:
         type: string
-      # Go-only divergence: TS has no ca-bundle. The bundle's variables for the
-      # lifecycle commands of a container up created with --ca-bundle.
-      ca-bundle:
-        type: string
       log-file:
         type: string
         description: "Log file path."

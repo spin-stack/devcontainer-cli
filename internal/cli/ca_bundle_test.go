@@ -20,7 +20,6 @@ import (
 
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
-	"github.com/moby/moby/api/types/container"
 	dockermount "github.com/moby/moby/api/types/mount"
 )
 
@@ -114,7 +113,6 @@ func TestCABundleFlagIsValidated(t *testing.T) {
 	for _, args := range [][]string{
 		{"build", "--ca-bundle", bad},
 		{"up", "--ca-bundle", bad},
-		{"run-user-commands", "--ca-bundle", bad},
 	} {
 		var stderr bytes.Buffer
 		root := NewRootCommand()
@@ -125,6 +123,19 @@ func TestCABundleFlagIsValidated(t *testing.T) {
 		if err := root.Execute(); err == nil || !strings.Contains(stderr.String(), "--ca-bundle: "+bad+" holds no PEM certificate") {
 			t.Errorf("%s: err %v, stderr %q; want the bundle refused", args[0], err, stderr.String())
 		}
+	}
+}
+
+func TestRunUserCommandsTakesNoCABundle(t *testing.T) {
+	bundle := writeTestFile(t, filepath.Join(t.TempDir(), "bundle.crt"), newTestCA(t).pem)
+	var stderr bytes.Buffer
+	root := NewRootCommand()
+	root.SetArgs([]string{"run-user-commands", "--ca-bundle", bundle, "--workspace-folder", t.TempDir()})
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&stderr)
+	root.SilenceErrors = true
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error()+stderr.String(), "unknown flag: --ca-bundle") {
+		t.Errorf("run-user-commands --ca-bundle: err %v, stderr %q; want an unknown flag", err, stderr.String())
 	}
 }
 
@@ -175,26 +186,11 @@ func TestCABundleEnvNamesEachTLSClient(t *testing.T) {
 	if got := imagemeta.CABundleEnv(); !slices.Equal(got, want) {
 		t.Errorf("CABundleEnv = %v, want %v", got, want)
 	}
-	if got := caBundleRemoteEnv("/b.crt"); !slices.Equal(got, want) {
-		t.Errorf("caBundleRemoteEnv = %v, want %v", got, want)
-	}
-	if got := caBundleRemoteEnv(""); got != nil {
-		t.Errorf(`caBundleRemoteEnv("") = %v, want none`, got)
-	}
 }
 
 func TestCABundleMountIsReadOnly(t *testing.T) {
 	want := dockermount.Mount{Type: dockermount.TypeBind, Source: "/b.crt", Target: "/run/devcontainer/ca-bundle.crt", ReadOnly: true}
 	if got := caBundleMount("/b.crt"); got != want {
 		t.Errorf("caBundleMount = %+v, want %+v", got, want)
-	}
-}
-
-func TestContainerHasCABundle(t *testing.T) {
-	if containerHasCABundle([]container.MountPoint{{Destination: "/workspaces/x"}}) {
-		t.Error("a container without the bundle's mount has it")
-	}
-	if !containerHasCABundle([]container.MountPoint{{Destination: "/workspaces/x"}, {Destination: "/run/devcontainer/ca-bundle.crt"}}) {
-		t.Error("a container with the bundle's mount lacks it")
 	}
 }
