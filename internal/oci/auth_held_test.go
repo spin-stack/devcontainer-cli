@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -152,5 +154,25 @@ func TestCredentialHelperOutcomesLog(t *testing.T) {
 				t.Errorf("log %q has %q", buf.String(), tt.notWant)
 			}
 		})
+	}
+}
+
+func TestCredentialHelperThatHangsTimesOut(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("no sleep binary")
+	}
+	pathOnly(t, map[string]string{"docker-credential-hangs": "exec " + sleep + " 60"})
+	var buf bytes.Buffer
+	logger := log.New(log.Options{Writer: &buf, Level: log.LevelWarning})
+	start := time.Now()
+	if cred := getCredentialFromHelper("reg.io", "hangs", logger); cred != nil {
+		t.Fatalf("credential = %#v, want none", cred)
+	}
+	if elapsed := time.Since(start); elapsed < 15*time.Second || elapsed > 30*time.Second {
+		t.Errorf("helper given up after %s, want 15s", elapsed)
+	}
+	if want := `Credential helper "hangs" timed out after 15s for "reg.io"`; !strings.Contains(buf.String(), want) {
+		t.Errorf("warning log %q lacks %q", buf.String(), want)
 	}
 }

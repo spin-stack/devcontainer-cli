@@ -127,3 +127,22 @@ func TestGenerateDocs_SkipsMissingMetadata(t *testing.T) {
 		t.Error("no README should be generated for a folder without metadata")
 	}
 }
+
+func TestGenerateDocs_SkipsMetadataThatIsNotValidJSONC(t *testing.T) {
+	base := t.TempDir()
+	writeFeature(t, base, "broken", `{"id":"broken" "name":"Broken"}`)
+	writeFeature(t, base, "jsonc", "// comment\n{\"id\":\"jsonc\",\"name\":\"JSONC\",}")
+	if err := generateDocs(base, "ghcr.io", "o/r", "", "", "feature", "info"); err != nil {
+		t.Fatalf("an unparsable Feature must be skipped, not fail the command: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "broken", "README.md")); !os.IsNotExist(err) {
+		t.Errorf("README generated from metadata that is not valid JSONC (stat err %v)", err)
+	}
+	got, err := os.ReadFile(filepath.Join(base, "jsonc", "README.md"))
+	if err != nil {
+		t.Fatalf("README for valid JSONC metadata: %v", err)
+	}
+	if !strings.Contains(string(got), "# JSONC (jsonc)") {
+		t.Errorf("README heading missing:\n%s", got)
+	}
+}

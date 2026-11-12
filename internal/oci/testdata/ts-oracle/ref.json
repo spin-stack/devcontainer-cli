@@ -527,7 +527,7 @@
       "args": [
         "ghcr.io/x/y/z@sha256:"
       ],
-      "divergence": "unresolved: TS logs a digest that fails validation and still returns the reference (containerCollectionsOCI.ts has no return there); ParseRef rejects it. Matching TS would weaken validation (AGENTS.md), so this needs a decision",
+      "divergence": "docs/DIVERGENCES.md: a digest that fails validation is refused; TS logs the error and still returns the reference (containerCollectionsOCI.ts has no return there)",
       "result": {
         "scheme": "https",
         "id": "z",
@@ -554,7 +554,7 @@
       "args": [
         "ghcr.io/x/y/z@sha256:-bad"
       ],
-      "divergence": "unresolved: TS logs a digest that fails validation and still returns the reference (containerCollectionsOCI.ts has no return there); ParseRef rejects it. Matching TS would weaken validation (AGENTS.md), so this needs a decision",
+      "divergence": "docs/DIVERGENCES.md: a digest that fails validation is refused; TS logs the error and still returns the reference (containerCollectionsOCI.ts has no return there)",
       "result": {
         "scheme": "https",
         "id": "z",
