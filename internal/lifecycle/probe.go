@@ -171,7 +171,10 @@ func ProbedRemoteEnv(ctx context.Context, exec ContainerExecutor, logger log.Log
 	}
 	server := NewShellServer(ctx, exec, containerID, remoteUser)
 	defer server.Close()
-	env, _ := ProbeRemoteEnv(logger, server, strategy, remoteUser, sessionDataFolder)
+	env, err := ProbeRemoteEnv(logger, server, strategy, remoteUser, sessionDataFolder)
+	if err != nil {
+		logger.Write(log.ToErrorText(err.Error()), log.LevelInfo)
+	}
 	if env == nil {
 		env = map[string]string{}
 	}
