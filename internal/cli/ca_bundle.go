@@ -6,12 +6,10 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
-	"github.com/moby/moby/api/types/container"
 	dockermount "github.com/moby/moby/api/types/mount"
 )
 
@@ -65,17 +63,4 @@ func withCABundleEnv(env map[string]string, path string) map[string]string {
 		out[k] = v
 	}
 	return out
-}
-
-func caBundleRemoteEnv(path string) []string {
-	if path == "" {
-		return nil
-	}
-	return imagemeta.CABundleEnv()
-}
-
-func containerHasCABundle(mounts []container.MountPoint) bool {
-	return slices.ContainsFunc(mounts, func(m container.MountPoint) bool {
-		return m.Destination == imagemeta.CABundlePath
-	})
 }
