@@ -34,10 +34,13 @@ func startTLSServer(t *testing.T, ca *testCA) (id, url string) {
 	if err := os.Chmod(certs, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command("docker", "run", "-d", "-v", certs+":/certs:ro", e2eBaseImage, "sh", "-c",
-		"while [ ! -f /certs/ready ]; do sleep 0.1; done; exec openssl s_server -quiet -www -accept 8443 -cert /certs/cert.pem -key /certs/key.pem").CombinedOutput()
+	run := exec.Command("docker", "run", "-d", "-v", certs+":/certs:ro", e2eBaseImage, "sh", "-c",
+		"while [ ! -f /certs/ready ]; do sleep 0.1; done; exec openssl s_server -quiet -www -accept 8443 -cert /certs/cert.pem -key /certs/key.pem")
+	var runErr bytes.Buffer
+	run.Stderr = &runErr
+	out, err := run.Output()
 	if err != nil {
-		t.Fatalf("start TLS server: %v\n%s", err, out)
+		t.Fatalf("start TLS server: %v\n%s%s", err, out, runErr.Bytes())
 	}
 	id = strings.TrimSpace(string(out))
 	t.Cleanup(func() { removeByID(id) })
