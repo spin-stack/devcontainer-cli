@@ -218,8 +218,10 @@ func (c *Client) DetectActiveBuilder(ctx context.Context) *BuilderInfo {
 }
 
 func (c *Client) FindDockerDriverBuilder(ctx context.Context) string {
-	ctxRes, _ := c.Run(ctx, "context", "inspect", "--format", "{{.Name}}")
-	currentContext := strings.TrimSpace(string(ctxRes.Stdout))
+	currentContext := ""
+	if ctxRes, err := c.Run(ctx, "context", "inspect", "--format", "{{.Name}}"); err == nil && ctxRes.ExitCode == 0 {
+		currentContext = strings.TrimSpace(string(ctxRes.Stdout))
+	}
 
 	res, err := c.Run(ctx, "buildx", "ls")
 	if err != nil || res.ExitCode != 0 {
