@@ -1,8 +1,12 @@
 package oci
 
 import (
+	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -17,38 +21,45 @@ func writeTarball(t *testing.T, content string) string {
 	return p
 }
 
-func TestPushArtifact_BearerAuthAndPartialTagFailure(t *testing.T) {
+func TestPushArtifact_BearerAuthAndStopsAtFirstFailedTag(t *testing.T) {
 	const user, pass = "u", "p"
 	reg := newFakeOCIRegistry()
 	reg.requireBearer = true
 	reg.wantUser, reg.wantPass = user, pass
-	reg.failTags = map[string]bool{"latest": true}
+	reg.failTags = map[string]bool{"1.0": true}
 	registry := reg.start(t)
 
 	ref, err := ParseRef(registry + "/ns/hello:1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := NewClient(log.Null, dockerConfigEnv(t, registry, user, pass))
+	var logs bytes.Buffer
+	client := NewClient(log.New(log.Options{Writer: &logs, Level: log.LevelInfo}), dockerConfigEnv(t, registry, user, pass))
 
-	res, err := client.PushArtifact(t.Context(), ref, writeTarball(t, "layer"), []string{"1.0.0", "latest"}, "feature", nil)
-	if err != nil {
-		t.Fatalf("push returned error, want partial success: %v", err)
+	res, err := client.PushArtifact(t.Context(), ref, writeTarball(t, "layer"), []string{"1", "1.0", "1.0.0", "latest"}, "feature", nil)
+	if err == nil {
+		t.Fatalf("push returned %+v, want an error for the rejected tag 1.0 (reference putManifestWithTags returns undefined)", res)
+	}
+	if res != nil {
+		t.Errorf("result = %+v, want nil alongside the error", res)
+	}
+	if !strings.Contains(err.Error(), "1.0") || !strings.Contains(err.Error(), ref.Resource) {
+		t.Errorf("error %q does not name the tag and resource", err)
+	}
+	if !strings.Contains(logs.String(), "Failed to PUT manifest for tag 1.0\n") {
+		t.Errorf("log does not report the rejected tag:\n%s", logs.String())
 	}
 
-	if got := res.PublishedTags; len(got) != 1 || got[0] != "1.0.0" {
-		t.Fatalf("PublishedTags = %v, want [1.0.0] (partial, no rollback)", got)
-	}
 	reg.mu.Lock()
-	_, has100 := reg.manifests["1.0.0"]
-	_, hasLatest := reg.manifests["latest"]
+	attempted := slices.Clone(reg.putManifestAttempt)
+	tagged := slices.Sorted(maps.Keys(reg.manifests))
 	tokenReqs := reg.tokenRequests
 	reg.mu.Unlock()
-	if !has100 {
-		t.Error("1.0.0 tag was not published")
+	if want := []string{"1", "1.0"}; !slices.Equal(attempted, want) {
+		t.Errorf("tag PUTs attempted = %v, want %v: tags after the first failure must not be tried", attempted, want)
 	}
-	if hasLatest {
-		t.Error("latest tag was published despite the injected failure")
+	if want := []string{"1"}; !slices.Equal(tagged, want) {
+		t.Errorf("tags in registry = %v, want %v (tags before the failure stay pushed)", tagged, want)
 	}
 	if tokenReqs == 0 {
 		t.Error("token endpoint never called; the Bearer auth loop did not run")

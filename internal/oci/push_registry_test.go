@@ -27,10 +27,11 @@ type fakeOCIRegistry struct {
 	failTags         map[string]bool
 	failAllManifests bool
 
-	tokenRequests int
-	putManifestOK []string
-	blobUploads   int
-	blobHeadHits  int
+	tokenRequests      int
+	putManifestAttempt []string
+	putManifestOK      []string
+	blobUploads        int
+	blobHeadHits       int
 }
 
 func newFakeOCIRegistry() *fakeOCIRegistry {
@@ -159,6 +160,7 @@ func (r *fakeOCIRegistry) handleManifest(w http.ResponseWriter, req *http.Reques
 
 	switch req.Method {
 	case http.MethodPut:
+		r.putManifestAttempt = append(r.putManifestAttempt, ref)
 		if r.failAllManifests || r.failTags[ref] {
 			// 400 is a non-retryable client error, so oras returns immediately
 			// (a 5xx would trigger retry backoff and slow the test), while still

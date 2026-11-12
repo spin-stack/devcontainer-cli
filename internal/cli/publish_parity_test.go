@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +29,8 @@ func TestPublishParity(t *testing.T) {
 	if _, err := os.Stat(goCLI); err != nil {
 		t.Skip("Go CLI not built")
 	}
+	t.Run("tag failure", func(t *testing.T) { publishTagFailureParity(t, repoRoot, goCLI) })
+
 	if !isDockerAvailable() {
 		t.Skip("docker required")
 	}
@@ -111,6 +117,59 @@ func TestPublishParity(t *testing.T) {
 				if _, err := client.FetchManifest(ref, ""); err != nil {
 					t.Errorf("collection metadata was not published for %s: %v", namespace, err)
 				}
+			}
+		})
+	}
+}
+
+func publishTagFailureParity(t *testing.T, repoRoot, goCLI string) {
+	for _, collectionType := range []string{"feature", "template"} {
+		t.Run(collectionType, func(t *testing.T) {
+			reg := newPushRegistry(t, "1.0")
+			src := writeTagFailureCollection(t, collectionType)
+			type side struct {
+				stdout   string
+				errLines []string
+				exit     int
+				attempts []string
+				metadata []string
+			}
+			publish := func(cli []string, namespace string) side {
+				args := append(slices.Clone(cli[1:]), collectionType+"s", "publish", src, "-r", reg.host, "-n", namespace)
+				cmd := exec.CommandContext(t.Context(), cli[0], args...)
+				cmd.Dir = repoRoot
+				cmd.Env = append(os.Environ(), "DOCKER_CONFIG="+t.TempDir())
+				var stdout, stderr bytes.Buffer
+				cmd.Stdout, cmd.Stderr = &stdout, &stderr
+				err := cmd.Run()
+				var exitErr *exec.ExitError
+				if err != nil && !errors.As(err, &exitErr) {
+					t.Fatalf("run %v: %v", cli, err)
+				}
+				var errLines []string
+				for line := range strings.Lines(strings.ReplaceAll(stderr.String(), namespace, "<ns>")) {
+					for _, marker := range []string{"(!) ERR:", "Failed to PUT manifest for tag"} {
+						if i := strings.Index(line, marker); i >= 0 {
+							errLines = append(errLines, strings.TrimSpace(line[i:]))
+						}
+					}
+				}
+				return side{
+					stdout:   stdout.String(),
+					errLines: errLines,
+					exit:     cmd.ProcessState.ExitCode(),
+					attempts: reg.tagAttempts(namespace + "/good"),
+					metadata: reg.tagAttempts(namespace),
+				}
+			}
+
+			ts := publish([]string{"node", filepath.Join(repoRoot, "reference", "devcontainer.js")}, "tsns/coll")
+			goSide := publish([]string{goCLI}, "gons/coll")
+			if !reflect.DeepEqual(ts, goSide) {
+				t.Errorf("publish with a rejected tag differs:\n--- TS\n%+v\n--- Go\n%+v", ts, goSide)
+			}
+			if ts.exit != 1 || !slices.Equal(ts.attempts, []string{"1", "1.0"}) {
+				t.Errorf("TS side = %+v: the fake registry did not exercise the failed tag", ts)
 			}
 		})
 	}
