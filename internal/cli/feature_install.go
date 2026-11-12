@@ -53,6 +53,7 @@ type FeatureBuildOptions struct {
 	// Feature's install.sh can use `RUN --mount=type=secret` (#1078). Requires
 	// buildx; ignored by the legacy builder.
 	Secrets                []string
+	CABundle               string
 	ContainerEnv           map[string]string
 	SkipFeatureAutoMapping bool
 	SkipPersistCustoms     bool
@@ -776,6 +777,7 @@ func extendImageWithFeatures(
 	if useBuildx {
 		secretIDs = buildSecretIDs(fbOpts.Secrets)
 	}
+	caSecrets := caBundleBuildSecrets(fbOpts.CABundle, useBuildx, logger)
 	if err := stageFeatureBuildFiles(tmpDir, featureSets, containerUser, remoteUser); err != nil {
 		return nil, err
 	}
@@ -797,6 +799,7 @@ func extendImageWithFeatures(
 		Syntax:              syntax,
 		ConfigContainerEnv:  fbOpts.ContainerEnv,
 		SecretIDs:           secretIDs,
+		CABundle:            caSecrets != nil,
 	})
 	if !useBuildx {
 		if err := buildFeatureContentImage(ctx, dockerClient, tmpDir); err != nil {
@@ -841,6 +844,7 @@ func extendImageWithFeatures(
 		Push:        fbOpts.Push,
 		Output:      fbOpts.Output,
 		Secrets:     fbOpts.Secrets,
+		FileSecrets: caSecrets,
 	}
 
 	// Add BuildKit contexts — "." is the features folder

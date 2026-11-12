@@ -148,3 +148,53 @@ func TestResolveBuildAuthSkipsAnEmptyRegistry(t *testing.T) {
 		t.Errorf("ResolveBuildAuth(\"\") = (%q, ok=%v, %v), want no auth config", dir, ok, err)
 	}
 }
+
+// TestBuildAuthFromDockerConfigOffHome: a caller that serves the Docker config
+// from tmpfs or FUSE sets DOCKER_CONFIG to a directory outside $HOME whose
+// config.json is a symlink into another; the credential is read through the
+// link, never from ~/.docker, and the bridged copy is written under TMPDIR and
+// removed by cleanup.
+func TestBuildAuthFromDockerConfigOffHome(t *testing.T) {
+	root := t.TempDir()
+	served := filepath.Join(root, "served")
+	dockerConfig := filepath.Join(root, "docker-config")
+	home := filepath.Join(root, "home")
+	tmp := filepath.Join(root, "tmpfs")
+	for _, d := range []string{served, dockerConfig, filepath.Join(home, ".docker"), tmp} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := base64.StdEncoding.EncodeToString([]byte("served:token"))
+	if err := os.WriteFile(filepath.Join(served, "config.json"), []byte(`{"auths":{"reg.example.com":{"auth":"`+want+`"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(served, "config.json"), filepath.Join(dockerConfig, "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	decoy := base64.StdEncoding.EncodeToString([]byte("home:wrong"))
+	if err := os.WriteFile(filepath.Join(home, ".docker", "config.json"), []byte(`{"auths":{"reg.example.com":{"auth":"`+decoy+`"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("TMPDIR", tmp)
+	env := map[string]string{"DOCKER_CONFIG": dockerConfig, "HOME": home}
+
+	if cred := getCredential(env, "reg.example.com", log.Null); cred == nil || cred.base64Encoded != want {
+		t.Fatalf("getCredential = %#v, want the credential behind the symlink", cred)
+	}
+	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{"reg.example.com"}, log.Null)
+	if err != nil || !ok {
+		t.Fatalf("ResolveBuildAuth ok=%v err=%v", ok, err)
+	}
+	if filepath.Dir(dir) != tmp {
+		t.Errorf("bridged config in %s, want it under TMPDIR %s", dir, tmp)
+	}
+	if got := readConfigAuths(t, dir)["reg.example.com"].Auth; got != want {
+		t.Errorf("bridged auth = %q, want %q", got, want)
+	}
+	cleanup()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("bridged config left behind: %v", err)
+	}
+}

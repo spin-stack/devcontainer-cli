@@ -67,6 +67,19 @@ func TestBuildArgsSecrets(t *testing.T) {
 	}
 }
 
+func TestBuildArgsFileSecrets(t *testing.T) {
+	c := &Client{DockerPath: "docker", Log: log.Null}
+	files := map[string]string{"b-id": "/x/b.pem", "a-id": "/x/a.pem"}
+	s := strings.Join(c.buildArgs(BuildOptions{UseBuildx: true, ContextPath: ".", FileSecrets: files}), " ")
+	if want := "--secret id=a-id,src=/x/a.pem --secret id=b-id,src=/x/b.pem"; !strings.Contains(s, want) {
+		t.Fatalf("args = %s, want %q", s, want)
+	}
+	legacy := strings.Join(c.buildArgs(BuildOptions{ContextPath: ".", FileSecrets: files}), " ")
+	if strings.Contains(legacy, "--secret") {
+		t.Fatalf("legacy build must not emit --secret: %s", legacy)
+	}
+}
+
 // TestBuildSecretsRouteThroughEnv proves the secret values are handed to the
 // runner as environment, never as args (via the injected fake runner).
 func TestBuildSecretsRouteThroughEnv(t *testing.T) {

@@ -368,6 +368,9 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 	svcBuild := parseComposeServiceBuild(s.composeConfig, cfg.Service)
 	svc, _ := composeService(s.composeConfig, cfg.Service)
 	svcUser, _ := svc["user"].(string)
+	if opts.caBundle != "" && !noBuild {
+		logger.Write(caBundleComposeBuildWarning, log.LevelWarning)
+	}
 
 	baseName := composeAutoAddedStageLabel
 	dockerfile := ""
@@ -664,6 +667,13 @@ func (r *upRunner) writeComposeFeaturesOverride(ctx context.Context, s composeSt
 	mountEntries := slices.Clone(merged.Mounts)
 	for _, m := range opts.mounts {
 		mountEntries = append(mountEntries, m)
+	}
+	if opts.caBundle != "" {
+		bundle := caBundleMount(opts.caBundle)
+		mountEntries = append(mountEntries, map[string]any{"type": string(bundle.Type), "source": bundle.Source, "target": bundle.Target, "readonly": bundle.ReadOnly})
+		withBundle := *merged
+		withBundle.ContainerEnv = withCABundleEnv(merged.ContainerEnv, opts.caBundle)
+		merged = &withBundle
 	}
 	mounts, err := composeMountsFromMetadata(mountEntries, resolve)
 	if err != nil {

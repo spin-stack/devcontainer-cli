@@ -213,6 +213,11 @@ commands:
       secrets-file:
         type: string
         description: "Path to a json file containing secret environment variables as key-value pairs."
+      # Go-only divergence: TS has no ca-bundle. A PEM bundle given to builds as
+      # the secret devcontainer-ca-bundle and bound read-only into the container.
+      ca-bundle:
+        type: string
+        description: "PEM bundle of CAs to trust in builds and in the container."
       experimental-lockfile:
         type: boolean
         default: false
@@ -425,6 +430,11 @@ commands:
       secrets-file:
         type: string
         description: "Path to a JSON file with build secrets, passed to BuildKit as build secrets (requires buildx)."
+      # Go-only divergence: TS has no ca-bundle. A PEM bundle given to Feature
+      # installs and Dockerfile RUNs as the build secret devcontainer-ca-bundle.
+      ca-bundle:
+        type: string
+        description: "PEM bundle of CAs to trust in Feature installs and Dockerfile RUNs (build secret devcontainer-ca-bundle)."
       omit-syntax-directive:
         type: boolean
         default: false
@@ -515,6 +525,10 @@ commands:
       container-session-data-folder:
         type: string
       secrets-file:
+        type: string
+      # Go-only divergence: TS has no ca-bundle. The bundle's variables for the
+      # lifecycle commands of a container up created with --ca-bundle.
+      ca-bundle:
         type: string
       log-file:
         type: string

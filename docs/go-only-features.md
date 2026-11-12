@@ -12,6 +12,7 @@ divergences, each covered by tests.
 - [`up --cache-image`](#up---cache-image) — boot from a prebuilt image
 - [`read-configuration --cache-key`](#read-configuration---cache-key) — deterministic cache key
 - [`build --secrets-file`](#build---secrets-file) — BuildKit build secrets
+- [`--ca-bundle`](#--ca-bundle) — trust extra CAs in builds and in the container
 - [Automatic credential bridge](#automatic-credential-bridge) — private registries in `docker build`
 - [`--override-config` deep-merge](#--override-config-deep-merge) — partial overrides
 - [`config.build.cacheFrom`](#configbuildcachefrom) — honored from devcontainer.json
@@ -197,6 +198,54 @@ A Docker Compose configuration is built by `docker compose build`, as the refere
 builds it, which takes no build secrets from the command line: there the flag is ignored
 with a warning.
 
+`up` takes `--secrets-file` too: the secrets reach the Dockerfile's and the Features'
+`RUN --mount=type=secret` the same way, and the lifecycle commands as environment
+variables. Neither leaves the value in a layer, the image config or a container label.
+
+## `--ca-bundle`
+
+Trust extra certificate authorities, such as a TLS-intercepting proxy's, in image builds
+and in the running container, without putting them in the image.
+
+```sh
+devcontainer up --workspace-folder . --ca-bundle /run/proxy/ca-bundle.crt
+```
+
+The file is a full PEM bundle: the system CAs plus the extra ones, since some tools
+replace the system pool with the file instead of adding to it. A file with no PEM
+certificate is refused. `build`, `up` and `run-user-commands` take the flag.
+
+| Where | What happens |
+| --- | --- |
+| Feature install (`build`, `up`) | Every Feature's install `RUN` mounts the bundle as the BuildKit secret `devcontainer-ca-bundle` at `/run/devcontainer/ca-bundle.crt`, and runs `install.sh` with `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` and `GIT_SSL_CAINFO` pointing at it, for that `RUN` only. |
+| Your Dockerfile (`build`, `up`) | The CLI cannot change your `RUN`s, so it passes the same secret to buildx; a `RUN` opts in by mounting it (below). |
+| Container (`up`) | The bundle is bind-mounted read-only at `/run/devcontainer/ca-bundle.crt` and the five variables are set in the container's environment, over the configuration's `containerEnv`, so lifecycle commands and every shell trust it. |
+| `run-user-commands` | Sets the variables for the lifecycle commands. A running container takes no new mount, so the container must have been created with `up --ca-bundle`; one without the mount is an error. |
+
+```dockerfile
+RUN --mount=type=secret,id=devcontainer-ca-bundle,target=/run/devcontainer/ca-bundle.crt \
+    SSL_CERT_FILE=/run/devcontainer/ca-bundle.crt CURL_CA_BUNDLE=/run/devcontainer/ca-bundle.crt \
+    ./install-things.sh
+```
+
+The secret is mounted readable by root (mode 0400); a `RUN` as another user adds
+`uid=<uid>` or `mode=0444` to the mount.
+
+The bundle is mounted, never copied: no layer, image config or history holds it, and its
+content is not part of BuildKit's cache key, so a different bundle (a rotated proxy CA)
+reuses the cache and builds the same image. A build with the flag still differs from one
+without it in the Feature `RUN` instructions themselves (the secret mount and the
+variables are part of the instruction), so their caches are not shared.
+
+The bind mount holds the file it was created with: replace the bundle's content in place
+rather than renaming a new file over it, or recreate the container.
+
+Builds need buildx; with the legacy builder the bundle is left out of the build with a
+warning, as `--secrets-file` is. A Docker Compose configuration's images are built by
+`docker compose build`, which takes no build secrets, so the bundle does not reach them
+(a warning says so); `up` still mounts it into the Compose service's container with the
+same variables.
+
 ## Automatic credential bridge
 
 Not a flag — a behavior. The upstream CLI's credential chain applies only to its *own*
@@ -208,6 +257,12 @@ cache refs) using its full chain — `DEVCONTAINERS_OCI_AUTH`, the Docker config
 helpers, `GITHUB_TOKEN` — and hands them to the `docker build` subprocess via a temporary,
 self-contained `DOCKER_CONFIG`. If no credentials resolve, nothing changes: a build that
 already authenticated via the environment behaves exactly as before.
+
+The temporary `DOCKER_CONFIG` is a directory under `TMPDIR` (Go's `os.TempDir`), removed
+when the build ends. A caller that must keep registry credentials off disk points `TMPDIR`
+at a tmpfs. The credentials themselves are read from `$DOCKER_CONFIG/config.json` when
+`DOCKER_CONFIG` is set, which may live outside `$HOME` and be a symlink (a tmpfs or FUSE
+mount), and from `~/.docker/config.json` only when it is not.
 
 ## `--override-config` deep-merge
 

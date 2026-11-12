@@ -205,6 +205,43 @@ func TestExtend_BuildSecretsMountedIntoInstall(t *testing.T) {
 	}
 }
 
+func TestExtend_CABundleMountedIntoInstall(t *testing.T) {
+	fss := []*features.Set{{
+		SourceInfo: &features.OCISource{ID: "go"},
+		Features:   []features.Feature{{ID: "go", ConsecutiveId: "go_0", Version: "1.21", Value: true}},
+	}}
+	const vars = "SSL_CERT_FILE=/run/devcontainer/ca-bundle.crt NODE_EXTRA_CA_CERTS=/run/devcontainer/ca-bundle.crt REQUESTS_CA_BUNDLE=/run/devcontainer/ca-bundle.crt CURL_CA_BUNDLE=/run/devcontainer/ca-bundle.crt GIT_SSL_CAINFO=/run/devcontainer/ca-bundle.crt "
+
+	ctx := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", UseBuildKitContexts: true, SecretIDs: []string{"NPM_TOKEN"}, CABundle: true}).DockerfileContent
+	for _, want := range []string{
+		"target=/tmp/build-features-src/go_0 --mount=type=secret,id=NPM_TOKEN --mount=type=secret,id=devcontainer-ca-bundle,target=/run/devcontainer/ca-bundle.crt \\\n",
+		" && " + vars + "./devcontainer-features-install.sh \\\n",
+	} {
+		if !strings.Contains(ctx, want) {
+			t.Errorf("BuildKit feature install RUN lacks %q:\n%s", want, ctx)
+		}
+	}
+	noCtx := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", CABundle: true}).DockerfileContent
+	for _, want := range []string{
+		"RUN --mount=type=secret,id=devcontainer-ca-bundle,target=/run/devcontainer/ca-bundle.crt chmod -R 0755 /tmp/dev-container-features/go_0 \\\n",
+		"&& " + vars + "./devcontainer-features-install.sh\n",
+	} {
+		if !strings.Contains(noCtx, want) {
+			t.Errorf("content-image feature install RUN lacks %q:\n%s", want, noCtx)
+		}
+	}
+	for _, df := range []string{ctx, noCtx} {
+		if strings.Contains(df, "ENV SSL_CERT_FILE") {
+			t.Errorf("the bundle's variables became an ENV of the image:\n%s", df)
+		}
+	}
+
+	without := GenerateFeaturesBuildOptions(FeaturesBuildParams{BaseName: "base:img", FeatureSets: fss, ContainerUser: "root", RemoteUser: "root", UseBuildKitContexts: true}).DockerfileContent
+	if strings.Contains(without, "ca-bundle") || !strings.Contains(without, " && ./devcontainer-features-install.sh \\\n") {
+		t.Errorf("no bundle given, but the RUN changed:\n%s", without)
+	}
+}
+
 // TS getFeatureValueObject: option defaults in document order, overlaid with
 // the user's object; a string or boolean value sets "version" only when the
 // Feature declares that option.
