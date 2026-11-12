@@ -66,6 +66,23 @@ touches a compared surface, reflected in the parity matrix.
   (GHSA-vh4v-2xq2-g5cg). Hardening off is therefore already safe here; the
   diagnostics still report what hardening *would* change, so the flag remains a
   faithful compatibility probe.
+- **`GITHUB_TOKEN` is sent only to GitHub's own hosts when a Feature is a tarball URL.**
+  TS `getRequestHeaders` adds `Authorization: Bearer $GITHUB_TOKEN` to any direct-tarball
+  URI that starts with `https://github.com` or `https://api.github.com`, so it also hands
+  the token to `https://github.com.attacker.example/…`, `https://github.com@attacker.example/…`
+  (userinfo) and `https://api.github.com.evil/…`: anyone who can put a Feature URL in a
+  devcontainer.json, or in a Feature's `dependsOn`, can collect it. This CLI sends the
+  token, and logs `Using environment GITHUB_TOKEN.` / `No environment GITHUB_TOKEN
+  available.`, only when the URL parses, its scheme is `https`, it has no userinfo and its
+  host is exactly `github.com` or `api.github.com`; for any other host it sends no token
+  and logs neither line. Matching ignores case and one trailing dot, and allows any port,
+  as TS does (TS normalizes the id with `new URL(...)`, which lowercases the host): these
+  still name GitHub's host, and TLS verification binds the token to GitHub's certificate.
+  No parity case can compare this with TS without leaking a token, so unit tests pin it:
+  `TestIsGitHubTarballURI`, `TestFeatureRequestHeadersSendTheTokenOnlyToGitHub` (header and
+  log lines for real and look-alike hosts) and
+  `TestDownloadFeatureTarballKeepsTheTokenFromALookAlikeURL` (a TLS server reached through
+  `https://github.com@<server>/…` receives no token).
 - **`BUILDKIT_INLINE_CACHE=1`** is omitted when `--cache-to` is an inline exporter
   (`/type\s*=\s*inline/i`), matching TS `isBuildxCacheToInline` — a parity fix over the
   earlier unconditional build-arg.
