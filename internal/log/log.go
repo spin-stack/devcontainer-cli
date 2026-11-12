@@ -284,6 +284,14 @@ const (
 	numberColor    = "38;2;86;156;214"
 )
 
+func ToErrorText(s string) string {
+	lines := newlines.Split(s, -1)
+	for i, l := range lines {
+		lines[i] = color("31", l)
+	}
+	return strings.Join(lines, "\r\n") + "\r\n"
+}
+
 func color(c, s string) string {
 	return "\x1b[1m\x1b[" + c + "m" + s + "\x1b[39m\x1b[22m"
 }

@@ -1,8 +1,10 @@
 package lifecycle
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/log"
@@ -119,7 +121,12 @@ func TestProbedRemoteEnv(t *testing.T) {
 	}
 
 	fe = &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 1, errors.New("no shell") }}
-	if env := ProbedRemoteEnv(t.Context(), fe, log.Null, "cid", "vscode", ProbeLoginShell, ""); env == nil || len(env) != 0 {
+	var logged bytes.Buffer
+	logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logged})
+	if env := ProbedRemoteEnv(t.Context(), fe, logger, "cid", "vscode", ProbeLoginShell, ""); env == nil || len(env) != 0 {
 		t.Fatalf("failed probe: env = %v, want empty", env)
+	}
+	if !strings.Contains(logged.String(), "no shell") {
+		t.Errorf("failed probe logged %q, want the probe's error", logged.String())
 	}
 }

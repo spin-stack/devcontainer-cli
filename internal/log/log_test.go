@@ -189,3 +189,10 @@ func TestLogLevelFilter_TerminalVsJSON(t *testing.T) {
 		t.Errorf("json must emit all levels, got %q", js)
 	}
 }
+
+func TestToErrorTextMatchesTheReference(t *testing.T) {
+	want := "\x1b[1m\x1b[31mfirst\x1b[39m\x1b[22m\r\n\x1b[1m\x1b[31msecond\x1b[39m\x1b[22m\r\n"
+	if got := ToErrorText("first\r\nsecond"); got != want {
+		t.Errorf("ToErrorText = %q, want %q", got, want)
+	}
+}
