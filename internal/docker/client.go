@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/devcontainers/cli/internal/exec"
@@ -107,6 +109,7 @@ type BuildOptions struct {
 	ExtraArgs   []string // additional --build-context, etc.
 	Env         []string // extra env for the subprocess (e.g. DOCKER_CONFIG=...)
 	Secrets     []string // build secrets as "KEY=VALUE"; passed to buildx as --secret id=KEY,env=KEY with KEY=VALUE in the subprocess env
+	FileSecrets map[string]string
 
 	// Buildx-specific
 	UseBuildx bool
@@ -155,6 +158,9 @@ func (c *Client) buildArgs(opts BuildOptions) []string {
 				key := s[:i]
 				args = append(args, "--secret", "id="+key+",env="+key)
 			}
+		}
+		for _, id := range slices.Sorted(maps.Keys(opts.FileSecrets)) {
+			args = append(args, "--secret", "id="+id+",src="+opts.FileSecrets[id])
 		}
 	} else {
 		args = append(args, "build")

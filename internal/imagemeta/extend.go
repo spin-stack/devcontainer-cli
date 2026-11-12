@@ -72,6 +72,21 @@ type FeaturesBuildParams struct {
 	// /run/secrets/<id> (#1078). TS has no equivalent; empty when no build
 	// secrets are in play.
 	SecretIDs []string
+	CABundle  bool
+}
+
+const (
+	CABundleSecretID = "devcontainer-ca-bundle"
+	CABundlePath     = "/run/devcontainer/ca-bundle.crt"
+)
+
+func CABundleEnv() []string {
+	names := []string{"SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSL_CAINFO"}
+	env := make([]string, len(names))
+	for i, n := range names {
+		env[i] = n + "=" + CABundlePath
+	}
+	return env
 }
 
 // ComposeFeatureContentImage is the temporary image the TS CLI builds to hold the
@@ -195,6 +210,11 @@ func featureLayers(p FeaturesBuildParams, contentSourceRootPath string) string {
 	for _, id := range p.SecretIDs {
 		secretMounts += " --mount=type=secret,id=" + id
 	}
+	installCommandEnvPrefix := ""
+	if p.CABundle {
+		secretMounts += " --mount=type=secret,id=" + CABundleSecretID + ",target=" + CABundlePath
+		installCommandEnvPrefix = strings.Join(CABundleEnv(), " ") + " "
+	}
 	for _, set := range p.FeatureSets {
 		for _, feat := range set.Features {
 			b.WriteString(generateContainerEnvs(feat.ContainerEnv, false))
@@ -205,12 +225,12 @@ func featureLayers(p FeaturesBuildParams, contentSourceRootPath string) string {
 				if secretMounts != "" {
 					runMounts = strings.TrimPrefix(secretMounts, " ") + " "
 				}
-				fmt.Fprintf(&b, "\nCOPY --chown=root:root --from=dev_containers_feature_content_source %s %s\nRUN %schmod -R 0755 %s \\\n&& cd %s \\\n&& chmod +x ./%s \\\n&& ./%s\n\n",
-					source, dest, runMounts, dest, dest, FeatureInstallWrapperFile, FeatureInstallWrapperFile)
+				fmt.Fprintf(&b, "\nCOPY --chown=root:root --from=dev_containers_feature_content_source %s %s\nRUN %schmod -R 0755 %s \\\n&& cd %s \\\n&& chmod +x ./%s \\\n&& %s./%s\n\n",
+					source, dest, runMounts, dest, dest, FeatureInstallWrapperFile, installCommandEnvPrefix, FeatureInstallWrapperFile)
 				continue
 			}
-			fmt.Fprintf(&b, "\nRUN --mount=type=bind,from=dev_containers_feature_content_source,source=%s,target=/tmp/build-features-src/%s%s \\\n    cp -ar /tmp/build-features-src/%s %s \\\n && chmod -R 0755 %s \\\n && cd %s \\\n && chmod +x ./%s \\\n && ./%s \\\n && rm -rf %s\n\n",
-				source, feat.ConsecutiveId, secretMounts, feat.ConsecutiveId, FeaturesContainerTempDestFolder, dest, dest, FeatureInstallWrapperFile, FeatureInstallWrapperFile, dest)
+			fmt.Fprintf(&b, "\nRUN --mount=type=bind,from=dev_containers_feature_content_source,source=%s,target=/tmp/build-features-src/%s%s \\\n    cp -ar /tmp/build-features-src/%s %s \\\n && chmod -R 0755 %s \\\n && cd %s \\\n && chmod +x ./%s \\\n && %s./%s \\\n && rm -rf %s\n\n",
+				source, feat.ConsecutiveId, secretMounts, feat.ConsecutiveId, FeaturesContainerTempDestFolder, dest, dest, FeatureInstallWrapperFile, installCommandEnvPrefix, FeatureInstallWrapperFile, dest)
 		}
 	}
 	return b.String()

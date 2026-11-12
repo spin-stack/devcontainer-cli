@@ -35,6 +35,7 @@ type runUserCommandsOpts struct {
 	defaultUserEnvProbe        string
 	containerSessionDataFolder string
 	secretsFile                string
+	caBundle                   string
 	terminalColumns            givenInt
 	terminalRows               givenInt
 }
@@ -78,6 +79,7 @@ func newRunUserCommandsCmd() *cobra.Command {
 	_ = f.MarkHidden("skip-feature-auto-mapping") // hidden testing flag (TS parity)
 	f.StringVar(&opts.containerSessionDataFolder, "container-session-data-folder", "", "")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "")
+	f.StringVar(&opts.caBundle, "ca-bundle", "", "Set the CA bundle's variables for the lifecycle commands; the container must have been created with `up --ca-bundle`.")
 	f.String("user-data-folder", "", "")
 	f.Var(&opts.terminalColumns, "terminal-columns", "")
 	f.Var(&opts.terminalRows, "terminal-rows", "")
@@ -130,6 +132,10 @@ func prepareRunUserCommandsOpts(opts *runUserCommandsOpts) error {
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
 		return err
 	}
+	var err error
+	if opts.caBundle, err = resolveCABundle(opts.caBundle); err != nil {
+		return err
+	}
 	if opts.workspaceFolder == "" && len(opts.idLabels) == 0 && opts.containerID == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
@@ -152,7 +158,8 @@ func prepareRunUserCommandsOpts(opts *runUserCommandsOpts) error {
 // run-user-commands.workspace-secrets-success,
 // run-user-commands.workspace-subfolder-config-success,
 // run-user-commands.container-metadata-success,
-// run-user-commands.hook-failure-error).
+// run-user-commands.hook-failure-error); TestE2E_CABundle runs it with
+// --ca-bundle on a container with the bundle and on one without.
 func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCommandsOpts, logger log.Logger, loadResult *config.LoadResult) error {
 	engine, err := docker.NewEngineClient(logger)
 	if err != nil {
@@ -190,6 +197,9 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 	inspect, err := engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return writeErrorResult(out, fmt.Sprintf("Failed to inspect container: %v", err))
+	}
+	if opts.caBundle != "" && !containerHasCABundle(inspect.Mounts) {
+		return writeErrorResult(out, fmt.Sprintf("--ca-bundle: container %s has no CA bundle at %s; create it with `up --ca-bundle`.", containerID, imagemeta.CABundlePath))
 	}
 	// The merged configuration is the container's metadata (TS
 	// getImageMetadataFromContainer), which records the configuration's entry
@@ -229,7 +239,7 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 
 	remoteUser := lifecycleRemoteUser(merged, cfg)
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, lifecycleUserEnvProbe(opts.defaultUserEnvProbe, cfg), opts.containerSessionDataFolder)
-	remoteEnv := lifecycleRemoteEnv(probed, buildSecretsFromFile(opts.secretsFile), opts.remoteEnvs, cfg)
+	remoteEnv := lifecycleRemoteEnv(probed, append(caBundleRemoteEnv(opts.caBundle), buildSecretsFromFile(opts.secretsFile)...), opts.remoteEnvs, cfg)
 
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, remoteEnv...)
 	defer shellServer.Close()

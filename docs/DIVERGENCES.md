@@ -15,7 +15,9 @@ touches a compared surface, reflected in the parity matrix.
   `check` and `setup` (host preflight/remediation), `up --cache-image` (boot from a
   prebuilt image, skip build + feature install), `read-configuration --cache-key`
   (deterministic content hash; additive — default output is byte-identical to TS),
-  `build --secrets-file` (BuildKit build secrets; TS `build` has no such flag), `open`
+  `build --secrets-file` (BuildKit build secrets; TS `build` has no such flag),
+  `--ca-bundle` on `build`, `up` and `run-user-commands` (extra CAs trusted in Feature
+  installs, opted-in Dockerfile `RUN`s and the container, mounted and never copied), `open`
   (launch VS Code attached to the workspace's dev container via a vscode-remote:// URI),
   `stop`/`down` (pause, or stop+remove, a workspace's container — Compose-aware; the
   upstream CLI leaves teardown to the editor), and the automatic credential bridge that

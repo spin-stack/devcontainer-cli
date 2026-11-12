@@ -44,6 +44,7 @@ type buildOpts struct {
 	noLockfile                 bool
 	frozenLockfile             bool
 	secretsFile                string
+	caBundle                   string
 	// lockfileExcludeIDs is populated after merging --additional-features; it lists
 	// userFeatureIds supplied only via that flag, which 0.88 keeps out of the lockfile.
 	lockfileExcludeIDs map[string]bool
@@ -93,6 +94,7 @@ func newBuildCmd() *cobra.Command {
 	f.BoolVar(&opts.noLockfile, "no-lockfile", false, "Disable lockfile generation and verification.")
 	f.BoolVar(&opts.frozenLockfile, "frozen-lockfile", false, "Ensure lockfile exists and remains unchanged; fail otherwise.")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "Path to a JSON file with build secrets ({\"KEY\":\"VALUE\"}); each is passed to BuildKit as a build secret (requires buildx).")
+	f.StringVar(&opts.caBundle, "ca-bundle", "", caBundleFlagUsage)
 	f.Bool("omit-syntax-directive", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
 	cmd.Flags().MarkHidden("skip-persisting-customizations-from-features")
@@ -125,6 +127,10 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		enumFlag{"log-format", opts.logFormat, logFormats},
 		enumFlag{"buildkit", opts.buildkit, []string{"auto", "never"}},
 	); err != nil {
+		return writeValidationError(out, err.Error())
+	}
+	var err error
+	if opts.caBundle, err = resolveCABundle(opts.caBundle); err != nil {
 		return writeValidationError(out, err.Error())
 	}
 
@@ -397,7 +403,8 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 // build.subfolder-config-success, build.apply-build-options-success,
 // build.output-oci-success, build.cache-to-local-success,
 // build.platform-supported-dockerfile-success), also run by
-// TestE2E_BuildUpExec_Dockerfile and TestE2E_SiblingDockerignore.
+// TestE2E_BuildUpExec_Dockerfile, TestE2E_SiblingDockerignore and
+// TestE2E_CABundle (an opted-in RUN reads the bundle).
 func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 
@@ -456,6 +463,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 		}
 		buildSecrets = buildxSecrets(secrets, useBuildx, logger)
 	}
+	caSecrets := caBundleBuildSecrets(opts.caBundle, useBuildx, logger)
 
 	buildOpts := docker.BuildOptions{
 		Dockerfile:  dockerfilePath,
@@ -474,6 +482,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 		CacheTo:     opts.cacheTo,
 		Env:         authEnv,
 		Secrets:     buildSecrets,
+		FileSecrets: caSecrets,
 	}
 
 	result, err := dockerClient.Build(ctx, buildOpts)
@@ -871,6 +880,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 			experimentalFrozenLockfile: opts.experimentalFrozenLockfile,
 			noLockfile:                 opts.noLockfile,
 			lockfileExcludeIDs:         opts.lockfileExcludeIDs,
+			caBundle:                   opts.caBundle,
 		},
 		substitute:  hostMetadataSubstitution(loadResult.HostSub, nil),
 		configLabel: r.configLabel,
@@ -951,6 +961,7 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 	opts := r.opts
 	return &FeatureBuildOptions{
 		Secrets:                     buildSecretsFromFile(opts.secretsFile),
+		CABundle:                    opts.caBundle,
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		NoCache:                     opts.noCache,
 		CacheFrom:                   opts.cacheFrom,

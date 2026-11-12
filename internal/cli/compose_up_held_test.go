@@ -487,6 +487,29 @@ func TestWriteComposeFeaturesOverride(t *testing.T) {
 			t.Errorf("image details read %d times, want 1", calls)
 		}
 	})
+	t.Run("ca bundle", func(t *testing.T) {
+		h := newComposeHarness(t)
+		h.r.opts.caBundle = "/host/bundle.crt"
+		svc := map[string]any{"image": "alpine:3", "command": []any{"sleep", "infinity"}}
+		s := h.start(&config.DevContainer{}, svc)
+		merged := &imagemeta.MergedConfig{OverrideCommand: boolp(true), ContainerEnv: map[string]string{"SSL_CERT_FILE": "/mine.pem", "FOO": "bar"}}
+		path, err := h.r.writeComposeFeaturesOverride(ctx, s, "alpine:3", "alpine:3", merged, "", unexpected, svc, nil, h.persisted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := readFile(t, path)
+		for _, want := range []string{
+			"\n      - 'CURL_CA_BUNDLE=/run/devcontainer/ca-bundle.crt'\n      - 'FOO=bar'\n      - 'GIT_SSL_CAINFO=/run/devcontainer/ca-bundle.crt'\n      - 'NODE_EXTRA_CA_CERTS=/run/devcontainer/ca-bundle.crt'\n      - 'REQUESTS_CA_BUNDLE=/run/devcontainer/ca-bundle.crt'\n      - 'SSL_CERT_FILE=/run/devcontainer/ca-bundle.crt'",
+			"\n    volumes:\n      - /host/bundle.crt:/run/devcontainer/ca-bundle.crt:ro\n",
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("override lacks %q:\n%s", want, content)
+			}
+		}
+		if merged.ContainerEnv["SSL_CERT_FILE"] != "/mine.pem" {
+			t.Errorf("the caller's merged configuration changed: %v", merged.ContainerEnv)
+		}
+	})
 	tests := []struct {
 		name    string
 		svc     map[string]any
@@ -844,6 +867,19 @@ func TestBuildAndExtendComposeImageService(t *testing.T) {
 		s := h.start(&config.DevContainer{}, map[string]any{"image": "alpine:3"})
 		if _, err := h.r.buildAndExtendCompose(ctx, s, h.persisted, "", true); err != nil || len(h.run.calls) != 0 {
 			t.Errorf("err = %v, ran %q", err, h.run.calls)
+		}
+	})
+	t.Run("ca bundle", func(t *testing.T) {
+		for _, noBuild := range []bool{false, true} {
+			h := newComposeHarness(t)
+			h.r.opts.caBundle = "/host/bundle.crt"
+			s := h.start(&config.DevContainer{}, map[string]any{"image": "alpine:3"})
+			if _, err := h.r.buildAndExtendCompose(ctx, s, h.persisted, "", noBuild); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(h.logs.String(), caBundleComposeBuildWarning); got == noBuild {
+				t.Errorf("noBuild=%t: warned %t:\n%s", noBuild, got, h.logs.String())
+			}
 		}
 	})
 }

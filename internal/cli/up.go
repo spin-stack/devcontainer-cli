@@ -64,6 +64,7 @@ type upOpts struct {
 	terminalColumns             givenInt
 	terminalRows                givenInt
 	secretsFile                 string
+	caBundle                    string
 	experimentalLockfile        bool
 	experimentalFrozenLockfile  bool
 	noLockfile                  bool
@@ -158,6 +159,7 @@ func newUpCmd() *cobra.Command {
 	f.StringVar(&opts.dotfilesTarget, "dotfiles-target-path", "~/dotfiles", "Dotfiles target.")
 	f.StringVar(&opts.containerSessionDataFolder, "container-session-data-folder", "", "Session data folder.")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "Secrets file path.")
+	f.StringVar(&opts.caBundle, "ca-bundle", "", caBundleFlagUsage)
 	f.BoolVar(&opts.experimentalLockfile, "experimental-lockfile", false, "")
 	f.BoolVar(&opts.experimentalFrozenLockfile, "experimental-frozen-lockfile", false, "")
 	f.BoolVar(&opts.noLockfile, "no-lockfile", false, "Disable lockfile generation and verification.")
@@ -244,10 +246,14 @@ func upHasNothingToRead(workspaceFolder, configPath, overridePath string) bool {
 // up.id-label-only-existing-container-error, up.config-without-workspace-success,
 // up.compose-dockerfile-with-features-reuse-stopped-container-with-persisted-overrides-success
 // and up.image-post-create-remote-env-success; also TestE2E_UpReusesStoppedContainer
-// (restarts a stopped single container), TestE2E_BuildUpExec_Image and
-// TestE2E_RemoveExistingBeforeInitialize.
+// (restarts a stopped single container), TestE2E_BuildUpExec_Image,
+// TestE2E_RemoveExistingBeforeInitialize and TestE2E_CABundle.
 func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	if err := validateUpOpts(opts); err != nil {
+		return writeValidationError(out, err.Error())
+	}
+	var err error
+	if opts.caBundle, err = resolveCABundle(opts.caBundle); err != nil {
 		return writeValidationError(out, err.Error())
 	}
 	// --no-lockfile is mutually exclusive with every frozen/write lockfile flag
@@ -639,7 +645,8 @@ func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cf
 // mutate-lane: TestParityMatrix - up.update-uid-remote-user-from-image-metadata-success,
 // up.dockerfile-without-features-omit-config-remote-env-from-metadata-success,
 // up.dockerfile-with-parallel-commands-success and up.update-uid-amd64-dockerfile-platform-success
-// build through it; also TestE2E_BuildUpExec_Dockerfile.
+// build through it; also TestE2E_BuildUpExec_Dockerfile and
+// TestE2E_UpSecretsFile (a Dockerfile RUN reads a --secrets-file secret).
 func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 
@@ -678,6 +685,8 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	defer authCleanup()
 
 	buildResult, err := dockerClient.Build(ctx, docker.BuildOptions{
+		Secrets:     buildxSecrets(buildSecretsFromFile(opts.secretsFile), useBuildx, logger),
+		FileSecrets: caBundleBuildSecrets(opts.caBundle, useBuildx, logger),
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
 		Tags:        []string{imageName},
@@ -845,7 +854,8 @@ func findUserArg(runArgs []string) string {
 // mutate-lane: TestParityMatrix - up.image-success, up.app-port-success,
 // up.override-command-false-success, up.workspace-mount-custom-success,
 // up.image-with-mounts-success and up.config-without-workspace-success create
-// their container through it; also TestE2E_ReadonlyMountObject.
+// their container through it; also TestE2E_ReadonlyMountObject and
+// TestE2E_CABundle (the bundle's mount and variables).
 func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, configInImage bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	// Inspect image once — used for metadata and containerUser resolution.
@@ -881,7 +891,7 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	// baked as ENV during the build — see featureMetadataEntry), so this no
 	// longer re-applies a literal ${PATH} and breaks PATH.
 	var envVars []string
-	for k, v := range merged.ContainerEnv {
+	for k, v := range withCABundleEnv(merged.ContainerEnv, opts.caBundle) {
 		envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
 	}
 
@@ -902,6 +912,9 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 		return "", err
 	}
 	mounts = append(mounts, flagMounts...)
+	if opts.caBundle != "" {
+		mounts = append(mounts, caBundleMount(opts.caBundle))
+	}
 
 	// GPU support: add --gpus all if config requests GPU and availability allows it.
 	// gpu:false must NOT enable GPUs (a raw-length check treated "false" as truthy).
@@ -1406,6 +1419,7 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 	return &FeatureBuildOptions{
 		Platform:                    platform,
 		Secrets:                     buildSecretsFromFile(opts.secretsFile),
+		CABundle:                    opts.caBundle,
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
 		WorkspaceFolder:             opts.workspaceFolder,
