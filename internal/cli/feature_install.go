@@ -973,8 +973,19 @@ func featureRequestHeaders(tarballURL string, env map[string]string, logger log.
 	return headers
 }
 
+// isGitHubTarballURI reports whether GITHUB_TOKEN may be sent to u. TS checks
+// only that the URI starts with "https://github.com" or "https://api.github.com",
+// which also matches github.com.attacker.example and github.com@attacker.example;
+// this CLI requires the host itself to be GitHub's (docs/DIVERGENCES.md). Case,
+// a trailing dot and a port are allowed as in TS: they name the same host, and
+// TLS verification still binds the token to GitHub's certificate.
 func isGitHubTarballURI(u string) bool {
-	return strings.HasPrefix(u, "https://github.com") || strings.HasPrefix(u, "https://api.github.com")
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	return host == "github.com" || host == "api.github.com"
 }
 
 func isPlainHTTPURL(u string) bool {
