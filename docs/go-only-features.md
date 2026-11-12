@@ -213,14 +213,14 @@ devcontainer up --workspace-folder . --ca-bundle /run/proxy/ca-bundle.crt
 
 The file is a full PEM bundle: the system CAs plus the extra ones, since some tools
 replace the system pool with the file instead of adding to it. A file with no PEM
-certificate is refused. `build`, `up` and `run-user-commands` take the flag.
+certificate is refused. `build` and `up` take the flag.
 
 | Where | What happens |
 | --- | --- |
 | Feature install (`build`, `up`) | Every Feature's install `RUN` mounts the bundle as the BuildKit secret `devcontainer-ca-bundle` at `/run/devcontainer/ca-bundle.crt`, and runs `install.sh` with `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` and `GIT_SSL_CAINFO` pointing at it, for that `RUN` only. |
 | Your Dockerfile (`build`, `up`) | The CLI cannot change your `RUN`s, so it passes the same secret to buildx; a `RUN` opts in by mounting it (below). |
 | Container (`up`) | The bundle is bind-mounted read-only at `/run/devcontainer/ca-bundle.crt` and the five variables are set in the container's environment, over the configuration's `containerEnv`, so lifecycle commands and every shell trust it. |
-| `run-user-commands` | Sets the variables for the lifecycle commands. A running container takes no new mount, so the container must have been created with `up --ca-bundle`; one without the mount is an error. |
+| `run-user-commands` | Takes no flag: the lifecycle commands get the variables from the environment `up --ca-bundle` gave the container. |
 
 ```dockerfile
 RUN --mount=type=secret,id=devcontainer-ca-bundle,target=/run/devcontainer/ca-bundle.crt \
