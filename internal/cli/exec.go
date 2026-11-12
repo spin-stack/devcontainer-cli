@@ -3,7 +3,6 @@ package cli
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -437,6 +436,3 @@ func splitExecArgs(args []string) (flags []string, cmd []string) {
 	}
 	return flags, nil
 }
-
-var _ = json.Marshal
-var _ = strings.Join
