@@ -1,7 +1,7 @@
 # Divergences, decisions & accepted limitations
 
 This CLI is validated for behavioral parity with the reference TypeScript
-`@devcontainers/cli` (pinned at **v0.89.0**, see [`parity/`](parity/)). Where it
+`@devcontainers/cli` (pinned at **v0.90.0**, see [`parity/`](parity/)). Where it
 deliberately differs, the difference is recorded here — this is the durable record of
 *intentional* departures from the oracle, not a backlog. User-facing additions are
 documented in [`go-only-features.md`](go-only-features.md).
@@ -71,9 +71,9 @@ touches a compared surface, reflected in the parity matrix.
   earlier unconditional build-arg.
 - **Two upstream fixes newer than the pinned reference are already ported.** A
   `${localEnv:VAR:default}` or `${containerEnv:VAR:default}` default keeps its colons
-  (`my.registry.io:5000/img`; upstream #1213), where v0.89.0 keeps the text up to the next
+  (`my.registry.io:5000/img`; upstream #1213), where v0.90.0 keeps the text up to the next
   colon. A read-only mount keeps `:ro` in the Compose override (upstream #881), where
-  v0.89.0's `convertMountToVolume` drops `readonly`. The `testdata/ts-oracle` goldens
+  v0.90.0's `convertMountToVolume` drops `readonly`. The `testdata/ts-oracle` goldens
   record both as divergence cases.
 - **Dockerfile instructions are read with BuildKit's parser**, not with the reference's
   regular expressions, when resolving the base image and the `USER` of a Dockerfile.

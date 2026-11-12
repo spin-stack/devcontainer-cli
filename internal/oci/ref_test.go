@@ -15,7 +15,8 @@ func tsRef(r *Ref) map[string]string {
 	}
 	if r.Digest != "" {
 		out["digest"] = r.Digest
-	} else {
+	}
+	if r.Tag != "" || r.Digest == "" {
 		out["tag"] = r.Tag
 	}
 	return out

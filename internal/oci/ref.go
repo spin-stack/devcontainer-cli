@@ -65,6 +65,10 @@ func ParseRef(input string) (*Ref, error) {
 
 	if indexOfLastAt != -1 {
 		resource = input[:indexOfLastAt]
+		if sep := strings.LastIndex(resource, ":"); sep > strings.LastIndex(resource, "/") {
+			tag = resource[sep+1:]
+			resource = resource[:sep]
+		}
 		digestWithAlgo := input[indexOfLastAt+1:]
 		parts := strings.Split(digestWithAlgo, ":")
 		if len(parts) != 2 {
