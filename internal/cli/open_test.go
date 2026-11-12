@@ -7,10 +7,6 @@ import (
 	"testing"
 )
 
-// TestDevcontainerFolderURI locks the vscode-remote dev-container URI format:
-// vscode-remote://dev-container+<hex><containerFolder>, where <hex> is the
-// hex-encoded JSON {hostPath, configFile:{scheme,path}}. The shape is verified
-// against the working vscli launcher; a drift here silently breaks `open`.
 func TestDevcontainerFolderURI(t *testing.T) {
 	const (
 		localWS     = "/home/me/project"
@@ -29,7 +25,6 @@ func TestDevcontainerFolderURI(t *testing.T) {
 	}
 	rest := strings.TrimPrefix(uri, prefix)
 
-	// The URI ends with the container workspace folder, verbatim.
 	if !strings.HasSuffix(rest, container) {
 		t.Fatalf("uri does not end with container folder %q: %q", container, uri)
 	}
@@ -53,13 +48,10 @@ func TestDevcontainerFolderURI(t *testing.T) {
 	if got.ConfigFile.Path != localConfig {
 		t.Errorf("configFile.path = %q, want %q", got.ConfigFile.Path, localConfig)
 	}
-	// On Linux there is no authority component.
 	if got.ConfigFile.Authority != "" {
 		t.Errorf("configFile.authority = %q, want empty on Linux", got.ConfigFile.Authority)
 	}
 
-	// The exact hex is stable for a fixed input (guards accidental field reorder
-	// or key renames that would change what VS Code receives).
 	wantJSON := `{"hostPath":"/home/me/project","configFile":{"scheme":"file","path":"/home/me/project/.devcontainer/devcontainer.json"}}`
 	if string(raw) != wantJSON {
 		t.Errorf("payload JSON =\n  %s\nwant\n  %s", raw, wantJSON)

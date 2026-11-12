@@ -13,11 +13,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// RunInitializeCommand executes the initializeCommand on the host machine.
-// Supports three forms:
-//   - string: run via /bin/sh -c
-//   - []string: exec directly (first element is command, rest are args)
-//   - map[string]interface{}: run each value as a string command (parallel)
 func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.LifecycleCommand, hostSub config.HostSubContext) error {
 	if cmd == nil || cmd.IsEmpty() {
 		return nil
@@ -36,7 +31,6 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 		return result, nil
 	}
 
-	// String form
 	if s, ok := cmd.AsString(); ok {
 		resolved, err := resolve(s)
 		if err != nil {
@@ -46,7 +40,6 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 		return runHostExec(ctx, logger, []string{"/bin/sh", "-c", resolved}, workspaceFolder)
 	}
 
-	// Array form
 	if arr, ok := cmd.AsStringSlice(); ok {
 		for i, a := range arr {
 			resolved, err := resolve(a)
@@ -59,11 +52,8 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 		return runHostExec(ctx, logger, arr, workspaceFolder)
 	}
 
-	// Object form (parallel commands)
 	if m, ok := cmd.AsMap(); ok {
 		logger.Write(fmt.Sprintf("Running %d parallel initializeCommand(s)...", len(m)), log.LevelInfo)
-		// All commands run to completion; the error is the first failure in name
-		// order, as executeCommand reports a parallel hook's.
 		names := slices.Sorted(maps.Keys(m))
 		errs := make([]error, len(names))
 		var wg sync.WaitGroup
@@ -96,9 +86,6 @@ func RunInitializeCommand(ctx context.Context, logger log.Logger, cmd *config.Li
 	return nil
 }
 
-// runHostExec runs args in workDir and streams the command's stdout and stderr
-// into the log, as TS runInitializeCommand does (runCommand writes each chunk
-// with output.raw at info level): the CLI's stdout is left to its JSON result.
 func runHostExec(ctx context.Context, logger log.Logger, args []string, workDir string) error {
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = workDir
@@ -108,7 +95,6 @@ func runHostExec(ctx context.Context, logger log.Logger, args []string, workDir 
 	return cmd.Run()
 }
 
-// rawLog writes what it is given into a log as raw text at info level.
 type rawLog struct{ logger log.Logger }
 
 func (w rawLog) Write(p []byte) (int, error) {

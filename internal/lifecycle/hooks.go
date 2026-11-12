@@ -1,4 +1,3 @@
-// Package lifecycle runs dev container lifecycle commands (hooks) and user-env probes.
 package lifecycle
 
 import (
@@ -13,7 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// Phase represents a lifecycle command phase.
 type Phase string
 
 const (
@@ -25,28 +23,19 @@ const (
 	PhasePostAttach    Phase = "postAttachCommand"
 )
 
-// RunOptions controls which lifecycle phases to execute.
 type RunOptions struct {
 	SkipPostCreate  bool
 	SkipNonBlocking bool
 	SkipPostAttach  bool
 	Prebuild        bool
-	WaitFor         Phase // stop after this phase; default: updateContentCommand
-	// AfterPostCreate, if set, runs once after the postCreateCommand phase and
-	// before postStartCommand — matching where the TS CLI installs dotfiles.
-	// Dotfiles failures are non-fatal, so it returns no error.
+	WaitFor         Phase
 	AfterPostCreate func()
 }
 
-// CommandExecutor runs a shell command inside a container.
 type CommandExecutor interface {
 	Exec(command string) error
 }
 
-// HookError records which lifecycle command failed - its phase, its name when
-// it is one of an object's parallel commands, and the Feature id or
-// "devcontainer.json" it comes from - while preserving the underlying command
-// error for CLI-specific error envelopes.
 type HookError struct {
 	Phase  Phase
 	Name   string
@@ -54,8 +43,6 @@ type HookError struct {
 	Err    error
 }
 
-// Description is TS runLifecycleCommand's error description:
-// "[<name> of ]<hook> from <devcontainer.json | Feature '<id>'> failed."
 func (e *HookError) Description() string {
 	return e.label() + " from " + displayOrigin(e.Origin) + " failed."
 }
@@ -67,7 +54,6 @@ func (e *HookError) label() string {
 	return string(e.Phase)
 }
 
-// displayOrigin is how TS runLifecycleCommands names a command's origin.
 func displayOrigin(origin string) string {
 	switch origin {
 	case "":
@@ -89,7 +75,6 @@ func (e *HookError) Unwrap() error {
 	return e.Err
 }
 
-// HookRunner runs lifecycle hooks against a merged config.
 func RunHooks(
 	logger log.Logger,
 	executor CommandExecutor,
@@ -155,12 +140,10 @@ func RunHooks(
 			})
 		}
 
-		// Install dotfiles after postCreateCommand, before postStartCommand.
 		if p.phase == PhasePostCreate && opts.AfterPostCreate != nil {
 			opts.AfterPostCreate()
 		}
 
-		// Check stop conditions
 		if opts.Prebuild && p.phase == PhaseUpdateContent {
 			logger.Write("Stopping after updateContentCommand (prebuild)", log.LevelInfo)
 			return nil
@@ -174,11 +157,6 @@ func RunHooks(
 	return nil
 }
 
-// executeCommand runs a single lifecycle command entry. If the command is a
-// map (object syntax), entries are executed in parallel matching TS behavior
-// (Promise.allSettled): all commands run to completion, and the error names the
-// first that failed. TS takes the first in the object's key order; the decoded
-// map has none, so it is the first in sorted order (docs/DIVERGENCES.md).
 func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cmd any, origin string) error {
 	from := displayOrigin(origin)
 	m, isMap := cmd.(map[string]any)
@@ -206,7 +184,6 @@ func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cm
 			continue
 		}
 		wg.Go(func() {
-			// TS prints a parallel command's header with its output once it succeeded.
 			if errs[i] = withArgv(executor.Exec(cmdStr), m[name]); errs[i] == nil {
 				logger.Write(fmt.Sprintf("Running %s of %s from %s...", name, phase, from), log.LevelInfo)
 			}
@@ -223,8 +200,6 @@ func executeCommand(executor CommandExecutor, logger log.Logger, phase Phase, cm
 	return nil
 }
 
-// withArgv records an array command's arguments on its *CommandError, so the
-// error names them as TS does; err is returned as it is otherwise.
 func withArgv(err error, cmd any) error {
 	args, isArray := cmd.([]any)
 	if ce, ok := errors.AsType[*CommandError](err); ok && isArray {
@@ -236,32 +211,23 @@ func withArgv(err error, cmd any) error {
 	return err
 }
 
-// logFailure writes TS's line for a command that exited non-zero.
 func logFailure(logger log.Logger, he *HookError) {
 	if ce, ok := errors.AsType[*CommandError](he.Err); ok && ce.ExitCode != 0 {
 		logger.Write(fmt.Sprintf("%s from %s failed with exit code %d. Skipping any further user-provided commands.", he.label(), displayOrigin(he.Origin), ce.ExitCode), log.LevelError)
 	}
 }
 
-// commandToString converts a lifecycle command value to a shell string.
 func commandToString(cmd any) string {
 	switch v := cmd.(type) {
 	case string:
 		return v
 	case []any:
-		// Array form is argv: execute the arguments directly without shell
-		// interpretation (no re-tokenization, no variable expansion). Since the
-		// executor runs through /bin/sh -c, shell-quote each argument to preserve
-		// argv semantics — matching the devcontainer spec and the TS CLI.
 		parts := make([]string, len(v))
 		for i, p := range v {
 			parts[i] = shellQuote(fmt.Sprintf("%v", p))
 		}
 		return strings.Join(parts, " ")
 	case map[string]any:
-		// Maps are handled by executeCommand for parallel execution.
-		// This case only fires if commandToString is called recursively
-		// from within a map value.
 		var result string
 		for _, val := range v {
 			s := commandToString(val)
@@ -281,9 +247,6 @@ func commandToString(cmd any) string {
 	}
 }
 
-// shellQuote wraps a string in single quotes for POSIX sh, escaping any
-// embedded single quotes as '\” so the value passes through /bin/sh -c as a
-// single literal argument (no expansion, no word splitting).
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

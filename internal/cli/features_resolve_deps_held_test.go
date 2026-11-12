@@ -16,9 +16,6 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 )
 
-// resolveDepsWorkspace writes a workspace whose devcontainer.json lists the
-// given features, with each local Feature (name -> devcontainer-feature.json)
-// in the .devcontainer folder, and returns the workspace and config paths.
 func resolveDepsWorkspace(t *testing.T, featuresJSON string, local map[string]string) (string, string) {
 	t.Helper()
 	ws := t.TempDir()
@@ -39,7 +36,6 @@ func resolveDepsWorkspace(t *testing.T, featuresJSON string, local map[string]st
 func runResolveDeps(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	cmd := realFeaturesResolveDepsCmd()
-	// The root command silences usage and errors; the bare subcommand does not.
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -49,8 +45,6 @@ func runResolveDeps(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// resolve-dependencies prints the mermaid graph, then the install order with
-// each Feature's options, dependencies first.
 func TestFeaturesResolveDependencies(t *testing.T) {
 	ws, _ := resolveDepsWorkspace(t, `{"./a":{"x":"1"}}`, map[string]string{
 		"a": `{"id":"a","dependsOn":{"./b":{"y":"2"}}}`,
@@ -136,9 +130,6 @@ func TestFeaturesResolveDependenciesFailures(t *testing.T) {
 	})
 }
 
-// A lockfile the reference's readLockfile throws on fails the command as an
-// uncaught error does in TS: what console.error prints for it on stderr
-// (frames left out), nothing on stdout, exit code 1.
 func TestFeaturesResolveDependenciesFailsOnAnUnreadableLockfile(t *testing.T) {
 	for name, tc := range map[string]struct {
 		write  func(path string) error

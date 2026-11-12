@@ -8,10 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
-// TS parseMount keeps every key=value pair. external is a JavaScript string, so
-// any value, "false" included, makes the volume external
-// (testdata/ts-oracle/compose.json); readonly is true only for the spellings TS
-// accepts.
 func TestParseComposeMountStringBooleans(t *testing.T) {
 	tests := []struct {
 		spec string
@@ -31,7 +27,6 @@ func TestParseComposeMountStringBooleans(t *testing.T) {
 	}
 }
 
-// A project with a single compose file still carries its version line.
 func TestReadComposeVersionPrefixSingleFile(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "docker-compose.yml")
 	if err := os.WriteFile(f, []byte("version: '3'\nservices: {}\n"), 0o644); err != nil {
@@ -49,7 +44,6 @@ func TestReadComposeVersionPrefixSingleFile(t *testing.T) {
 	}
 }
 
-// One entry is enough for each list section of the override to be written.
 func TestGenerateComposeFeaturesOverrideSingleEntries(t *testing.T) {
 	got := generateComposeFeaturesOverride(composeFeaturesOverride{
 		Service:           "app",
@@ -69,8 +63,6 @@ func TestGenerateComposeFeaturesOverrideSingleEntries(t *testing.T) {
 	}
 }
 
-// A single --cache-from still gets its cache_from section, even with no
-// Features build.
 func TestGenerateComposeBuildOverrideSingleCacheFrom(t *testing.T) {
 	got := generateComposeBuildOverride(composeBuildOverride{Service: "app", CacheFrom: []string{"reg/img:cache"}})
 	if want := "services:\n  app:\n\n      cache_from:\n        - reg/img:cache\n\n"; got != want {

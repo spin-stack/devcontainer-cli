@@ -67,7 +67,6 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 
 	jsonOutput := make(map[string]any)
 
-	// Manifest
 	if mode == "manifest" || mode == "verbose" {
 		manifest, err := client.FetchManifest(ref, "")
 		if err != nil {
@@ -98,8 +97,6 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 		}
 	}
 
-	// Tags. TS parity: verbose text order is Manifest → Canonical → Published Tags
-	// → Dependency Tree (featuresCLI/info.ts), so Tags precedes Dependencies.
 	if mode == "tags" || mode == "verbose" {
 		tags, err := client.GetPublishedTags(ref)
 		if err != nil || len(tags) == 0 {
@@ -111,15 +108,12 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 
 		if outputFormat == "text" {
 			fmt.Fprintln(out.Stdout(), encloseStringInBox("Published Tags"))
-			// TS joins with "\n   ": the first tag is flush, the rest indented by 3.
 			fmt.Fprintln(out.Stdout(), strings.Join(tags, "\n   "))
 		} else {
 			jsonOutput["publishedTags"] = tags
 		}
 	}
 
-	// Dependencies — text mode only: the boxed title then the mermaid dependency
-	// graph (built by the shared renderer). Emitted AFTER Published Tags (TS order).
 	if (mode == "dependencies" || mode == "verbose") && outputFormat == "text" {
 		logger.Write(fmt.Sprintf("Building dependency graph for '%s'...", featureID), log.LevelInfo)
 		fmt.Fprintln(out.Stdout(), encloseStringInBox("Dependency Tree (Render with https://mermaid.live/)"))
@@ -134,9 +128,6 @@ func runFeaturesInfo(ctx context.Context, out Output, mode, featureID, logLevel,
 	return nil
 }
 
-// encloseStringInBox renders a single-line title inside a box sized exactly to the
-// title (matching the TS encloseStringInBox): the ANSI bold codes are not counted
-// toward the width.
 func encloseStringInBox(str string) string {
 	w := len([]rune(str))
 	bar := strings.Repeat("─", w)

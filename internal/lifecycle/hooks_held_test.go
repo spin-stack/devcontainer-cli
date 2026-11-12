@@ -10,9 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A failed hook's error names its phase, and the parallel command that failed
-// when it is one of an object's commands (TS runLifecycleCommand's description
-// names it too: "<name> of <hook> from ... failed.").
 func TestRunHooksErrorNamesTheFailedCommand(t *testing.T) {
 	for want, command := range map[string]any{
 		"postCreateCommand failed: command failed: bad":    "bad",

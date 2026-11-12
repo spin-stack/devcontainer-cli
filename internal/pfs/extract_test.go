@@ -60,7 +60,6 @@ func TestExtractTarGz_GzipAndPlain(t *testing.T) {
 }
 
 func TestExtractTarGz_PathTraversalSkipped(t *testing.T) {
-	// A ../ entry must not escape destDir.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "evil.tar")
 	f, _ := os.Create(path)

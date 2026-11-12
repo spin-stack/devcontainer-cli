@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// Every secret is replaced whole, the longer first, and an empty one masks
-// nothing, as TS replaceAllLog (spec-utils/log.ts) filters out empty values and
-// sorts the rest longest first.
 func TestSecretMaskingReplacesEachSecretWhole(t *testing.T) {
 	plainStdout(t)
 	var buf bytes.Buffer

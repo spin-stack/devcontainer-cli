@@ -7,8 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 )
 
-// upstream #308: a Feature's containerEnv/mounts must get the same host-side
-// variable substitution as devcontainer.json's own values.
 func TestSubstituteFeatureHostVars(t *testing.T) {
 	hs := config.HostSubContext{
 		Platform:             "linux",

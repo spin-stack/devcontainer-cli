@@ -7,9 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// TestTSOracleDockerfile asserts EnsureFinalStageName, FindBaseImage and
-// isBuildxCacheToInline against the reference functions' results
-// (go tool task testdata:ts-oracle).
 func TestTSOracleDockerfile(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/dockerfile.json", map[string]oracletest.Func{
 		"ensureDockerfileHasFinalStageName": func(args []json.RawMessage) (any, error) {

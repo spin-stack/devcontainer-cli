@@ -14,12 +14,7 @@ import (
 	"testing"
 )
 
-// differentialKnown lists the TS fixtures whose read-configuration output still
-// differs from the oracle's, each with the reason. A fixture listed here that no
-// longer differs fails the test, so the list only shrinks.
 var differentialKnown = map[string]string{
-	// docs/DIVERGENCES.md: Features backed by GitHub Releases (v1, owner/repo/id)
-	// are not implemented; the configuration fails instead of resolving them.
 	"dockerfile-with-syntax":           "legacy GitHub Release Feature (accepted limitation)",
 	"dockerfile-with-target":           "legacy GitHub Release Feature (accepted limitation)",
 	"compose-Dockerfile-with-features": "legacy GitHub Release Feature (accepted limitation)",
@@ -27,14 +22,6 @@ var differentialKnown = map[string]string{
 	"compose-image-with-features":      "legacy GitHub Release Feature (accepted limitation)",
 }
 
-// TestDifferentialReadConfiguration runs read-configuration with the merged and
-// Features configuration through this CLI and through the TS oracle for every
-// configuration under reference/src/test/configs, and fails on any difference in
-// exit code or JSON output, normalized only for the workspace path and the
-// version-and-time segment of the features folder. Hand-written
-// parity cases cover what someone thought of; this covers every fixture upstream
-// tests with. It needs the compiled oracle, Docker and the network, so it runs
-// when PARITY_DIFFERENTIAL is set (task parity:differential).
 func TestDifferentialReadConfiguration(t *testing.T) {
 	if os.Getenv("PARITY_DIFFERENTIAL") == "" {
 		t.Skip("set PARITY_DIFFERENTIAL=1 (task parity:differential): needs the oracle, Docker and the network")
@@ -76,9 +63,6 @@ func TestDifferentialReadConfiguration(t *testing.T) {
 	}
 }
 
-// differentialFixtures are the folders holding a devcontainer configuration
-// (.devcontainer/devcontainer.json or .devcontainer.json), as paths relative to
-// root.
 func differentialFixtures(t *testing.T, root string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(root)
@@ -100,10 +84,6 @@ func differentialFixtures(t *testing.T, root string) []string {
 	return out
 }
 
-// runDifferential copies the fixture to a fresh folder (the CLIs may write a
-// lockfile), runs read-configuration there, and returns the exit code and the
-// last stdout line decoded, with the workspace path replaced by <WS> and the
-// features folder's <version>-<ms> segment by <VERSION>-<MS>.
 func runDifferential(t *testing.T, fixture string, cli ...string) (int, any) {
 	t.Helper()
 	ws := filepath.Join(t.TempDir(), "ws")
@@ -134,10 +114,6 @@ func runDifferential(t *testing.T, fixture string, cli ...string) (int, any) {
 	return code, out
 }
 
-// featuresFolderRe matches the features folder TS createFeaturesTempFolder
-// names <cacheFolder>/container-features/<cliVersion>-<Date.now()>: the
-// timestamp differs between runs, and the version differs by design (the TS
-// package version vs this CLI's CalVer).
 var featuresFolderRe = regexp.MustCompile(`(/container-features/)[^/"]+-\d+`)
 
 func pretty(v any) string {

@@ -54,14 +54,14 @@ func TestSelected_CommaList(t *testing.T) {
 		value, filter string
 		want          bool
 	}{
-		{"up", "", true},                // empty matches all
-		{"up", "all", true},             // "all" matches all
-		{"up", "up", true},              // single exact
-		{"up", "build", false},          // single mismatch
-		{"up", "up,build", true},        // list contains
-		{"build", "up,build", true},     // list contains (2nd)
-		{"exec", "up,build", false},     // list excludes
-		{"build", " up , build ", true}, // whitespace tolerated
+		{"up", "", true},
+		{"up", "all", true},
+		{"up", "up", true},
+		{"up", "build", false},
+		{"up", "up,build", true},
+		{"build", "up,build", true},
+		{"exec", "up,build", false},
+		{"build", " up , build ", true},
 	}
 	for _, c := range cases {
 		if got := selected(c.value, c.filter); got != c.want {
@@ -184,9 +184,6 @@ func TestComposeProjectName(t *testing.T) {
 	}
 }
 
-// TestInShardPartitions proves the shard split is a proper partition: with N
-// shards, every case is claimed by exactly one shard and the union is the whole
-// set (no case dropped, none run twice).
 func TestInShardPartitions(t *testing.T) {
 	const cases = 189
 	for _, total := range []int{1, 2, 3, 4, 7} {
@@ -206,7 +203,6 @@ func TestInShardPartitions(t *testing.T) {
 	}
 }
 
-// TestInShardNoShardingRunsEverything proves total<=1 disables sharding.
 func TestInShardNoShardingRunsEverything(t *testing.T) {
 	for i := range 10 {
 		if !inShard(i, 0, 1) {

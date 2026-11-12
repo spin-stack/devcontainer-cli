@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// --secrets-file feeds the build its secrets as KEY=VALUE; no file, an
-// unreadable one or a malformed one gives the build none.
 func TestBuildSecretsFromFile(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "secrets.json")
@@ -31,7 +29,6 @@ func TestBuildSecretsFromFile(t *testing.T) {
 	}
 }
 
-// A one-letter secret name is still a name: only an empty one is dropped.
 func TestBuildSecretIDsOneLetterName(t *testing.T) {
 	if got, want := buildSecretIDs([]string{"A=1", "=2"}), []string{"A"}; !slices.Equal(got, want) {
 		t.Errorf("ids = %q, want %q", got, want)

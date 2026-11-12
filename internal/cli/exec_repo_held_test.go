@@ -8,8 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/docker"
 )
 
-// composeWorkspace writes a workspace named proj whose devcontainer.json runs
-// the app service of a Compose project.
 func composeWorkspace(t *testing.T) string {
 	t.Helper()
 	ws := filepath.Join(t.TempDir(), "proj")
@@ -39,8 +37,6 @@ func fakeEngineClient(t *testing.T) *docker.EngineClient {
 	return engine
 }
 
-// exec finds the workspace's container by its local_folder label first, and
-// only then looks for the service of its Compose project.
 func TestFindContainerByOptsPrefersTheLabeledContainer(t *testing.T) {
 	ws := composeWorkspace(t)
 	startFakeEngine(t, map[string]map[string]string{
@@ -52,8 +48,6 @@ func TestFindContainerByOptsPrefersTheLabeledContainer(t *testing.T) {
 	}
 }
 
-// A container lookup that fails fails exec with TS's failed `docker ps`,
-// rather than looking further or reporting no container.
 func TestFindContainerByOptsFailedLookup(t *testing.T) {
 	ws := composeWorkspace(t)
 	t.Setenv("DOCKER_HOST", "unix:///nonexistent/devcontainer-cli-test.sock")
@@ -64,8 +58,6 @@ func TestFindContainerByOptsFailedLookup(t *testing.T) {
 	}
 }
 
-// A Compose workspace's container without devcontainer labels is found by the
-// project (the workspace folder's name, or COMPOSE_PROJECT_NAME) and service.
 func TestFindContainerByOptsFindsTheComposeService(t *testing.T) {
 	ws := composeWorkspace(t)
 	startFakeEngine(t, map[string]map[string]string{
@@ -84,8 +76,6 @@ func TestFindContainerByOptsFindsTheComposeService(t *testing.T) {
 	}
 }
 
-// No Compose container is found without a workspace, without a config, for a
-// config that is not Compose, or when the project has no such service.
 func TestFindComposeContainerFindsNothing(t *testing.T) {
 	startFakeEngine(t, map[string]map[string]string{
 		"app": {"com.docker.compose.project": "proj_devcontainer", "com.docker.compose.service": "app"},

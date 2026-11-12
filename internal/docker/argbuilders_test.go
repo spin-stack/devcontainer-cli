@@ -9,10 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// recordingRunner is an exec.Runner that records every invocation and replies
-// with canned output. It supports multi-call functions (e.g. builder detection
-// that shells out several times) by consuming a queue of responses; once the
-// queue is exhausted it returns a zero-value success.
 type recordingRunner struct {
 	calls     []recordedCall
 	responses []cannedResponse
@@ -50,10 +46,6 @@ func (r *recordingRunner) last() recordedCall {
 	return r.calls[len(r.calls)-1]
 }
 
-// --- docker build / tag argument routing ---
-
-// TestBuild_RoutesArgsThroughRunner proves Client.Build feeds the exact
-// buildArgs slice to the runner seam (name = docker path, args = build args).
 func TestBuild_RoutesArgsThroughRunner(t *testing.T) {
 	rr := &recordingRunner{}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
@@ -89,7 +81,6 @@ func TestTag_Args(t *testing.T) {
 	}
 }
 
-// TestTag_NonZeroExitFails proves Tag surfaces a docker failure exit code.
 func TestTag_NonZeroExitFails(t *testing.T) {
 	rr := &recordingRunner{responses: []cannedResponse{{stderr: []byte("no such image"), code: 1}}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
@@ -98,10 +89,7 @@ func TestTag_NonZeroExitFails(t *testing.T) {
 	}
 }
 
-// --- buildx detection / builder selection parsing ---
-
 func TestDetectBuildKit(t *testing.T) {
-	// Available: buildx version returns 0 with a version banner.
 	rr := &recordingRunner{responses: []cannedResponse{{stdout: []byte("github.com/docker/buildx v0.12.0\n"), code: 0}}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
 	info := c.DetectBuildKit(t.Context())
@@ -112,7 +100,6 @@ func TestDetectBuildKit(t *testing.T) {
 		t.Errorf("args = %v, want %v", rr.last().args, want)
 	}
 
-	// Unavailable: non-zero exit.
 	rr2 := &recordingRunner{responses: []cannedResponse{{code: 1}}}
 	c2 := &Client{DockerPath: "docker", Log: log.Null, Runner: rr2}
 	if c2.DetectBuildKit(t.Context()).Available {
@@ -133,9 +120,6 @@ func TestDetectActiveBuilder(t *testing.T) {
 	}
 }
 
-// TestFindDockerDriverBuilder exercises the two-call sequence (context inspect,
-// then buildx ls) and the parsing that prefers the builder matching the current
-// context, falling back to any docker-driver builder.
 func TestFindDockerDriverBuilder(t *testing.T) {
 	lsOut := "" +
 		"NAME/NODE          DRIVER/ENDPOINT   STATUS\n" +
@@ -143,18 +127,15 @@ func TestFindDockerDriverBuilder(t *testing.T) {
 		"default            docker            running\n" +
 		"mycontext          docker            running\n"
 
-	// Current context "mycontext" matches a docker-driver builder → returned
-	// even though "default" (also docker driver) appears first.
 	rr := &recordingRunner{responses: []cannedResponse{
-		{stdout: []byte("mycontext\n"), code: 0}, // context inspect
-		{stdout: []byte(lsOut), code: 0},         // buildx ls
+		{stdout: []byte("mycontext\n"), code: 0},
+		{stdout: []byte(lsOut), code: 0},
 	}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}
 	if got := c.FindDockerDriverBuilder(t.Context()); got != "mycontext" {
 		t.Errorf("FindDockerDriverBuilder = %q, want mycontext", got)
 	}
 
-	// No context match → fall back to first docker-driver builder ("default").
 	rr2 := &recordingRunner{responses: []cannedResponse{
 		{stdout: []byte("other\n"), code: 0},
 		{stdout: []byte(lsOut), code: 0},
@@ -165,10 +146,6 @@ func TestFindDockerDriverBuilder(t *testing.T) {
 	}
 }
 
-// --- compose argument construction ---
-
-// newComposeV2 builds a v2 ComposeClient wired to a recording runner. Command
-// is ["docker","compose"], so Run prepends "compose" and calls name="docker".
 func newComposeV2(rr *recordingRunner, version []int) *ComposeClient {
 	return &ComposeClient{
 		Command: []string{"docker", "compose"},
@@ -217,7 +194,7 @@ func TestComposeBuild_Args(t *testing.T) {
 		".env",
 		[]string{"--progress", "plain"},
 		[]string{"app"},
-		true, // noCache
+		true,
 	)
 	if err != nil {
 		t.Fatalf("Build error: %v", err)
@@ -258,7 +235,7 @@ func TestComposeUp_Args(t *testing.T) {
 		[]string{"--profile", "dev"},
 		"myproject",
 		[]string{"app", "db"},
-		true, // noRecreate
+		true,
 	)
 	if err != nil {
 		t.Fatalf("Up error: %v", err)
@@ -311,8 +288,6 @@ func TestComposeConfig_ArgsAndParse(t *testing.T) {
 	}
 }
 
-// TestComposeBuild_NonZeroExitFails proves a compose failure exit code is
-// surfaced as an error rather than swallowed.
 func TestComposeBuild_NonZeroExitFails(t *testing.T) {
 	rr := &recordingRunner{responses: []cannedResponse{{stderr: []byte("boom"), code: 2}}}
 	c := newComposeV2(rr, []int{2, 24, 0})

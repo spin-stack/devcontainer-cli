@@ -18,10 +18,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// API is the subset of the Docker client API that EngineClient needs.
-// Defined as an interface so it can be replaced in tests. It targets the
-// moby/moby/client v29 "options-in, result-out" surface (the github.com/docker/docker
-// module is deprecated in favor of github.com/moby/moby/{client,api}).
 type API interface {
 	io.Closer
 	ContainerCreate(ctx context.Context, options mobyclient.ContainerCreateOptions) (mobyclient.ContainerCreateResult, error)
@@ -39,24 +35,17 @@ type API interface {
 	ServerVersion(ctx context.Context, options mobyclient.ServerVersionOptions) (mobyclient.ServerVersionResult, error)
 }
 
-// EngineClient talks to the Docker Engine via the SDK instead of shelling out.
 type EngineClient struct {
 	API API
 	Log log.Logger
 }
 
-// NewEngineClient connects to the Docker daemon using environment defaults
-// (DOCKER_HOST, DOCKER_TLS_VERIFY, etc.) with automatic API version negotiation.
-// When DOCKER_HOST is not set, it resolves the active Docker context endpoint
-// to match the behavior of the Docker CLI.
 func NewEngineClient(logger log.Logger, extraOpts ...mobyclient.Opt) (*EngineClient, error) {
 	// API-version negotiation is enabled by default in the v29 client.
 	opts := []mobyclient.Opt{
 		mobyclient.FromEnv,
 	}
 
-	// When DOCKER_HOST is not set, resolve from the active Docker context
-	// so the SDK talks to the same daemon as the Docker CLI.
 	if os.Getenv("DOCKER_HOST") == "" {
 		if host := resolveDockerContextHost(); host != "" {
 			opts = append(opts, mobyclient.WithHost(host))
@@ -72,12 +61,10 @@ func NewEngineClient(logger log.Logger, extraOpts ...mobyclient.Opt) (*EngineCli
 	return &EngineClient{API: cli, Log: logger}, nil
 }
 
-// Close releases the underlying connection.
 func (e *EngineClient) Close() error {
 	return e.API.Close()
 }
 
-// InspectContainer returns the full inspect response for one container.
 func (e *EngineClient) InspectContainer(ctx context.Context, id string) (container.InspectResponse, error) {
 	res, err := e.API.ContainerInspect(ctx, id, mobyclient.ContainerInspectOptions{})
 	if err != nil {
@@ -86,7 +73,6 @@ func (e *EngineClient) InspectContainer(ctx context.Context, id string) (contain
 	return res.Container, nil
 }
 
-// InspectImage returns the full inspect response for an image.
 func (e *EngineClient) InspectImage(ctx context.Context, ref string) (image.InspectResponse, error) {
 	res, err := e.API.ImageInspect(ctx, ref)
 	if err != nil {
@@ -95,7 +81,6 @@ func (e *EngineClient) InspectImage(ctx context.Context, ref string) (image.Insp
 	return res.InspectResponse, nil
 }
 
-// ListContainers returns container IDs matching the given label filters.
 func (e *EngineClient) ListContainers(ctx context.Context, all bool, labelFilters []string) ([]string, error) {
 	f := mobyclient.Filters{}
 	for _, l := range labelFilters {
@@ -115,8 +100,6 @@ func (e *EngineClient) ListContainers(ctx context.Context, all bool, labelFilter
 	return ids, nil
 }
 
-// RemoveContainer force-removes a container, retrying up to 7 times when the
-// removal is "already in progress" (mirrors the TS removeContainer logic).
 func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 	const maxRetries = 7
 	const retryTimeout = time.Second
@@ -131,8 +114,6 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 		}
 	}()
 
-	// One timer reused across retries instead of a fresh time.After each
-	// iteration (whose timers would linger until they fire).
 	timer := time.NewTimer(retryTimeout)
 	defer timer.Stop()
 
@@ -147,7 +128,6 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 			return err
 		}
 
-		// Start watching for the destroy event on first retry.
 		if eventsCh == nil {
 			evCtx, cancel := context.WithCancel(ctx)
 			cancelEvents = cancel
@@ -166,11 +146,10 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 		timer.Reset(retryTimeout)
 		select {
 		case <-eventsCh:
-			return nil // destroyed
+			return nil
 		case err := <-errCh:
 			return fmt.Errorf("events stream: %w", err)
 		case <-timer.C:
-			// retry
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -178,16 +157,10 @@ func (e *EngineClient) RemoveContainer(ctx context.Context, id string) error {
 	return nil
 }
 
-// PullImage pulls an image from a registry, consuming the output stream to
-// completion. It uses no authentication by default (public images).
 func (e *EngineClient) PullImage(ctx context.Context, ref string) error {
 	return e.PullImagePlatform(ctx, ref, "")
 }
 
-// ImageLabelsEnsuringPresent returns ref's image labels, pulling ref first when
-// it is not present locally so its baked metadata (e.g. the devcontainer.metadata
-// label carrying remoteUser) is not lost when read before a build. Returns nil
-// when the image can't be inspected even after a pull.
 func (e *EngineClient) ImageLabelsEnsuringPresent(ctx context.Context, ref string) map[string]string {
 	if info, err := e.InspectImage(ctx, ref); err == nil && info.Config != nil {
 		return info.Config.Labels
@@ -201,8 +174,6 @@ func (e *EngineClient) ImageLabelsEnsuringPresent(ctx context.Context, ref strin
 	return nil
 }
 
-// parsePlatform splits an "os/arch[/variant]" platform string into an OCI
-// platform. Malformed input yields a best-effort value (the daemon rejects it).
 func parsePlatform(s string) ocispec.Platform {
 	parts := strings.SplitN(s, "/", 3)
 	p := ocispec.Platform{OS: parts[0]}
@@ -215,9 +186,6 @@ func parsePlatform(s string) ocispec.Platform {
 	return p
 }
 
-// PullImagePlatform pulls ref for a specific platform (e.g. "linux/amd64"), or
-// the daemon default when platform is empty. Used so an image-based dev container
-// is pulled for the platform it will actually run on (#1241).
 func (e *EngineClient) PullImagePlatform(ctx context.Context, ref, platform string) error {
 	opts := mobyclient.ImagePullOptions{}
 	if platform != "" {
@@ -233,27 +201,21 @@ func (e *EngineClient) PullImagePlatform(ctx context.Context, ref, platform stri
 	return err
 }
 
-// StartContainer starts a stopped container.
 func (e *EngineClient) StartContainer(ctx context.Context, id string) error {
 	_, err := e.API.ContainerStart(ctx, id, mobyclient.ContainerStartOptions{})
 	return err
 }
 
-// StopContainer gracefully stops a container (SIGTERM, then SIGKILL after the
-// daemon's default grace period) without removing it, so it can be restarted
-// with `up`. Stopping an already-stopped container is a no-op.
 func (e *EngineClient) StopContainer(ctx context.Context, id string) error {
 	_, err := e.API.ContainerStop(ctx, id, mobyclient.ContainerStopOptions{})
 	return err
 }
 
-// StopContainerNow stops a container with no grace period (`docker stop -t 0`).
 func (e *EngineClient) StopContainerNow(ctx context.Context, id string) error {
 	_, err := e.API.ContainerStop(ctx, id, mobyclient.ContainerStopOptions{Timeout: new(0)})
 	return err
 }
 
-// CreateContainer creates a new container and returns its ID.
 func (e *EngineClient) CreateContainer(ctx context.Context, config *container.Config, hostConfig *container.HostConfig) (string, error) {
 	res, err := e.API.ContainerCreate(ctx, mobyclient.ContainerCreateOptions{Config: config, HostConfig: hostConfig})
 	if err != nil {
@@ -262,19 +224,15 @@ func (e *EngineClient) CreateContainer(ctx context.Context, config *container.Co
 	return res.ID, nil
 }
 
-// --- Utility functions (no daemon required) ---
-
 var (
 	invalidImageChars  = regexp.MustCompile(`[^a-z0-9._-]+`)
 	collapsiblePattern = regexp.MustCompile(`(\.[\._-]|_[\.-]|__[\._-]|-+[\._])[\._-]*`)
 )
 
-// ToImageName sanitises a string into a valid Docker image name component.
 func ToImageName(name string) string {
 	s := strings.ToLower(name)
 	s = invalidImageChars.ReplaceAllString(s, "")
 	s = collapsiblePattern.ReplaceAllStringFunc(s, func(m string) string {
-		// Keep prefix minus its last character (the separator that started the collapsible run).
 		match := collapsiblePattern.FindStringSubmatch(m)
 		if len(match) < 2 {
 			return m

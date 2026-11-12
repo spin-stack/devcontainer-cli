@@ -8,8 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// fakeExecutor is an in-memory ContainerExecutor for testing the shell server
-// without a real container.
 type fakeExecutor struct {
 	fn          func(command string) (stdout, stderr string, code int, err error)
 	lastUser    string
@@ -40,12 +38,10 @@ func TestShellServerExec(t *testing.T) {
 	if stdout != "hello\n" || code != 0 {
 		t.Errorf("Exec = (%q, %d), want (hello, 0)", stdout, code)
 	}
-	// User and remoteEnv are forwarded to every exec.
 	if fe.lastUser != "vscode" || len(fe.lastEnv) != 1 || fe.lastEnv[0] != "FOO=bar" {
 		t.Errorf("user/env = %q/%v", fe.lastUser, fe.lastEnv)
 	}
 
-	// A non-zero exit code is surfaced (stderr goes to the log, not the return).
 	stdout, code, err = s.Exec("false")
 	if err != nil {
 		t.Fatal(err)
@@ -77,12 +73,10 @@ func TestShellExecutorWorkdirAndFailure(t *testing.T) {
 	if err := ex.Exec("make build"); err != nil {
 		t.Fatal(err)
 	}
-	// WorkDir is applied by prefixing a `cd`.
 	if fe.lastCommand != "cd '/workspaces/project' && make build" {
 		t.Errorf("command = %q", fe.lastCommand)
 	}
 
-	// A non-zero exit becomes a CommandError carrying the original command.
 	fe.fn = func(string) (string, string, int, error) { return "", "", 2, nil }
 	err := ex.Exec("false")
 	var cmdErr *CommandError
@@ -110,9 +104,6 @@ func TestShellSingleQuote(t *testing.T) {
 	}
 }
 
-// ProbedRemoteEnv runs nothing for the none strategy, and otherwise returns
-// what the probe reads in the container as the remote user; a probe whose
-// command fails is an empty environment, not an error.
 func TestProbedRemoteEnv(t *testing.T) {
 	fe := &fakeExecutor{fn: func(string) (string, string, int, error) { return "", "", 0, nil }}
 	if env := ProbedRemoteEnv(t.Context(), fe, log.Null, "cid", "vscode", ProbeNone, ""); len(env) != 0 || fe.calls != 0 {

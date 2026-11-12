@@ -8,9 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// unprocessedFeatureError is the plain Error TS buildDependencyGraph throws
-// for a Feature its processFeature returned nothing for; up and build report
-// its message as their error result's message (errors.ReferenceError).
 type unprocessedFeatureError struct{ msg string }
 
 func unprocessedFeature(format string, args ...any) error {
@@ -19,33 +16,10 @@ func unprocessedFeature(format string, args ...any) error {
 
 func (e *unprocessedFeatureError) Error() string { return e.msg }
 
-// ReferenceError marks the message as the reference's own.
 func (e *unprocessedFeatureError) ReferenceError() {}
 
-// ProcessFeature resolves a single feature (identified by node.UserFeatureID and
-// node.Options) into a Set. The returned Set must have its
-// SourceInfo populated and Features[0] carrying the feature metadata
-// (id/legacyIds/dependsOn/installsAfter), read annotation-first with a blob
-// fallback for OCI features. Returning (nil, nil) signals "could not be
-// processed" (mirrors the TS closure returning undefined) — the builder turns
-// that into the appropriate error.
-//
-// This is the injected seam that the TS CLI calls `processFeature`. All three
-// Go consumers (install, resolve-dependencies, mermaid) supply their own
-// implementation: the install path fetches and extracts the blob so the feature
-// can be built, while the read-only consumers only fetch enough to read metadata.
 type ProcessFeature func(node *FNode) (*Set, error)
 
-// BuildDependencyGraph is the Go port of buildDependencyGraph from
-// containerFeaturesOrder.ts. It walks the user-provided features, recursively
-// resolving hard dependencies (dependsOn) and processing — but not recursively
-// expanding — soft dependencies (installsAfter), returning the resolved worklist
-// of FNodes with both edge kinds wired. overrideFeatureInstallOrder priorities
-// are baked into each node's RoundPriority.
-//
-// The returned worklist is the "precomputed graph" accepted by
-// ComputeInstallationOrder (priorities are already
-// applied here) and by GenerateMermaidDiagram.
 func BuildDependencyGraph(
 	logger log.Logger,
 	processFeature ProcessFeature,
@@ -69,9 +43,6 @@ func BuildDependencyGraph(
 		return nil, err
 	}
 
-	// Apply overrideFeatureInstallOrder. Matching is by OCI identity + legacyIds
-	// (via processFeature + satisfiesSoftDependency), and invalid entries abort —
-	// mirroring the TS applyOverrideFeatureInstallOrder.
 	if len(overrideOrder) > 0 {
 		if err := applyOverrideFeatureInstallOrder(logger, processFeature, worklist, overrideOrder); err != nil {
 			return nil, err
@@ -81,12 +52,6 @@ func BuildDependencyGraph(
 	return worklist, nil
 }
 
-// resolveDependencyGraph is the Go port of the internal _buildDependencyGraph.
-// It processes a FIFO worklist, appending hard-dependency nodes back onto the
-// worklist for recursive resolution while processing soft-dependency nodes once
-// (only to read their legacyIds). Duplicate nodes (same resource + options) are
-// skipped without being re-added; genuine cycles are surfaced later by
-// ComputeInstallationOrder.
 func resolveDependencyGraph(
 	logger log.Logger,
 	processFeature ProcessFeature,
@@ -110,8 +75,6 @@ func resolveDependencyGraph(
 		}
 		current.Set = processed
 
-		// Already in the accumulator? Skip. This stops cycles from looping here;
-		// they are reported by the round-based order calculation instead.
 		if slices.ContainsFunc(acc, func(n *FNode) bool { return nodesEqual(n, current) }) {
 			continue
 		}
@@ -119,13 +82,8 @@ func resolveDependencyGraph(
 		if len(processed.Features) > 0 {
 			feat := processed.Features[0]
 
-			// Remember legacyIds: [<currentId>, <...legacyIds>].
 			current.FeatureIDAliases = aliasesFor(feat)
 
-			// Hard dependencies: add a node for each and push onto the worklist so
-			// they are resolved recursively. Iterate in a deterministic order (Go
-			// maps are unordered) — the round sort makes the final order stable, but
-			// dedup "first wins" and mermaid edge order depend on this.
 			for _, depID := range slices.Sorted(maps.Keys(feat.DependsOn)) {
 				dep := &FNode{
 					Type:          "resolved",
@@ -138,9 +96,6 @@ func resolveDependencyGraph(
 				worklist = append(worklist, dep)
 			}
 
-			// Soft dependencies: add a node for each but do NOT push onto the
-			// worklist (not recursively expanded). Still processFeature'd so their
-			// legacyIds are available for soft-dependency matching.
 			for _, iaID := range feat.InstallsAfter {
 				dep := &FNode{
 					Type:          "resolved",
@@ -170,11 +125,6 @@ func resolveDependencyGraph(
 	return acc, nil
 }
 
-// applyOverrideFeatureInstallOrder is the Go port of the TS function of the same
-// name. For each override id it processFeature's an override node, then raises
-// the RoundPriority of every worklist node that satisfies it as a soft
-// dependency (OCI identity + legacyIds). An override id that cannot be processed
-// aborts the build, unlike the previous string-prefix matcher which ignored it.
 func applyOverrideFeatureInstallOrder(
 	logger log.Logger,
 	processFeature ProcessFeature,
@@ -184,7 +134,6 @@ func applyOverrideFeatureInstallOrder(
 	originalLength := len(overrideOrder)
 	for i := originalLength - 1; i >= 0; i-- {
 		overrideID := overrideOrder[i]
-		// First element == N, last element == 1.
 		roundPriority := originalLength - i
 
 		override := &FNode{
@@ -219,8 +168,6 @@ func applyOverrideFeatureInstallOrder(
 	return nil
 }
 
-// aliasesFor returns [<id>, <...legacyIds>] for a feature, the alias set used for
-// legacyId-aware soft-dependency and override matching.
 func aliasesFor(feat Feature) []string {
 	aliases := []string{}
 	if feat.ID != "" {

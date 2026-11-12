@@ -2,7 +2,6 @@ package cli
 
 import "github.com/spf13/cobra"
 
-// newFeaturesCmd groups the `features` subcommands.
 func newFeaturesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "features",
@@ -19,7 +18,6 @@ func newFeaturesCmd() *cobra.Command {
 	return cmd
 }
 
-// newTemplatesCmd groups the `templates` subcommands.
 func newTemplatesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "templates",

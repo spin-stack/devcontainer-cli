@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// A folder holding devcontainer-feature.json is packaged as one Feature, its
-// archive named by its id; a name that is a non-zero number is truthy, as in JS.
 func TestPackageSingleFeature(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "devcontainer-feature.json"), `{"id":"solo","version":"1.0.0","name":1}`, 0o644)
@@ -24,8 +22,6 @@ func TestPackageSingleFeature(t *testing.T) {
 	}
 }
 
-// A single item, or a collection item, missing (or with a falsy) id, version or
-// name, or with metadata that does not parse, fails the package with exit 1.
 func TestPackageRequiredProperties(t *testing.T) {
 	bad := map[string]string{
 		"no id":       `{"version":"1.0.0","name":"N"}`,
@@ -51,7 +47,6 @@ func TestPackageRequiredProperties(t *testing.T) {
 	}
 }
 
-// An empty legacyIds list adds no currentId.
 func TestPackageEmptyLegacyIDsAddsNoCurrentID(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "a", "devcontainer-feature.json"), `{"id":"a","version":"1.0.0","name":"A","legacyIds":[]}`, 0o644)
@@ -65,8 +60,6 @@ func TestPackageEmptyLegacyIDsAddsNoCurrentID(t *testing.T) {
 	}
 }
 
-// Only an optionalPaths entry of the form "<dir>/*" (at least one character of
-// dir) is narrowed to its folder's single file; anything else is kept as given.
 func TestPackageTemplateOptionalPathsShape(t *testing.T) {
 	src := t.TempDir()
 	tpl := filepath.Join(src, "tpl")

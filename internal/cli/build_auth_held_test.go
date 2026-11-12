@@ -9,8 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// isolateBuildAuth points the credential chain at an empty docker config, so
-// only DEVCONTAINERS_OCI_AUTH can supply credentials.
 func isolateBuildAuth(t *testing.T, ociAuth string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -22,8 +20,6 @@ func isolateBuildAuth(t *testing.T, ociAuth string) {
 	t.Setenv("DEVCONTAINERS_OCI_AUTH", ociAuth)
 }
 
-// A build whose registries have no credentials keeps its ambient auth: no
-// DOCKER_CONFIG is handed to the build.
 func TestBridgeBuildAuthWithoutCredentials(t *testing.T) {
 	isolateBuildAuth(t, "")
 	env, cleanup := bridgeBuildAuth(log.Null, "reg.example.com/base:1", nil, nil, "")
@@ -33,7 +29,6 @@ func TestBridgeBuildAuthWithoutCredentials(t *testing.T) {
 	}
 }
 
-// Credentials that resolve are bridged through a temporary DOCKER_CONFIG.
 func TestBridgeBuildAuthWithCredentials(t *testing.T) {
 	isolateBuildAuth(t, "reg.example.com|alice|secret")
 	env, cleanup := bridgeBuildAuth(log.Null, "reg.example.com/base:1", nil, nil, "")

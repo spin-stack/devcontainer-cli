@@ -25,7 +25,6 @@ func TestComputeCacheKeyFormatAndDeterminism(t *testing.T) {
 	if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(k1) {
 		t.Fatalf("bad key format: %q", k1)
 	}
-	// Recomputing the same inputs yields the same key.
 	k2, _ := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), nil)
 	if k1 != k2 {
 		t.Fatalf("non-deterministic: %q != %q", k1, k2)
@@ -37,15 +36,12 @@ func TestComputeCacheKeyChangesWithInputs(t *testing.T) {
 	cfgPath := filepath.Join(dir, "devcontainer.json")
 	base, _ := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), nil)
 
-	// Different image → different key.
 	if k, _ := computeCacheKey(imageResult("ubuntu:24.04", cfgPath), nil); k == base {
 		t.Error("image change did not affect key")
 	}
-	// Proxy env → different key.
 	if k, _ := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), map[string]string{"HTTP_PROXY": "http://p:3128"}); k == base {
 		t.Error("proxy env did not affect key")
 	}
-	// A non-proxy env var must NOT affect the key.
 	if k, _ := computeCacheKey(imageResult("ubuntu:22.04", cfgPath), map[string]string{"UNRELATED": "x"}); k != base {
 		t.Error("unrelated env changed the key")
 	}
@@ -67,7 +63,6 @@ func TestComputeCacheKeyIncludesDockerfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mutating the Dockerfile flips the key.
 	if err := os.WriteFile(dfPath, []byte("FROM ubuntu:22.04\nRUN echo v2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

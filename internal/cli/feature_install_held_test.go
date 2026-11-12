@@ -30,7 +30,6 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// featureTgzBytes is a gzipped Feature tarball holding the given files.
 func featureTgzBytes(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var entries [][2]string
@@ -49,9 +48,6 @@ func sha256Digest(data []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-// ociFeatureRegistry is an oci.Registry serving Feature manifests and layers
-// from memory, keyed by "<resource>:<tag>" or "<resource>@<digest>". It records
-// every manifest reference asked for.
 type ociFeatureRegistry struct {
 	fakeRegistry
 	manifests map[string]*oci.ManifestContainer
@@ -71,8 +67,6 @@ func ociRefKey(ref *oci.Ref) string {
 	return ref.Resource + ":" + ref.Tag
 }
 
-// add serves a Feature at key whose single layer holds files; annotation, when
-// not nil, is the manifest's dev.containers.metadata.
 func (r *ociFeatureRegistry) add(t *testing.T, key string, files map[string]string, annotation *string) *oci.ManifestContainer {
 	t.Helper()
 	blob := featureTgzBytes(t, files)
@@ -108,8 +102,6 @@ func (r *ociFeatureRegistry) FetchBlob(_ *oci.Ref, digest string) ([]byte, error
 	return nil, fmt.Errorf("blob unknown: %s", digest)
 }
 
-// stageDirs hands out fresh staging folders under a temp dir, as
-// fetchFeatureSetsWithOrder's nextStageDir does.
 func stageDirs(t *testing.T) func() string {
 	base := t.TempDir()
 	n := 0
@@ -124,10 +116,6 @@ func installFeature(t *testing.T, reg oci.Registry, id string, opts any, lockfil
 	return processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: id, Options: opts}, localFeatureRoots{}, false, lockfile, stageDirs(t))
 }
 
-// An OCI Feature's identity, version and staged content come from the
-// reference and the layer's devcontainer-feature.json; the manifest's
-// dev.containers.metadata annotation, when there is one, replaces every
-// dependency and container property the layer declared.
 func TestProcessInstallFeatureOCI(t *testing.T) {
 	const id = "ghcr.io/owner/coll/hello:1"
 	blobMeta := `{"id":"hello","name":"Hello","options":{"blob":{}},"dependsOn":{"blob/dep":{}},"installsAfter":["blob"],
@@ -201,8 +189,6 @@ func TestProcessInstallFeatureOCI(t *testing.T) {
 	})
 }
 
-// A lockfile entry with an integrity pins the manifest fetch to that digest;
-// an entry without one, or for another Feature, leaves the tag.
 func TestProcessInstallFeatureOCIPinsToTheLockfile(t *testing.T) {
 	const id = "ghcr.io/owner/coll/hello:1"
 	digest := "sha256:" + strings.Repeat("cd", 32)
@@ -231,7 +217,6 @@ func TestProcessInstallFeatureOCIPinsToTheLockfile(t *testing.T) {
 	}
 }
 
-// A known legacy shorthand with a version resolves to its registry Feature.
 func TestProcessInstallFeatureLegacyShorthandWithVersion(t *testing.T) {
 	reg := newOCIFeatureRegistry()
 	reg.add(t, "ghcr.io/devcontainers/features/node:1", map[string]string{"devcontainer-feature.json": `{"id":"node"}`}, nil)
@@ -244,8 +229,6 @@ func TestProcessInstallFeatureLegacyShorthandWithVersion(t *testing.T) {
 	}
 }
 
-// Every way an OCI Feature can fail to be fetched or staged is an error naming
-// the Feature.
 func TestProcessInstallFeatureOCIErrors(t *testing.T) {
 	const id = "ghcr.io/owner/coll/hello:1"
 	good := map[string]string{"devcontainer-feature.json": `{"id":"hello"}`}
@@ -297,7 +280,6 @@ func TestProcessInstallFeatureOCIErrors(t *testing.T) {
 	}
 }
 
-// serveBytes serves body at every path and returns the server's URL.
 func serveBytes(t *testing.T, body []byte, status int) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -308,9 +290,6 @@ func serveBytes(t *testing.T, body []byte, status int) string {
 	return srv.URL
 }
 
-// A direct-tarball Feature takes its id from devcontainer-feature.json, else
-// from the tarball's devcontainer-feature-<id>.tgz name; its name, when the file
-// has none, is the user's reference; its digest is recorded for the lockfile.
 func TestProcessInstallFeatureTarball(t *testing.T) {
 	for name, tc := range map[string]struct {
 		files            map[string]string
@@ -381,8 +360,6 @@ func TestProcessInstallFeatureTarballErrors(t *testing.T) {
 	})
 }
 
-// The id of a tarball comes from its URL's path: a fragment or query is not
-// part of the name.
 func TestTarballFeatureIDUsesTheURLPath(t *testing.T) {
 	for uri, want := range map[string]string{
 		"https://example.com/r/devcontainer-feature-go.tgz#frag/x": "go",
@@ -395,8 +372,6 @@ func TestTarballFeatureIDUsesTheURLPath(t *testing.T) {
 	}
 }
 
-// Root Features are resolved in sorted order, so of two broken ones the error
-// always names the same.
 func TestFetchFeatureSetsReportsTheFirstSortedFailure(t *testing.T) {
 	for range 5 {
 		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, devcontainerRoots(t), false)
@@ -406,7 +381,6 @@ func TestFetchFeatureSetsReportsTheFirstSortedFailure(t *testing.T) {
 	}
 }
 
-// A staged Feature whose folder cannot be moved or copied fails the staging.
 func TestRealignFeatureDirsFailsOnMissingStage(t *testing.T) {
 	dst := t.TempDir()
 	set := &features.Set{Features: []features.Feature{{ID: "x", CachePath: filepath.Join(dst, ".stage-gone")}}}
@@ -436,8 +410,6 @@ func TestFindContainerUsers(t *testing.T) {
 	}
 }
 
-// fakeDockerAPI is a docker.API whose image, version and container calls answer
-// from its fields; any other call panics through the nil embedded interface.
 type fakeDockerAPI struct {
 	docker.API
 	version      string
@@ -494,11 +466,8 @@ func TestEngineAtLeast23(t *testing.T) {
 	}
 }
 
-// dockerCall is one recorded docker CLI invocation.
 type dockerCall []string
 
-// fakeDockerRunner is an exec.Runner standing in for the docker CLI: reply
-// answers each invocation, and every invocation is recorded.
 type fakeDockerRunner struct {
 	calls []dockerCall
 	reply func(args []string) (stdout string, code int, err error)
@@ -556,8 +525,6 @@ func TestBuildFeatureContentImage(t *testing.T) {
 	}
 }
 
-// extendRun is one extendImageWithFeatures call over a local Feature with a
-// fake docker CLI and engine.
 type extendRun struct {
 	useBuildx   bool
 	imageNames  []string
@@ -565,15 +532,15 @@ type extendRun struct {
 	reply       func([]string) (string, int, error)
 	fbOpts      FeatureBuildOptions
 	features    map[string]any
-	engine      string // the daemon's version, 25.0.0 when empty
+	engine      string
 }
 
 type extendResult struct {
 	names    []string
 	err      error
 	calls    []dockerCall
-	build    dockerCall // the extended image's build
-	features string     // the features folder
+	build    dockerCall
+	features string
 }
 
 func (e extendRun) run(t *testing.T) extendResult {
@@ -604,7 +571,6 @@ func (e extendRun) run(t *testing.T) extendResult {
 	return res
 }
 
-// tagsOf lists the -t values of a build.
 func tagsOf(c dockerCall) []string {
 	var tags []string
 	for i, a := range c {
@@ -615,8 +581,6 @@ func tagsOf(c dockerCall) []string {
 	return tags
 }
 
-// The extended image is tagged with every given image name, else
-// <base>-features, and the names it reports are those tags.
 func TestExtendImageWithFeaturesTags(t *testing.T) {
 	for name, tc := range map[string]struct {
 		names, want []string
@@ -637,8 +601,6 @@ func TestExtendImageWithFeaturesTags(t *testing.T) {
 	}
 }
 
-// Without metadata naming a user, the Features install as the image's user,
-// root when the image declares none.
 func TestExtendImageWithFeaturesUsesTheImageUser(t *testing.T) {
 	for name, tc := range map[string]struct {
 		config *dockerspec.DockerOCIImageConfig
@@ -668,8 +630,6 @@ func TestExtendImageWithFeaturesUsesTheImageUser(t *testing.T) {
 	}
 }
 
-// The classic builder needs the Features' content image built first, and its
-// failure stops the build.
 func TestExtendImageWithFeaturesContentImage(t *testing.T) {
 	res := extendRun{}.run(t)
 	if res.err != nil {
@@ -689,9 +649,6 @@ func TestExtendImageWithFeaturesContentImage(t *testing.T) {
 	}
 }
 
-// A buildx builder that cannot see local images (docker-container or remote
-// driver) is replaced by the context's docker-driver builder for the Features
-// build; a docker-driver builder is kept.
 func TestExtendImageWithFeaturesSwitchesToADockerDriverBuilder(t *testing.T) {
 	for driver, want := range map[string]bool{"docker-container": true, "remote": true, "docker": false} {
 		t.Run(driver, func(t *testing.T) {
@@ -718,9 +675,6 @@ func TestExtendImageWithFeaturesSwitchesToADockerDriverBuilder(t *testing.T) {
 	}
 }
 
-// The lockfile is written by default, as TS generateFeaturesConfig writes it
-// unless --no-lockfile is given; --frozen-lockfile fails when the resolved
-// Features differ from it. An existing lockfile pins the Features it records.
 func TestExtendImageWithFeaturesLockfile(t *testing.T) {
 	tgz := featureTgzBytes(t, map[string]string{"devcontainer-feature.json": `{"id":"tb","version":"1.2.3"}`, "install.sh": "#!/bin/sh\n"})
 	sum := sha256.Sum256(tgz)
@@ -750,7 +704,6 @@ func TestExtendImageWithFeaturesLockfile(t *testing.T) {
 		}
 	})
 	t.Run("local Features only", func(t *testing.T) {
-		// generateLockfile records OCI and tarball Features only: an empty map.
 		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
 		if res := (extendRun{fbOpts: FeatureBuildOptions{ConfigPath: configPath}}).run(t); res.err != nil {
 			t.Fatal(res.err)
@@ -798,8 +751,6 @@ func TestExtendImageWithFeaturesLockfile(t *testing.T) {
 		}
 	})
 	t.Run("malformed", func(t *testing.T) {
-		// TS readLockfile rethrows the JSON.parse error: the build fails with
-		// its message before anything is built; --no-lockfile does not read it.
 		configPath := filepath.Join(t.TempDir(), "devcontainer.json")
 		if err := os.WriteFile(features.LockfilePath(configPath), []byte("not json"), 0o644); err != nil {
 			t.Fatal(err)
@@ -824,7 +775,6 @@ func TestExtendImageWithFeaturesLockfile(t *testing.T) {
 		if _, ok := errors.AsType[*digestMismatchError](res.err); !ok {
 			t.Fatalf("err = %v, want the lockfile's digest mismatch", res.err)
 		}
-		// --no-lockfile neither reads nor verifies it.
 		unlocked := extendRun{features: map[string]any{uri: true}, fbOpts: FeatureBuildOptions{ConfigPath: configPath, NoLockfile: true}}.run(t)
 		if unlocked.err != nil {
 			t.Fatalf("--no-lockfile: err = %v", unlocked.err)
@@ -832,8 +782,6 @@ func TestExtendImageWithFeaturesLockfile(t *testing.T) {
 	})
 }
 
-// The build of the extended image gets a DOCKER_CONFIG with the CLI's
-// credentials for the registry it is tagged for.
 func TestExtendImageWithFeaturesBridgesRegistryAuth(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake docker is a shell script")
@@ -874,8 +822,6 @@ func TestExtendImageWithFeaturesBridgesRegistryAuth(t *testing.T) {
 	}
 }
 
-// With buildx, only a daemon older than 23 needs the dockerfile:1.4 syntax
-// directive for the build contexts; the classic builder never gets one.
 func TestExtendImageWithFeaturesSyntaxDirective(t *testing.T) {
 	for name, tc := range map[string]struct {
 		run  extendRun
@@ -901,8 +847,6 @@ func TestExtendImageWithFeaturesSyntaxDirective(t *testing.T) {
 	}
 }
 
-// A Feature's metadata entry falls back to the Feature's id when its source
-// has no user reference.
 func TestFeatureMetadataEntryFallsBackToTheFeatureID(t *testing.T) {
 	for name, src := range map[string]features.SourceInfo{
 		"no source":      nil,
@@ -915,7 +859,6 @@ func TestFeatureMetadataEntryFallsBackToTheFeatureID(t *testing.T) {
 	}
 }
 
-// Sets without a staged Feature are left as they are.
 func TestRealignFeatureDirsSkipsUnstagedSets(t *testing.T) {
 	dst := t.TempDir()
 	unstaged := &features.Set{Features: []features.Feature{{ID: "x"}}}
@@ -927,11 +870,6 @@ func TestRealignFeatureDirsSkipsUnstagedSets(t *testing.T) {
 	}
 }
 
-// An OCI Feature set is written as TS's featuresConfiguration has it: the
-// sourceInformation properties in tryGetOCIFeatureSet's order, the manifest
-// as the registry served it, featureRef parsed from the reference as written
-// even when the lockfile pins the manifest, and the Feature built from the
-// annotation's metadata spread over the layer's devcontainer-feature.json.
 func TestProcessInstallFeatureOCISetJSON(t *testing.T) {
 	const id = "ghcr.io/owner/coll/hello:1"
 	digest := "sha256:" + strings.Repeat("cd", 32)
@@ -962,9 +900,6 @@ func TestProcessInstallFeatureOCISetJSON(t *testing.T) {
 	}
 }
 
-// An OCI Feature's id is its metadata's, as TS spreads the metadata over
-// {id: <reference id>, ...}: the annotation's when the manifest has one,
-// else the layer's, else the reference's. consecutiveId follows it.
 func TestProcessInstallFeatureOCIIDIsTheMetadatas(t *testing.T) {
 	const id = "ghcr.io/owner/coll/hello:1"
 	renamed, anonymous := `{"id":"new-hello"}`, `{"version":"1.0.0"}`

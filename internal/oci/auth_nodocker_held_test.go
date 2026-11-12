@@ -9,10 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TS getCredential (httpOCIRegistry.ts) takes the first DEVCONTAINERS_OCI_AUTH
-// entry whose first `|` field is the registry, and joins its second and third
-// fields as `${split[1]}:${split[2]}`: fields after the third are dropped and a
-// missing one reads as undefined.
 func TestGetCredentialFromOCIAuthEntryFields(t *testing.T) {
 	for _, tt := range []struct {
 		name, ociAuth, want string

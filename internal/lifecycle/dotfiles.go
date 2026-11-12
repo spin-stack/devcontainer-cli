@@ -8,26 +8,20 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// DotfilesConfig holds dotfiles installation settings.
 type DotfilesConfig struct {
 	Repository     string
 	InstallCommand string
-	TargetPath     string // default: ~/dotfiles
+	TargetPath     string
 }
 
-// localRepository is TS installDotfiles' test for a repository that is a path,
-// absolute or relative, and so is not GitHub shorthand.
 var localRepository = regexp.MustCompile(`^\.{0,2}/`)
 
-// InstallDotfiles clones and runs a dotfiles repository in the container.
 func InstallDotfiles(logger log.Logger, executor CommandExecutor, config DotfilesConfig) error {
 	if config.Repository == "" {
 		return nil
 	}
 
 	repo := config.Repository
-	// Auto-prefix GitHub shorthand: a repository with no colon that is not a
-	// path (TS: `repository.indexOf(':') === -1 && !/^\.{0,2}\//.test(repository)`).
 	if !strings.Contains(repo, ":") && !localRepository.MatchString(repo) {
 		repo = "https://github.com/" + repo + ".git"
 	}
@@ -43,8 +37,6 @@ func InstallDotfiles(logger log.Logger, executor CommandExecutor, config Dotfile
 		Status: "running",
 	})
 
-	// Idempotency marker: install once per container, so editor reconnections
-	// (repeated `up`s) don't re-clone/re-run the dotfiles — matching the TS CLI.
 	markerPrefix := `MARKER="$HOME/.devcontainer/.dotfilesMarker"
 if [ -e "$MARKER" ]; then echo "dotfiles already installed"; exit 0; fi
 mkdir -p "$(dirname "$MARKER")" && : > "$MARKER"

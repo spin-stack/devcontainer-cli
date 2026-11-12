@@ -12,10 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// TestTSOracleReadLockfile asserts ReadLockfile against the reference's
-// readLockfile over the same file (go tool task testdata:ts-oracle): what it
-// makes of the file, or the message of the error it throws, which for JSON
-// that does not parse is V8's JSON.parse message.
 func TestTSOracleReadLockfile(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/lockfile-read.json", map[string]oracletest.Func{
 		"readLockfile": func(args []json.RawMessage) (any, error) {
@@ -46,7 +42,6 @@ func TestTSOracleReadLockfile(t *testing.T) {
 			lockfile, initLockfile, err := ReadLockfile(filepath.Join(dir, "devcontainer.json"))
 			switch {
 			case err != nil:
-				// The oracle writes its temporary folder as <dir>.
 				return nil, errors.New(strings.ReplaceAll(err.Error(), dir, "<dir>"))
 			case initLockfile:
 				return "init", nil

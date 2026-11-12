@@ -120,7 +120,6 @@ func TestMergeConfiguration(t *testing.T) {
 		},
 		{
 			name: "InitPrivileged_OR",
-			// A later entry with init:false must NOT override an earlier init:true (OR).
 			entries: []Entry{
 				{Init: &trueVal, Privileged: &falseVal},
 				{Init: &falseVal, Privileged: &trueVal},
@@ -136,8 +135,6 @@ func TestMergeConfiguration(t *testing.T) {
 		},
 		{
 			name: "Customizations_ArraysByKey",
-			// Each entry's customizations[key] is collected into an array, matching TS,
-			// so no feature's settings/extensions are clobbered.
 			entries: []Entry{
 				{Customizations: map[string]any{"vscode": map[string]any{"extensions": []any{"a"}}}},
 				{Customizations: map[string]any{"vscode": map[string]any{"extensions": []any{"b"}}}},
@@ -214,8 +211,6 @@ func TestGenerateMetadataLabel_Roundtrip(t *testing.T) {
 	}
 }
 
-// A single metadata entry must still serialize as a JSON array, not a bare
-// object.
 func TestGenerateMetadataLabel_SingleEntryIsArray(t *testing.T) {
 	label := GenerateMetadataLabel([]Entry{{ID: "go", RemoteUser: "vscode"}})
 	if len(label) == 0 || label[0] != '[' {

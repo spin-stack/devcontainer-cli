@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// TestBuildCommand_HelpOutput verifies the build command has expected flags.
 func TestBuildCommand_HelpOutput(t *testing.T) {
 	root := NewRootCommand()
 	root.SetArgs([]string{"build", "--help"})
@@ -26,16 +25,12 @@ func TestBuildCommand_HelpOutput(t *testing.T) {
 	}
 }
 
-// readConfigurationResult runs `read-configuration` against a fixture and returns
-// the parsed JSON output (skipping when the fixture is absent).
 func readConfigurationResult(t *testing.T, fixtureName string) map[string]any {
 	t.Helper()
 	fixtureDir := filepath.Join("..", "..", "src", "test", "configs", fixtureName)
 	if _, err := os.Stat(fixtureDir); os.IsNotExist(err) {
 		t.Skip("fixture not found: " + fixtureName)
 	}
-	// read-configuration looks for the workspace's container, so it needs an
-	// engine to answer; this one has none.
 	startFakeEngine(t, nil)
 
 	old := os.Stdout
@@ -60,8 +55,6 @@ func readConfigurationResult(t *testing.T, fixtureName string) map[string]any {
 }
 
 func TestReadConfiguration(t *testing.T) {
-	// A compose config must expose its service; a Dockerfile config must expose
-	// dockerFile or build (and a build target when the fixture has one).
 	composeService := func(service string) func(*testing.T, map[string]any) {
 		return func(t *testing.T, result map[string]any) {
 			cfg, _ := result["configuration"].(map[string]any)

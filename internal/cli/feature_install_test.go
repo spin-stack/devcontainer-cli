@@ -15,9 +15,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// devcontainerRoots creates a workspace with an empty .devcontainer folder and
-// returns the roots of a configuration in that folder, where local Features
-// must lie.
 func devcontainerRoots(t *testing.T) localFeatureRoots {
 	t.Helper()
 	ws := t.TempDir()
@@ -99,7 +96,6 @@ func TestFetchFeatureSets(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				// TS: a local Feature's id is its devcontainer-feature.json id.
 				if got, want := featureSetIDs(result.FeatureSets), "feature-c → feature-b → feature-a"; got != want {
 					t.Fatalf("install order = %s, want %s", got, want)
 				}
@@ -222,12 +218,6 @@ func TestFeatureMetadataEntry_UsesOCIUserID(t *testing.T) {
 	}
 }
 
-// TestFetchFeatureSets_StagingLayout: like TS generateFeaturesConfig, the
-// Features are staged in <cacheFolder>/container-features/<cliVersion>-<ms>,
-// each in a folder named by its consecutiveId `<feature id>_<install index>`,
-// and no staging leftovers remain. A local Feature's id is its
-// devcontainer-feature.json id, else the folder name; its name, when the file
-// has none, is the user's reference.
 func TestFetchFeatureSets_StagingLayout(t *testing.T) {
 	roots := devcontainerRoots(t)
 	baseDir := roots.configDir
@@ -289,10 +279,6 @@ func TestFetchFeatureSets_StagingLayout(t *testing.T) {
 	}
 }
 
-// TestStageFeatureBuildFiles: the files the features Dockerfile refers to are
-// written as TS getFeaturesBuildOptions writes them: the builtin env in the
-// features folder, and the env file and install wrapper (options in
-// devcontainer-feature.json order) in each Feature's folder.
 func TestStageFeatureBuildFiles(t *testing.T) {
 	dst := t.TempDir()
 	cache := filepath.Join(dst, "hello_0")
@@ -338,8 +324,6 @@ func TestStageFeatureBuildFiles(t *testing.T) {
 		}
 	}
 
-	// A Feature folder without devcontainer-feature.json is an error, not an
-	// install with no options.
 	if err := os.Remove(filepath.Join(cache, "devcontainer-feature.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -348,8 +332,6 @@ func TestStageFeatureBuildFiles(t *testing.T) {
 	}
 }
 
-// TS getFeatureIdWithoutVersion strips the last :tag or @digest, keeping a
-// registry port.
 func TestFeatureIDWithoutVersion(t *testing.T) {
 	for in, want := range map[string]string{
 		"ghcr.io/devcontainers/features/node:1":         "ghcr.io/devcontainers/features/node",
@@ -363,8 +345,6 @@ func TestFeatureIDWithoutVersion(t *testing.T) {
 	}
 }
 
-// TS getDevcontainerMetadata records sourceInformation.userFeatureId as a
-// Feature entry's id for every source type, not the Feature's own id.
 func TestFeatureMetadataEntry_UsesUserFeatureIDForLocalAndTarball(t *testing.T) {
 	local := featureMetadataEntry(&features.Set{SourceInfo: &features.LocalSource{UserID: "./hello"}, Features: []features.Feature{{ID: "hello"}}}, false)
 	if local.ID != "./hello" {
@@ -379,9 +359,6 @@ func TestFeatureMetadataEntry_UsesUserFeatureIDForLocalAndTarball(t *testing.T) 
 	}
 }
 
-// A Feature's updateContentCommand reaches the image metadata like its other
-// lifecycle hooks (TS pickFeatureLifecycleHookProperties), so up runs it and
-// read-configuration merges it.
 func TestFeatureMetadataEntryCarriesEveryLifecycleHook(t *testing.T) {
 	set := &features.Set{
 		SourceInfo: &features.LocalSource{LocalPath: "./a", UserID: "./a"},
@@ -408,10 +385,6 @@ func TestFeatureMetadataEntryCarriesEveryLifecycleHook(t *testing.T) {
 	}
 }
 
-// A local Feature outside the workspace's .devcontainer folder, or given by an
-// absolute path, is refused as TS processFeatureIdentifier refuses it: the
-// reason is logged as an error and the Feature fails as one that could not be
-// processed, the plain Error build and up report as their message.
 func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 	roots := devcontainerRoots(t)
 	writeLocalFeature(t, roots.workspaceRoot, "feat", nil)
@@ -434,7 +407,6 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 			if !strings.Contains(logs.String(), tc.logged+"\n") {
 				t.Errorf("logs = %q, want %q", logs.String(), tc.logged)
 			}
-			// up wraps it; both report the message TS's plain Error has.
 			for _, e := range []error{err, fmt.Errorf("install features: %w", err)} {
 				want := coreerrors.ErrorOutput{Outcome: "error", Message: msg, Description: "An error occurred building the container."}
 				if got := commandErrorOutput(e, "An error occurred building the container"); got != want {
@@ -445,9 +417,6 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 	}
 }
 
-// read-configuration resolves local Features against its workspace folder:
-// a configuration at the workspace root (.devcontainer.json) has its Features
-// outside .devcontainer, and the command fails with no result.
 func TestReadConfigurationRefusesALocalFeatureOutsideDevcontainer(t *testing.T) {
 	startFakeEngine(t, nil)
 	ws := writeConfigFixture(t, map[string]string{
@@ -461,10 +430,6 @@ func TestReadConfigurationRefusesALocalFeatureOutsideDevcontainer(t *testing.T) 
 	wantExitCode(t, err, 1)
 }
 
-// Runs started in the same millisecond each get a features folder of their
-// own: a shared one let one run's realignFeatureDirs remove the other's
-// .stage- folders ("stage feature h_0: lstat .../.stage-0: no such file or
-// directory" in the parity lane).
 func TestCreateFeaturesFolderIsTheRunsAlone(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	seen := map[string]bool{}

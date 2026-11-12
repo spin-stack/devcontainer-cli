@@ -18,12 +18,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TestRegistryBasicAuthLoop stands up a real registry:3 protected by htpasswd
-// Basic auth (testcontainers) and drives the full oras auth loop end-to-end:
-// the first request gets 401 + WWW-Authenticate, oras reads the credential from
-// a temporary DOCKER_CONFIG auths entry, retries authenticated, and the
-// push/pull succeeds. It also asserts that an anonymous client (no credentials)
-// is rejected — proving auth is actually enforced, not incidentally open.
 func TestRegistryBasicAuthLoop(t *testing.T) {
 	if !isDockerAvailable() {
 		t.Skip("docker required")
@@ -70,7 +64,6 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 	}
 	registry := host + ":" + port.Port()
 
-	// A throwaway tarball to push as the artifact layer.
 	tgz := filepath.Join(t.TempDir(), "artifact.tgz")
 	if err := os.WriteFile(tgz, []byte("dummy-layer-content"), 0o600); err != nil {
 		t.Fatal(err)
@@ -81,8 +74,6 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Authenticated client: DOCKER_CONFIG with an auths entry keyed by the
-	// registry host, exactly as `docker login` would write it.
 	authEnv := dockerConfigEnv(t, registry, user, pass)
 	client := NewClient(log.Null, authEnv)
 
@@ -94,7 +85,6 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 		t.Fatal("no tags published")
 	}
 
-	// Pull side of the loop: list tags + fetch manifest with the same auth.
 	tags, err := client.GetPublishedTags(ref)
 	if err != nil {
 		t.Fatalf("authenticated tag list failed: %v", err)
@@ -103,12 +93,9 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 		t.Fatalf("published tags = %v, want to include 1.0.0 and latest", tags)
 	}
 	if _, err := client.FetchBlob(ref, res.Digest); err != nil {
-		// Manifest is fetched via the manifest endpoint; blob-by-digest also
-		// exercises the authenticated blob path.
 		t.Logf("note: FetchBlob(manifest digest) returned %v (manifest is not a blob); ignoring", err)
 	}
 
-	// Negative control: an anonymous client must be rejected on push.
 	anonEnv := map[string]string{"DOCKER_CONFIG": t.TempDir()}
 	if err := os.WriteFile(filepath.Join(anonEnv["DOCKER_CONFIG"], "config.json"), []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -119,10 +106,6 @@ func TestRegistryBasicAuthLoop(t *testing.T) {
 	}
 }
 
-// TestClientAuthCacheReused asserts the shared auth cache: every repository()
-// built by one Client shares the same auth.Cache, so an auth challenge resolved
-// for one operation is reused by related operations instead of re-running the
-// 401 loop.
 func TestClientAuthCacheReused(t *testing.T) {
 	c := NewClient(log.Null, nil)
 	if c.authCache == nil {
@@ -153,8 +136,6 @@ func TestClientAuthCacheReused(t *testing.T) {
 	}
 }
 
-// dockerConfigEnv writes a temp docker config.json with a Basic auths entry for
-// registry and returns an env map pointing DOCKER_CONFIG at it.
 func dockerConfigEnv(t *testing.T, registry, user, pass string) map[string]string {
 	t.Helper()
 	dir := t.TempDir()

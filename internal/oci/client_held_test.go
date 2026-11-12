@@ -13,9 +13,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A registry that accepts the request and never answers must not hold a
-// caller that brought no deadline of its own: the client's transport gives up
-// waiting for response headers.
 func TestClientGivesUpOnRegistryThatNeverAnswers(t *testing.T) {
 	blocked := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-blocked }))
@@ -43,9 +40,6 @@ func TestClientGivesUpOnRegistryThatNeverAnswers(t *testing.T) {
 	}
 }
 
-// TS getManifest (containerCollectionsOCI.ts) fails only when the manifest's
-// content digest differs from the expected one: fetching a manifest by the
-// digest it has succeeds and reports that digest.
 func TestFetchManifestByItsOwnDigest(t *testing.T) {
 	reg := newFakeOCIRegistry()
 	host := reg.start(t)

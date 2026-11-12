@@ -83,9 +83,6 @@ func mountFromMetadata(entry any, devcontainerID string) (dockermount.Mount, err
 		return docker.ParseMountSpec(spec)
 	case map[string]any:
 		target, _ := raw["target"].(string)
-		// ${devcontainerId} must resolve in target too, not only source — the
-		// string form substitutes the whole spec, so the object form has to match
-		// (e.g. target "/cache/${devcontainerId}").
 		target, err := resolve(target)
 		if err != nil {
 			return dockermount.Mount{}, err
@@ -118,8 +115,6 @@ func mountFromMetadata(entry any, devcontainerID string) (dockermount.Mount, err
 	}
 }
 
-// folderImageName generates a deterministic image name from a workspace folder path.
-// Matches the TS CLI's getFolderImageName: "vsc-{basename}-{sha256hex}"
 func folderImageName(folderPath string) string {
 	basename := filepath.Base(folderPath)
 	hash := sha256.Sum256([]byte(folderPath))

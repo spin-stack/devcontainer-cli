@@ -24,7 +24,6 @@ type jsObject struct {
 
 func newJSObject() *jsObject { return &jsObject{vals: map[string]any{}} }
 
-// set is obj[k] = v.
 func (o *jsObject) set(k string, v any) {
 	if _, ok := o.vals[k]; !ok {
 		o.keys = append(o.keys, k)
@@ -37,7 +36,6 @@ func (o *jsObject) get(k string) (any, bool) {
 	return v, ok
 }
 
-// remove is delete obj[k].
 func (o *jsObject) remove(k string) {
 	if _, ok := o.vals[k]; ok {
 		delete(o.vals, k)
@@ -45,7 +43,6 @@ func (o *jsObject) remove(k string) {
 	}
 }
 
-// spread is {...o, ...src} for an object src: src's properties set on a copy of o.
 func (o *jsObject) spread(src *jsObject) *jsObject {
 	out := &jsObject{keys: slices.Clone(o.keys), vals: make(map[string]any, len(o.vals))}
 	for k, v := range o.vals {
@@ -64,7 +61,6 @@ func isArrayIndex(k string) bool {
 	return err == nil && n != 1<<32-1 && strconv.FormatUint(n, 10) == k
 }
 
-// order is the order JSON.stringify writes o's properties in.
 func (o *jsObject) order() []string {
 	var idx, rest []string
 	for _, k := range o.keys {
@@ -74,8 +70,6 @@ func (o *jsObject) order() []string {
 			rest = append(rest, k)
 		}
 	}
-	// Array indexes are canonical: shorter is smaller, equal lengths compare
-	// as strings.
 	slices.SortFunc(idx, func(a, b string) int {
 		return cmp.Or(cmp.Compare(len(a), len(b)), strings.Compare(a, b))
 	})
@@ -105,7 +99,6 @@ func (o *jsObject) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// parseJS is JSON.parse(data): data's value with its objects as jsObject.
 func parseJS(data []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	v, err := parseJSValue(dec)
@@ -154,7 +147,6 @@ func parseJSValue(dec *json.Decoder) (any, error) {
 	return tok, nil
 }
 
-// toJS is v as JSON.parse(JSON.stringify(v)) gives it back.
 func toJS(v any) (any, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -163,7 +155,6 @@ func toJS(v any) (any, error) {
 	return parseJS(data)
 }
 
-// jsTruthy is JavaScript's truthiness of a parsed JSON value.
 func jsTruthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -178,8 +169,6 @@ func jsTruthy(v any) bool {
 	return true
 }
 
-// spreadSource is the own enumerable properties {...v} copies from v: an
-// object's, an array's or a string's (by index); none for other values.
 func spreadSource(v any) *jsObject {
 	out := newJSObject()
 	switch x := v.(type) {

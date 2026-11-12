@@ -24,9 +24,6 @@ func TestDockerfileResolverVariableExpressions(t *testing.T) {
 }
 
 func TestDockerfileResolverParentStageArgIsNotInherited(t *testing.T) {
-	// An ARG of the stage a stage is built FROM is not in scope, its ENV is, and
-	// so is a global ARG (TS findValue considers ARGs only in the stage itself
-	// and in the global scope).
 	r := NewResolver(ExtractDockerfile("ARG G=global\nFROM img AS base\nARG U=parent\nENV E=env\nFROM base\nUSER ${U:-none}-${E}-${G}\n"), nil, nil)
 	if got := r.FindUserStatement(nil, ""); got != "none-env-global" {
 		t.Fatalf("FindUserStatement = %q, want %q", got, "none-env-global")

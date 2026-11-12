@@ -45,9 +45,7 @@ type buildOpts struct {
 	frozenLockfile             bool
 	secretsFile                string
 	caBundle                   string
-	// lockfileExcludeIDs is populated after merging --additional-features; it lists
-	// userFeatureIds supplied only via that flag, which 0.88 keeps out of the lockfile.
-	lockfileExcludeIDs map[string]bool
+	lockfileExcludeIDs         map[string]bool
 }
 
 func newBuildCmd() *cobra.Command {
@@ -105,20 +103,15 @@ func newBuildCmd() *cobra.Command {
 	return cmd
 }
 
-// buildRunner carries the dependencies shared across the `build` flow so they
-// don't have to be threaded through every helper by hand.
 type buildRunner struct {
-	log    log.Logger
-	docker *docker.Client
-	engine *docker.EngineClient
-	opts   *buildOpts
-	// configLabel is the configuration's entry in the devcontainer.metadata
-	// label: its properties as written (TS pick(config.raw, ...)).
+	log         log.Logger
+	docker      *docker.Client
+	engine      *docker.EngineClient
+	opts        *buildOpts
 	configLabel imagemeta.Entry
 }
 
 func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
-	// 0.88: --workspace-folder defaults to the current directory when not given.
 	if opts.workspaceFolder == "" {
 		opts.workspaceFolder, _ = os.Getwd()
 	}
@@ -134,8 +127,6 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		return writeValidationError(out, err.Error())
 	}
 
-	// --no-lockfile is mutually exclusive with every frozen/write lockfile flag
-	// (TS devContainersSpecCLI check for the build command).
 	if opts.noLockfile {
 		switch {
 		case opts.frozenLockfile:
@@ -149,30 +140,24 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 
 	warnDeprecatedLockfileFlags(out.Stderr(), opts.experimentalLockfile, opts.experimentalFrozenLockfile)
 
-	// Non-blocking hint (interactive TTY only) if the host was never checked or a
-	// previous `devcontainer check` found a failing configuration.
 	warnUncheckedHost(out)
 
 	opts.foldFrozenLockfile()
 
-	// Resolve paths
 	workspaceFolder := resolvePath(opts.workspaceFolder)
 	configPath := ""
 	if opts.configPath != "" {
 		configPath = resolvePath(opts.configPath)
 	}
 
-	// Setup logger
 	logger := log.New(log.Options{
 		Version: cliVersion(),
 		Level:   log.ParseLevel(opts.logLevel),
 		Format:  opts.logFormat,
 		Writer:  os.Stderr,
 	})
-	// Route the OCI auth diagnostic lines at this command's logger.
 	ociAuthPolicy(ctx).SetLogger(logger)
 
-	// Load config
 	loadResult, err := config.LoadDevContainerConfig(workspaceFolder, configPath, "")
 	if err != nil {
 		return writeErrorResult(out, err.Error())
@@ -184,12 +169,10 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		return writeErrorResult(out, err.Error())
 	}
 
-	// TS build reports only the message and description of this error.
 	if derr := enforceDisallowedFeatures(ctx, cfg, opts.additionalFeatures, logger, nil); derr != nil {
 		return writeErrorJSON(out, coreerrors.ErrorOutput{Outcome: "error", Message: derr.Error(), Description: derr.Description})
 	}
 
-	// Setup Docker clients
 	dockerClient := newBuildDockerClient(opts.dockerPath, opts.logFormat, logger)
 
 	engine, err := docker.NewEngineClient(logger)
@@ -203,7 +186,6 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 		return writeErrorResult(out, err.Error())
 	}
 
-	// Detect BuildKit
 	var useBuildx bool
 	if opts.buildkit != "never" {
 		bk := dockerClient.DetectBuildKit(ctx)
@@ -221,7 +203,6 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	} else if cfg.IsComposeConfig() {
 		imageNameResult, err = run.buildCompose(ctx, cfg, loadResult, useBuildx)
 	} else {
-		// Image-based config
 		imageNameResult, err = run.buildImage(ctx, cfg, loadResult, useBuildx)
 	}
 
@@ -246,10 +227,6 @@ func buildResultImageName(compose bool, argImageNames, built []string) any {
 	return built
 }
 
-// warnDeprecatedLockfileFlags writes the warnings TS up and build write
-// straight to stderr for the deprecated lockfile flags
-// (devContainersSpecCLI.ts warnDeprecatedLockfileFlags): the lockfile is
-// written by default, so --experimental-lockfile does nothing more.
 func warnDeprecatedLockfileFlags(w io.Writer, experimentalLockfile, experimentalFrozenLockfile bool) {
 	if experimentalLockfile {
 		fmt.Fprint(w, "Warning: --experimental-lockfile is deprecated. Lockfiles are now enabled by default.\n")
@@ -259,26 +236,16 @@ func warnDeprecatedLockfileFlags(w io.Writer, experimentalLockfile, experimental
 	}
 }
 
-// foldFrozenLockfile folds the deprecated --experimental-frozen-lockfile into
-// --frozen-lockfile, as TS does (effectiveFrozenLockfile = frozenLockfile ||
-// experimentalFrozenLockfile); the Feature build reads the folded value.
 func (o *buildOpts) foldFrozenLockfile() {
 	o.experimentalFrozenLockfile = o.experimentalFrozenLockfile || o.frozenLockfile
 }
 
-// newBuildDockerClient is the Docker CLI client a build runs `docker build`
-// with. It streams the build's progress live to stderr in text mode only: under
-// --log-format json a raw byte stream would corrupt the structured events.
 func newBuildDockerClient(dockerPath, logFormat string, logger log.Logger) *docker.Client {
 	c := docker.NewClient(dockerPath, nil, logger)
 	c.ProgressWriter = progressWriter(logFormat, os.Stderr)
 	return c
 }
 
-// buildFlagConflict is the error a build reports for flags its builder or
-// config cannot honour, or "" when there is none: --platform and --push need
-// BuildKit, --push cannot go with --output, and a compose config takes none of
-// --platform, --push, --output or --cache-to.
 func buildFlagConflict(opts *buildOpts, useBuildx, compose bool) string {
 	switch {
 	case (opts.platform != "" || opts.push) && !useBuildx:
@@ -297,16 +264,13 @@ func buildFlagConflict(opts *buildOpts, useBuildx, compose bool) string {
 	return ""
 }
 
-// dockerfileBuildPrep holds the resolved Dockerfile inputs shared by the `up`
-// and `build` Dockerfile flows.
 type dockerfileBuildPrep struct {
-	Path      string             // resolved Dockerfile path (a temp .devcontainer.build file when a stage name had to be injected)
-	StageName string             // build target: the config target, or the auto-added final stage name
-	Parsed    *docker.Dockerfile // the parsed original Dockerfile
+	Path      string
+	StageName string
+	Parsed    *docker.Dockerfile
 	cleanup   func()
 }
 
-// Cleanup removes any temporary Dockerfile written by prepareDockerfileBuild.
 func (p *dockerfileBuildPrep) Cleanup() { p.cleanup() }
 
 // copyDockerignore copies a Dockerfile's sibling `<name>.dockerignore` next to a
@@ -322,9 +286,6 @@ func copyDockerignore(origDockerfile, newDockerfile string) {
 	_ = os.WriteFile(newDockerfile+".dockerignore", data, 0644)
 }
 
-// configRelativePath is TS getConfigFilePath (configuration.ts): a path the
-// configuration names, resolved against the configuration's folder, so an
-// absolute one stays as it is.
 func configRelativePath(cfg *config.DevContainer, p string) string {
 	if filepath.IsAbs(p) {
 		return filepath.Clean(p)
@@ -332,13 +293,10 @@ func configRelativePath(cfg *config.DevContainer, p string) string {
 	return filepath.Join(filepath.Dir(cfg.ConfigFilePath), p)
 }
 
-// dockerfileConfigPath is TS getDockerfilePath: the configuration's Dockerfile.
 func dockerfileConfigPath(cfg *config.DevContainer) string {
 	return configRelativePath(cfg, cfg.Dockerfile())
 }
 
-// dockerContextPath is TS getDockerContextPath (spec-node/utils.ts): the
-// configured build context, else the Dockerfile's folder.
 func dockerContextPath(cfg *config.DevContainer) string {
 	if c := cfg.BuildContext(); c != "" {
 		return configRelativePath(cfg, c)
@@ -346,11 +304,6 @@ func dockerContextPath(cfg *config.DevContainer) string {
 	return filepath.Dir(dockerfileConfigPath(cfg))
 }
 
-// prepareDockerfileBuild resolves cfg's Dockerfile relative to the config dir,
-// reads it, ensures the final stage has a name (writing a temp Dockerfile when a
-// name must be injected), and parses it. The caller must defer prep.Cleanup().
-// It deliberately stops before base-image resolution and metadata, which differ
-// between the up and build flows.
 func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, error) {
 	dockerfilePath := cfg.Dockerfile()
 	if dockerfilePath == "" {
@@ -382,8 +335,6 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 			if err := os.WriteFile(tmpDockerfile, []byte(modified), 0644); err != nil {
 				return nil, fmt.Errorf("write build dockerfile: %w", err)
 			}
-			// Mirror the user's sibling <Dockerfile>.dockerignore next to the
-			// renamed file so BuildKit still applies it (upstream #969).
 			copyDockerignore(dockerfilePath, tmpDockerfile)
 			prep.cleanup = func() {
 				os.Remove(tmpDockerfile)
@@ -397,8 +348,6 @@ func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, err
 	return prep, nil
 }
 
-// buildDockerfile builds a Dockerfile config's image, then its Features on top.
-//
 // mutate-lane: TestParityMatrix (build.dockerfile-multi-image-success,
 // build.subfolder-config-success, build.apply-build-options-success,
 // build.output-oci-success, build.cache-to-local-success,
@@ -416,9 +365,6 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	dockerfilePath := prep.Path
 	stageName := prep.StageName
 
-	// The base image is the FROM of the config's target, else of the last stage
-	// (TS getImageBuildInfoFromDockerfile with config.build.target), not of the
-	// stage name added to the Dockerfile.
 	findTarget := ""
 	if cfg.Build != nil {
 		findTarget = cfg.Build.Target
@@ -426,35 +372,24 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget, buildxPlatformArgs(opts.platform))
 	logger.Write(fmt.Sprintf("Base image: %s", baseImage), log.LevelInfo)
 
-	// Generate base-image metadata. Ensure the base image is available locally so
-	// metadata from the published image label is preserved.
 	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
 	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
 	stageMetadata := imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)
 
-	// Determine image names (match TS getFolderImageName: vsc-{basename}-{hash})
 	imageNames := imageNamesOr(opts.imageNames, folderImageName(resolvePath(opts.workspaceFolder)))
 
 	contextPath := dockerContextPath(cfg)
 
-	// Build args from config
 	buildArgs := buildArgsFromConfig(cfg)
 
-	// Add metadata label
 	allLabels := append(slices.Clone(opts.labels), imageLabelArgs(dockerfileImageMetadata(cfg, baseMetadata, stageMetadata, r.configLabel))...)
 
 	baseOutput, basePush := dockerfileBaseExport(opts, cfg)
 
 	cacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
-	// Bridge the CLI credential chain to the build subprocess (private base pull /
-	// --push / --cache-to) via a temporary DOCKER_CONFIG.
 	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, imageNames, cacheFrom, opts.cacheTo)
 	defer authCleanup()
 
-	// Build secrets (Go extension; TS build has no --secrets-file). Passed to
-	// BuildKit as `--secret id=KEY,env=KEY`, so a Dockerfile can `RUN
-	// --mount=type=secret,id=KEY` without baking the value into a layer. Requires
-	// buildx; ignored (with a warning) otherwise.
 	var buildSecrets []string
 	if opts.secretsFile != "" {
 		secrets, secErr := readSecretsFile(opts.secretsFile)
@@ -493,13 +428,10 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 		return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
 	}
 
-	// When streaming, the build output already reached the terminal live; only
-	// emit the buffered copy when it did not (e.g. --log-format json).
 	if dockerClient.ProgressWriter == nil {
 		logger.Write(string(result.Stderr), log.LevelInfo)
 	}
 
-	// If config has features, extend the built image with features
 	if len(cfg.Features) > 0 {
 		baseImageName := imageNames[0]
 		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, &loadResult.HostSub))
@@ -508,9 +440,6 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	return imageNames, nil
 }
 
-// buildImage produces an image config's image: the image itself, or a build on
-// top of it for Features, --platform/--push/--output or --image-name.
-//
 // mutate-lane: TestParityMatrix (build.image-success,
 // build.image-multi-image-success, build.image-metadata-label-success,
 // build.image-extra-cache-from-success, build.no-cache-features-success,
@@ -523,8 +452,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		return nil, fmt.Errorf("no image specified in devcontainer.json")
 	}
 
-	// Pre-validate features before pulling the image, so local feature errors
-	// surface immediately instead of after an expensive pull.
 	if err := checkLegacyFeatures(cfg.Features); err != nil {
 		return nil, err
 	}
@@ -535,7 +462,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 	imageNames := imageNamesOr(opts.imageNames, folderImage)
 	featureImageNames := imageNamesOr(opts.imageNames, folderImage+"-features")
 
-	// Ensure image exists locally
 	info, err := engine.InspectImage(ctx, cfg.Image)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Pulling image %s...", cfg.Image), log.LevelInfo)
@@ -546,8 +472,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 			return nil, fmt.Errorf("inspect image %q: %w", cfg.Image, err)
 		}
 	}
-	// The label of an image build without Features (TS getImageBuildOptions):
-	// the image's metadata, then the configuration's entry as written.
 	var imageMetadata []imagemeta.Entry
 	if info.Config != nil {
 		imageMetadata = imagemeta.ReadMetadataFromLabels(info.Config.Labels, logger)
@@ -559,8 +483,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		return extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, featureImageNames, r.featureBuildOptions(cfg, &loadResult.HostSub))
 
 	case imageExported:
-		// --platform, --push, or --output still need a build: a minimal FROM
-		// Dockerfile carrying the metadata (TS getImageBuildOptions).
 		allLabels := append(slices.Clone(opts.labels), imageLabelArgs(imageMetadata)...)
 
 		tmpDir, tmpErr := os.MkdirTemp("", "devcontainer-image-build-")
@@ -573,8 +495,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 			return nil, fmt.Errorf("write temp Dockerfile: %w", err)
 		}
 
-		// Bridge auth for the push target / registry cache (base is local: cfg.Image
-		// was already pulled above via the engine).
 		authEnv, authCleanup := bridgeBuildAuth(logger, "", featureImageNames, opts.cacheFrom, opts.cacheTo)
 		defer authCleanup()
 
@@ -603,7 +523,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		return featureImageNames, nil
 
 	case imageRelabeled:
-		// No platform/push — use temp Dockerfile when imageNames require labeling
 		allLabels := append(slices.Clone(opts.labels), imageLabelArgs(imageMetadata)...)
 
 		tmpDir, tmpErr := os.MkdirTemp("", "devcontainer-image-build-")
@@ -636,22 +555,18 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		return imageNames, nil
 	}
 
-	// No image names, no platform/push — return base image as-is
 	return imageNames, nil
 }
 
-// imageBuild is what `build` makes of an image config.
 type imageBuild int
 
 const (
-	imageAsIs         imageBuild = iota // the image itself, under the folder's image name
-	imageWithFeatures                   // a Feature build on top of the image
-	imageExported                       // a FROM build for --platform, --push or --output
-	imageRelabeled                      // a FROM build stamping the metadata label under --image-name
+	imageAsIs imageBuild = iota
+	imageWithFeatures
+	imageExported
+	imageRelabeled
 )
 
-// imageBuildFor is what `build` makes of the image config cfg: Features win,
-// then --platform/--push/--output, then --image-name.
 func imageBuildFor(cfg *config.DevContainer, opts *buildOpts) imageBuild {
 	switch {
 	case len(cfg.Features) > 0:
@@ -664,8 +579,6 @@ func imageBuildFor(cfg *config.DevContainer, opts *buildOpts) imageBuild {
 	return imageAsIs
 }
 
-// checkLegacyFeatures fails on a bare-id (legacy) Feature the CLI no longer
-// maps to a published one; a tag (go:1) is not part of the name looked up.
 func checkLegacyFeatures(feats map[string]any) error {
 	for id := range feats {
 		if features.ClassifyID(id) != features.SourceLegacyShorthand {
@@ -682,7 +595,6 @@ func checkLegacyFeatures(feats map[string]any) error {
 	return nil
 }
 
-// imageNamesOr is the --image-name values, or fallback when none was given.
 func imageNamesOr(names []string, fallback string) []string {
 	if len(names) == 0 {
 		return []string{fallback}
@@ -703,11 +615,6 @@ func dockerfileImageMetadata(cfg *config.DevContainer, base, stage []imagemeta.E
 	return metadata
 }
 
-// dockerfileBaseExport is the --output and --push the Dockerfile build applies.
-// With Features the base image is an intermediate build: it must land in the
-// local image store so the Feature build can reference it as
-// $_DEV_CONTAINERS_BASE_IMAGE, so --output/--push are left to the Feature build;
-// applying them here would export the base without loading it.
 func dockerfileBaseExport(opts *buildOpts, cfg *config.DevContainer) (output string, push bool) {
 	if len(cfg.Features) > 0 {
 		return "", false
@@ -715,8 +622,6 @@ func dockerfileBaseExport(opts *buildOpts, cfg *config.DevContainer) (output str
 	return opts.output, opts.push
 }
 
-// buildxSecrets is the --secrets-file secrets passed to BuildKit. The legacy
-// builder takes none, so without buildx they are dropped with a warning.
 func buildxSecrets(secrets []string, useBuildx bool, logger log.Logger) []string {
 	if useBuildx {
 		return secrets
@@ -727,12 +632,6 @@ func buildxSecrets(secrets []string, useBuildx bool, logger log.Logger) []string
 	return nil
 }
 
-// cacheFromForDockerfileBuild combines the --cache-from flag values with the
-// devcontainer.json build.cacheFrom, in that order — matching TS singleContainer,
-// which pushes the additional (flag) cache-froms first and then config.build.cacheFrom
-// (string or array). It applies only to the build of the user's Dockerfile; the
-// feature layers take the flag values alone (matching TS containerFeatures, which
-// uses additionalCacheFroms only).
 func cacheFromForDockerfileBuild(flagCacheFrom []string, cfg *config.DevContainer) []string {
 	if cfg == nil || cfg.Build == nil || len(cfg.Build.CacheFrom) == 0 {
 		return flagCacheFrom
@@ -750,8 +649,6 @@ func buildArgsFromConfig(cfg *config.DevContainer) map[string]string {
 	return cfg.Build.Args
 }
 
-// --- Output helpers ---
-
 func resolvePath(p string) string {
 	if filepath.IsAbs(p) {
 		return p
@@ -767,8 +664,6 @@ func buildOptionsFromConfig(cfg *config.DevContainer) []string {
 	return cfg.Build.Options
 }
 
-// writeSuccessJSON writes a command's result with its keys in order (see
-// orderedObject).
 func writeSuccessJSON(out Output, data map[string]any, order ...string) error {
 	b, err := stringify.JSON(orderedObject{data, order}, "")
 	if err != nil {
@@ -786,11 +681,6 @@ func writeErrorResult(out Output, description string) error {
 	})
 }
 
-// writeValidationError reports a CLI argument/usage error the way yargs does in
-// the TS CLI: the reason is printed to stderr and stdout is left empty (no JSON
-// envelope). Reserved for the validation phase (flag parsing, enum checks,
-// required args, format/implication checks) that runs before any runtime work.
-// Runtime failures keep using writeErrorResult (JSON envelope on stdout).
 func writeValidationError(out Output, message string) error {
 	fmt.Fprintln(out.Stderr(), message)
 	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(message)}
@@ -802,31 +692,16 @@ func writeErrorJSON(out Output, errOutput coreerrors.ErrorOutput) error {
 	return &coreerrors.ExitCodeError{Code: 1, Err: errors.New(errOutput.Description)}
 }
 
-// commandErrorOutput is the error result of up and build: a ContainerError (TS
-// throws one with its own description, which the commands report as it is)
-// as it is; an error carrying the reference's own message as TS reports any
-// error it wraps, that message under "<description>."; any other error
-// described as "<description>: <error>".
 func commandErrorOutput(err error, description string) coreerrors.ErrorOutput {
 	if ce, ok := coreerrors.AsContainerError(err); ok {
 		return coreerrors.ToErrorOutput(ce)
 	}
-	// TS wraps a plain Error it throws as its originalError, so the message is
-	// that error's own text (a frozen lockfile's "Lockfile does not match.", a
-	// lockfile's JSON.parse error).
 	if re, ok := errors.AsType[coreerrors.ReferenceError](err); ok {
 		return coreerrors.ErrorOutput{Outcome: "error", Message: re.Error(), Description: description + "."}
 	}
 	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: fmt.Sprintf("%s: %v", description, err)})
 }
 
-// buildCompose is TS build for a Docker Compose configuration: the service's
-// image is built by `docker compose build` through the build override TS
-// buildAndExtendDockerCompose writes, with the metadata label on the image
-// (with or without Features, an image-only service included), so the image
-// carries compose's project and service labels; then it is tagged with each
-// --image-name.
-//
 // mutate-lane: TestParityMatrix (build.compose-dockerfile-multi-image-success,
 // build.compose-image-without-features-minimal-success,
 // build.compose-image-without-features-minimal-metadata-label-success,
@@ -923,8 +798,6 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 	return tags, nil
 }
 
-// labelComposeImage builds `FROM imageName` with labels, tagged tags.
-//
 // mutate-lane: TestE2E_ComposeBuildLabel - builds a compose image with --label
 // and reads the label back.
 func labelComposeImage(ctx context.Context, dockerClient *docker.Client, imageName string, tags, labels []string, useBuildx bool) error {
@@ -953,10 +826,6 @@ func labelComposeImage(ctx context.Context, dockerClient *docker.Client, imageNa
 	return nil
 }
 
-// featureBuildOptions are the Feature install options every build path passes:
-// the build flags and the config's Feature settings. hostSub resolves the
-// Features' ${localEnv:…} references (nil leaves them as written). The
-// configuration's entry follows the Features' in the image's metadata label.
 func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *config.HostSubContext) *FeatureBuildOptions {
 	opts := r.opts
 	return &FeatureBuildOptions{

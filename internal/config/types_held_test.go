@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// The build context is the legacy top-level "context", else build.context, else
-// none (TS getDockerContextPath, spec-node/utils.ts: `'dockerFile' in config ?
-// config.context : config.build.context`).
 func TestBuildContextPrefersTheLegacyProperty(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"dockerFile":"D","context":"legacy","build":{"context":"build"}}`: "legacy",
@@ -25,8 +22,6 @@ func TestBuildContextPrefersTheLegacyProperty(t *testing.T) {
 	}
 }
 
-// A lifecycle command marshals back as it was written - the string, array or
-// object TS keeps as-is in the metadata label - and an absent one as null.
 func TestLifecycleCommandMarshalsAsWritten(t *testing.T) {
 	for _, in := range []string{`"echo hi"`, `["echo","hi"]`, `{"a":"echo a"}`, `null`} {
 		var c LifecycleCommand
@@ -46,8 +41,6 @@ func TestLifecycleCommandMarshalsAsWritten(t *testing.T) {
 	}
 }
 
-// A single dockerComposeFile marshals as the string, more than one as the array
-// (the `string | string[]` shape the spec gives the property).
 func TestStringOrStringsMarshalsOneAsAString(t *testing.T) {
 	for in, want := range map[string]string{
 		`"a.yml"`:           `"a.yml"`,

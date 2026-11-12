@@ -4,7 +4,6 @@ import (
 	"testing"
 )
 
-// cacheWarnReport is a report whose only problem is a fixable cache-export warn.
 func cacheWarnReport() Report {
 	return Report{
 		Overall: StatusWarn,
@@ -19,7 +18,7 @@ func cacheWarnReport() Report {
 func TestSetupCreatesBuilderWhenAbsent(t *testing.T) {
 	sr := &scriptRunner{fn: func(args []string) ([]byte, []byte, int, error) {
 		if has(args, "buildx") && has(args, "inspect") {
-			return nil, []byte("no builder"), 1, nil // absent
+			return nil, []byte("no builder"), 1, nil
 		}
 		if has(args, "buildx") && has(args, "create") {
 			return []byte("devcontainer\n"), nil, 0, nil
@@ -43,7 +42,6 @@ func TestSetupCreatesBuilderWhenAbsent(t *testing.T) {
 		t.Fatalf("expected a `buildx create --driver docker-container --use` call; calls=%v", sr.calls)
 	}
 
-	// The compose-v2 warn is not auto-fixable → surfaced as a manual action.
 	if a := findAction(t, actions, "compose-v2"); a.Applied || a.Message == "" {
 		t.Fatalf("compose-v2 action = %+v, want manual (not applied)", a)
 	}
@@ -55,7 +53,7 @@ func TestSetupCreatesBuilderWhenAbsent(t *testing.T) {
 func TestSetupSelectsExistingBuilder(t *testing.T) {
 	sr := &scriptRunner{fn: func(args []string) ([]byte, []byte, int, error) {
 		if has(args, "buildx") && has(args, "inspect") {
-			return []byte("Name: devcontainer\nDriver: docker-container\n"), nil, 0, nil // present
+			return []byte("Name: devcontainer\nDriver: docker-container\n"), nil, 0, nil
 		}
 		return nil, nil, 0, nil
 	}}
@@ -82,7 +80,7 @@ func TestSetupSelectsExistingBuilder(t *testing.T) {
 func TestSetupDryRunChangesNothing(t *testing.T) {
 	sr := &scriptRunner{fn: func(args []string) ([]byte, []byte, int, error) {
 		if has(args, "inspect") {
-			return nil, nil, 1, nil // absent
+			return nil, nil, 1, nil
 		}
 		return nil, nil, 0, nil
 	}}

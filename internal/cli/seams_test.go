@@ -14,8 +14,6 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// captureOutput is a test Output that routes both streams into buffers, letting
-// tests assert on command output without swapping the global os.Stdout.
 type captureOutput struct {
 	out bytes.Buffer
 	err bytes.Buffer
@@ -24,18 +22,15 @@ type captureOutput struct {
 func (c *captureOutput) Stdout() io.Writer { return &c.out }
 func (c *captureOutput) Stderr() io.Writer { return &c.err }
 
-// fakeRegistry is a hand-written oci.Registry double. PushArtifact fails for any
-// resource whose id is in failIDs, exercising the partial-publish error path in
-// publishCollectionWith without contacting a real registry.
 type fakeRegistry struct {
-	published      map[string][]string // resource -> already-published tags
-	tagListErr     map[string]error    // resource -> error to return from GetPublishedTags*
+	published      map[string][]string
+	tagListErr     map[string]error
 	failIDs        map[string]bool
-	pushed         []string            // resources successfully pushed (for assertions)
-	pushedTags     map[string][]string // resource -> tags requested on push
-	collectionPush int                 // times PushCollectionMetadata was called
-	collectionRef  string              // the resource of the last collection push
-	failCollection bool                // when true, PushCollectionMetadata errors
+	pushed         []string
+	pushedTags     map[string][]string
+	collectionPush int
+	collectionRef  string
+	failCollection bool
 }
 
 func (f *fakeRegistry) FetchManifest(ref *oci.Ref, expectedDigest string) (*oci.ManifestContainer, error) {
@@ -79,8 +74,6 @@ func (f *fakeRegistry) PushCollectionMetadata(ctx context.Context, ref *oci.Ref,
 	return &oci.PushResult{Digest: "sha256:cafef00d"}, nil
 }
 
-// writeSeamFeature writes a minimal feature source folder (metadata + install
-// script) under <srcDir>/<id>.
 func writeSeamFeature(t *testing.T, srcDir, id, version string) {
 	t.Helper()
 	writeFeature(t, srcDir, id, fmt.Sprintf(`{"id":%q,"version":%q,"name":%q}`, id, version, id))
@@ -89,11 +82,6 @@ func writeSeamFeature(t *testing.T, srcDir, id, version string) {
 	}
 }
 
-// TestPublishCollectionStopsAtTheFirstFailure proves the oci.Registry and
-// cli.Output seams work together: a fake registry fails one feature's push, and
-// publish ends there with exit 1 and no result JSON, as TS featuresCLI/publish.ts
-// does (`process.exit(1)` after "(!) ERR: Failed to publish"). The features are
-// published in collection order, so "bad" stops it before "good".
 func TestPublishCollectionStopsAtTheFirstFailure(t *testing.T) {
 	target := t.TempDir()
 	src := filepath.Join(target, "src")

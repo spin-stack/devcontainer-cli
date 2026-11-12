@@ -16,16 +16,12 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// credential holds resolved auth for a registry.
 type credential struct {
-	base64Encoded string // base64(user:token) for Basic auth
-	refreshToken  string // OAuth refresh token (ACR identitytoken)
+	base64Encoded string
+	refreshToken  string
 }
 
-// getCredential resolves credentials for a registry.
-// Order: DEVCONTAINERS_OCI_AUTH → docker config/credHelper → GITHUB_TOKEN → platform default → anonymous.
 func getCredential(env map[string]string, registry string, logger log.Logger) *credential {
-	// 1. DEVCONTAINERS_OCI_AUTH env var
 	if ociAuth := env["DEVCONTAINERS_OCI_AUTH"]; ociAuth != "" {
 		for entry := range strings.SplitSeq(ociAuth, ",") {
 			parts := strings.Split(entry, "|")
@@ -41,12 +37,10 @@ func getCredential(env map[string]string, registry string, logger log.Logger) *c
 		}
 	}
 
-	// 2. Docker config / credential helpers
 	if cred := getCredentialFromDockerConfig(env, registry, logger); cred != nil {
 		return cred
 	}
 
-	// 3. GITHUB_TOKEN for ghcr.io
 	githubToken := env["GITHUB_TOKEN"]
 	githubHost := env["GITHUB_HOST"]
 	if registry == "ghcr.io" && githubToken != "" && (githubHost == "" || githubHost == "github.com") {
@@ -55,12 +49,10 @@ func getCredential(env map[string]string, registry string, logger log.Logger) *c
 		return &credential{base64Encoded: base64.StdEncoding.EncodeToString([]byte(userToken))}
 	}
 
-	// 4. Anonymous
 	logger.Write(fmt.Sprintf("[httpOci] No credentials found for registry %q. Accessing anonymously.", registry), log.LevelTrace)
 	return nil
 }
 
-// dockerConfigFile represents ~/.docker/config.json
 type dockerConfigFile struct {
 	Auths       map[string]dockerConfigAuth `json:"auths"`
 	CredHelpers map[string]string           `json:"credHelpers"`
@@ -93,10 +85,6 @@ func getCredentialFromDockerConfig(env map[string]string, registry string, logge
 
 	hasAuth := len(config.CredHelpers) > 0 || config.CredsStore != "" || len(config.Auths) > 0
 
-	// credHelpers for the registry, else credsStore (the global helper). As in
-	// TS getCredentialFromDockerConfigOrCredentialHelper (httpOCIRegistry.ts),
-	// a registry's own helper that finds nothing does not fall back to
-	// credsStore, and an empty helper name counts as no helper.
 	if helper := config.CredHelpers[registry]; helper != "" {
 		logger.Write(fmt.Sprintf("[httpOci] Found credential helper %q for registry %q", helper, registry), log.LevelTrace)
 		if cred := getCredentialFromHelper(registry, helper, logger); cred != nil {
@@ -109,7 +97,6 @@ func getCredentialFromDockerConfig(env map[string]string, registry string, logge
 		}
 	}
 
-	// auths (static credentials)
 	if auth, ok := config.Auths[registry]; ok {
 		logger.Write(fmt.Sprintf("[httpOci] Found auths entry for registry %q", registry), log.LevelTrace)
 		if auth.IdentityToken != "" {
@@ -134,11 +121,6 @@ func tryPlatformDefaultHelper(registry string, logger log.Logger) *credential {
 	return getCredentialFromHelper(registry, helper, logger)
 }
 
-// defaultCredentialHelperName returns the docker credential helper the current
-// platform defaults to (i.e. the suffix of docker-credential-<name>). Linux is
-// the only supported target; the darwin/windows names are provided for
-// completeness but are not exercised here.
-//
 // On Linux the libsecret-backed helper is `secretservice`
 // (docker-credential-secretservice), not `secret` — there is no
 // docker-credential-secret binary.
@@ -154,8 +136,6 @@ func defaultCredentialHelperName() string {
 	return ""
 }
 
-// linuxDefaultHelperName picks the Linux default helper: `pass` when the pass
-// store is installed, otherwise the libsecret-backed `secretservice`.
 func linuxDefaultHelperName(passAvailable bool) string {
 	if passAvailable {
 		return "pass"
@@ -169,9 +149,6 @@ type credHelperResult struct {
 }
 
 func getCredentialFromHelper(registry, helperName string, logger log.Logger) *credential {
-	// Bound the helper: a stuck docker-credential-* (locked keyring,
-	// docker-credential-desktop waiting on a GUI, ...) must not block the whole
-	// feature/image pull forever — time out and fall through to other auth.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "docker-credential-"+helperName, "get")

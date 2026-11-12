@@ -1,4 +1,3 @@
-// Package templates applies and publishes dev container Templates.
 package templates
 
 import (
@@ -18,12 +17,8 @@ import (
 	"github.com/tailscale/hujson"
 )
 
-// ApplyParams holds parameters for template application.
 type ApplyParams struct {
-	// OCIClient is the registry seam (interface, not *oci.Client) so tests can
-	// inject a fake registry.
-	OCIClient oci.Registry
-	// FS is the filesystem seam. When nil, the default OS-backed FS is used.
+	OCIClient       oci.Registry
 	FS              pfs.FS
 	Logger          log.Logger
 	Env             map[string]string
@@ -31,8 +26,6 @@ type ApplyParams struct {
 	TmpDir          string
 }
 
-// FetchAndApply downloads a template from OCI and applies it to the workspace.
-// Returns the list of files created.
 func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, error) {
 	logger := params.Logger
 	fsys := params.FS
@@ -40,13 +33,11 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		fsys = pfs.DefaultFS()
 	}
 
-	// Parse template ID as OCI ref
 	ref, err := oci.ParseRef(selected.ID)
 	if err != nil {
 		return nil, fmt.Errorf("parse template ID %q: %w", selected.ID, err)
 	}
 
-	// Fetch manifest
 	manifest, err := params.OCIClient.FetchManifest(ref, "")
 	if err != nil {
 		return nil, fmt.Errorf("fetch template manifest: %w", err)
@@ -56,16 +47,12 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		return nil, fmt.Errorf("template manifest has no layers")
 	}
 
-	// Download the first layer (tarball)
 	layer := manifest.Manifest.Layers[0]
 	blobData, err := params.OCIClient.FetchBlob(ref, layer.Digest)
 	if err != nil {
 		return nil, fmt.Errorf("fetch template blob: %w", err)
 	}
 
-	// Extract to a unique temporary directory when the caller did not provide
-	// one. Caller-provided directories retain the stable per-template layout and
-	// remain caller-owned.
 	var extractDir string
 	if params.TmpDir == "" {
 		extractDir, err = os.MkdirTemp("", "devcontainer-template-")
@@ -80,7 +67,6 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		return nil, fmt.Errorf("create extract dir: %w", err)
 	}
 
-	// Write tarball and extract it into extractDir.
 	tarPath := filepath.Join(extractDir, "template.tar")
 	if err := fsys.WriteFile(tarPath, blobData); err != nil {
 		return nil, fmt.Errorf("write tarball: %w", err)
@@ -89,13 +75,8 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		return nil, fmt.Errorf("extract template tarball: %w", err)
 	}
 
-	// Fill in option defaults from devcontainer-template.json for any option the
-	// user did not provide (matching the TS CLI), then use the merged set for
-	// ${templateOption:x} substitution.
 	options := applyOptionDefaults(fsys, extractDir, selected.Options, logger)
 
-	// Build omit sets. Always omit the template's own metadata/doc files
-	// (matching the TS CLI: devcontainer-template.json, README.md, NOTES.md).
 	omitDirs := make(map[string]bool)
 	omitFiles := map[string]bool{
 		"devcontainer-template.json": true,
@@ -112,7 +93,6 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 
 	logger.Write(fmt.Sprintf("Template %q resolved to %s", selected.ID, manifest.CanonicalID), log.LevelTrace)
 
-	// Apply template options (replace ${templateOption:name} in files)
 	var appliedFiles []string
 	err = fsys.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -120,7 +100,6 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		}
 		relPath, _ := filepath.Rel(extractDir, path)
 
-		// Skip omitted files
 		cleanedPath := strings.ReplaceAll(relPath, "\\", "/")
 		cleanedPath = strings.TrimPrefix(cleanedPath, "./")
 		if omitFiles[cleanedPath] {
@@ -132,12 +111,10 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 			}
 		}
 
-		// Skip the tarball itself
 		if relPath == "template.tar" {
 			return nil
 		}
 
-		// Read, substitute, write to workspace
 		data, err := fsys.ReadFile(path)
 		if err != nil {
 			return err
@@ -151,7 +128,6 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		if err := fsys.WriteFile(destPath, []byte(content)); err != nil {
 			return err
 		}
-		// Report paths as "./<rel>" with forward slashes, matching the TS CLI.
 		appliedFiles = append(appliedFiles, "./"+cleanedPath)
 		return nil
 	})
@@ -159,7 +135,6 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 		return nil, fmt.Errorf("apply template files: %w", err)
 	}
 
-	// Merge features into devcontainer.json if specified (matching TS behavior).
 	if len(selected.Features) > 0 {
 		if err := mergeFeatures(fsys, params.WorkspaceFolder, selected.Features, logger); err != nil {
 			return nil, fmt.Errorf("merge features into config: %w", err)
@@ -169,9 +144,7 @@ func FetchAndApply(params ApplyParams, selected SelectedTemplate) ([]string, err
 	return appliedFiles, nil
 }
 
-// mergeFeatures adds features to the devcontainer.json in the workspace.
 func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFeatureOption, logger log.Logger) error {
-	// Find devcontainer.json
 	candidates := []string{
 		filepath.Join(workspaceFolder, ".devcontainer", "devcontainer.json"),
 		filepath.Join(workspaceFolder, ".devcontainer.json"),
@@ -215,9 +188,6 @@ func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFe
 		}
 	}
 
-	// Build a JSON Patch and apply it via hujson so the edit preserves the
-	// original formatting and comments (JSONC), matching the TS CLI which uses a
-	// text-preserving jsonc edit instead of a reformatting re-serialize.
 	var ops []map[string]any
 	if !hasFeatures {
 		ops = append(ops, map[string]any{"op": "add", "path": "/features", "value": map[string]any{}})
@@ -251,19 +221,12 @@ func mergeFeatures(fsys pfs.FS, workspaceFolder string, featureOpts []TemplateFe
 	return fsys.WriteFile(configPath, v.Pack())
 }
 
-// escapeJSONPointer escapes a string for use as a JSON Pointer reference token
-// (RFC 6901): "~" -> "~0", "/" -> "~1". Feature IDs contain "/".
 func escapeJSONPointer(s string) string {
 	s = strings.ReplaceAll(s, "~", "~0")
 	s = strings.ReplaceAll(s, "/", "~1")
 	return s
 }
 
-// applyOptionDefaults returns a copy of userOptions with any option declared in
-// the template's devcontainer-template.json filled in from its `default` when
-// the user did not provide a value, as TS fetchTemplate does
-// (containerTemplatesOCI.ts): only an option of type "string" or "boolean"
-// whose default is truthy gets one, as the default's JS string.
 func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]string, logger log.Logger) map[string]string {
 	merged := make(map[string]string, len(userOptions))
 	maps.Copy(merged, userOptions)
@@ -295,7 +258,6 @@ func applyOptionDefaults(fsys pfs.FS, extractDir string, userOptions map[string]
 	return merged
 }
 
-// jsTruthy is JavaScript truthiness for a decoded JSON value.
 func jsTruthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -310,7 +272,6 @@ func jsTruthy(v any) bool {
 	return true
 }
 
-// jsString is JavaScript's String(v) for a decoded JSON value.
 func jsString(v any) string {
 	switch x := v.(type) {
 	case nil:
@@ -338,13 +299,8 @@ func jsString(v any) string {
 // jsSpace is JavaScript's \s, which is wider than RE2's.
 const jsSpace = `[\t\n\v\f\r \x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]`
 
-// templateOptionPattern is TS replaceTemplatedValues' /\${templateOption:\s*(\w+?)\s*}/g.
 var templateOptionPattern = regexp.MustCompile(`\$\{templateOption:` + jsSpace + `*(\w+?)` + jsSpace + `*\}`)
 
-// substituteTemplateOptions is TS replaceTemplatedValues: every
-// ${templateOption:NAME} becomes the option's value, the empty string for an option without
-// one. An option named like an Object.prototype property is no exception here
-// (docs/DIVERGENCES.md).
 func substituteTemplateOptions(content string, options map[string]string) string {
 	return templateOptionPattern.ReplaceAllStringFunc(content, func(match string) string {
 		return options[templateOptionPattern.FindStringSubmatch(match)[1]]

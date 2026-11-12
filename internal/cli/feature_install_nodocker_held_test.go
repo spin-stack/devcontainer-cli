@@ -14,9 +14,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A Feature's containerEnv is resolved against the host (${localEnv:…}) before
-// it is written into the extended image, and the build still reports the
-// image's names.
 func TestExtendImageWithFeaturesResolvesFeatureHostVars(t *testing.T) {
 	roots := devcontainerRoots(t)
 	base := roots.configDir
@@ -61,8 +58,6 @@ func TestExtendImageWithFeaturesResolvesFeatureHostVars(t *testing.T) {
 	}
 }
 
-// With buildx, the Features build gets the features folder as the
-// dev_containers_feature_content_source build context.
 func TestExtendImageWithFeaturesBuildContext(t *testing.T) {
 	res := extendRun{useBuildx: true}.run(t)
 	if res.err != nil {
@@ -74,8 +69,6 @@ func TestExtendImageWithFeaturesBuildContext(t *testing.T) {
 	}
 }
 
-// A tarball download succeeds on every 2xx up to 299 and fails from 300 on,
-// and it stops with the caller's context.
 func TestDownloadFeatureTarballStatusAndContext(t *testing.T) {
 	for status, wantErr := range map[int]bool{299: false, 300: true} {
 		_, _, err := downloadFeatureTarball(t.Context(), nil, serveBytes(t, []byte("tgz"), status), nil)

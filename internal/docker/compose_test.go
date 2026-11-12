@@ -104,7 +104,7 @@ func TestUsesNewProjectNames(t *testing.T) {
 		{[]int{1, 21, 0}, true},
 		{[]int{1, 20, 0}, false},
 		{[]int{1, 29, 2}, true},
-		{nil, true}, // optimistic default
+		{nil, true},
 	}
 	for _, tt := range tests {
 		c := &ComposeClient{Version: tt.version}
@@ -137,8 +137,6 @@ func TestBuildGlobalArgs_NoEnvFile(t *testing.T) {
 	}
 }
 
-// The compose processes get BUILDX_BAKE_ENTITLEMENTS_FS=0 so bake reads the
-// Features Dockerfile outside the build context, unless the user set it.
 func TestWithBakeFSEntitlement(t *testing.T) {
 	unset := func(string) (string, bool) { return "", false }
 	if got := withBakeFSEntitlement([]string{"A=1"}, unset); !slices.Equal(got, []string{"A=1", "BUILDX_BAKE_ENTITLEMENTS_FS=0"}) {

@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// A build whose image or Dockerfile step fails before any Docker call reports
-// the failure on stdout and exits 1, never the success envelope: a legacy
-// Feature id as the bare message, any other failure as a container error.
 func TestRunBuildReportsAFailedBuildStep(t *testing.T) {
 	for name, tc := range map[string]struct {
 		config string

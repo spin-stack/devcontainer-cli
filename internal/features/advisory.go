@@ -19,13 +19,11 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// DisallowedFeature describes a blocked feature.
 type DisallowedFeature struct {
 	FeatureIDPrefix  string `json:"featureIdPrefix"`
 	DocumentationURL string `json:"documentationURL,omitempty"`
 }
 
-// Advisory describes a security advisory for a feature version range.
 type Advisory struct {
 	FeatureID           string `json:"featureId"`
 	IntroducedInVersion string `json:"introducedInVersion"`
@@ -34,7 +32,6 @@ type Advisory struct {
 	DocumentationURL    string `json:"documentationURL,omitempty"`
 }
 
-// ControlManifest contains advisories and disallowed features from containers.dev.
 type ControlManifest struct {
 	DisallowedFeatures []DisallowedFeature `json:"disallowedFeatures"`
 	FeatureAdvisories  []Advisory          `json:"featureAdvisories"`
@@ -46,12 +43,9 @@ const (
 	cacheTimeoutDuration = 5 * time.Minute
 )
 
-// GetControlManifest fetches the control manifest with 5-minute caching. The
-// fetch is bound to ctx so a cancelled command aborts the (network) request.
 func GetControlManifest(ctx context.Context, cacheFolder string, client *http.Client, logger log.Logger) *ControlManifest {
 	cachePath := filepath.Join(cacheFolder, controlManifestFile)
 
-	// Check cache
 	info, err := os.Stat(cachePath)
 	if err == nil && time.Since(info.ModTime()) < cacheTimeoutDuration {
 		data, err := os.ReadFile(cachePath)
@@ -65,10 +59,8 @@ func GetControlManifest(ctx context.Context, cacheFolder string, client *http.Cl
 	body, err := fetchControlManifest(ctx, client)
 	if err != nil {
 		logger.Write(fmt.Sprintf("Failed to fetch control manifest: %v", err), log.LevelError)
-		// Return cached if available
 		if data, err := os.ReadFile(cachePath); err == nil {
 			if m := sanitizeManifest(data); m != nil {
-				// Touch mtime to avoid flooding
 				now := time.Now()
 				os.Chtimes(cachePath, now, now)
 				return m
@@ -79,10 +71,7 @@ func GetControlManifest(ctx context.Context, cacheFolder string, client *http.Cl
 		body = []byte("{\n  \"disallowedFeatures\": [],\n  \"featureAdvisories\": []\n}")
 	}
 
-	// Write to cache atomically
 	os.MkdirAll(filepath.Dir(cachePath), 0755)
-	// Written whole, then renamed over the cache, so a concurrent reader never
-	// sees a partial manifest.
 	if tmp, err := os.CreateTemp(filepath.Dir(cachePath), controlManifestFile+"-*"); err == nil {
 		_, werr := tmp.Write(body)
 		if errors.Join(werr, tmp.Close()) == nil {
@@ -98,8 +87,6 @@ func GetControlManifest(ctx context.Context, cacheFolder string, client *http.Cl
 	return emptyManifest()
 }
 
-// fetchControlManifest GETs the manifest with TS fetchControlManifest's headers.
-// A status outside 2xx is an error worded as TS request words it.
 func fetchControlManifest(ctx context.Context, client *http.Client) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, controlManifestURL, nil)
 	if err != nil {
@@ -118,10 +105,6 @@ func fetchControlManifest(ctx context.Context, client *http.Client) ([]byte, err
 	return io.ReadAll(resp.Body)
 }
 
-// FeatureAdvisories returns the OCI features with an advisory that applies to
-// their version, ordered by feature id, as TS fetchFeatureAdvisories does: an
-// advisory applies when introducedInVersion <= version < fixedInVersion. A
-// feature whose version cannot be parsed is reported to warn and skipped.
 func FeatureAdvisories(manifest *ControlManifest, featureSets []*Set, warn func(string)) []WithAdvisory {
 	type feature struct{ id, version string }
 	var fs []feature
@@ -161,8 +144,6 @@ func FeatureAdvisories(manifest *ControlManifest, featureSets []*Set, warn func(
 	return results
 }
 
-// FormatFeatureAdvisories is the warning TS logFeatureAdvisories writes, or ""
-// when there is none.
 func FormatFeatureAdvisories(list []WithAdvisory) string {
 	if len(list) == 0 {
 		return ""
@@ -183,15 +164,12 @@ func FormatFeatureAdvisories(list []WithAdvisory) string {
 	return b.String()
 }
 
-// WithAdvisory pairs a feature with its applicable advisories.
 type WithAdvisory struct {
 	FeatureID  string
 	Version    string
 	Advisories []Advisory
 }
 
-// DisallowedFeatureError reports a config feature that the control manifest
-// blocklists. The CLI layer turns it into the user-facing ContainerError envelope.
 type DisallowedFeatureError struct {
 	FeatureID        string
 	DocumentationURL string
@@ -201,9 +179,6 @@ func (e *DisallowedFeatureError) Error() string {
 	return fmt.Sprintf("Cannot use the '%s' Feature since it was reported to be problematic.", e.FeatureID)
 }
 
-// findDisallowedFeatureEntry matches a feature id against the blocklist. Like the
-// TS CLI, a prefix only matches when the id equals the prefix or continues with a
-// separator (/ : @) — so "foo" does not block "foobar".
 func findDisallowedFeatureEntry(manifest *ControlManifest, featureID string) *DisallowedFeature {
 	for i := range manifest.DisallowedFeatures {
 		d := &manifest.DisallowedFeatures[i]
@@ -221,10 +196,6 @@ func findDisallowedFeatureEntry(manifest *ControlManifest, featureID string) *Di
 	return nil
 }
 
-// EnsureNoDisallowedFeatures returns a *DisallowedFeatureError for the first of
-// featureIDs - the config's features then the additional ones, in the order the
-// JSON lists them, as TS Object.keys({...config.features, ...additionalFeatures})
-// - that the control manifest disallows.
 func EnsureNoDisallowedFeatures(manifest *ControlManifest, featureIDs []string) error {
 	for _, id := range featureIDs {
 		if d := findDisallowedFeatureEntry(manifest, id); d != nil {
@@ -234,40 +205,33 @@ func EnsureNoDisallowedFeatures(manifest *ControlManifest, featureIDs []string) 
 	return nil
 }
 
-// --- Helpers ---
-
 func sanitizeManifest(data []byte) *ControlManifest {
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
 		return nil
 	}
 
-	// TS sanitizeControlManifest keeps each entry whose fields are strings,
-	// empty or not, whatever its siblings or its other fields are.
 	m := emptyManifest()
 	for _, elem := range manifestEntries(raw["disallowedFeatures"], "featureIdPrefix") {
 		var f DisallowedFeature
-		_ = json.Unmarshal(elem, &f) // a mistyped documentationURL is left empty
+		_ = json.Unmarshal(elem, &f)
 		m.DisallowedFeatures = append(m.DisallowedFeatures, f)
 	}
 	for _, elem := range manifestEntries(raw["featureAdvisories"], "featureId", "introducedInVersion", "fixedInVersion", "description") {
 		var adv Advisory
-		_ = json.Unmarshal(elem, &adv) // a mistyped documentationURL is left empty
+		_ = json.Unmarshal(elem, &adv)
 		m.FeatureAdvisories = append(m.FeatureAdvisories, adv)
 	}
 	return m
 }
 
-// manifestEntries returns the objects of the JSON array list in which every
-// one of fields is a string, TS `typeof f[field] === 'string'`; none when
-// list is not an array.
 func manifestEntries(list json.RawMessage, fields ...string) []json.RawMessage {
 	var elems []json.RawMessage
-	_ = json.Unmarshal(list, &elems) // not an array: no entries, as TS Array.isArray
+	_ = json.Unmarshal(list, &elems)
 	var kept []json.RawMessage
 	for _, elem := range elems {
 		var obj map[string]json.RawMessage
-		_ = json.Unmarshal(elem, &obj) // not an object: no fields
+		_ = json.Unmarshal(elem, &obj)
 		if !slices.ContainsFunc(fields, func(field string) bool { return !isJSONString(obj[field]) }) {
 			kept = append(kept, elem)
 		}
@@ -288,11 +252,8 @@ func emptyManifest() *ControlManifest {
 	}
 }
 
-// versionPrefix is TS commonUtils.parseVersion's: an optional quote and v, then
-// dot-separated numbers; anything after them is ignored ("1.2.3-rc" is 1.2.3).
 var versionPrefix = regexp.MustCompile(`^'?v?(\d+(\.\d+)*)`)
 
-// parseVersion is TS commonUtils.parseVersion: nil when s starts with no version.
 func parseVersion(s string) []int {
 	m := versionPrefix.FindStringSubmatch(s)
 	if m == nil {
@@ -309,8 +270,6 @@ func parseVersion(s string) []int {
 	return out
 }
 
-// isEarlierVersion is TS commonUtils.isEarlierVersion: a missing component is 0,
-// so 1 and 1.0 are equal and neither is earlier.
 func isEarlierVersion(left, right []int) bool {
 	for i := range max(len(left), len(right)) {
 		var l, r int

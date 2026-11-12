@@ -18,7 +18,6 @@ func TestResolveDockerContextHostIgnoresAStoredDefault(t *testing.T) {
 	}
 }
 
-// A config.json without currentContext selects "default".
 func TestActiveContextNameDefaultsWithoutCurrentContext(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("DOCKER_CONTEXT", "")
@@ -30,7 +29,6 @@ func TestActiveContextNameDefaultsWithoutCurrentContext(t *testing.T) {
 	}
 }
 
-// Without DOCKER_CONFIG the store is ~/.docker, as for the Docker CLI.
 func TestResolveDockerContextHostReadsTheHomeStore(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

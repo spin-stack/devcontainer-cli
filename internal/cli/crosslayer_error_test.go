@@ -8,21 +8,6 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 )
 
-// Cross-layer error propagation.
-//
-// These tests exercise the command runners (build/up/exec) and assert that a
-// hermetically-reachable pre-Docker error — argument validation or a config-load
-// failure — propagates with the right exit code BEFORE any Docker engine/daemon
-// is constructed. They inject nothing Docker-related: the runner must return
-// early. Asserting on the SPECIFIC pre-Docker message (never "Docker engine")
-// proves the runner short-circuited before docker.NewEngineClient, regardless of
-// whether Docker happens to be installed on the host.
-//
-// NOTE (out of scope): context cancellation cannot be tested here because the
-// commands do not thread cmd.Context() through a cancellation seam into the
-// pre-Docker phase; wiring that is a separate change.
-
-// asExitCode unwraps an *errors.ExitCodeError, failing if err is not one.
 func asExitCode(t *testing.T, err error) *coreerrors.ExitCodeError {
 	t.Helper()
 	if err == nil {
@@ -39,7 +24,7 @@ func TestRunBuild_InvalidEnum_PreDocker(t *testing.T) {
 	out := &captureOutput{}
 	err := runBuild(t.Context(), out, &buildOpts{
 		workspaceFolder: t.TempDir(),
-		logLevel:        "bogus", // fails validateEnum before any Docker work
+		logLevel:        "bogus",
 		logFormat:       "text",
 		buildkit:        "auto",
 	})
@@ -48,7 +33,6 @@ func TestRunBuild_InvalidEnum_PreDocker(t *testing.T) {
 	if ece.Code != 1 {
 		t.Errorf("exit code = %d, want 1", ece.Code)
 	}
-	// yargs-style validation writes to stderr and leaves stdout empty.
 	if !strings.Contains(out.err.String(), "log-level") {
 		t.Errorf("stderr = %q, want the invalid --log-level message", out.err.String())
 	}
@@ -61,9 +45,6 @@ func TestRunBuild_InvalidEnum_PreDocker(t *testing.T) {
 }
 
 func TestRunBuild_ConfigLoadError_PreDocker(t *testing.T) {
-	// An empty workspace has no devcontainer.json → config load fails, and that
-	// failure is reported (JSON envelope on stdout, exit 1) before the engine is
-	// built.
 	out := &captureOutput{}
 	err := runBuild(t.Context(), out, &buildOpts{
 		workspaceFolder: t.TempDir(),
@@ -113,7 +94,7 @@ func TestRunUp_InvalidEnum_PreDocker(t *testing.T) {
 		workspaceFolder: t.TempDir(),
 		logLevel:        "info",
 		logFormat:       "text",
-		buildkit:        "sideways", // not in {auto, never}
+		buildkit:        "sideways",
 		gpuAvailability: "detect",
 	})
 
@@ -127,11 +108,9 @@ func TestRunUp_InvalidEnum_PreDocker(t *testing.T) {
 }
 
 func TestRunExec_InvalidEnum_PreDocker(t *testing.T) {
-	// runExec returns validation errors as plain errors (the top-level command
-	// maps them to exit 1). The point is they surface before the engine.
 	err := runExec(t.Context(), &execOpts{
 		workspaceFolder: t.TempDir(),
-		logLevel:        "verbose", // not in {info, debug, trace}
+		logLevel:        "verbose",
 		logFormat:       "text",
 	}, []string{"echo", "hi"})
 
@@ -147,10 +126,8 @@ func TestRunExec_InvalidEnum_PreDocker(t *testing.T) {
 }
 
 func TestRunExec_ConfigLoadError_PreDocker(t *testing.T) {
-	// With a workspace folder and no --container-id, an unloadable config is
-	// returned before the engine is constructed.
 	err := runExec(t.Context(), &execOpts{
-		workspaceFolder: t.TempDir(), // empty: no devcontainer.json
+		workspaceFolder: t.TempDir(),
 		logLevel:        "info",
 		logFormat:       "text",
 	}, []string{"echo", "hi"})

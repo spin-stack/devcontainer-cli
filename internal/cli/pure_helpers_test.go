@@ -19,13 +19,11 @@ func TestGetFeatureIdWithoutVersion(t *testing.T) {
 	cases := map[string]string{
 		"ghcr.io/devcontainers/features/go:1.2.3": "ghcr.io/devcontainers/features/go",
 		"ghcr.io/devcontainers/features/go:1":     "ghcr.io/devcontainers/features/go",
-		"ghcr.io/devcontainers/features/go":       "ghcr.io/devcontainers/features/go", // no version
-		// A digest pin: the leftmost delimiter is '@', so the whole @sha256:... goes.
-		"ghcr.io/o/r@sha256:abcdef": "ghcr.io/o/r",
-		// A registry port colon is NOT the version (it is followed by a '/').
-		"localhost:5000/o/r:2": "localhost:5000/o/r",
-		"localhost:5000/o/r":   "localhost:5000/o/r",
-		"":                     "",
+		"ghcr.io/devcontainers/features/go":       "ghcr.io/devcontainers/features/go",
+		"ghcr.io/o/r@sha256:abcdef":               "ghcr.io/o/r",
+		"localhost:5000/o/r:2":                    "localhost:5000/o/r",
+		"localhost:5000/o/r":                      "localhost:5000/o/r",
+		"":                                        "",
 	}
 	for in, want := range cases {
 		if got := getFeatureIdWithoutVersion(in); got != want {
@@ -44,7 +42,7 @@ func mustVersions(t *testing.T, tags ...string) []*semver.Version {
 		}
 		vs = append(vs, v)
 	}
-	return vs // caller supplies them already ascending
+	return vs
 }
 
 func TestHighestSatisfyingTag(t *testing.T) {
@@ -77,7 +75,7 @@ func TestMajorOf(t *testing.T) {
 		"0.5.0":      "0",
 		"not-semver": "",
 		"10.20.30":   "10",
-		"v3.1.0":     "3", // semver tolerates a leading v
+		"v3.1.0":     "3",
 	}
 	for in, want := range cases {
 		if got := majorOf(in); got != want {
@@ -114,7 +112,6 @@ func TestAppPortPublishArgs(t *testing.T) {
 }
 
 func TestFolderImageName(t *testing.T) {
-	// Deterministic: same path -> same name; prefixed with vsc-<basename>-.
 	a := folderImageName("/home/user/My Project")
 	b := folderImageName("/home/user/My Project")
 	if a != b {
@@ -123,11 +120,9 @@ func TestFolderImageName(t *testing.T) {
 	if !strings.HasPrefix(a, "vsc-") {
 		t.Errorf("missing vsc- prefix: %q", a)
 	}
-	// Different paths -> different names.
 	if folderImageName("/a") == folderImageName("/b") {
 		t.Error("distinct paths produced the same image name")
 	}
-	// Docker image names are lowercase; the sanitizer must not leave spaces/upper.
 	if a != strings.ToLower(a) || strings.ContainsAny(a, " ") {
 		t.Errorf("image name not sanitized: %q", a)
 	}
@@ -146,7 +141,7 @@ func TestEnvSliceToMap(t *testing.T) {
 		"FOO":   "bar",
 		"EMPTY": "",
 		"HAS":   "eq=in=value",
-		"DUP":   "second", // last wins
+		"DUP":   "second",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -229,17 +224,14 @@ func TestTextTable(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("want 3 lines, got %d: %q", len(lines), got)
 	}
-	// Columns are padded to the widest cell and separated by two spaces.
 	if lines[0] != "ID    CURRENT  WANTED" {
 		t.Errorf("header padding wrong: %q", lines[0])
 	}
-	// Trailing whitespace on the last column is trimmed.
 	for _, l := range lines {
 		if l != strings.TrimRight(l, " ") {
 			t.Errorf("line has trailing spaces: %q", l)
 		}
 	}
-	// A ragged row (fewer columns) must not panic.
 	_ = textTable([][]string{{"a", "b"}, {"c"}})
 	if textTable(nil) != "" {
 		t.Error("empty table should be empty string")
@@ -247,7 +239,6 @@ func TestTextTable(t *testing.T) {
 }
 
 func TestBuildArgsAndOptionsFromConfig(t *testing.T) {
-	// nil Build -> empty/nil.
 	if m := buildArgsFromConfig(&config.DevContainer{}); len(m) != 0 {
 		t.Errorf("buildArgsFromConfig(nil Build) = %v, want empty", m)
 	}
@@ -266,10 +257,6 @@ func TestBuildArgsAndOptionsFromConfig(t *testing.T) {
 	}
 }
 
-// up and build report a ContainerError as it is, as TS does for the errors it
-// throws with their own description (a legacy Feature id, a failing compose
-// config), wherever it is wrapped; any other error gets the command's
-// description with the error appended, except a frozen lockfile's error.
 func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
 	legacy := checkLegacyFeatures(map[string]any{"myfeature": true})
 	out := commandErrorOutput(fmt.Errorf("install features: %w", legacy), "An error occurred setting up the container")
@@ -277,8 +264,6 @@ func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
 	if out.Description != want || out.Message != want {
 		t.Errorf("legacy Feature error = %+v", out)
 	}
-	// A frozen lockfile's plain error is TS's originalError: its text is the
-	// message, the command's sentence the description.
 	out = commandErrorOutput(fmt.Errorf("install features: lockfile: %w", features.ErrLockfileMismatch), "An error occurred setting up the container")
 	if out.Message != "Lockfile does not match." || out.Description != "An error occurred setting up the container." {
 		t.Errorf("frozen lockfile error = %+v", out)
@@ -291,8 +276,6 @@ func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
 	if want := "An error occurred building the container: some internal failure"; out.Description != want || out.Message != want {
 		t.Errorf("other error = %+v", out)
 	}
-	// An error carrying the reference's own message (a lockfile it cannot
-	// read) is reported as TS reports any error it wraps in a ContainerError.
 	lockErr := &features.LockfileError{Name: "SyntaxError", Message: "Unexpected end of JSON input"}
 	out = commandErrorOutput(fmt.Errorf("fetch features: %w", lockErr), "An error occurred setting up the container")
 	if out.Message != "Unexpected end of JSON input" || out.Description != "An error occurred setting up the container." {
@@ -305,14 +288,12 @@ type errorString string
 func (e errorString) Error() string { return string(e) }
 
 func TestEncloseStringInBox(t *testing.T) {
-	// Box width must match the rune count, not the byte count (unicode-safe).
 	out := encloseStringInBox("héllo")
 	lines := strings.Split(out, "\n")
 	if len(lines) != 3 {
 		t.Fatalf("want 3 lines, got %d", len(lines))
 	}
 	top, bottom := []rune(lines[0]), []rune(lines[2])
-	// "┌" + 5 bars + "┐"
 	if len(top) != 7 || len(bottom) != 7 {
 		t.Errorf("box borders not sized to rune width: top=%d bottom=%d", len(top), len(bottom))
 	}
@@ -336,12 +317,10 @@ func TestWriteSuccessJSON(t *testing.T) {
 }
 
 func TestAddFeatureOption(t *testing.T) {
-	// Existing options are preserved and the key is set to true.
 	got := addFeatureOption(map[string]any{"version": "1"}, "gradle")
 	if got["version"] != "1" || got["gradle"] != true {
 		t.Errorf("addFeatureOption merge wrong: %v", got)
 	}
-	// A non-map option value (e.g. bool/string) is replaced by a fresh map.
 	got = addFeatureOption(true, "maven")
 	if got["maven"] != true || len(got) != 1 {
 		t.Errorf("addFeatureOption(non-map) = %v", got)
@@ -369,7 +348,6 @@ func TestOCIAnnotationID(t *testing.T) {
 func TestFeatureKeyOrderFromFile(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "devcontainer.json")
-	// JSONC with comments + deliberately non-alphabetical feature order.
 	os.WriteFile(cfg, []byte(`{
 		// a comment
 		"image": "x",
@@ -387,7 +365,6 @@ func TestFeatureKeyOrderFromFile(t *testing.T) {
 		t.Errorf("insertion order not preserved: %v", keys)
 	}
 
-	// Empty path -> nil, no error.
 	if ks, err := featureKeyOrderFromFile(""); err != nil || ks != nil {
 		t.Errorf("empty path: got %v, %v", ks, err)
 	}
@@ -398,21 +375,17 @@ func TestOrderedFeatureKeys_AppendsMissingSorted(t *testing.T) {
 	cfg := filepath.Join(dir, "devcontainer.json")
 	os.WriteFile(cfg, []byte(`{"features":{"b":{},"a":{}}}`), 0o644)
 
-	// The map has one key NOT present in the file ("z"); it must be appended,
-	// and the never-dropped invariant must hold.
 	feats := map[string]any{"a": struct{}{}, "b": struct{}{}, "z": struct{}{}}
 	got := orderedFeatureKeys(cfg, feats)
 	if len(got) != 3 {
 		t.Fatalf("want 3 keys, got %v", got)
 	}
-	// File order first (b, a), then the missing one appended.
 	if got[0] != "b" || got[1] != "a" || got[2] != "z" {
 		t.Errorf("order = %v, want [b a z]", got)
 	}
 }
 
 func TestProxyEnvFromEnviron(t *testing.T) {
-	// Only the known proxy keys are captured; others are ignored.
 	t.Setenv("HTTPS_PROXY", "http://proxy:8080")
 	t.Setenv("NO_PROXY", "localhost")
 	t.Setenv("UNRELATED_VAR", "x")
@@ -438,8 +411,6 @@ func TestIsBareVersion(t *testing.T) {
 	}
 }
 
-// TestFindPlatformArg covers #1241: extracting --platform from runArgs in both
-// "--platform=X" and "--platform X" forms.
 func TestFindPlatformArg(t *testing.T) {
 	cases := []struct {
 		args []string
@@ -450,7 +421,7 @@ func TestFindPlatformArg(t *testing.T) {
 		{[]string{"--cap-add=SYS_PTRACE", "--platform=linux/amd64", "--rm"}, "linux/amd64"},
 		{[]string{"--rm"}, ""},
 		{nil, ""},
-		{[]string{"--platform"}, ""}, // dangling flag, no value
+		{[]string{"--platform"}, ""},
 	}
 	for _, tc := range cases {
 		if got := findPlatformArg(tc.args); got != tc.want {
@@ -459,8 +430,6 @@ func TestFindPlatformArg(t *testing.T) {
 	}
 }
 
-// TestBuildSecretIDs covers #1078: extracting the KEY from each "KEY=VALUE"
-// build secret for mounting as --mount=type=secret,id=KEY.
 func TestBuildSecretIDs(t *testing.T) {
 	got := buildSecretIDs([]string{"NPM_TOKEN=abc", "GH_TOKEN=xyz=with=eq", "=novalue", "noeq"})
 	want := []string{"NPM_TOKEN", "GH_TOKEN"}

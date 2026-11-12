@@ -13,66 +13,35 @@ import (
 	"github.com/devcontainers/cli/internal/features"
 )
 
-// FeaturesContainerTempDestFolder is where the feature-install layers stage each
-// Feature inside the image (TS FEATURES_CONTAINER_TEMP_DEST_FOLDER).
 const FeaturesContainerTempDestFolder = "/tmp/dev-container-features"
 
-// FeaturesBuiltinEnvFile is the file, at the root of the features folder, that
-// holds the _CONTAINER_USER/_REMOTE_USER builtins every Feature's install
-// wrapper sources (TS getFeaturesBuildOptions).
 const FeaturesBuiltinEnvFile = "devcontainer-features.builtin.env"
 
-// FeatureEnvFile and FeatureInstallWrapperFile are the files written into each
-// Feature's folder (TS getFeaturesBuildOptions, internalVersion 2).
 const (
 	FeatureEnvFile            = "devcontainer-features.env"
 	FeatureInstallWrapperFile = "devcontainer-features-install.sh"
 )
 
-// ExtendImageBuildInfo holds the Dockerfile and build context needed
-// to extend a base image with features.
 type ExtendImageBuildInfo struct {
 	DockerfilePrefixContent string
 	DockerfileContent       string
 	OverrideTarget          string
 	BuildArgs               map[string]string
-	// BuildKitContexts maps an additional build context name to its folder; "."
-	// stands for the features folder (TS dstFolder), which the caller resolves.
-	BuildKitContexts map[string]string
-	DstFolder        string
+	BuildKitContexts        map[string]string
+	DstFolder               string
 }
 
-// FeaturesBuildParams are the inputs of GenerateFeaturesBuildOptions (TS
-// getFeaturesBuildOptions).
 type FeaturesBuildParams struct {
-	// BaseName is the _DEV_CONTAINERS_BASE_IMAGE build argument: the image (or
-	// the compose service's Dockerfile stage) the Features are installed on.
-	BaseName    string
-	FeatureSets []*features.Set
-	Metadata    []Entry
-	// ContainerUser and RemoteUser are TS findContainerUsers' result; they seed
-	// the _CONTAINER_USER_HOME/_REMOTE_USER_HOME builtins.
+	BaseName                  string
+	FeatureSets               []*features.Set
+	Metadata                  []Entry
 	ContainerUser, RemoteUser string
-	// ImageUser is the image's own user (TS imageBuildInfo.user), restored after
-	// the Features are installed through the _DEV_CONTAINERS_IMAGE_USER argument.
-	ImageUser string
-	// UseBuildKitContexts copies the Features' content from the
-	// dev_containers_feature_content_source additional build context; otherwise
-	// from the ComposeFeatureContentImage image's /tmp/build-features/.
-	UseBuildKitContexts bool
-	// Syntax is the `# syntax=` value the prefix declares ("" for none); the
-	// caller applies TS's rules (omitSyntaxDirective, Docker >= 23, build
-	// contexts support of the user's Dockerfile).
-	Syntax string
-	// ConfigContainerEnv is devcontainer.json's containerEnv, emitted as ENV
-	// lines after the metadata label (TS #{containerEnvMetadata}).
-	ConfigContainerEnv map[string]string
-	// SecretIDs are Docker build-secret ids mounted into every feature-install
-	// RUN as `--mount=type=secret,id=<id>`, so a Feature's install.sh can read
-	// /run/secrets/<id> (#1078). TS has no equivalent; empty when no build
-	// secrets are in play.
-	SecretIDs []string
-	CABundle  bool
+	ImageUser                 string
+	UseBuildKitContexts       bool
+	Syntax                    string
+	ConfigContainerEnv        map[string]string
+	SecretIDs                 []string
+	CABundle                  bool
 }
 
 const (
@@ -89,17 +58,10 @@ func CABundleEnv() []string {
 	return env
 }
 
-// ComposeFeatureContentImage is the temporary image the TS CLI builds to hold the
-// Features' content when the build cannot use an additional build context
-// (containerFeatures.ts getFeaturesBuildOptions buildContentImageName).
 const ComposeFeatureContentImage = "dev_container_feature_content_temp"
 
-// GenerateComposeLabelBuild creates the Dockerfile content that the TS
-// buildAndExtendDockerCompose appends to a compose service's Dockerfile when
-// there are no Features: only the metadata label (TS getImageBuildOptions). The
-// global `ARG _DEV_CONTAINERS_BASE_IMAGE` is part of DockerfilePrefixContent,
-// because a FROM can only use an ARG declared before the first FROM of the
-// combined Dockerfile. syntax is the `# syntax=` value to declare ("" for none).
+// The global ARG goes in DockerfilePrefixContent because a FROM can only use
+// an ARG declared before the first FROM of the combined Dockerfile.
 func GenerateComposeLabelBuild(baseName string, metadata []Entry, syntax string) *ExtendImageBuildInfo {
 	prefix := "\n    ARG _DEV_CONTAINERS_BASE_IMAGE=scratch\n"
 	if syntax != "" {
@@ -114,7 +76,6 @@ func GenerateComposeLabelBuild(baseName string, metadata []Entry, syntax string)
 	}
 }
 
-// containerFeaturesBaseDockerfile is TS getContainerFeaturesBaseDockerFile.
 const containerFeaturesBaseDockerfile = `
 
 #{nonBuildKitFeatureContentFallback}
@@ -145,17 +106,6 @@ USER $_DEV_CONTAINERS_IMAGE_USER
 #{containerEnvMetadata}
 `
 
-// GenerateFeaturesBuildOptions generates the Dockerfile that installs the
-// Features, as TS getFeaturesBuildOptions does with
-// getContainerFeaturesBaseDockerFile and getFeatureLayers: a normalize stage
-// copies the builtin env file, then each Feature's folder (named by its
-// consecutiveId) is copied or bind-mounted into
-// /tmp/dev-container-features/<consecutiveId> and its
-// devcontainer-features-install.sh wrapper runs, preceded by the Feature's
-// containerEnv as ENV lines. The files the Dockerfile refers to are written by
-// the caller (FeatureEnvVariables, FeatureInstallWrapperScript,
-// FeaturesBuiltinEnvContent). Only internalVersion 2 Features exist here: the
-// v1 GitHub Release Features are not supported (docs/DIVERGENCES.md).
 func GenerateFeaturesBuildOptions(p FeaturesBuildParams) *ExtendImageBuildInfo {
 	contentSourceRootPath := "/tmp/build-features/"
 	fallback := "FROM " + ComposeFeatureContentImage + " as dev_containers_feature_content_source"
@@ -167,7 +117,6 @@ func GenerateFeaturesBuildOptions(p FeaturesBuildParams) *ExtendImageBuildInfo {
 		"#{nonBuildKitFeatureContentFallback}", fallback,
 		"#{builtinEnvSource}", path.Join(contentSourceRootPath, FeaturesBuiltinEnvFile),
 		"#{featureLayer}", featureLayers(p, contentSourceRootPath),
-		// TS generateContainerEnvsV1: only v1 Features contribute here.
 		"#{containerEnv}", "",
 		"#{devcontainerMetadata}", devcontainerMetadataLabel(p.Metadata),
 		"#{containerEnvMetadata}", generateContainerEnvs(p.ConfigContainerEnv, true),
@@ -199,7 +148,6 @@ func GenerateFeaturesBuildOptions(p FeaturesBuildParams) *ExtendImageBuildInfo {
 	}
 }
 
-// featureLayers is TS getFeatureLayers for internalVersion 2 Features.
 func featureLayers(p FeaturesBuildParams, contentSourceRootPath string) string {
 	builtinsEnvFile := path.Join(FeaturesContainerTempDestFolder, FeaturesBuiltinEnvFile)
 	var b strings.Builder
@@ -236,9 +184,7 @@ func featureLayers(p FeaturesBuildParams, contentSourceRootPath string) string {
 	return b.String()
 }
 
-// generateContainerEnvs is TS generateContainerEnvs: one `ENV k="v"` line per
-// entry, escaping double quotes and backslashes (and dollar signs when
-// escapeDollar). Go maps carry no insertion order, so keys are sorted.
+// Keys are sorted, where TS writes them in insertion order: Go maps carry none.
 func generateContainerEnvs(env map[string]string, escapeDollar bool) string {
 	if len(env) == 0 {
 		return ""
@@ -259,8 +205,6 @@ func generateContainerEnvs(env map[string]string, escapeDollar bool) string {
 	return strings.Join(lines, "\n")
 }
 
-// backslashEscape prefixes every character of s found in special with a
-// backslash (TS .replace(/(?=[...])/g, '\\')).
 func backslashEscape(s, special string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -272,8 +216,6 @@ func backslashEscape(s, special string) string {
 	return b.String()
 }
 
-// devcontainerMetadataLabel is TS getDevcontainerMetadataLabel: the metadata
-// label as a JSON array with one entry per continued line, "" without entries.
 func devcontainerMetadataLabel(entries []Entry) string {
 	entries = nonEmptyEntries(entries)
 	if len(entries) == 0 {
@@ -281,47 +223,34 @@ func devcontainerMetadataLabel(entries []Entry) string {
 	}
 	parts := make([]string, 0, len(entries))
 	for _, e := range entries {
-		// JSON.stringify leaves &, < and > as they are.
 		var data strings.Builder
 		enc := json.NewEncoder(&data)
 		enc.SetEscapeHTML(false)
-		_ = enc.Encode(e) // an Entry holds JSON values only
+		_ = enc.Encode(e)
 		parts = append(parts, " \\\n"+backslashEscape(strings.TrimSuffix(data.String(), "\n"), `"\$`))
 	}
 	return "LABEL " + MetadataLabel + `="[` + strings.Join(parts, ",") + ` \` + "\n]\""
 }
 
-// regExpSpecial are the characters TS escapeRegExCharacters escapes.
 var regExpSpecial = regexp.MustCompile(`[.*+?^${}()|[\]\\]`)
 
-// getEntPasswdShellCommand is TS getEntPasswdShellCommand: a shell expression
-// printing the /etc/passwd line of a user name or uid, preferring getent and
-// falling back to grep on getent-less images (alpine/busybox). The leading
-// space keeps `$(` from forming an arithmetic expansion with the `(`.
+// The leading space keeps `$(` from forming an arithmetic expansion with the `(`.
 func getEntPasswdShellCommand(userNameOrID string) string {
 	escapedForShell := regexp.MustCompile(`['\\]`).ReplaceAllString(userNameOrID, `\$0`)
 	escapedForRegExp := strings.ReplaceAll(regExpSpecial.ReplaceAllString(userNameOrID, `\$0`), "'", `\'`)
 	return fmt.Sprintf(` (command -v getent >/dev/null 2>&1 && getent passwd '%s' || grep -E '^%s|^[^:]*:[^:]*:%s:' /etc/passwd || true)`, escapedForShell, escapedForRegExp, escapedForRegExp)
 }
 
-// FeaturesBuiltinEnvContent is the devcontainer-features.builtin.env content
-// (TS getFeaturesBuildOptions builtinVariables).
 func FeaturesBuiltinEnvContent(containerUser, remoteUser string) string {
 	return "_CONTAINER_USER=" + containerUser + "\n_REMOTE_USER=" + remoteUser + "\n"
 }
 
-// FeatureFileInfo holds the devcontainer-feature.json properties TS reads from
-// the staged file that features.Feature does not keep.
 type FeatureFileInfo struct {
-	// OptionOrder lists the keys of "options" in document order (a JS object
-	// keeps insertion order; a Go map does not).
 	OptionOrder []string
 	Deprecated  bool
 	CurrentID   string
 }
 
-// ParseFeatureFileInfo reads FeatureFileInfo from a devcontainer-feature.json
-// document. A document that is not a JSON object yields an error.
 func ParseFeatureFileInfo(data []byte) (FeatureFileInfo, error) {
 	var info FeatureFileInfo
 	var raw struct {
@@ -333,8 +262,6 @@ func ParseFeatureFileInfo(data []byte) (FeatureFileInfo, error) {
 		return info, err
 	}
 	info.Deprecated, info.CurrentID = raw.Deprecated, raw.CurrentID
-	// Absent options leave nothing to decode (an error) and null or any other
-	// non-object value is not a '{': either way there are no option keys.
 	dec := json.NewDecoder(strings.NewReader(string(raw.Options)))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return info, nil
@@ -356,10 +283,6 @@ func ParseFeatureFileInfo(data []byte) (FeatureFileInfo, error) {
 	return info, nil
 }
 
-// FeatureEnvVariables is TS getFeatureEnvVariables for an internalVersion 2
-// Feature: `<SAFE_OPTION>="<value>"` for each entry of the Feature's value
-// object (option defaults overlaid with the user's values, TS
-// getFeatureValueObject), unescaped as in TS.
 func FeatureEnvVariables(feat features.Feature, info FeatureFileInfo) []string {
 	keys, values := featureValueObject(feat, info)
 	vars := make([]string, 0, len(keys))
@@ -369,8 +292,6 @@ func FeatureEnvVariables(feat features.Feature, info FeatureFileInfo) []string {
 	return vars
 }
 
-// featureValueObject is TS getFeatureValueObject, returning the keys in JS
-// object order.
 func featureValueObject(feat features.Feature, info FeatureFileInfo) ([]string, map[string]any) {
 	order := append([]string(nil), info.OptionOrder...)
 	var rest []string
@@ -419,7 +340,6 @@ func featureValueObject(feat features.Feature, info FeatureFileInfo) ([]string, 
 	return keys, values
 }
 
-// jsString converts a JSON value to a string as a JS template literal does.
 func jsString(v any) string {
 	switch x := v.(type) {
 	case nil:
@@ -449,15 +369,10 @@ func jsString(v any) string {
 	}
 }
 
-// escapeQuotesForShell is TS escapeQuotesForShell (for single-quoted strings).
 func escapeQuotesForShell(s string) string {
 	return strings.ReplaceAll(s, "'", `'\''`)
 }
 
-// FeatureInstallWrapperScript is TS getFeatureInstallWrapperScript: the
-// devcontainer-features-install.sh that prints the Feature's banner, sources
-// the builtin and the Feature's env files and runs its install.sh. options are
-// the Feature's FeatureEnvVariables.
 func FeatureInstallWrapperScript(feat features.Feature, set *features.Set, info FeatureFileInfo, options []string) string {
 	id := "Unknown"
 	if src, ok := set.SourceInfo.(*features.OCISource); ok && src.UserFeatureIdWithoutVersion != "" {
@@ -526,8 +441,6 @@ chmod +x ./install.sh
 `
 }
 
-// safeID converts a string to a safe environment variable name.
-// Matches TS getSafeId().
 func safeID(s string) string {
 	// Non-word chars (ASCII, matching RE2 \w) become "_"; the JS regex works
 	// on UTF-16 code units, so a rune outside the BMP, a surrogate pair, is two.
@@ -543,7 +456,6 @@ func safeID(s string) string {
 		}
 	}
 	result := b.String()
-	// ...then a leading run of digits/underscores collapses to a single "_".
 	k := 0
 	for k < len(result) && (result[k] == '_' || (result[k] >= '0' && result[k] <= '9')) {
 		k++

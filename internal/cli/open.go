@@ -20,9 +20,6 @@ type openOpts struct {
 	dryRun          bool
 }
 
-// fileURIJSON is VS Code's serialized `file:` URI for the dev container config,
-// as embedded in the dev-container remote authority. On Linux there is no
-// authority component (it only appears for WSL/UNC paths on Windows).
 type fileURIJSON struct {
 	Scheme    string `json:"scheme"`
 	Authority string `json:"authority,omitempty"`
@@ -81,8 +78,6 @@ func runOpen(ctx context.Context, out Output, opts openOpts) error {
 		configPath = resolvePath(opts.configPath)
 	}
 
-	// Load the config to discover the resolved devcontainer.json path and the
-	// workspace folder *inside* the container (the URI's trailing path).
 	loadResult, err := config.LoadDevContainerConfig(workspaceFolder, configPath, "")
 	if err != nil {
 		return err
@@ -123,17 +118,12 @@ func runOpen(ctx context.Context, out Output, opts openOpts) error {
 	return nil
 }
 
-// devcontainerFolderURI builds the vscode-remote:// folder URI that opens
-// containerFolder inside the dev container for the given local workspace and
-// config. The remote authority is `dev-container+<hex>` where <hex> is the
-// hex-encoded JSON {hostPath, configFile:{scheme,path}}.
 func devcontainerFolderURI(localWorkspaceFolder, localConfigPath, containerFolder string) (string, error) {
 	payload := devcontainerURIJSON{
 		HostPath: localWorkspaceFolder,
 		ConfigFile: fileURIJSON{
 			Scheme: "file",
-			// Linux fs paths already use forward slashes; use the absolute path as-is.
-			Path: filepath.ToSlash(localConfigPath),
+			Path:   filepath.ToSlash(localConfigPath),
 		},
 	}
 	data, err := json.Marshal(payload)

@@ -12,12 +12,11 @@ func TestRegistryHostFromImageRef(t *testing.T) {
 		"myreg.example.com:5000/team/app":               "myreg.example.com:5000",
 		"localhost:5000/app":                            "localhost:5000",
 		"123456.dkr.ecr.us-east-1.amazonaws.com/repo:1": "123456.dkr.ecr.us-east-1.amazonaws.com",
-		// Docker Hub forms → no explicit registry → "" (ambient auth applies).
-		"ubuntu:22.04":   "",
-		"library/ubuntu": "",
-		"org/img:tag":    "",
-		"mcr":            "",
-		"":               "",
+		"ubuntu:22.04":                                  "",
+		"library/ubuntu":                                "",
+		"org/img:tag":                                   "",
+		"mcr":                                           "",
+		"":                                              "",
 	}
 	for ref, want := range cases {
 		if got := registryHostFromImageRef(ref); got != want {
@@ -30,9 +29,9 @@ func TestRegistryCacheRef(t *testing.T) {
 	cases := map[string]string{
 		"type=registry,ref=ghcr.io/org/cache:main": "ghcr.io/org/cache:main",
 		"type=registry,ref=myreg.com/c,mode=max":   "myreg.com/c",
-		"type=local,dest=/tmp/c":                   "", // not a registry cache
+		"type=local,dest=/tmp/c":                   "",
 		"type=inline":                              "",
-		"ghcr.io/org/cache:main":                   "ghcr.io/org/cache:main", // bare ref
+		"ghcr.io/org/cache:main":                   "ghcr.io/org/cache:main",
 		"":                                         "",
 	}
 	for spec, want := range cases {
@@ -44,10 +43,10 @@ func TestRegistryCacheRef(t *testing.T) {
 
 func TestCollectBuildRegistries(t *testing.T) {
 	got := collectBuildRegistries(
-		"ghcr.io/base/img:1", // base
-		[]string{"ghcr.io/base/img:1", "reg.example.com/app:2", "ubuntu"},            // tags (dup base, hub)
-		[]string{"type=registry,ref=cache.example.com/c:main", "type=local,dest=/x"}, // cacheFrom
-		"type=registry,ref=cache.example.com/c:main",                                 // cacheTo (dup of cacheFrom)
+		"ghcr.io/base/img:1",
+		[]string{"ghcr.io/base/img:1", "reg.example.com/app:2", "ubuntu"},
+		[]string{"type=registry,ref=cache.example.com/c:main", "type=local,dest=/x"},
+		"type=registry,ref=cache.example.com/c:main",
 	)
 	want := []string{"ghcr.io", "reg.example.com", "cache.example.com"}
 	if !reflect.DeepEqual(got, want) {
@@ -56,7 +55,6 @@ func TestCollectBuildRegistries(t *testing.T) {
 }
 
 func TestCollectBuildRegistriesEmpty(t *testing.T) {
-	// Only Docker Hub / local caches → nothing to bridge.
 	if got := collectBuildRegistries("ubuntu:22.04", []string{"org/app"}, []string{"type=inline"}, ""); len(got) != 0 {
 		t.Fatalf("expected no registries, got %v", got)
 	}

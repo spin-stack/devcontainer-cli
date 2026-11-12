@@ -11,10 +11,6 @@ import (
 	"unsafe"
 )
 
-// With stdout a terminal the log is TS's terminal log, colored and ending its
-// lines in \r\n (createLogFrom picks createTerminalLog when
-// process.stdout.isTTY), and a line's [N ms] counts from New when no
-// StartTime is given.
 func TestNewWritesTheTerminalLogWhenStdoutIsATerminal(t *testing.T) {
 	saved := os.Stdout
 	os.Stdout = openPTY(t)
@@ -31,7 +27,6 @@ func TestNewWritesTheTerminalLogWhenStdoutIsATerminal(t *testing.T) {
 	}
 }
 
-// openPTY opens a pseudo-terminal and returns its terminal side.
 func openPTY(t *testing.T) *os.File {
 	t.Helper()
 	ptmx, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)

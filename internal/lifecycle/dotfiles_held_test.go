@@ -9,9 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// Only GitHub shorthand becomes a github.com URL: TS installDotfiles prefixes a
-// repository with no colon that does not match /^\.{0,2}\//, so an absolute or
-// relative path and a URL are cloned as written.
 func TestInstallDotfilesPrefixesOnlyGitHubShorthand(t *testing.T) {
 	for repo, want := range map[string]string{
 		"owner/dots":             "https://github.com/owner/dots.git",

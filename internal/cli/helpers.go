@@ -10,11 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/product"
 )
 
-// mergeAdditionalFeatures parses a JSON(C) string of additional features and
-// merges them into cfg.Features. Config features have priority — additional
-// features are only added if their key doesn't already exist.
-// The returned set holds the keys that originated only from --additional-features
-// (not present in config.features). These are excluded from the lockfile.
 func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON string) (map[string]bool, error) {
 	if additionalFeaturesJSON == "" {
 		return nil, nil
@@ -39,11 +34,8 @@ func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON st
 	return additionalOnly, nil
 }
 
-// appPortPublishArgs turns the config `appPort` (number | string | array) into
-// `docker create` publish flags, matching the TS CLI: a number N publishes
-// 127.0.0.1:N:N, a string is used verbatim (e.g. "8080:80").
 func appPortPublishArgs(raw json.RawMessage) []string {
-	var v any // an absent appPort (no bytes) fails to decode and publishes nothing
+	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil
 	}
@@ -68,13 +60,10 @@ func appPortPublishArgs(raw json.RawMessage) []string {
 	return args
 }
 
-// cliVersion returns the CLI version for the log banner (set via ldflags).
 func cliVersion() string {
 	return product.Get().Version
 }
 
-// findPlatformArg extracts the target platform from runArgs, supporting both
-// "--platform=linux/amd64" and "--platform linux/amd64". Returns "" when absent.
 func findPlatformArg(runArgs []string) string {
 	for i, a := range runArgs {
 		if v, ok := strings.CutPrefix(a, "--platform="); ok {

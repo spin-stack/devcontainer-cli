@@ -66,9 +66,6 @@ func TestOptionCells(t *testing.T) {
 	}
 }
 
-// generate-docs skips dot folders, appends NOTES.md, links the metadata on
-// GitHub only when both owner and repo are given, and puts a deprecated
-// Feature's note before the README.
 func TestGenerateDocsReadmeParts(t *testing.T) {
 	base := t.TempDir()
 	writeFeature(t, base, ".hidden", `{"id":"hidden","version":"1.0.0"}`)

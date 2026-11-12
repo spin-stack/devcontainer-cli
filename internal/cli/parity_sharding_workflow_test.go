@@ -11,8 +11,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// stringOrSlice decodes a GitHub Actions field that may be a scalar ("needs: x")
-// or a sequence ("needs: [x, y]").
 type stringOrSlice []string
 
 func (s *stringOrSlice) UnmarshalYAML(n *yaml.Node) error {
@@ -64,22 +62,9 @@ func loadWorkflow(t *testing.T) workflow {
 	return wf
 }
 
-// TestWorkflowShardMatrixMatchesShardTotal guards the CI wiring that
-// TestInShardPartitions cannot see: the round-robin partition is only a true
-// cover-everything-once split when the runner matrix and PARITY_SHARD_TOTAL agree.
-// If a job declares matrix.shard: [0,1,2,3] but PARITY_SHARD_TOTAL: "2", shards 2
-// and 3 select an empty slice while cases at index 2,3 (mod 4) run in no shard at
-// all — the daily backstop goes green having silently skipped a quarter of the
-// matrix. This asserts, for every sharded parity job, that:
-//   - PARITY_SHARD_TOTAL == len(matrix.shard),
-//   - matrix.shard is exactly 0..total-1, and
-//   - PARITY_SHARD_INDEX threads the matrix value through.
 func TestWorkflowShardMatrixMatchesShardTotal(t *testing.T) {
 	wf := loadWorkflow(t)
 
-	// Every job that sets PARITY_SHARD_TOTAL is a sharded lane and must be checked;
-	// discovering them from the env (rather than a hardcoded name list) means a new
-	// sharded job is covered automatically.
 	sharded := 0
 	for name, job := range wf.Jobs {
 		total, ok := job.Env["PARITY_SHARD_TOTAL"]
@@ -105,19 +90,11 @@ func TestWorkflowShardMatrixMatchesShardTotal(t *testing.T) {
 		}
 	}
 
-	// The unified runtime lane (parity-runtime) is sharded; if it isn't found the
-	// parsing (or the job) regressed.
 	if sharded < 1 {
 		t.Errorf("found %d sharded parity jobs, want at least 1 (parity-runtime)", sharded)
 	}
 }
 
-// TestWorkflowRuntimeJobsShareCompositeAction locks in the reuse for the runtime
-// lanes: they must set up their runner through the shared composite action
-// (toolchain + ci:prepare-runner + reference) so the environments can't drift apart.
-// (A lane may also add a bare setup-go before the composite — parity-runtime needs
-// the Go toolchain for the devtool plan step that decides whether the composite even
-// runs — but node/task setup belongs only in the shared action, never re-inlined.)
 func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 	wf := loadWorkflow(t)
 	const action = "./.github/actions/setup-parity-runtime"
@@ -133,7 +110,6 @@ func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 			if s.Uses == action {
 				used = true
 			}
-			// node/task setup is the composite's job; re-inlining it defeats the reuse.
 			if strings.HasPrefix(s.Uses, "actions/setup-node") || strings.HasPrefix(s.Uses, "go-task/setup-task") {
 				t.Errorf("job %q re-inlines %q; use the composite action instead", name, s.Uses)
 			}
@@ -144,11 +120,6 @@ func TestWorkflowRuntimeJobsShareCompositeAction(t *testing.T) {
 	}
 }
 
-// TestWorkflowDailyLanesGatedOnChanges asserts the expensive daily lanes only run
-// when the repo changed that day: each must `needs: daily-changes` and gate on its
-// output. Dropping either turns the change-detection into a no-op and the matrix
-// runs (and bills) every day regardless. (parity-runtime also runs on push/PR; its
-// `if` gates the daily path on the same output.)
 func TestWorkflowDailyLanesGatedOnChanges(t *testing.T) {
 	wf := loadWorkflow(t)
 

@@ -7,11 +7,6 @@ import (
 	"strings"
 )
 
-// GenerateMermaidDiagram renders a resolved dependency graph (the worklist
-// returned by BuildDependencyGraph) as a mermaid flowchart, porting
-// generateMermaidDiagram from containerFeaturesOrder.ts. Hard-dependency edges
-// use "-->" and soft-dependency (installsAfter) edges use "-.->".
-//
 // Node hashes are internally consistent (an edge points at the target node's own
 // hash) but need not match the TS hash byte-for-byte: the parity harness scrubs
 // them. roundPriority is emitted as TS does, so overrideFeatureInstallOrder is
@@ -31,9 +26,6 @@ func GenerateMermaidDiagram(graph []*FNode) string {
 }
 
 func mermaidSubtree(current *FNode, worklist []*FNode, sb *strings.Builder, onPath map[*FNode]bool) {
-	// Break cycles: a genuine cycle is reported later by ComputeInstallationOrder,
-	// but the diagram must not recurse forever. Diamonds still duplicate edges
-	// (each parent reaches its own child node), matching the TS output.
 	if onPath[current] {
 		return
 	}
@@ -67,9 +59,6 @@ func generateMermaidNode(node *FNode) string {
 	return fmt.Sprintf("%s[%s<br/><%d>%s]", hash, node.UserFeatureID, node.RoundPriority, aliases)
 }
 
-// mermaidNodeHash produces a short, stable hash for a node. It hashes the
-// identity-bearing fields (type, id, options, roundPriority, aliases) so the same
-// node always yields the same hash and edges resolve consistently.
 func mermaidNodeHash(node *FNode) string {
 	options := node.Options
 	if options == nil {

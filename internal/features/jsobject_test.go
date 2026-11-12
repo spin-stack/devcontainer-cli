@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// JSON.parse then JSON.stringify: a repeated property keeps its first
-// position and its last value, array-index properties come first, ascending
-// (4294967295 and above, "01" and "-1" are not indexes), the rest in insertion order.
 func TestJSObjectRoundTripsAsJavaScript(t *testing.T) {
 	src := `{"b":1,"4294967295":2,"10":3,"01":4,"2":5,"b":6,"-1":7,"4294967296":8,"9":9,"4294967294":10,"a":[{"z":1,"y":[]}],"n":1.50,"e":1e21}`
 	v, err := parseJS([]byte(src))
@@ -26,8 +23,6 @@ func TestJSObjectRoundTripsAsJavaScript(t *testing.T) {
 	}
 }
 
-// A manifest is written as the registry served it, or as the fallback when
-// its body does not parse.
 func TestManifestJSON(t *testing.T) {
 	got, _ := json.Marshal(ManifestJSON([]byte(`{"schemaVersion":2,"config":{"mediaType":"m","digest":"d"}}`), nil))
 	if string(got) != `{"schemaVersion":2,"config":{"mediaType":"m","digest":"d"}}` {
@@ -38,8 +33,6 @@ func TestManifestJSON(t *testing.T) {
 	}
 }
 
-// Metadata that is not an object spreads as TS spreads it: an array by index,
-// a number not at all; none at all is an empty object.
 func TestMetadataObject(t *testing.T) {
 	for _, tc := range []struct{ data, want string }{
 		{``, `{}`},

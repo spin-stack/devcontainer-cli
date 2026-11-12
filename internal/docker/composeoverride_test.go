@@ -2,8 +2,6 @@ package docker
 
 import "testing"
 
-// The script is TS spawnDevContainer's byte for byte: the entrypoints' line is
-// there even with no entrypoint, as an empty line between trap and exec.
 func TestBuildEntrypointScript(t *testing.T) {
 	for _, tt := range []struct {
 		entrypoints []string

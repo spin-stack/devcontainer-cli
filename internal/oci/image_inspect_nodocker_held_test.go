@@ -12,9 +12,6 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// A Docker Hub image is read from registry-1.docker.io with the credentials
-// stored for docker.io, the registry as named: TS inspectImageInRegistry
-// (utils.ts) authenticates with ref.registry while requesting the API host.
 func TestInspectImageInRegistryDockerHubUsesDockerIOCredentials(t *testing.T) {
 	reg := newImageRegistry()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +51,6 @@ func (o originKeeper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// An index entry is chosen as TS getImageIndexEntryForPlatform
-// (containerCollectionsOCI.ts) finds it: the first entry for the os and
-// architecture when no variant is asked for, else the first that also has the
-// variant.
 func TestInspectImageInRegistryIndexVariant(t *testing.T) {
 	reg := newImageRegistry()
 	srv := httptest.NewServer(reg)

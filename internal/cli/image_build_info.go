@@ -20,40 +20,26 @@ import (
 	"github.com/devcontainers/cli/internal/oci"
 )
 
-// imageBuildInfo is TS ImageBuildInfo (imageMetadata.ts): the user the image
-// runs as and the devcontainer.metadata entries of the image a configuration
-// starts from (the base image for a Dockerfile).
 type imageBuildInfo struct {
 	User     string
 	Metadata []imagemeta.Entry
 }
 
-// errDockerEngineUnavailable is the local-inspect failure when no Docker engine
-// client could be created.
 var errDockerEngineUnavailable = errors.New("docker engine unavailable")
 
-// imageInspector is TS inspectDockerImage(params, name, pullImageOnError=true)
-// (utils.ts): inspect the local image; failing that, read its config from the
-// registry; failing that, pull it (with retries) and inspect it again.
 type imageInspector struct {
-	log      log.Logger
-	local    func(ctx context.Context, name string) (*oci.ImageConfig, error)
-	registry func(ctx context.Context, name string) (*oci.ImageConfig, error)
-	pull     func(ctx context.Context, name string) error
-	// pullAttempts and pullInterval are TS retry({ maxRetries: 5,
-	// retryIntervalMilliseconds: 1000 }).
+	log          log.Logger
+	local        func(ctx context.Context, name string) (*oci.ImageConfig, error)
+	registry     func(ctx context.Context, name string) (*oci.ImageConfig, error)
+	pull         func(ctx context.Context, name string) error
 	pullAttempts int
 	pullInterval time.Duration
 }
 
-// targetPlatform is the platform read-configuration inspects images for: TS
-// uses the host's (mapNodeOSToGOOS / mapNodeArchitectureToGOARCH), no variant.
 func targetPlatform() ocispec.Platform {
 	return ocispec.Platform{OS: runtime.GOOS, Architecture: runtime.GOARCH}
 }
 
-// newImageInspector wires the inspector to the Docker engine (local inspect and
-// pull) and to the invocation's OCI client (registry inspect).
 func newImageInspector(ctx context.Context, lgr log.Logger, engine *docker.EngineClient) *imageInspector {
 	return &imageInspector{
 		log: lgr,
@@ -122,10 +108,8 @@ func (i *imageInspector) inspect(ctx context.Context, name string) (*oci.ImageCo
 	return cfg, nil
 }
 
-// composeConfigFunc reads `docker compose config` for the given files.
 type composeConfigFunc func(ctx context.Context, composeFiles []string, envFile string) (map[string]any, error)
 
-// getImageBuildInfo is TS getImageBuildInfo (imageMetadata.ts:333).
 func getImageBuildInfo(ctx context.Context, cfg *config.DevContainer, insp *imageInspector, composeConfig composeConfigFunc, lgr log.Logger) (*imageBuildInfo, error) {
 	configDir := filepath.Dir(cfg.ConfigFilePath)
 	switch {
@@ -185,7 +169,6 @@ func getImageBuildInfo(ctx context.Context, cfg *config.DevContainer, insp *imag
 	}
 }
 
-// imageBuildInfoFromImage is TS getImageBuildInfoFromImage.
 func imageBuildInfoFromImage(ctx context.Context, insp *imageInspector, name string, lgr log.Logger) (*imageBuildInfo, error) {
 	img, err := insp.inspect(ctx, name)
 	if err != nil {
@@ -198,10 +181,6 @@ func imageBuildInfoFromImage(ctx context.Context, insp *imageInspector, name str
 	return &imageBuildInfo{User: user, Metadata: imagemeta.ReadMetadataFromLabels(img.Labels, lgr)}, nil
 }
 
-// imageBuildInfoFromDockerfile is TS internalGetImageBuildInfoFromDockerfile:
-// the base image (resolved with the build args, the target and the automatic
-// BUILD*/TARGET* platform args) is inspected for its metadata and user; a USER
-// statement in the Dockerfile takes precedence over the image's user.
 func imageBuildInfoFromDockerfile(ctx context.Context, insp *imageInspector, dockerfileText string, buildArgs map[string]string, target string, lgr log.Logger) (*imageBuildInfo, error) {
 	df := docker.ExtractDockerfile(dockerfileText)
 	r := docker.NewResolver(df, buildArgs, globalBuildxPlatformArgs(targetPlatform(), targetPlatform()))
@@ -230,9 +209,6 @@ func imageBuildInfoFromDockerfile(ctx context.Context, insp *imageInspector, doc
 	return info, nil
 }
 
-// buildxPlatformArgs are the automatic platform ARGs of a build on this host
-// for platform, os/arch[/variant] as --platform takes it, the host's when
-// empty (TS devContainers.ts targetPlatformInfo).
 func buildxPlatformArgs(platform string) map[string]string {
 	target := targetPlatform()
 	if platform != "" {
@@ -243,8 +219,6 @@ func buildxPlatformArgs(platform string) map[string]string {
 	return globalBuildxPlatformArgs(targetPlatform(), target)
 }
 
-// globalBuildxPlatformArgs are BuildKit's automatic platform ARGs in the global
-// scope, as TS internalGetImageBuildInfoFromDockerfile defines them.
 func globalBuildxPlatformArgs(build, target ocispec.Platform) map[string]string {
 	join := func(p ocispec.Platform) string {
 		return strings.Join(slices.DeleteFunc([]string{p.OS, p.Architecture, p.Variant}, func(s string) bool { return s == "" }), "/")

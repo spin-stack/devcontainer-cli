@@ -17,8 +17,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// daemonHost builds the engine client from the environment and returns the
-// endpoint it will dial.
 func daemonHost(t *testing.T) string {
 	t.Helper()
 	e, err := NewEngineClient(log.Null)
@@ -29,8 +27,6 @@ func daemonHost(t *testing.T) string {
 	return e.API.(*mobyclient.Client).DaemonHost()
 }
 
-// isolateDockerEnv clears every variable the client reads and points the
-// context store at an empty temporary directory.
 func isolateDockerEnv(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -41,9 +37,6 @@ func isolateDockerEnv(t *testing.T) string {
 	return dir
 }
 
-// Like the Docker CLI, the client dials the active context's endpoint when
-// DOCKER_HOST is unset, DOCKER_HOST when it is set, and the default socket when
-// neither names one.
 func TestNewEngineClientDialsTheDockerCLIEndpoint(t *testing.T) {
 	t.Run("active context", func(t *testing.T) {
 		dir := isolateDockerEnv(t)
@@ -74,9 +67,6 @@ func TestNewEngineClientDialsTheDockerCLIEndpoint(t *testing.T) {
 	})
 }
 
-// TS removeContainer (spec-shutdown/dockerUtils.ts) tries `docker rm -f` at
-// most 7 times while the daemon answers "already in progress", waiting up to a
-// second between tries, and rethrows any other error at once.
 func TestRemoveContainerGivesUpAfterSevenTries(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		calls := 0
@@ -116,8 +106,6 @@ func TestRemoveContainerReturnsAnyOtherErrorAtOnce(t *testing.T) {
 	}
 }
 
-// An image whose inspect carries no Config has no labels, before or after the
-// pull.
 func TestImageLabelsEnsuringPresentWithoutConfig(t *testing.T) {
 	e := newMockEngine(t, func(r *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(r.URL.Path, "/images/create") {
@@ -130,7 +118,6 @@ func TestImageLabelsEnsuringPresentWithoutConfig(t *testing.T) {
 	}
 }
 
-// After a pull, an image whose inspect carries no Config has no labels.
 func TestImageLabelsEnsuringPresentWithoutConfigAfterPull(t *testing.T) {
 	inspects := 0
 	e := newMockEngine(t, func(r *http.Request) (*http.Response, error) {
@@ -151,8 +138,6 @@ func TestImageLabelsEnsuringPresentWithoutConfigAfterPull(t *testing.T) {
 	}
 }
 
-// A platform is sent to the daemon as os/arch[/variant]; none is sent when the
-// platform is empty, leaving the daemon default.
 func TestPullImagePlatformSendsThePlatform(t *testing.T) {
 	for _, tc := range []struct{ platform, want string }{
 		{"linux/arm64/v8", "linux/arm64/v8"},
@@ -173,7 +158,6 @@ func TestPullImagePlatformSendsThePlatform(t *testing.T) {
 	}
 }
 
-// Everything after os/arch is the variant.
 func TestParsePlatformKeepsTheRestAsTheVariant(t *testing.T) {
 	if p := parsePlatform("linux/arm/v7/extra"); p.OS != "linux" || p.Architecture != "arm" || p.Variant != "v7/extra" {
 		t.Errorf("parsePlatform = %+v, want linux arm v7/extra", p)

@@ -54,7 +54,6 @@ func TestSecretMasking(t *testing.T) {
 	if !strings.Contains(out, "********") {
 		t.Errorf("expected mask in output: %q", out)
 	}
-	// The shorter secret is masked too.
 	if strings.Contains(out, " tok ") {
 		t.Errorf("short secret leaked: %q", out)
 	}
@@ -141,7 +140,6 @@ func TestJSONHandler_Progress(t *testing.T) {
 	}
 }
 
-// Null accepts every call and writes nothing; what can go wrong is a panic.
 func TestNullLog(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -156,8 +154,6 @@ func TestNullLog(t *testing.T) {
 }
 
 func TestLogLevelFilter_TerminalVsJSON(t *testing.T) {
-	// Terminal handler filters by --log-level (like the TS CLI): at info,
-	// debug/trace lines are dropped; at debug, debug shows; trace shows all.
 	cases := []struct {
 		min                            Level
 		wantInfo, wantDebug, wantTrace bool
@@ -184,7 +180,6 @@ func TestLogLevelFilter_TerminalVsJSON(t *testing.T) {
 		}
 	}
 
-	// JSON handler emits everything regardless of level (consumer filters).
 	var jb bytes.Buffer
 	jl := New(Options{Level: LevelInfo, Format: "json", Writer: &jb})
 	jl.Write("INFO_LINE", LevelInfo)

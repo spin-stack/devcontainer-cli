@@ -10,11 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// writeFakeHelper installs a `docker-credential-faketest` executable on PATH that
-// implements the docker credential-helper `get` protocol: it reads the registry
-// host from stdin and returns a JSON {Username,Secret}. The registry name selects
-// the branch so a single script drives both the `<token>`→refreshToken path and
-// the ordinary Basic-auth path. Returns the helper name.
 func writeFakeHelper(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -36,9 +31,6 @@ esac
 	return "faketest"
 }
 
-// TestGetCredentialFromHelper_Protocol drives getCredentialFromHelper end-to-end
-// against a real on-PATH helper binary, covering both the ordinary Basic-auth
-// result and the previously-untested `<token>`→refreshToken branch.
 func TestGetCredentialFromHelper_Protocol(t *testing.T) {
 	helper := writeFakeHelper(t)
 
@@ -79,9 +71,6 @@ func TestGetCredentialFromHelper_Protocol(t *testing.T) {
 	})
 }
 
-// TestCredHelperViaDockerConfig proves the full wiring: a docker config.json that
-// maps a registry to a credHelper resolves through getCredentialFromDockerConfig
-// into the helper protocol (both branches).
 func TestCredHelperViaDockerConfig(t *testing.T) {
 	helper := writeFakeHelper(t)
 	dir := t.TempDir()
@@ -106,9 +95,6 @@ func TestCredHelperViaDockerConfig(t *testing.T) {
 	}
 }
 
-// TestDefaultCredentialHelperName pins the divergence from the TS CLI: on Linux
-// the libsecret helper is `secretservice` (NOT the TS CLI's `secret`, which names
-// no real binary). Go keeps `secretservice`.
 func TestDefaultCredentialHelperName(t *testing.T) {
 	if got := linuxDefaultHelperName(false); got != "secretservice" {
 		t.Errorf("linux default without pass = %q, want secretservice", got)
@@ -116,15 +102,12 @@ func TestDefaultCredentialHelperName(t *testing.T) {
 	if got := linuxDefaultHelperName(true); got != "pass" {
 		t.Errorf("linux default with pass = %q, want pass", got)
 	}
-	// The wrong TS name must never be produced.
 	for _, got := range []string{linuxDefaultHelperName(false), linuxDefaultHelperName(true)} {
 		if got == "secret" {
 			t.Errorf("must not use TS's incorrect helper name %q", got)
 		}
 	}
 	if runtime.GOOS == "linux" {
-		// On Linux the platform default resolves to pass or secretservice, never
-		// "secret" and never an empty string.
 		got := defaultCredentialHelperName()
 		if got != "pass" && got != "secretservice" {
 			t.Errorf("linux defaultCredentialHelperName() = %q, want pass|secretservice", got)

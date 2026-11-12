@@ -25,9 +25,6 @@ func runStopCommand(t *testing.T, cmd *cobra.Command, args ...string) map[string
 	return got
 }
 
-// stop [path] and down [path] act on the container of the workspace the
-// argument names, not the current directory's; --workspace-folder wins over
-// the argument.
 func TestStopAndDownActOnThePositionalWorkspace(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -52,7 +49,6 @@ func TestStopAndDownActOnThePositionalWorkspace(t *testing.T) {
 	}
 }
 
-// --config looks first for the workspace's container of that config file.
 func TestStopConfigFlagLooksForThatConfigsContainer(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")

@@ -8,12 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// A legacy property TS updateFromOldProperties leaves in place stays in the
-// configuration read-configuration prints: a devPort whose
-// customizations.vscode already has one, and a falsy settings. The TS CLI
-// prints both (reference read-configuration of this config). A null devPort
-// moves into customizations.vscode when that has none, and otherwise stays at
-// the top level and is printed as null, as TS prints it.
 func TestConfigurationOutputKeepsUnmigratedLegacyProperties(t *testing.T) {
 	_, result := loadFixtureConfig(t, `{
 		"image": "img:1",
@@ -45,7 +39,6 @@ func TestConfigurationOutputKeepsUnmigratedLegacyProperties(t *testing.T) {
 	}
 }
 
-// The config's forwardPorts are part of its metadata entry, a single one too.
 func TestConfigMetadataEntryForwardsASinglePort(t *testing.T) {
 	var cfg config.DevContainer
 	if err := json.Unmarshal([]byte(`{"forwardPorts": [3000]}`), &cfg); err != nil {

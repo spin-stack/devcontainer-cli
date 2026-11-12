@@ -9,10 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
-// The config's forwardPorts reach the merged configuration as the raw
-// number|string values, and de-dupe against the same ports from image metadata
-// (TS mergeForwardPorts). They were passed as config.PortOrString structs, so
-// the de-dupe formatted them with %v and emitted "{8080}".
 func TestConfigForwardPortsMergeAsRawValues(t *testing.T) {
 	var cfg config.DevContainer
 	if err := json.Unmarshal([]byte(`{"image":"x","forwardPorts":[8080,"db:5432"]}`), &cfg); err != nil {

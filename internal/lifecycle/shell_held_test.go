@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// A command the container could not run at all has no exit code: Exec and
-// ExecWithStderr report -1 with the error, as os.ProcessState.ExitCode does for
-// a process that did not exit.
 func TestShellServerReportsNoExitCodeWhenTheExecFails(t *testing.T) {
 	boom := errors.New("no such container")
 	s := NewShellServer(t.Context(), &fakeExecutor{fn: func(string) (string, string, int, error) {
@@ -22,8 +19,6 @@ func TestShellServerReportsNoExitCodeWhenTheExecFails(t *testing.T) {
 	}
 }
 
-// A hook's stdout and its stderr reach the log when there is any (TS streams
-// lifecycle-hook output); empty stdout and blank stderr write nothing.
 func TestShellExecutorLogsOnlyOutputThereIs(t *testing.T) {
 	for _, tc := range []struct {
 		stdout, stderr string

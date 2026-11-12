@@ -28,7 +28,6 @@ func TestParseCrossOriginAuthHosts(t *testing.T) {
 		t.Fatalf("mapping not registered: %v", hosts)
 	}
 
-	// Rejections mirror the reference CLI's messages, which the CLI surfaces verbatim.
 	for _, tc := range []struct{ entry, want string }{
 		{"bad", "Invalid cross-origin auth host 'bad'. Expected '<registry-host>=<auth-host>'."},
 		{"=auth.example", "Invalid cross-origin auth host '=auth.example'. Expected '<registry-host>=<auth-host>'."},
@@ -87,7 +86,6 @@ func TestIsRegistryOriginTreatsDockerHubAuthoritiesAsOne(t *testing.T) {
 	}
 }
 
-// roundTrip drives the policy transport against a fake registry response.
 func roundTrip(t *testing.T, policy *AuthPolicy, registryScheme, registryHost string, handler http.HandlerFunc, requestPath string) (*http.Response, error) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -110,7 +108,6 @@ func TestAuthLookupDiagnosticAndHardening(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}
 
-	// Hardening off: the untrusted realm is only reported, the response passes through.
 	policy, err := NewAuthPolicy(false, nil, log.Null)
 	if err != nil {
 		t.Fatalf("policy: %v", err)
@@ -127,7 +124,6 @@ func TestAuthLookupDiagnosticAndHardening(t *testing.T) {
 		t.Errorf("authLookupWouldBeBlocked not recorded: %+v", diag)
 	}
 
-	// Hardening on: the same challenge fails the request instead.
 	hardened, err := NewAuthPolicy(true, nil, log.Null)
 	if err != nil {
 		t.Fatalf("policy: %v", err)
@@ -182,7 +178,6 @@ func TestRegistryRedirectDiagnostic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("policy: %v", err)
 	}
-	// The challenge arrives from an origin other than the ref's registry.
 	_, err = roundTrip(t, policy, "https", "ghcr.io", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}, "/v2/x/manifests/1")
@@ -203,7 +198,6 @@ func TestTokenEndpointRedirect(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// Hardening off: the redirect is recorded and followed.
 	policy, err := NewAuthPolicy(false, nil, log.Null)
 	if err != nil {
 		t.Fatalf("policy: %v", err)
@@ -223,7 +217,6 @@ func TestTokenEndpointRedirect(t *testing.T) {
 		t.Errorf("authServerRedirect not recorded: %+v", diag)
 	}
 
-	// Hardening on: a redirecting token endpoint fails the token request.
 	hardened, err := NewAuthPolicy(true, nil, log.Null)
 	if err != nil {
 		t.Fatalf("policy: %v", err)
@@ -270,9 +263,6 @@ func TestRefScheme(t *testing.T) {
 	}
 }
 
-// TestClientHonorsAuthPolicyEndToEnd drives the policy through the real client:
-// a registry that points its bearer challenge at an untrusted origin must fail the
-// fetch under hardening, and must be reported (but tolerated) without it.
 func TestClientHonorsAuthPolicyEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="https://evil.example/token",service="registry"`)
@@ -296,8 +286,6 @@ func TestClientHonorsAuthPolicyEndToEnd(t *testing.T) {
 		t.Errorf("authLookupWouldBeBlocked not recorded through the client: %+v", diag)
 	}
 
-	// Without hardening the same challenge is only reported; the failure that
-	// follows is the ordinary auth failure, not the policy refusing the realm.
 	policy, err := NewAuthPolicy(false, nil, log.Null)
 	if err != nil {
 		t.Fatalf("policy: %v", err)

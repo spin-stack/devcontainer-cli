@@ -8,8 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// buildContext returns the context path of a recorded `docker build`: its last
-// argument.
 func buildContext(t *testing.T, call recordedCall) string {
 	t.Helper()
 	if len(call.args) == 0 || call.args[0] != "build" {
@@ -18,10 +16,6 @@ func buildContext(t *testing.T, call recordedCall) string {
 	return call.args[len(call.args)-1]
 }
 
-// The UID image builds from the directory it writes updateUID.Dockerfile to
-// unless a context directory is given, as TS updateRemoteUserUID builds in the
-// folder holding its Dockerfile; a platform reaches the command line as
-// --platform.
 func TestBuildUIDImageContextAndPlatform(t *testing.T) {
 	rr := &recordingRunner{}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: rr}

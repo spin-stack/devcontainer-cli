@@ -9,8 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// An image whose inspection has no Config carries no metadata: the UID update
-// reads none and, with updates off, keeps the image.
 func TestSingleContainerRemoteUserUIDImageWithoutConfig(t *testing.T) {
 	logger := log.New(log.Options{Writer: io.Discard})
 	engine := &fakeEngineAPI{images: map[string]string{"img:1": `{}`}}

@@ -14,9 +14,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TS featureAdvisories.test.ts: one advisory on feature-with-advisory, introduced
-// in 1.0.7 and fixed in 1.1.10, matches the versions in [1.0.7, 1.1.10) and no
-// other feature.
 func TestFeatureAdvisoriesMatchTheVersionRange(t *testing.T) {
 	const featureID = "ghcr.io/devcontainers/features/feature-with-advisory"
 	manifest := &ControlManifest{FeatureAdvisories: []Advisory{{
@@ -53,9 +50,6 @@ func TestFeatureAdvisoriesMatchTheVersionRange(t *testing.T) {
 	}
 }
 
-// Features are reported in id order, and one whose version cannot be parsed is
-// warned about, as TS fetchFeatureAdvisories does; the warning text is TS
-// logFeatureAdvisories' byte for byte.
 func TestFeatureAdvisoriesOrderWarningAndText(t *testing.T) {
 	manifest := &ControlManifest{FeatureAdvisories: []Advisory{
 		{FeatureID: "ghcr.io/o/f/b", IntroducedInVersion: "1", FixedInVersion: "2", Description: "b broke", DocumentationURL: "https://b"},
@@ -91,9 +85,6 @@ func TestFeatureAdvisoriesOrderWarningAndText(t *testing.T) {
 
 func TestEnsureNoDisallowedFeatures(t *testing.T) {
 	const docURL = "https://example.com"
-	// A prefix only matches on a separator boundary (/ : @) or exact length, like TS,
-	// so it must not block a feature that merely shares the prefix's characters. When
-	// blocked, the returned *DisallowedFeatureError carries the id and doc URL.
 	tests := []struct {
 		name        string
 		prefix      string
@@ -133,8 +124,6 @@ func TestEnsureNoDisallowedFeatures(t *testing.T) {
 	}
 }
 
-// roundTripFunc answers requests in-process, so the control manifest fetch is
-// tested without the network.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -145,8 +134,6 @@ func respond(code int, body string) roundTripFunc {
 	}
 }
 
-// A non-2xx answer is logged as TS logs it ("HTTP 503: Service Unavailable"),
-// and the cached manifest, however old, is kept with its mtime refreshed.
 func TestGetControlManifestFailedFetch(t *testing.T) {
 	dir := t.TempDir()
 	cache := filepath.Join(dir, controlManifestFile)
@@ -171,14 +158,12 @@ func TestGetControlManifestFailedFetch(t *testing.T) {
 		t.Fatalf("cache mtime not refreshed: %v", err)
 	}
 
-	// Without a cache the result is the empty manifest.
 	m = GetControlManifest(t.Context(), t.TempDir(), &http.Client{Transport: respond(404, "")}, logger)
 	if len(m.DisallowedFeatures) != 0 || len(m.FeatureAdvisories) != 0 {
 		t.Fatalf("manifest = %+v, want empty", m)
 	}
 }
 
-// A fresh fetch sends TS's headers, is cached, and is what is returned.
 func TestGetControlManifestFetchesAndCaches(t *testing.T) {
 	dir := t.TempDir()
 	var got http.Header

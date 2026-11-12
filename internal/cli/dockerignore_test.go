@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// upstream #969: a renamed build Dockerfile must keep the sibling
-// <Dockerfile>.dockerignore so BuildKit still applies it.
 func TestCopyDockerignore(t *testing.T) {
 	dir := t.TempDir()
 	orig := filepath.Join(dir, "Dockerfile")
@@ -23,7 +21,6 @@ func TestCopyDockerignore(t *testing.T) {
 	if string(got) != "node_modules\n*.log\n" {
 		t.Errorf("content = %q", got)
 	}
-	// No sibling ignore file → no-op, no error.
 	copyDockerignore(filepath.Join(dir, "Other"), filepath.Join(dir, "Other.tmp"))
 	if _, err := os.Stat(filepath.Join(dir, "Other.tmp.dockerignore")); !os.IsNotExist(err) {
 		t.Error("should not create an ignore file when none exists")

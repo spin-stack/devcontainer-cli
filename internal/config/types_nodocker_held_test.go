@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// TS updateFromOldProperties moves a property by JavaScript truthiness
-// (`if (copy.extensions)`), and devPort whenever it is not undefined, so a
-// null devPort moves too; an empty string or 0 stays where it is.
 func TestUpdateFromOldPropertiesFollowsJavaScriptTruthiness(t *testing.T) {
 	for _, tt := range []struct{ in, want string }{
 		{`{"devPort":null}`, `{"customizations":{"vscode":{"devPort":null}}}`},

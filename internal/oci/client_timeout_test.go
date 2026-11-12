@@ -36,20 +36,14 @@ func TestIsNotFound(t *testing.T) {
 	}
 }
 
-// TestGetPublishedTags_HangingRegistryTimesOut verifies the fix for the
-// indefinite-block finding: a registry that accepts the connection but never
-// sends response headers must not hang the operation forever — the default
-// per-operation deadline (shrunk here) cuts it off.
 func TestGetPublishedTags_HangingRegistryTimesOut(t *testing.T) {
-	// A server that accepts the request and then never responds.
 	blocked := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-blocked // hang until the test ends
+		<-blocked
 	}))
 	defer srv.Close()
 	defer close(blocked)
 
-	// Shrink the metadata deadline so the test is fast.
 	orig := metadataOpTimeout
 	metadataOpTimeout = 200 * time.Millisecond
 	defer func() { metadataOpTimeout = orig }()

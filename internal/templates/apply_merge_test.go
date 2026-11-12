@@ -11,9 +11,6 @@ import (
 	"github.com/devcontainers/cli/internal/pfs"
 )
 
-// errFS is a pfs.FS fake that reports a devcontainer.json exists (Stat succeeds)
-// but fails on ReadFile, so tests can drive the filesystem error path of
-// mergeFeatures without touching real disk.
 type errFS struct {
 	readErr error
 }
@@ -25,8 +22,6 @@ func (errFS) Stat(string) (os.FileInfo, error)     { return nil, nil }
 func (errFS) Walk(string, filepath.WalkFunc) error { return nil }
 func (errFS) Remove(string, bool) error            { return nil }
 
-// TestMergeFeatures_PropagatesReadError confirms a filesystem read failure from
-// the injected pfs.FS seam surfaces to the caller instead of being swallowed.
 func TestMergeFeatures_PropagatesReadError(t *testing.T) {
 	sentinel := errors.New("disk gone")
 	feats := []TemplateFeatureOption{{ID: "ghcr.io/devcontainers/features/git:1"}}
@@ -64,14 +59,12 @@ func TestMergeFeatures_PreservesJSONC(t *testing.T) {
 	out, _ := os.ReadFile(cfgPath)
 	s := string(out)
 
-	// Comments must survive.
 	if !strings.Contains(s, "// base image for the dev container") {
 		t.Errorf("lost leading comment:\n%s", s)
 	}
 	if !strings.Contains(s, "// app port") {
 		t.Errorf("lost trailing comment:\n%s", s)
 	}
-	// Features must be added with the right shape.
 	if !strings.Contains(s, `"ghcr.io/devcontainers/features/node:1"`) {
 		t.Errorf("node feature not added:\n%s", s)
 	}
@@ -81,7 +74,6 @@ func TestMergeFeatures_PreservesJSONC(t *testing.T) {
 	if !strings.Contains(s, `"ghcr.io/devcontainers/features/git:1":"latest"`) {
 		t.Errorf("git feature not added as latest:\n%s", s)
 	}
-	// Existing keys preserved.
 	if !strings.Contains(s, `"forwardPorts": [3000]`) {
 		t.Errorf("lost forwardPorts:\n%s", s)
 	}

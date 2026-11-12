@@ -16,12 +16,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// --- mock implementation of API ---
-//
-// The func fields keep the "inner" moby types (container.InspectResponse, …) so
-// test setups stay concise; the interface methods wrap them into the v29
-// options/result envelopes.
-
 type mockAPI struct {
 	containerCreateFn  func(ctx context.Context, opts mobyclient.ContainerCreateOptions) (mobyclient.ContainerCreateResult, error)
 	containerInspectFn func(ctx context.Context, id string) (container.InspectResponse, error)
@@ -138,8 +132,6 @@ func (m *mockAPI) ServerVersion(ctx context.Context, opts mobyclient.ServerVersi
 	return mobyclient.ServerVersionResult{}, errors.New("not implemented")
 }
 
-// --- tests ---
-
 func newTestEngine(api *mockAPI) *EngineClient {
 	return &EngineClient{API: api, Log: log.Null}
 }
@@ -224,16 +216,9 @@ func TestStopContainer(t *testing.T) {
 }
 
 func TestRemoveContainer(t *testing.T) {
-	// Each case shares the same call shape (increment counter, return an error
-	// derived from the current call count) but varies the retry-driving events
-	// stream, so a per-case remove/events closure keeps the mock setup honest.
 	tests := []struct {
-		name string
-		// remove receives the running call count (after increment) and returns
-		// the error the mock should surface for that call.
-		remove func(calls int) error
-		// events, when non-nil, overrides the default (closed-channel) events
-		// stream to drive retry/destroy behavior.
+		name      string
+		remove    func(calls int) error
 		events    func(ctx context.Context, opts mobyclient.EventsListOptions) (<-chan events.Message, <-chan error)
 		wantCalls int
 	}{
@@ -253,7 +238,6 @@ func TestRemoveContainer(t *testing.T) {
 			events: func(_ context.Context, _ mobyclient.EventsListOptions) (<-chan events.Message, <-chan error) {
 				ch := make(chan events.Message)
 				errCh := make(chan error, 1)
-				// Don't send any events — let it timeout and retry
 				return ch, errCh
 			},
 			wantCalls: 3,
@@ -266,11 +250,9 @@ func TestRemoveContainer(t *testing.T) {
 			events: func(_ context.Context, _ mobyclient.EventsListOptions) (<-chan events.Message, <-chan error) {
 				ch := make(chan events.Message, 1)
 				errCh := make(chan error, 1)
-				// Immediately send destroy event
 				ch <- events.Message{Action: events.ActionDestroy}
 				return ch, errCh
 			},
-			// Called remove once, got "already in progress", then the destroy event stopped the retry.
 			wantCalls: 1,
 		},
 	}
@@ -322,10 +304,6 @@ func TestToDockerImageName(t *testing.T) {
 	}
 }
 
-// TestImageLabelsEnsuringPresent guards the inspect→pull→inspect fallback: the
-// base image's baked metadata (e.g. devcontainer.metadata remoteUser) must be
-// read even on a fresh run where the image is not cached yet. Without the pull
-// the metadata is lost and exec/lifecycle fall back to root.
 func TestImageLabelsEnsuringPresent(t *testing.T) {
 	const inspectBody = `{"Id":"sha256:x","Config":{"Labels":{"devcontainer.metadata":"[{\"remoteUser\":\"node\"}]"}}}`
 	const wantLabel = `[{"remoteUser":"node"}]`
@@ -382,7 +360,6 @@ func TestImageLabelsEnsuringPresent(t *testing.T) {
 	})
 }
 
-// TestParsePlatform covers #1241 platform parsing into an OCI platform.
 func TestParsePlatform(t *testing.T) {
 	cases := []struct {
 		in             string
@@ -400,13 +377,6 @@ func TestParsePlatform(t *testing.T) {
 	}
 }
 
-// --- moby-style HTTP transport fake ---
-//
-// newMockEngine builds an EngineClient backed by the REAL moby client with a fake
-// http.RoundTripper, mirroring moby's own WithMockClient test helper. This
-// exercises the client's actual request-building and response parsing (including
-// constructing the ImagePullResponse from the HTTP body) instead of stubbing the
-// client methods. WithAPIVersion pins the version so no /_ping negotiation runs.
 func newMockEngine(t *testing.T, doer func(*http.Request) (*http.Response, error)) *EngineClient {
 	t.Helper()
 	cli, err := mobyclient.New(mobyclient.WithHTTPClient(&http.Client{Transport: roundTripFunc(doer)}), mobyclient.WithAPIVersion("1.51"))

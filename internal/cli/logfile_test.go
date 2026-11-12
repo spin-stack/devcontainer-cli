@@ -9,12 +9,9 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TestLogWriterTeesToFile is the hermetic contract test for --log-file: a log
-// line emitted through a logger built on the returned writer must land in the
-// file (in addition to stderr).
 func TestLogWriterTeesToFile(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "sub", "run.log") // nested dir exercises MkdirAll
+	logPath := filepath.Join(dir, "sub", "run.log")
 
 	w, cleanup, err := logWriter(logPath, "")
 	if err != nil {
@@ -34,8 +31,6 @@ func TestLogWriterTeesToFile(t *testing.T) {
 	}
 }
 
-// TestLogWriterTeesToBothFiles confirms both --log-file and --terminal-log-file
-// paths receive the same log stream (the CLI has a single log stream).
 func TestLogWriterTeesToBothFiles(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "log.txt")
@@ -60,9 +55,6 @@ func TestLogWriterTeesToBothFiles(t *testing.T) {
 	}
 }
 
-// A log file holds the log without the terminal format: on a terminal stdout
-// the log is colored and ends its lines in \r\n (TS createTerminalLog), and
-// the file keeps only the text, as --log-file and --terminal-log-file document.
 func TestLogWriterKeepsTheTerminalFormatOutOfTheFile(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "log.txt")
 	w, cleanup, err := logWriter(logPath, "")
@@ -84,7 +76,6 @@ func TestLogWriterKeepsTheTerminalFormatOutOfTheFile(t *testing.T) {
 	}
 }
 
-// A log file that fails to take a line reports the failure, not a write.
 func TestPlainFileWriterReportsAFailedWrite(t *testing.T) {
 	f, err := os.Create(filepath.Join(t.TempDir(), "log.txt"))
 	if err != nil {
@@ -96,8 +87,6 @@ func TestPlainFileWriterReportsAFailedWrite(t *testing.T) {
 	}
 }
 
-// TestLogWriterNoFileFallsBackToStderr confirms that with no paths the writer is
-// os.Stderr and the cleanup is a harmless no-op.
 func TestLogWriterNoFileFallsBackToStderr(t *testing.T) {
 	w, cleanup, err := logWriter("", "")
 	if err != nil {
@@ -106,14 +95,11 @@ func TestLogWriterNoFileFallsBackToStderr(t *testing.T) {
 	if w != os.Stderr {
 		t.Fatalf("writer = %v, want os.Stderr when no log file requested", w)
 	}
-	cleanup() // must not panic
+	cleanup()
 }
 
-// TestLogWriterOpenError surfaces an error (rather than silently dropping logs)
-// when the log file path cannot be opened, and falls back to os.Stderr.
 func TestLogWriterOpenError(t *testing.T) {
 	dir := t.TempDir()
-	// A path whose parent is a regular file cannot be created as a directory.
 	blocker := filepath.Join(dir, "notadir")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
@@ -127,5 +113,5 @@ func TestLogWriterOpenError(t *testing.T) {
 	if w != os.Stderr {
 		t.Fatalf("writer = %v, want os.Stderr fallback on error", w)
 	}
-	cleanup() // must not panic
+	cleanup()
 }

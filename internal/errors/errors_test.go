@@ -61,7 +61,6 @@ func TestToErrorOutput(t *testing.T) {
 					t.Errorf("learnMoreUrl = %q", out.LearnMoreURL)
 				}
 
-				// Verify JSON serialization matches TS format
 				data, _ := json.Marshal(out)
 				var m map[string]any
 				json.Unmarshal(data, &m)
@@ -93,7 +92,6 @@ func TestToErrorOutput(t *testing.T) {
 				var m map[string]any
 				json.Unmarshal(data, &m)
 
-				// These optional fields should not appear in JSON
 				if _, ok := m["containerId"]; ok {
 					t.Error("containerId should be omitted when empty")
 				}

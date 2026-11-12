@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// TS getRef (containerCollectionsOCI.ts) splits a digest on every colon and
-// wants exactly two parts, then checks the algorithm is sha256, then checks the
-// hex against regexForVersionOrDigest: each rejection names what failed.
 func TestParseRefDigestRejections(t *testing.T) {
 	for _, tt := range []struct{ input, want string }{
 		{"ghcr.io/ns/id/feat@sha256:a:b", `invalid digest format "sha256:a:b"`},

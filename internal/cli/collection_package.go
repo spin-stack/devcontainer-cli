@@ -20,15 +20,7 @@ import (
 	"github.com/iancoleman/orderedmap"
 )
 
-// packageCollection packages the Features or Templates at targetFolder into
-// outputDir, as TS prepPackageCommand + doFeaturesPackageCommand/packageTemplates
-// do: a folder holding devcontainer-<type>.json is a single item, any other is a
-// collection whose sub-folders are the items. Each item is copied, its metadata
-// completed (currentId, or a Template's type/files/fileCount/featureIds), and
-// tarred; devcontainer-collection.json lists their metadata.
 func packageCollection(targetFolder, outputDir, collectionType string, forceClean bool, logLevelStr string) error {
-	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
-	// silently defaulting to Info (collectionCommonUtils/package.ts:18).
 	if err := validateEnum("log-level", logLevelStr, logLevels); err != nil {
 		return err
 	}
@@ -65,8 +57,6 @@ func packageCollection(targetFolder, outputDir, collectionType string, forceClea
 	return writeCollectionMetadata(outputDir, collectionType, metadata)
 }
 
-// packageSingleItem is TS packageSingleFeatureOrTemplate: the archive is named
-// by the item's id. nil means the item could not be packaged (reported).
 func packageSingleItem(logger log.Logger, targetFolder, outputDir, collectionType string) []*orderedmap.OrderedMap {
 	metadataFile := "devcontainer-" + collectionType + ".json"
 	tmp, err := copyToTemp(targetFolder)
@@ -95,11 +85,6 @@ func packageSingleItem(logger log.Logger, targetFolder, outputDir, collectionTyp
 	return []*orderedmap.OrderedMap{meta}
 }
 
-// packageCollectionItems is TS packageCollection: every entry of the folder, in
-// name order, except those starting with '.'; one without a metadata file is
-// skipped with a warning, while a Feature without install.sh, a Template whose
-// metadata cannot be completed, or an item missing id/version/name fails the
-// whole package. nil means nothing was packaged.
 func packageCollectionItems(logger log.Logger, srcFolder, outputDir, collectionType string) []*orderedmap.OrderedMap {
 	metadataFile := "devcontainer-" + collectionType + ".json"
 	entries, err := os.ReadDir(srcFolder)
@@ -161,9 +146,6 @@ func packageCollectionItem(logger log.Logger, folder, name, outputDir, collectio
 	return meta, true
 }
 
-// completeItemMetadata rewrites the copied item's metadata file as TS does
-// before tarring it: a Feature with legacyIds gets currentId; a Template gets
-// type, files, fileCount and featureIds.
 func completeItemMetadata(logger log.Logger, srcFolder, jsonPath, collectionType string) bool {
 	switch collectionType {
 	case "feature":
@@ -175,9 +157,6 @@ func completeItemMetadata(logger log.Logger, srcFolder, jsonPath, collectionType
 	return true
 }
 
-// addFeatureCurrentID is TS addsAdditionalFeatureProps: a Feature that lists
-// legacyIds records its id as currentId, so a reference by an old id resolves
-// to the renamed Feature.
 func addFeatureCurrentID(logger log.Logger, jsonPath string) {
 	meta, err := readOrderedJSONC(jsonPath)
 	if err != nil {
@@ -193,10 +172,6 @@ func addFeatureCurrentID(logger log.Logger, jsonPath string) {
 	writeJSStringified(jsonPath, meta)
 }
 
-// addTemplateProps is TS addsAdditionalTemplateProps: it records the Template's
-// type (from its devcontainer.json), its files and their count, and the
-// resources of the Features it configures, and narrows an optionalPaths "dir/*"
-// whose folder holds a single file to that file.
 func addTemplateProps(logger log.Logger, srcFolder, jsonPath string) bool {
 	devcontainerPath := filepath.Join(srcFolder, ".devcontainer.json")
 	if !pfs.IsFile(devcontainerPath) {
@@ -273,10 +248,6 @@ func addTemplateProps(logger log.Logger, srcFolder, jsonPath string) bool {
 	return true
 }
 
-// templateFiles lists the files under dir, relative to it: a folder's own
-// files, by name, before the contents of its sub-folders, in name order. TS
-// recursive-readdir appends each entry when its asynchronous stat completes, so
-// its order is not defined; this is a deterministic order with the same set.
 func templateFiles(root, rel string) []any {
 	entries, err := os.ReadDir(filepath.Join(root, rel))
 	if err != nil {
@@ -294,10 +265,6 @@ func templateFiles(root, rel string) []any {
 	return append(files, nested...)
 }
 
-// writeCollectionMetadata writes devcontainer-collection.json as TS does
-// (JSON.stringify(collection, null, 4)). Returns an error instead of swallowing
-// a write failure: a full disk or read-only output would otherwise yield an
-// incomplete package that the command still reports as a success.
 func writeCollectionMetadata(outputDir, collectionType string, collection []*orderedmap.OrderedMap) error {
 	items := make([]any, len(collection))
 	for i, m := range collection {
@@ -316,16 +283,12 @@ func writeJSStringified(path string, v any) {
 	_ = os.WriteFile(path, jsStringify(v), 0o644)
 }
 
-// jsStringify is JSON.stringify(v, null, 4): keys in insertion order, four-space
-// indentation, no trailing newline, and '<', '>' and '&' left as they are.
 func jsStringify(v any) []byte {
 	var b bytes.Buffer
 	writeJS(&b, v, "")
 	return b.Bytes()
 }
 
-// jsStringifyCompact is JSON.stringify(v): no whitespace, keys in insertion
-// order, and '<', '>' and '&' left as they are.
 func jsStringifyCompact(v any) []byte {
 	var b bytes.Buffer
 	_ = json.Compact(&b, jsStringify(v))
@@ -427,8 +390,6 @@ func hasKey(m map[string]any, key string) bool {
 	return ok
 }
 
-// jsTruthy is JS truthiness of metadata[key]: a missing key, null, false, 0 and
-// "" are falsy, as `!metadata.id` reads them.
 func jsTruthy(m *orderedmap.OrderedMap, key string) bool {
 	v, ok := m.Get(key)
 	if !ok {
@@ -447,8 +408,6 @@ func jsTruthy(m *orderedmap.OrderedMap, key string) bool {
 	return true
 }
 
-// copyToTemp copies folder to a fresh temporary directory, as TS cpDirectoryLocal
-// does before completing the metadata, so the source is left untouched.
 func copyToTemp(folder string) (string, error) {
 	tmp, err := os.MkdirTemp("", "devcontainer-package-")
 	if err != nil {

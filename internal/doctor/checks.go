@@ -14,12 +14,8 @@ import (
 // export path that the plain `docker` buildx driver rejects.
 const probeDockerfile = "FROM scratch\nLABEL devcontainer.doctor.probe=1\n"
 
-// minFreeDiskBytes is the free-space threshold below which disk is flagged.
-// Image builds routinely need several GB; 5 GiB is a conservative floor.
 const minFreeDiskBytes uint64 = 5 << 30
 
-// checkDockerDaemon verifies the Docker daemon is reachable. This is the only
-// hard failure: nothing else in the CLI works without it.
 func checkDockerDaemon(ctx context.Context, env *Env) Result {
 	r := Result{Name: "docker-daemon"}
 	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "info", "--format", "{{.ServerVersion}}")
@@ -40,8 +36,6 @@ func checkDockerDaemon(ctx context.Context, env *Env) Result {
 	return r
 }
 
-// checkBuildx verifies the buildx plugin is installed. Without it image builds
-// fall back to the legacy builder and lose BuildKit features, so this is a warn.
 func checkBuildx(ctx context.Context, env *Env) Result {
 	r := Result{Name: "buildx"}
 	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "buildx", "version")
@@ -56,11 +50,6 @@ func checkBuildx(ctx context.Context, env *Env) Result {
 	return r
 }
 
-// checkCacheExport probes whether the active builder can export build cache
-// (`--cache-to`). The default `docker` driver cannot; `--cache-to`, `--output`
-// and cross-`--platform` builds all require a cache-capable builder (a
-// docker-container builder or the containerd image store). It is a warn, not a
-// fail, because a plain `up` without those flags still works.
 func checkCacheExport(ctx context.Context, env *Env) Result {
 	r := Result{Name: "build-cache-export", Fixable: true}
 
@@ -92,9 +81,6 @@ func checkCacheExport(ctx context.Context, env *Env) Result {
 	return r
 }
 
-// writeProbeContext creates the cache-export probe's build context under base:
-// a fresh temp directory holding probeDockerfile. On failure nothing is left
-// behind and the error says which step failed.
 func writeProbeContext(base string) (string, error) {
 	dir, err := os.MkdirTemp(base, "devcontainer-doctor-*")
 	if err != nil {
@@ -107,8 +93,6 @@ func writeProbeContext(base string) (string, error) {
 	return dir, nil
 }
 
-// checkComposeV2 verifies the Compose v2 plugin. Only Compose-based dev
-// containers need it, so its absence is a warn.
 func checkComposeV2(ctx context.Context, env *Env) Result {
 	r := Result{Name: "compose-v2"}
 	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "compose", "version", "--short")
@@ -123,9 +107,6 @@ func checkComposeV2(ctx context.Context, env *Env) Result {
 	return r
 }
 
-// checkDiskSpace warns when the Docker data directory's filesystem is low on
-// free space. Image pulls and builds fail opaquely when the disk fills, so this
-// preempts a confusing mid-build error.
 func checkDiskSpace(ctx context.Context, env *Env) Result {
 	r := Result{Name: "disk-space"}
 	path := dockerDataRoot(ctx, env)
@@ -152,11 +133,6 @@ func checkDiskSpace(ctx context.Context, env *Env) Result {
 	return r
 }
 
-// checkSELinux warns when SELinux is in enforcing mode. Docker does not
-// auto-relabel bind mounts, so the workspace mount (and any `mounts`) then fail
-// with a cryptic "Permission denied" inside the container until relabeled — a
-// common Fedora/RHEL/CentOS gotcha. A warn, not a fail: image-only configs and
-// hosts that relabel out of band still work.
 func checkSELinux(_ context.Context, env *Env) Result {
 	r := Result{Name: "selinux"}
 	path := env.SELinuxEnforcePath
@@ -165,7 +141,6 @@ func checkSELinux(_ context.Context, env *Env) Result {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		// No selinuxfs → SELinux not enabled on this host.
 		r.Status = StatusOK // mutate-exempt: StatusOK is Result's zero value, so dropping this write leaves the same Result
 		r.Summary = "SELinux not enabled"
 		return r
@@ -182,8 +157,6 @@ func checkSELinux(_ context.Context, env *Env) Result {
 	return r
 }
 
-// dockerDataRoot returns the daemon's Docker Root Dir when it can be read,
-// falling back to the user's home directory (a reasonable proxy filesystem).
 func dockerDataRoot(ctx context.Context, env *Env) string {
 	stdout, _, code, err := env.runner().Run(ctx, nil, env.dockerPath(), "info", "--format", "{{.DockerRootDir}}")
 	if err == nil && code == 0 {
@@ -201,7 +174,6 @@ func dockerDataRoot(ctx context.Context, env *Env) string {
 	return "/"
 }
 
-// statfsFree returns the free bytes available to an unprivileged user at path.
 func statfsFree(path string) (uint64, error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {
@@ -210,7 +182,6 @@ func statfsFree(path string) (uint64, error) {
 	return st.Bavail * uint64(st.Bsize), nil
 }
 
-// firstLine returns the first non-empty trimmed line of s.
 func firstLine(s string) string {
 	for line := range strings.SplitSeq(s, "\n") {
 		if t := strings.TrimSpace(line); t != "" {
@@ -220,7 +191,6 @@ func firstLine(s string) string {
 	return ""
 }
 
-// humanBytes renders a byte count as a compact GiB/MiB string.
 func humanBytes(b uint64) string {
 	const gib = 1 << 30
 	const mib = 1 << 20

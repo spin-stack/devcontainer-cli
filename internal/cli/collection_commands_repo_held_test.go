@@ -15,9 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// generate-docs documents the folder its positional argument names, else the
-// one --project-folder names; the working directory (the default ".") is left
-// alone either way.
 func TestGenerateDocsCommandsProjectFolder(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeFeature(t, ".", "decoy", `{"id":"decoy","version":"1.0.0","name":"Decoy"}`)
@@ -69,8 +66,6 @@ func runFeaturesTestCmd(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// features test refuses the flag combinations TS refuses, before it looks at
-// the collection; each flag alone is accepted and reaches the collection check.
 func TestFeaturesTestCommandFlagConflicts(t *testing.T) {
 	empty := t.TempDir()
 	conflicts := map[string][]string{
@@ -89,9 +84,6 @@ func TestFeaturesTestCommandFlagConflicts(t *testing.T) {
 	}
 }
 
-// features test checks the collection its positional target names, or
-// --project-folder's when the target is missing or "."; a collection without
-// src/ and test/ exits 1 naming the folder on stdout.
 func TestFeaturesTestCommandTarget(t *testing.T) {
 	project, target := t.TempDir(), t.TempDir()
 	cases := []struct {
@@ -113,8 +105,6 @@ func TestFeaturesTestCommandTarget(t *testing.T) {
 	}
 }
 
-// orderedObjectKeys lists an object's own keys in source order, whatever its
-// values nest, and nothing for anything but an object.
 func TestOrderedObjectKeys(t *testing.T) {
 	raw := `{"z":{"x":"y","k":{"deep":[1,{"q":"r"}]}},"a":["s",{"t":"u"}],"m":"v","b":null}`
 	if got, want := orderedObjectKeys(json.RawMessage(raw)), []string{"z", "a", "m", "b"}; !slices.Equal(got, want) {
@@ -127,9 +117,6 @@ func TestOrderedObjectKeys(t *testing.T) {
 	}
 }
 
-// createTarArchive roots the entries at "./", with forward slashes and a
-// trailing slash on directories, and records no user or group names, as
-// node-tar does.
 func TestCreateTarArchiveEntries(t *testing.T) {
 	src := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(src, "sub"), 0o755); err != nil {
@@ -170,8 +157,6 @@ func TestCreateTarArchiveEntries(t *testing.T) {
 	if want := []string{"./", "./sub/", "./sub/install.sh"}; !slices.Equal(names, want) {
 		t.Errorf("entries = %q, want %q", names, want)
 	}
-	// The archive is finished: whole 512-byte blocks ending in the two zero
-	// blocks that mark the end of a tar.
 	data, err := os.ReadFile(archive)
 	if err != nil {
 		t.Fatal(err)

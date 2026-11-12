@@ -8,8 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// TestTSOracleImageMetadata asserts the ports in merge.go and extend.go against
-// the reference functions' results (go tool task testdata:ts-oracle).
 func TestTSOracleImageMetadata(t *testing.T) {
 	str := func(port func(string) string) oracletest.Func {
 		return func(args []json.RawMessage) (any, error) {
@@ -31,7 +29,6 @@ func TestTSOracleImageMetadata(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
-			// TS leaves the properties it has no value for undefined, out of its JSON.
 			var merged map[string]any
 			if err := json.Unmarshal(data, &merged); err != nil {
 				return nil, err
@@ -80,8 +77,6 @@ func TestTSOracleImageMetadata(t *testing.T) {
 	})
 }
 
-// JSON.stringify writes the -0 that parseInt("-0") makes as 0; so does the
-// merged configuration, byte for byte (DeepEqual cannot tell -0 from 0).
 func TestMergeForwardPortsWritesANegativeZeroAsZero(t *testing.T) {
 	merged := MergeConfiguration([]Entry{{ForwardPorts: []any{"aaaaaaaaaa-0 localhost:1"}}})
 	data, err := json.Marshal(merged.ForwardPorts)

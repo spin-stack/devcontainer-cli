@@ -5,12 +5,6 @@ import (
 	"testing"
 )
 
-// Each test here encodes a merge rule from the TS mergeConfiguration
-// (reference/src/spec-node/imageMetadata.ts) that the Go merge previously got
-// wrong.
-
-// TestMerge_MountsDedupByTarget: a later entry's mount to the same target must
-// REPLACE the earlier one (TS mergeMounts de-dupes by target, keeping last).
 func TestMerge_MountsDedupByTarget(t *testing.T) {
 	m := MergeConfiguration([]Entry{
 		{Mounts: []any{map[string]any{"source": "vol-a", "target": "/data", "type": "volume"}}},
@@ -24,8 +18,6 @@ func TestMerge_MountsDedupByTarget(t *testing.T) {
 	}
 }
 
-// TestMerge_EntrypointsNoDedup: identical entrypoints from two features must BOTH
-// be kept (TS collectOrUndefined does not de-dupe; both scripts run).
 func TestMerge_EntrypointsNoDedup(t *testing.T) {
 	m := MergeConfiguration([]Entry{
 		{Entrypoint: "/init.sh"},
@@ -36,8 +28,6 @@ func TestMerge_EntrypointsNoDedup(t *testing.T) {
 	}
 }
 
-// TestMerge_ForwardPortsDedup: the number 3000 and duplicates collapse, treating
-// N and "localhost:N" as the same port.
 func TestMerge_ForwardPortsDedup(t *testing.T) {
 	m := MergeConfiguration([]Entry{
 		{ForwardPorts: []any{float64(3000)}},
@@ -48,7 +38,6 @@ func TestMerge_ForwardPortsDedup(t *testing.T) {
 		t.Errorf("forwardPorts = %v, want %v", m.ForwardPorts, want)
 	}
 
-	// number 3000 and string "localhost:3000" are the same port -> one entry (a number).
 	m2 := MergeConfiguration([]Entry{
 		{ForwardPorts: []any{float64(3000)}},
 		{ForwardPorts: []any{"localhost:3000"}},
@@ -57,15 +46,12 @@ func TestMerge_ForwardPortsDedup(t *testing.T) {
 		t.Errorf("forwardPorts = %v, want [3000]", m2.ForwardPorts)
 	}
 
-	// a host:port string is not a plain port and stays a string.
 	m3 := MergeConfiguration([]Entry{{ForwardPorts: []any{"db:5432", "db:5432"}}})
 	if !reflect.DeepEqual(m3.ForwardPorts, []any{"db:5432"}) {
 		t.Errorf("forwardPorts = %v, want [db:5432]", m3.ForwardPorts)
 	}
 }
 
-// TestMerge_HostRequirementsPerFieldMax: cpus from one entry and memory from
-// another must both survive, with memory normalized to bytes (TS per-field max).
 func TestMerge_HostRequirementsPerFieldMax(t *testing.T) {
 	m := MergeConfiguration([]Entry{
 		{HostRequirements: map[string]any{"cpus": float64(4)}},
@@ -79,17 +65,13 @@ func TestMerge_HostRequirementsPerFieldMax(t *testing.T) {
 	if hr["cpus"] != float64(4) {
 		t.Errorf("cpus = %v, want 4 (max)", hr["cpus"])
 	}
-	if hr["memory"] != "8589934592" { // 8 * 2^30
+	if hr["memory"] != "8589934592" {
 		t.Errorf("memory = %v, want 8589934592 (max of 8gb/4gb, normalized)", hr["memory"])
 	}
 
-	// No entry sets hostRequirements -> nil.
 	if got := MergeConfiguration([]Entry{{RemoteUser: "x"}}).HostRequirements; got != nil {
 		t.Errorf("hostRequirements = %v, want nil", got)
 	}
-	// No entry at all - an empty one is dropped, as TS getDevcontainerMetadata
-	// drops it - and TS takes Math.max() of nothing, -Infinity: cpus null,
-	// memory and storage "-Infinity".
 	want := map[string]any{"cpus": nil, "memory": "-Infinity", "storage": "-Infinity"}
 	if got := MergeConfiguration([]Entry{{}}).HostRequirements; !reflect.DeepEqual(got, want) {
 		t.Errorf("hostRequirements = %v, want %v", got, want)
@@ -99,7 +81,6 @@ func TestMerge_HostRequirementsPerFieldMax(t *testing.T) {
 	}
 }
 
-// TestMerge_LifecycleSkipsEmptyString: an empty-string command is not collected.
 func TestMerge_LifecycleSkipsEmptyString(t *testing.T) {
 	m := MergeConfiguration([]Entry{
 		{OnCreateCommand: ""},

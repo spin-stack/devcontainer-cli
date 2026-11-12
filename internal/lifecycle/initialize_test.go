@@ -11,8 +11,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// cmdFromJSON builds a LifecycleCommand the way the loader does: by unmarshalling
-// its JSON form (string | []string | object), since raw is unexported.
 func cmdFromJSON(t *testing.T, raw string) *config.LifecycleCommand {
 	t.Helper()
 	var c config.LifecycleCommand
@@ -23,8 +21,6 @@ func cmdFromJSON(t *testing.T, raw string) *config.LifecycleCommand {
 }
 
 func TestRunInitializeCommand(t *testing.T) {
-	// LocalWorkspaceFolder is also the child's working directory (cmd.Dir), so it
-	// must be a real path.
 	hostSub := config.HostSubContext{Platform: "linux", LocalWorkspaceFolder: t.TempDir()}
 
 	tests := []struct {
@@ -57,22 +53,15 @@ func TestRunInitializeCommand(t *testing.T) {
 	}
 }
 
-// A ${localWorkspaceFolder} in the command is resolved against hostSub before the
-// command runs; the substituted value must reach the child process.
 func TestRunInitializeCommandSubstitutesLocalWorkspaceFolder(t *testing.T) {
 	dir := t.TempDir()
 	hostSub := config.HostSubContext{Platform: "linux", LocalWorkspaceFolder: dir}
-	// `test -d <dir>` succeeds only if the substituted path is a real directory,
-	// proving the substitution happened (an unresolved ${...} would fail).
 	cmd := cmdFromJSON(t, `"test -d ${localWorkspaceFolder}"`)
 	if err := RunInitializeCommand(context.Background(), log.Null, cmd, hostSub); err != nil {
 		t.Fatalf("substitution not applied to command: %v", err)
 	}
 }
 
-// Every parallel initializeCommand runs to completion, and with several failing
-// the error names the first in name order - the same every run, not whichever
-// goroutine finished first.
 func TestRunInitializeCommandParallelFirstFailureByName(t *testing.T) {
 	dir := t.TempDir()
 	var cmd config.LifecycleCommand

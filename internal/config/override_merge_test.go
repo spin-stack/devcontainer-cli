@@ -18,7 +18,7 @@ func TestDeepMergeConfig(t *testing.T) {
 	}
 	override := map[string]any{
 		"remoteUser": "root",
-		"runArgs":    []any{"--b"}, // arrays replace, not append
+		"runArgs":    []any{"--b"},
 		"customizations": map[string]any{
 			"vscode": map[string]any{"settings": map[string]any{"k": "v"}},
 		},
@@ -34,7 +34,6 @@ func TestDeepMergeConfig(t *testing.T) {
 	if !reflect.DeepEqual(got["runArgs"], []any{"--b"}) {
 		t.Errorf("array should be replaced, got %v", got["runArgs"])
 	}
-	// Nested object merged: extensions (base) preserved AND settings (override) added.
 	vscode := got["customizations"].(map[string]any)["vscode"].(map[string]any)
 	if !reflect.DeepEqual(vscode["extensions"], []any{"x"}) {
 		t.Errorf("nested base key lost: extensions=%v", vscode["extensions"])
@@ -73,7 +72,6 @@ func TestLoadDevContainerConfigMergesOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	// Deep-merge (Go divergence): base image/runArgs survive, override wins remoteUser.
 	if result.Config.Image != "ubuntu:22.04" {
 		t.Errorf("base image lost after override merge: %q", result.Config.Image)
 	}

@@ -27,8 +27,6 @@ func runExecCommand(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// Help before the command prints the usage; no command is an error; a command
-// reaches exec, whose flag validation runs first.
 func TestExecCommandArguments(t *testing.T) {
 	for _, h := range []string{"-h", "--help"} {
 		out, err := runExecCommand(t, h)
@@ -70,9 +68,6 @@ func TestExecConfigPath(t *testing.T) {
 	}
 }
 
-// TS exec reads the configuration the flags name, with or without
-// --container-id, and fails when it cannot: --config without
-// --workspace-folder is read, and a missing one is not found.
 func TestExecLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "c.json")
@@ -156,7 +151,6 @@ func TestExecRemoteEnv(t *testing.T) {
 	if _, err := execRemoteEnv(nil, map[string]*string{"X": str("${containerEnv}")}, nil, nil); err == nil {
 		t.Error("an unresolvable ${containerEnv}: want an error")
 	}
-	// TS's ContainerError text, naming the configuration's file.
 	withFile := &config.DevContainer{ConfigFilePath: "/ws/c.json", RemoteEnv: map[string]*string{"X": str("${containerEnv}")}}
 	wantErr := "'${containerEnv}' in c.json can not be resolved because no environment variable name is given."
 	if _, err := execRemoteEnv(nil, nil, withFile, nil); err == nil || err.Error() != wantErr {
@@ -164,9 +158,6 @@ func TestExecRemoteEnv(t *testing.T) {
 	}
 }
 
-// TS runs containerSubstitute over the whole configuration and merged
-// configuration: an unnamed ${containerEnv} anywhere is its ContainerError,
-// named ones resolve.
 func TestCheckContainerSubstitution(t *testing.T) {
 	env := map[string]string{"P": "/bin"}
 	ok := map[string]any{"postCreateCommand": "echo ${containerEnv:P}"}

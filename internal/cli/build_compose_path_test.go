@@ -9,13 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// TestBuildComposePathWiring verifies that the `build` command threads
-// --docker-compose-path into docker.NewComposeClient. When the call site
-// hardcodes "" instead, the operator-supplied path could never appear in the
-// compose-client detection error ("neither 'docker compose' nor '<path>'
-// found"). The test is hermetic: dockerPath points at a nonexistent binary so
-// the `docker compose` (v2) probe always fails regardless of the host, forcing
-// NewComposeClient down the custom-path branch.
 func TestBuildComposePathWiring(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -39,8 +32,6 @@ func TestBuildComposePathWiring(t *testing.T) {
 			r := &buildRunner{
 				log: log.New(log.Options{Writer: io.Discard}),
 				opts: &buildOpts{
-					// Force the `docker compose` (v2) probe to fail hermetically,
-					// independent of whether Docker is installed on the host.
 					dockerPath:        "/nonexistent/docker-binary",
 					dockerComposePath: tt.dockerComposePath,
 				},

@@ -7,9 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// An empty metadata label is no metadata, read without a warning: TS
-// getImageMetadataFromContainer (reference/src/spec-node/imageMetadata.ts)
-// parses the label only `if (str)`. An unparsable one is warned about.
 func TestReadMetadataFromLabelsTakesAnEmptyLabelAsNone(t *testing.T) {
 	for _, tt := range []struct {
 		name, label string

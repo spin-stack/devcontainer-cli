@@ -24,8 +24,6 @@ import (
 	"github.com/devcontainers/cli/internal/stringify"
 )
 
-// loadFixtureConfig writes a workspace with .devcontainer/devcontainer.json
-// (and the other files given) and loads it as read-configuration does.
 func loadFixtureConfig(t *testing.T, devcontainerJSON string, files map[string]string) (string, *config.LoadResult) {
 	t.Helper()
 	all := map[string]string{".devcontainer/devcontainer.json": devcontainerJSON}
@@ -127,20 +125,15 @@ func TestConfigurationOutput(t *testing.T) {
 		t.Errorf("configFilePath = %v, want %v", got["configFilePath"], want)
 	}
 
-	// TS makes a file URI of --config only; the configuration found in the
-	// workspace keeps the vscode-fileHost scheme with --override-config or
-	// --container-id.
 	for name, tc := range map[string]struct {
 		opts   readConfigOpts
 		scheme string
 	}{
-		"--config":          {readConfigOpts{configPath: cfp}, "file"},
-		"--override-config": {readConfigOpts{overrideConfig: cfp}, "vscode-fileHost"},
-		"--container-id":    {readConfigOpts{containerID: "abc"}, "vscode-fileHost"},
-		// Without a workspace the override is the configuration, a file URI
-		// (configPath = overrideConfigFile).
-		"--override-config, --container-id":                     {readConfigOpts{overrideConfig: cfp, containerID: "abc"}, "file"},
-		"--override-config, --id-label":                         {readConfigOpts{overrideConfig: cfp, idLabels: []string{"a=b"}}, "file"},
+		"--config":                          {readConfigOpts{configPath: cfp}, "file"},
+		"--override-config":                 {readConfigOpts{overrideConfig: cfp}, "vscode-fileHost"},
+		"--container-id":                    {readConfigOpts{containerID: "abc"}, "vscode-fileHost"},
+		"--override-config, --container-id": {readConfigOpts{overrideConfig: cfp, containerID: "abc"}, "file"},
+		"--override-config, --id-label":     {readConfigOpts{overrideConfig: cfp, idLabels: []string{"a=b"}}, "file"},
 		"--override-config, --container-id, --workspace-folder": {readConfigOpts{overrideConfig: cfp, containerID: "abc", workspaceFolder: "/p"}, "vscode-fileHost"},
 	} {
 		got := configurationOutput(result, &tc.opts)
@@ -183,8 +176,6 @@ func TestReadConfigurationContainerID(t *testing.T) {
 	if got, err := readConfigurationContainerID(ctx, engine, &readConfigOpts{containerID: "given"}, ws, result); err != nil || got != "given" || len(api.listed) != 0 {
 		t.Errorf("--container-id = %q (listed %v), want it as given without a lookup", got, api.listed)
 	}
-	// A lookup that fails fails the command, as TS's findContainerAndIdLabels
-	// throws: without an engine too, though --container-id needs no lookup.
 	noEngine := failingLister{errors.New("no engine")}
 	if got, err := readConfigurationContainerID(ctx, noEngine, &readConfigOpts{}, ws, result); got != "" || err == nil || !strings.HasPrefix(err.Error(), "Command failed: docker ps -q -a --filter label=devcontainer.local_folder=/some/workspace") {
 		t.Errorf("without an engine = %q, %v; want the failed lookup", got, err)
@@ -197,8 +188,6 @@ func TestReadConfigurationContainerID(t *testing.T) {
 	}
 }
 
-// A container read-configuration cannot inspect fails it, as TS's
-// inspectContainer throws; with no container there is nothing to inspect.
 func TestInspectContainerConfig(t *testing.T) {
 	ctx := context.Background()
 	api := &fakeEngineAPI{containers: map[string]string{
@@ -232,7 +221,6 @@ func TestSubstituteContainerEnv(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, map[string]any{"remoteEnv": map[string]any{"P": "/bin"}}) {
 		t.Fatalf("with a container = %v, %v; want ${containerEnv:PATH} resolved", got, err)
 	}
-	// A reference without a name is TS's ContainerError naming the file.
 	_, err = substituteContainerEnv(&container.Config{}, map[string]any{"x": "${containerEnv}"}, "/ws/c.json")
 	want := "'${containerEnv}' in c.json can not be resolved because no environment variable name is given."
 	if ce, ok := coreerrors.AsContainerError(err); !ok || ce.Description != want {
@@ -240,9 +228,6 @@ func TestSubstituteContainerEnv(t *testing.T) {
 	}
 }
 
-// TS readConfiguration resolves ${devcontainerId} in the configuration from
-// the found container's id labels (beforeContainerSubstitute); without a
-// container it stays as written.
 func TestSubstituteDevContainerID(t *testing.T) {
 	cfgMap := map[string]any{"name": "${devcontainerId}", "remoteEnv": map[string]any{"P": "${containerEnv:PATH}"}}
 	got, err := substituteDevContainerID(nil, cfgMap, nil, "", nil)
@@ -278,8 +263,6 @@ func TestWorkspaceOutput(t *testing.T) {
 	withMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p", WorkspaceMount: "type=bind,source=/p,target=/workspaces/p"}}
 	withoutMount := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/p"}}
 	worktree := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{WorkspaceFolder: "/workspaces/wt", WorkspaceMount: "type=bind,source=/r/wt,target=/workspaces/wt", AdditionalMounts: []string{"type=bind,source=/r/repo/.git,target=/workspaces/repo/.git"}}}
-	// Without a workspace the loader leaves the configuration's own folder and
-	// mount, possibly empty: TS writes what is set (undefined is left out).
 	noWorkspace := &config.LoadResult{WorkspaceConfig: &config.WorkspaceConfig{}}
 	for _, tc := range []struct {
 		name   string
@@ -303,7 +286,6 @@ func TestWorkspaceOutput(t *testing.T) {
 	}
 }
 
-// TS writes the workspace as getWorkspaceConfiguration's literal lists it.
 func TestWorkspaceOutputKeepsTSOrder(t *testing.T) {
 	got, err := stringify.JSON(orderedObject{map[string]any{"additionalMountString": "a", "workspaceMount": "m", "workspaceFolder": "f"}, workspaceKeys}, "")
 	if err != nil {
@@ -397,8 +379,6 @@ func TestMergedConfigurationOutput(t *testing.T) {
 	})
 
 	t.Run("with a container the CLI created", func(t *testing.T) {
-		// Its label records the configuration's entry: only the configuration's
-		// updateable properties follow, so its commands are not merged twice.
 		cc := &container.Config{Labels: map[string]string{
 			"devcontainer.metadata":     `[{"postStartCommand":"from-config"}]`,
 			"devcontainer.local_folder": "/ws",
@@ -467,13 +447,8 @@ func TestConfigMetadataEntry(t *testing.T) {
 	}
 }
 
-// runReadConfigurationCmd runs read-configuration with args and returns its
-// stdout parsed, or the command's error.
 func runReadConfigurationCmd(t *testing.T, args ...string) (map[string]any, error) {
 	t.Helper()
-	// read-configuration looks for the container (TS findContainerAndIdLabels),
-	// and a lookup that fails fails the command, so an engine with no
-	// containers answers it.
 	startFakeEngine(t, nil)
 	stdout, err := readConfigurationStdout(args...)
 	if err != nil {
@@ -486,8 +461,6 @@ func runReadConfigurationCmd(t *testing.T, args ...string) (map[string]any, erro
 	return out, nil
 }
 
-// readConfigurationStdout runs read-configuration with args and returns its
-// stdout as written, or the command's error.
 func readConfigurationStdout(args ...string) (string, error) {
 	var stdout bytes.Buffer
 	root := NewRootCommand()
@@ -506,8 +479,6 @@ func wantExitCode(t *testing.T, err error, code int) {
 	}
 }
 
-// localFeatureFiles is a local Feature at .devcontainer/feat whose metadata
-// adds a capability.
 var localFeatureFiles = map[string]string{
 	".devcontainer/feat/devcontainer-feature.json": `{"id": "feat", "version": "1.0.0", "capAdd": ["SYS_PTRACE"]}`,
 	".devcontainer/feat/install.sh":                "#!/bin/sh\n",
@@ -519,8 +490,6 @@ func TestReadConfigurationCommandWithoutConfigExitsOne(t *testing.T) {
 }
 
 func TestReadConfigurationCommandContainerIDWithoutWorkspace(t *testing.T) {
-	// --container-id alone loads no configuration; a container that cannot be
-	// inspected fails the command with no result, as TS's inspectContainer throws.
 	_, err := runReadConfigurationCmd(t, "--container-id", "devcontainer-cli-test-no-such-container")
 	wantExitCode(t, err, 1)
 	if !strings.Contains(err.Error(), "inspect container devcontainer-cli-test-no-such-container") {
@@ -528,10 +497,6 @@ func TestReadConfigurationCommandContainerIDWithoutWorkspace(t *testing.T) {
 	}
 }
 
-// Without a workspace folder (--id-label, no --workspace-folder), TS reads
-// --override-config as the configuration (configPath = overrideConfigFile):
-// it is printed, its configFilePath the override's file URI. Go printed an
-// empty configuration.
 func TestReadConfigurationCommandOverrideConfigWithoutWorkspace(t *testing.T) {
 	override := filepath.Join(t.TempDir(), "override.json")
 	if err := os.WriteFile(override, []byte(`{"image":"img:1","name":"${localWorkspaceFolderBasename}"}`), 0o644); err != nil {
@@ -554,10 +519,6 @@ func TestReadConfigurationCommandOverrideConfigWithoutWorkspace(t *testing.T) {
 	}
 }
 
-// Without a workspace folder, TS getWorkspaceConfiguration keeps the
-// configuration's own workspaceFolder and workspaceMount, which
-// read-configuration prints as the workspace. Go printed an empty workspace
-// with --container-id, and an empty workspaceFolder without one.
 func TestReadConfigurationCommandWorkspaceWithoutWorkspaceFolder(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
 	if err := os.WriteFile(cfg, []byte(`{"image":"img:1","workspaceFolder":"/wf","workspaceMount":"type=bind,source=/a,target=/wf"}`), 0o644); err != nil {
@@ -573,9 +534,6 @@ func TestReadConfigurationCommandWorkspaceWithoutWorkspaceFolder(t *testing.T) {
 	}
 }
 
-// An unresolvable ${containerEnv} fails read-configuration as TS's
-// ContainerError does: logged, naming the configuration's file, exit 1 and
-// nothing on stdout.
 func TestReadConfigurationCommandUnresolvableContainerVariable(t *testing.T) {
 	startFakeEngine(t, map[string]map[string]string{"c1": {}})
 	cfg := filepath.Join(t.TempDir(), "c.json")
@@ -597,10 +555,6 @@ func TestReadConfigurationCommandUnresolvableContainerVariable(t *testing.T) {
 	}
 }
 
-// --cache-key over a malformed devcontainer-lock.json is a runtime failure:
-// the error envelope on stdout naming the lockfile, exit 1. Without the flag
-// the command does not read the lockfile, as the reference's
-// read-configuration does not, and succeeds.
 func TestReadConfigurationCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	ws := writeConfigFixture(t, map[string]string{
 		".devcontainer/devcontainer.json":      `{"image": "img:1"}`,
@@ -626,9 +580,6 @@ func TestReadConfigurationCacheKeyFailsOnAMalformedLockfile(t *testing.T) {
 	}
 }
 
-// --cache-key over a Dockerfile configuration whose Dockerfile is missing
-// fails with the error result naming the file; without the flag the command
-// does not read the Dockerfile, as the reference's does not, and succeeds.
 func TestReadConfigurationCacheKeyFailsOnAMissingDockerfile(t *testing.T) {
 	ws := writeConfigFixture(t, map[string]string{
 		".devcontainer/devcontainer.json": `{"build": {"dockerfile": "Dockerfile"}}`,
@@ -695,8 +646,6 @@ func TestReadConfigurationCommandUnresolvableFeatureExitsOne(t *testing.T) {
 }
 
 func TestReadConfigurationCommandMergedWithoutContainer(t *testing.T) {
-	// A Dockerfile without FROM names no base image, so nothing is inspected:
-	// the merged configuration is the Features' metadata and the config's.
 	files := map[string]string{
 		".devcontainer/devcontainer.json": `{"build": {"dockerfile": "Dockerfile"}, "remoteUser": "me", "features": {"./feat": {}}}`,
 		".devcontainer/Dockerfile":        "ARG X=1\n",
@@ -731,9 +680,6 @@ func TestReadConfigurationCommandMergedWithoutImageExitsOne(t *testing.T) {
 }
 
 func TestReadConfigurationCommandWithoutDockerEngine(t *testing.T) {
-	// Without a Docker engine the container lookup fails, and so does the
-	// command, with nothing on stdout: TS's findContainerAndIdLabels runs
-	// `docker ps`, whose failure exits read-configuration 1.
 	t.Setenv("DOCKER_HOST", "not a docker host")
 	ws := writeConfigFixture(t, map[string]string{".devcontainer/devcontainer.json": `{"image": "img:1"}`})
 	logFile := filepath.Join(t.TempDir(), "log.txt")
@@ -753,9 +699,6 @@ func TestReadConfigurationCommandWithoutDockerEngine(t *testing.T) {
 	}
 }
 
-// A container lookup by --id-label that fails exits 1 with nothing on stdout,
-// as TS's findDevContainer `docker ps` failure does. Go printed the
-// configuration and exited 0.
 func TestReadConfigurationCommandFailedIDLabelLookup(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "unix:///nonexistent/docker.sock")
 	cfg := filepath.Join(t.TempDir(), "devcontainer.json")
@@ -772,13 +715,8 @@ func TestReadConfigurationCommandFailedIDLabelLookup(t *testing.T) {
 	}
 }
 
-// Reading the Features configuration writes TS generateFeaturesConfig's trace
-// lines (containerFeaturesConfiguration.ts): the workspace root, then, with no
-// Features, that there are no user Features. Without a request for the
-// Features nothing is read.
 func TestReadConfigurationCommandTracesReadingTheFeatures(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "not a docker host")
-	// traced is the log's lines without their timestamps.
 	traced := func(ws string, args ...string) []string {
 		t.Helper()
 		logFile := filepath.Join(t.TempDir(), "log.txt")

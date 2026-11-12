@@ -8,13 +8,8 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// mermaidNodeLine is one node line of the diagram: TS generateMermaidNode
-// (containerFeaturesOrder.ts) names a node by the first 6 hex digits of its
-// sha256, then its id, roundPriority and aliases.
 var mermaidNodeLine = regexp.MustCompile(`^([0-9a-f]{6})\[(.*)\]$`)
 
-// Each resolved node is labelled with its aliases, [id, ...legacyIds], which
-// TS _buildDependencyGraph stores as featureIdAliases.
 func TestGenerateMermaidDiagramLabelsAliases(t *testing.T) {
 	registry := map[string]stubFeature{
 		"ghcr.io/ns/a": {id: "a", digest: "sha256:a", legacyIds: []string{"old-a"}},
@@ -34,8 +29,6 @@ func TestGenerateMermaidDiagramLabelsAliases(t *testing.T) {
 	}
 }
 
-// Two nodes that differ only in their options are two mermaid nodes: TS hashes
-// the whole node, options included.
 func TestGenerateMermaidDiagramHashesOptions(t *testing.T) {
 	node := func(v string) *FNode {
 		return &FNode{Type: "user-provided", UserFeatureID: "ghcr.io/ns/a:1", Options: map[string]any{"v": v}}

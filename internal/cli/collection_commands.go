@@ -24,8 +24,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// --- Features package ---
-
 func realFeaturesPackageCmd() *cobra.Command {
 	var (
 		outputFolder string
@@ -50,10 +48,6 @@ func realFeaturesPackageCmd() *cobra.Command {
 	return cmd
 }
 
-// --- Features publish ---
-
-// requireTarget is yargs' check for a required <target> positional: TS declares
-// `package <target>` and `publish <target>`, and stops when it is missing.
 func requireTarget(_ *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("Not enough non-option arguments: got %d, need at least 1", len(args))
@@ -85,8 +79,6 @@ func realFeaturesPublishCmd() *cobra.Command {
 	return cmd
 }
 
-// --- Templates publish ---
-
 func realTemplatesPublishCmd() *cobra.Command {
 	var (
 		registry  string
@@ -110,8 +102,6 @@ func realTemplatesPublishCmd() *cobra.Command {
 
 	return cmd
 }
-
-// --- Generate docs ---
 
 func realFeaturesGenerateDocsCmd() *cobra.Command {
 	var (
@@ -182,8 +172,6 @@ func realTemplatesGenerateDocsCmd() *cobra.Command {
 	return cmd
 }
 
-// --- Features test ---
-
 func realFeaturesTestCmd() *cobra.Command {
 	var (
 		projectFolder       string
@@ -206,7 +194,6 @@ func realFeaturesTestCmd() *cobra.Command {
 		Short: "Test Features",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Validate conflicting flags (matches TS behavior)
 			if globalOnly && len(featuresList) > 0 {
 				return fmt.Errorf("Cannot combine --global-scenarios-only and --features")
 			}
@@ -267,20 +254,10 @@ func realFeaturesTestCmd() *cobra.Command {
 	return cmd
 }
 
-// --- Shared implementation ---
-
-// publishCollection wires the real OCI registry and process stdout, then
-// delegates to publishCollectionWith. Tests call publishCollectionWith directly
-// with a fake oci.Registry and a capturing Output to drive the partial-publish
-// error path hermetically.
 func publishCollection(ctx context.Context, targetFolder, registry, namespace, collectionType, logLevelStr string) error {
-	// TS parity: yargs demandOption → "Missing required argument: namespace"
-	// (canonicalized by the harness), not cobra's "required flag(s) ... not set".
 	if namespace == "" {
 		return fmt.Errorf("Missing required argument: namespace")
 	}
-	// TS parity: --log-level is a yargs choice; reject out-of-range instead of
-	// silently defaulting to Info (collectionCommonUtils/publish.ts:14).
 	if err := validateEnum("log-level", logLevelStr, logLevels); err != nil {
 		return err
 	}
@@ -300,8 +277,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 		Writer: out.Stderr(),
 	})
 
-	// Package first. A failed MkdirTemp would otherwise leave tmpDir="" and scatter
-	// the packaged artifacts into the current directory.
 	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-output-", collectionType))
 	if err != nil {
 		return fmt.Errorf("create output dir: %w", err)
@@ -309,7 +284,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	defer os.RemoveAll(tmpDir)
 
 	if err := packageCollection(targetFolder, tmpDir, collectionType, true, logLevelStr); err != nil {
-		// TS features publish adds this line when packaging failed (featuresCLI/publish.ts).
 		if _, ok := errors.AsType[*coreerrors.ExitCodeError](err); ok && collectionType == "feature" {
 			logger.Write("(!) ERR: Failed to fetch devcontainer-collection.json", log.LevelError)
 		}
@@ -318,7 +292,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 
 	logger.Write(fmt.Sprintf("Publishing %ss from %s to %s/%s...", collectionType, targetFolder, registry, namespace), log.LevelInfo)
 
-	// Read collection metadata
 	collMetaPath := filepath.Join(tmpDir, "devcontainer-collection.json")
 	collData, err := os.ReadFile(collMetaPath)
 	if err != nil {
@@ -328,8 +301,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	var collMeta map[string]any
 	json.Unmarshal(collData, &collMeta)
 
-	// Get items from collection. The ordered copy keeps each item's key order for
-	// its dev.containers.metadata annotation, which TS writes as JSON.stringify(f).
 	itemsKey := fmt.Sprintf("%ss", collectionType)
 	items, _ := collMeta[itemsKey].([]any)
 	orderedColl := orderedmap.New()
@@ -344,9 +315,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	}
 	kind := strings.ToUpper(collectionType[:1]) + collectionType[1:]
 
-	// publishOne is TS doPublishCommand: the published tags and digest, an empty
-	// result when the version is already published, or an error that ends the
-	// command (TS exits 1, before printing any result).
 	publishOne := func(ref *oci.Ref, archivePath, version string, annotations map[string]string) (*oci.PushResult, error) {
 		logger.Write("Fetching published versions...", log.LevelInfo)
 		published, tagsErr := ociClient.GetPublishedTagsContext(ctx, ref)
@@ -410,8 +378,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 			this = publishItemResult{PublishedTags: pushResult.PublishedTags, Digest: pushResult.Digest, Version: version}
 		}
 
-		// TS republishes a Feature under its legacyIds only when this version was
-		// published, and reports the aliases it published inside the item.
 		legacyIDs, _ := meta["legacyIds"].([]any)
 		if collectionType == "feature" && isPublished && len(legacyIDs) > 0 {
 			logger.Write(fmt.Sprintf("Processing legacyIds for '%s'...", id), log.LevelInfo)
@@ -438,8 +404,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 		result[id] = this
 	}
 
-	// Publish the collection metadata for the namespace (TS getCollectionRef +
-	// doPublishMetadata) so the collection's items are discoverable.
 	collRef, err := oci.ParseCollectionRef(registry, namespace)
 	if err != nil {
 		return failed(fmt.Sprintf("(!) Could not parse provided collection identifier with registry '%s' and namespace '%s'", registry, namespace))
@@ -456,9 +420,6 @@ func publishCollectionWith(ctx context.Context, out Output, reg oci.Registry, ta
 	return nil
 }
 
-// publishItemResult is one item of TS publish's result: empty when nothing was
-// published (the version already existed), else the tags, digest and version,
-// and for a Feature the legacy ids it was also published under.
 type publishItemResult struct {
 	PublishedTags      []string `json:"publishedTags,omitempty"`
 	Digest             string   `json:"digest,omitempty"`
@@ -466,20 +427,12 @@ type publishItemResult struct {
 	PublishedLegacyIDs []string `json:"publishedLegacyIds,omitempty"`
 }
 
-// README templates match the TS FEATURES_README_TEMPLATE / TEMPLATE_README_TEMPLATE
-// byte-for-byte. They live as real files (leading newline, blank lines, double space
-// before "Add" all preserved) so they stay readable and diffable instead of being
-// buried in escaped Go string literals.
-//
 //go:embed templates/feature-readme.tmpl
 var featuresReadmeTemplate string
 
 //go:embed templates/template-readme.tmpl
 var templatesReadmeTemplate string
 
-// generateDocs is a faithful port of the TS _generateDocumentation: it iterates
-// the DIRECT children of projectFolder (no auto-descent into src/), and for each
-// child writes <child>/README.md from the metadata file, preserving option order.
 func generateDocs(projectFolder, registry, namespace, githubOwner, githubRepo, collectionType, logLevelStr string) error {
 	logger := log.New(log.Options{
 		Level:  log.ParseLevel(logLevelStr),
@@ -607,9 +560,6 @@ func renderDocsTemplate(template string, values map[string]string) string {
 	return strings.NewReplacer(pairs...).Replace(template)
 }
 
-// generateOptionsMarkdown renders the options table with columns and row order
-// matching TS: "| Options Id | Description | Type | Default Value |" in the JSON's
-// insertion order. Returns "" only when the metadata has no "options" key.
 func generateOptionsMarkdown(std []byte, meta map[string]any) string {
 	optsVal, hasOptions := meta["options"]
 	if !hasOptions {
@@ -671,8 +621,6 @@ func generateDocsHeader(meta map[string]any) string {
 	return h
 }
 
-// jsTruthyString mirrors JS `value || fallback` for string cells: an empty or
-// non-string value falls back.
 func jsTruthyString(v any, fallback string) string {
 	if s, ok := v.(string); ok && s != "" {
 		return s
@@ -680,9 +628,6 @@ func jsTruthyString(v any, fallback string) string {
 	return fallback
 }
 
-// defaultCell mirrors TS `val.default !== ” ? val.default : '-'`: an empty string
-// becomes "-", an absent default renders "undefined", everything else prints as JS
-// would interpolate it.
 func defaultCell(ov map[string]any) string {
 	d, ok := ov["default"]
 	if !ok {
@@ -706,7 +651,6 @@ func defaultCell(ov map[string]any) string {
 	}
 }
 
-// orderedObjectKeys returns the keys of a JSON object in source order.
 func orderedObjectKeys(raw json.RawMessage) []string {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	t, err := dec.Token()
@@ -745,14 +689,10 @@ func skipJSONValue(dec *json.Decoder) error {
 			return err
 		}
 	}
-	_, err = dec.Token() // closing delim
+	_, err = dec.Token()
 	return err
 }
 
-// createTarArchive creates a plain (uncompressed) tar archive from a directory,
-// with entries rooted at "./" — matching the TS CLI (tar.create({cwd}, ["."]))
-// and the `+tar` layer media type. Not byte-reproducible (tar headers embed
-// mtimes), mirroring the TS CLI, which is likewise non-deterministic.
 func createTarArchive(archivePath, sourceDir string) error {
 	file, err := os.Create(archivePath)
 	if err != nil {
@@ -777,8 +717,6 @@ func createTarArchive(archivePath, sourceDir string) error {
 		// empty for a closer byte match.
 		header.Uname = ""
 		header.Gname = ""
-		// Root as "./", children as "./<rel>" with forward slashes; directories
-		// keep a trailing slash.
 		if relPath == "." {
 			header.Name = "./"
 		} else {
@@ -809,9 +747,6 @@ func createTarArchive(archivePath, sourceDir string) error {
 		return walkErr
 	}
 
-	// Close flushes the tar footer/padding; a deferred Close would drop that
-	// error and let us push a truncated archive to the registry as if it were
-	// whole.
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("finalize tar: %w", err)
 	}

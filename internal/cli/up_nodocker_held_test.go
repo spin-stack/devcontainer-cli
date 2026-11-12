@@ -11,9 +11,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// The remote user of the UID update comes from the image's metadata label too:
-// a root image whose metadata names a non-root remoteUser gets the -uid image,
-// built for that user.
 func TestSingleContainerRemoteUserUIDReadsTheImageMetadata(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the UID update runs on Linux only")

@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// fakeLister answers ListContainers from a map of "sorted,label,filter" -> ids.
 type fakeLister struct{ byFilter map[string][]string }
 
 func (f *fakeLister) ListContainers(_ context.Context, _ bool, labels []string) ([]string, error) {
@@ -27,7 +26,7 @@ func TestResolveContainerID(t *testing.T) {
 		f := &fakeLister{byFilter: map[string][]string{
 			key(local, "devcontainer.config_file="+cfgA): {"idA"},
 			key(local, "devcontainer.config_file="+cfgB): {"idB"},
-			key(local): {"idA", "idB"}, // both share local_folder
+			key(local): {"idA", "idB"},
 		}}
 		if got, err := resolveContainerID(context.Background(), f, ws, cfgB, nil); err != nil || got != "idB" {
 			t.Errorf("cfgB -> %q, want idB", got)
@@ -39,7 +38,7 @@ func TestResolveContainerID(t *testing.T) {
 
 	t.Run("falls back to local_folder for legacy container (no config_file match)", func(t *testing.T) {
 		f := &fakeLister{byFilter: map[string][]string{
-			key(local): {"legacy"}, // no config_file-filtered entry
+			key(local): {"legacy"},
 		}}
 		if got, err := resolveContainerID(context.Background(), f, ws, cfgA, nil); err != nil || got != "legacy" {
 			t.Errorf("-> %q, want legacy (fallback)", got)
@@ -79,7 +78,6 @@ func TestResolveContainerID(t *testing.T) {
 				t.Errorf("%s: %q, %v; want %q wrapping the engine's error", name, got, err, tc.want)
 			}
 		}
-		// The fallback lookup failing after a config-file miss fails too.
 		half := &halfLister{fail: key(local), err: boom}
 		if _, err := resolveContainerID(context.Background(), half, ws, cfgA, nil); err == nil || err.Error() != "Command failed: docker ps -q -a --filter label="+local {
 			t.Errorf("fallback lookup: err = %v", err)
@@ -87,7 +85,6 @@ func TestResolveContainerID(t *testing.T) {
 	})
 }
 
-// halfLister finds nothing, and fails the lookup by the fail filter.
 type halfLister struct {
 	fail string
 	err  error

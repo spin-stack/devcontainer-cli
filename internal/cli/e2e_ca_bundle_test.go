@@ -24,10 +24,8 @@ import (
 
 const e2eBaseImage = "mcr.microsoft.com/devcontainers/base:ubuntu"
 
-// startTLSServer runs `openssl s_server -www` on the default bridge, where
-// builds' RUNs and dev containers reach it by its address, with a certificate
-// for that address signed by ca. The host's firewall may drop a container's
-// traffic to the host, so the server is a container too.
+// The host's firewall may drop a container's traffic to the host, so the
+// server is a container too.
 func startTLSServer(t *testing.T, ca *testCA) string {
 	t.Helper()
 	certs := t.TempDir()
@@ -84,10 +82,6 @@ func serverDiagnostics(id string) string {
 	return fmt.Sprintf("state: %s\nlogs: %s", state, logs)
 }
 
-// imageLeaks lists the files of image's own layers among files, and where the
-// markers appear in what image adds to base: the content of its own layers'
-// files and its config, which holds
-// the history and labels. A layer of base is skipped by its diff ID.
 func imageLeaks(t *testing.T, image, base string, files []string, markers ...string) []string {
 	t.Helper()
 	baseLayers := map[string]bool{}
@@ -137,7 +131,7 @@ func imageLeaks(t *testing.T, image, base string, files []string, markers ...str
 		}
 		layer := tar.NewReader(bytes.NewReader(data))
 		if _, err := layer.Next(); err != nil {
-			check(hdr.Name, data) // config, manifest or index
+			check(hdr.Name, data)
 			continue
 		}
 		layer = tar.NewReader(bytes.NewReader(data))
@@ -170,19 +164,12 @@ func uniqueImageName(t *testing.T, prefix string) string {
 	return name
 }
 
-// TestE2E_CABundle: with --ca-bundle a Feature's install and a Dockerfile RUN
-// that mounts the secret reach an HTTPS server signed by a CA the image does
-// not trust, and fail without it; the image carries neither the bundle nor its
-// content; the container trusts the server in curl, node and its lifecycle
-// commands, run-user-commands' included, which takes no flag of its own.
 func TestE2E_CABundle(t *testing.T) {
 	if !dockerAvailable() {
 		t.Skip("Docker not available")
 	}
 	ca := newTestCA(t)
 	bundle := writeTestFile(t, filepath.Join(t.TempDir(), "bundle.crt"), ca.pem)
-	// A line of the CA's base64 body: in a file, a layer or a config only if
-	// the bundle was copied there.
 	marker := strings.Split(string(ca.pem), "\n")[1]
 	url := startTLSServer(t, ca)
 	// The server answers any path; a path of this run's own keeps BuildKit from
@@ -222,9 +209,6 @@ func TestE2E_CABundle(t *testing.T) {
 			if env, err := exec.Command("docker", "image", "inspect", "-f", "{{json .Config.Env}}", image).Output(); err != nil || strings.Contains(string(env), "ca-bundle") {
 				t.Errorf("the image's env names the bundle: %s %v", env, err)
 			}
-			// A bundle of another CA cannot reach the server, so this build
-			// passes only if the bundle's content is outside the cache key, and
-			// then it makes the same image.
 			// The image's ID names a manifest list whose attestation carries a
 			// timestamp; its layers are what the build made.
 			before := dockerOutput(t, "image", "inspect", "-f", "{{json .RootFS.Layers}}", image)
@@ -269,11 +253,6 @@ func TestE2E_CABundle(t *testing.T) {
 	})
 }
 
-// TestE2E_UpSecretsFile: up --secrets-file hands a value to a Dockerfile's
-// `RUN --mount=type=secret,id=K` and to postCreateCommand, and the value is in
-// no layer, no image config (which holds `docker history`) and no part of the
-// container's inspect, its labels included. Both sides record a hash, so the
-// test compares without writing the value anywhere itself.
 func TestE2E_UpSecretsFile(t *testing.T) {
 	if !dockerAvailable() {
 		t.Skip("Docker not available")

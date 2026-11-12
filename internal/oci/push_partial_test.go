@@ -8,7 +8,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// writeTarball drops a throwaway artifact layer file and returns its path.
 func writeTarball(t *testing.T, content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "artifact.tgz")
@@ -18,18 +17,6 @@ func writeTarball(t *testing.T, content string) string {
 	return p
 }
 
-// TestPushArtifact_BearerAuthAndPartialTagFailure drives two risks at once
-// against a hermetic httptest registry:
-//
-//   - Auth: the registry requires Bearer auth, so PushArtifact must run the full
-//     401 -> WWW-Authenticate: Bearer -> token endpoint -> retry loop (this path
-//     is NOT covered by the Basic-auth registry:3 test).
-//   - Partial publish / no rollback: the second tag ("latest") fails mid-loop.
-//     PushArtifact publishes "1.0.0", logs a warning for "latest", and returns
-//     SUCCESS with only the tags that made it. The earlier tag is left published
-//     with no rollback -- the caller asked for {1.0.0, latest} and silently got
-//     only {1.0.0}. This asserts that exact behavior so a future change to it is
-//     a conscious one.
 func TestPushArtifact_BearerAuthAndPartialTagFailure(t *testing.T) {
 	const user, pass = "u", "p"
 	reg := newFakeOCIRegistry()
@@ -49,7 +36,6 @@ func TestPushArtifact_BearerAuthAndPartialTagFailure(t *testing.T) {
 		t.Fatalf("push returned error, want partial success: %v", err)
 	}
 
-	// Only the surviving tag is reported, and it is genuinely in the registry.
 	if got := res.PublishedTags; len(got) != 1 || got[0] != "1.0.0" {
 		t.Fatalf("PublishedTags = %v, want [1.0.0] (partial, no rollback)", got)
 	}
@@ -64,15 +50,11 @@ func TestPushArtifact_BearerAuthAndPartialTagFailure(t *testing.T) {
 	if hasLatest {
 		t.Error("latest tag was published despite the injected failure")
 	}
-	// The bearer loop must actually have run (token endpoint hit at least once).
 	if tokenReqs == 0 {
 		t.Error("token endpoint never called; the Bearer auth loop did not run")
 	}
 }
 
-// TestPushArtifact_AllTagsFail asserts the other end of the tag loop: when every
-// tag PUT fails, PushArtifact publishes nothing and surfaces an error rather than
-// a bogus empty-tag success.
 func TestPushArtifact_AllTagsFail(t *testing.T) {
 	reg := newFakeOCIRegistry()
 	reg.failAllManifests = true
@@ -89,10 +71,6 @@ func TestPushArtifact_AllTagsFail(t *testing.T) {
 	}
 }
 
-// TestPushArtifact_BlobExistsSkipsReupload covers pushBlobIfAbsent's
-// already-present branch: on a second publish the layer/config blobs already
-// exist, so their HEAD returns 200 and the blob is not re-uploaded. This guards
-// the idempotency of the publish path.
 func TestPushArtifact_BlobExistsSkipsReupload(t *testing.T) {
 	reg := newFakeOCIRegistry()
 	registry := reg.start(t)
@@ -114,7 +92,6 @@ func TestPushArtifact_BlobExistsSkipsReupload(t *testing.T) {
 		t.Fatal("first push uploaded no blobs")
 	}
 
-	// Re-publish the identical artifact under a new tag: blobs are unchanged.
 	ref2, _ := ParseRef(registry + "/ns/hello:1.0.1")
 	if _, err := client.PushArtifact(t.Context(), ref2, tgz, []string{"1.0.1"}, "feature", nil); err != nil {
 		t.Fatalf("second push failed: %v", err)
@@ -132,10 +109,6 @@ func TestPushArtifact_BlobExistsSkipsReupload(t *testing.T) {
 	}
 }
 
-// TestPushCollectionMetadata_SuccessAndFailure covers the separate
-// collection-metadata push (0% covered before): the happy path tags the
-// collection artifact `latest`, and a registry that rejects the manifest surfaces
-// the error -- this is the push that publishCollectionWith counts as a failure.
 func TestPushCollectionMetadata_SuccessAndFailure(t *testing.T) {
 	collPath := filepath.Join(t.TempDir(), "devcontainer-collection.json")
 	if err := os.WriteFile(collPath, []byte(`{"features":[]}`), 0o600); err != nil {

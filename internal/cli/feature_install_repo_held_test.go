@@ -12,9 +12,6 @@ import (
 	"testing"
 )
 
-// A regular file keeps the mode its tar entry records, so a Feature's
-// install.sh stays executable; an entry recording no mode keeps the mode the
-// file was created with instead of becoming unreadable.
 func TestExtractTarGzFileModes(t *testing.T) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
@@ -45,8 +42,6 @@ func TestExtractTarGzFileModes(t *testing.T) {
 	}
 }
 
-// A tarball download succeeds only on a 2xx answer, as TS treats only
-// 200-299 as success: a 300 fails it.
 func TestDownloadFeatureTarballStatus(t *testing.T) {
 	for status, ok := range map[int]bool{200: true, 299: true, 300: false} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -19,10 +19,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mergedOwnKeys are the properties TS mergeConfiguration sets itself, from the
-// metadata, or removes from the config (replaceProperties) - in imageMetadata.ts.
-// Every other property of the config passes into mergedConfiguration as it is
-// ({...config}); one of these never does, even when the merge leaves it unset.
 var mergedOwnKeys = map[string]bool{
 	"customizations": true, "entrypoint": true, "onCreateCommand": true, "updateContentCommand": true,
 	"postCreateCommand": true, "postStartCommand": true, "postAttachCommand": true, "shutdownAction": true,
@@ -78,7 +74,6 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.StringVar(&opts.logLevel, "log-level", "info", "Log level.")
 	f.StringVar(&opts.logFormat, "log-format", "text", "Log format.")
 
-	// Container-related flags for containerEnv substitution
 	f.StringVar(&opts.dockerPath, "docker-path", "", "Docker CLI path.")
 	f.String("docker-compose-path", "", "Docker Compose CLI path.")
 	f.String("user-data-folder", "", "Host path to persisted data.")
@@ -89,9 +84,6 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
 	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
-	// Go-only: emit a deterministic content-addressed cache key alongside the
-	// configuration (for prebuild reuse by external orchestrators). Additive — the
-	// default output is unchanged from TS.
 	f.BoolVar(&opts.cacheKey, "cache-key", false, "Also emit a deterministic content-addressed cache key for the configuration.")
 
 	addLogFileFlags(cmd, &opts.logFile, &opts.terminalLogFile)
@@ -132,11 +124,9 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 
 	cfgMap := configurationOutput(result, opts)
 
-	// Find container for containerEnv substitution
 	lgr := log.New(log.Options{Version: cliVersion(), Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 	engine, engineErr := docker.NewEngineClient(lgr)
 	if engineErr != nil {
-		// Logged here; a container lookup then fails the command (readConfigurationContainerID).
 		lgr.Write(fmt.Sprintf("Warning: Docker engine: %v", engineErr), log.LevelWarning)
 	}
 	if engine != nil {
@@ -163,8 +153,6 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if result != nil {
 		configFile = result.Config.ConfigFilePath
 	}
-	// TS readConfiguration fails like any other error: logged, exit 1, nothing
-	// on stdout.
 	cfgMap, subErr := substituteContainerEnv(containerCfg, cfgMap, configFile)
 	if subErr != nil {
 		return readConfigurationFailure(lgr, subErr)
@@ -174,7 +162,6 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		"configuration": cfgMap,
 	}
 
-	// Go-only: deterministic content-addressed cache key (additive; off by default).
 	if opts.cacheKey && result != nil {
 		key, keyErr := computeCacheKey(result, proxyEnvFromEnviron())
 		if keyErr != nil {
@@ -187,11 +174,8 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		output["workspace"] = orderedObject{ws, workspaceKeys}
 	}
 
-	// Include features configuration if requested (or needed for merged config without container)
 	var featResult *fetchFeatureResult
 	if featuresWanted(opts, containerID) {
-		// TS generateFeaturesConfig (containerFeaturesConfiguration.ts) traces
-		// the folder it resolves the Features from, the command's cwd.
 		lgr.Write("workspace root: "+cmp.Or(workspaceFolder, cwd), log.LevelTrace)
 		if result == nil || len(result.Config.Features) == 0 {
 			lgr.Write("No user features to update", log.LevelTrace)
@@ -202,8 +186,6 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		var featErr error
 		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, localFeatureRoots{filepath.Dir(result.Config.ConfigFilePath), workspaceFolder}, opts.skipFeatureAutoMapping)
 		if featErr != nil {
-			// TS readConfiguration writes the error to the log and exits 1 with no
-			// result; a Feature that cannot be resolved is not an empty one.
 			return readConfigurationFailure(lgr, featErr)
 		}
 		if featResult != nil {
@@ -215,18 +197,9 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		}
 	}
 
-	// Include merged configuration if requested
 	if opts.includeMergedCfg {
 		var base []imagemeta.Entry
 		if containerID == "" {
-			// No container yet: derive the base metadata from the image (the base
-			// image of a Dockerfile, the compose service's image or build) and the
-			// features, like TS readConfiguration does with getImageBuildInfo and
-			// getDevcontainerMetadata(imageBuildInfo.metadata, config,
-			// featuresConfig). VS Code calls this before creating the container.
-			// The image is inspected locally, else in its registry, else pulled; a
-			// failure is an error, as in TS. The Features are the ones resolved for
-			// featuresConfiguration above, as in TS.
 			buildInfo, biErr := readConfigurationImageBuildInfo(ctx, lgr, engine, opts.dockerPath, result)
 			if biErr != nil {
 				return readConfigurationFailure(lgr, biErr)
@@ -250,8 +223,6 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 		output["mergedConfiguration"] = merged
 	}
 
-	// OCI auth diagnostics for this invocation (TS readConfiguration emits it
-	// unconditionally, even when no registry was contacted).
 	output["ociAuthDiagnostics"] = ociAuthDiagnostics(ctx)
 	orderConfigurations(output, result)
 
@@ -264,17 +235,11 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	return nil
 }
 
-// readConfigurationFailure is how read-configuration fails, as TS
-// readConfiguration does: the error is logged and the command exits 1 with no
-// result.
 func readConfigurationFailure(lgr log.Logger, err error) error {
 	lgr.Write(err.Error(), log.LevelError)
 	return &coreerrors.ExitCodeError{Code: 1, Err: err}
 }
 
-// readConfigurationPaths resolves --workspace-folder, --config and
-// --override-config against cwd. Without --container-id, --id-label or
-// --workspace-folder, the workspace folder is cwd (0.88).
 func readConfigurationPaths(opts *readConfigOpts, cwd string) (workspaceFolder, configPath, overridePath string) {
 	abs := func(p string) string {
 		if p != "" && !filepath.IsAbs(p) {
@@ -289,26 +254,16 @@ func readConfigurationPaths(opts *readConfigOpts, cwd string) (workspaceFolder, 
 	return abs(workspaceFolder), abs(opts.configPath), abs(opts.overrideConfig)
 }
 
-// readConfigurationHasWorkspace reports whether read-configuration has a
-// workspace folder: --workspace-folder, else cwd unless --container-id or
-// --id-label is given (TS readConfigurationOptions' check).
 func readConfigurationHasWorkspace(opts *readConfigOpts) bool {
 	return opts.workspaceFolder != "" || opts.containerID == "" && len(opts.idLabels) == 0
 }
 
-// loadReadConfiguration loads the configuration read-configuration prints,
-// with the --additional-features merged in.
 func loadReadConfiguration(workspaceFolder, configPath, overridePath string, opts *readConfigOpts) (*config.LoadResult, error) {
 	result, err := config.LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overridePath, config.MountOptions{
 		MountWorkspaceGitRoot:     opts.mountWorkspaceGitRoot,
 		MountGitWorktreeCommonDir: opts.mountGitWorktreeCommonDir,
 	})
 	if err != nil {
-		// 0.88: read-configuration exits 1 silently (banner only) when no
-		// config is found — it does not print an error envelope. Parse/other
-		// errors still surface normally.
-		// TS read-configuration exits 1 the same way on a config that is not a
-		// JSON object.
 		_, notFound := errors.AsType[*config.NotFoundError](err)
 		_, notObject := errors.AsType[*config.NotObjectError](err)
 		if notFound || notObject {
@@ -322,12 +277,6 @@ func loadReadConfiguration(workspaceFolder, configPath, overridePath string, opt
 	return result, nil
 }
 
-// configurationOutput is read-configuration's "configuration": the config as
-// TS prints it, an empty object without one. Unknown and vendor properties the
-// typed config drops are kept. The legacy settings, extensions and devPort are
-// left out only where the loader migrated them into customizations: one it
-// left in place, as TS updateFromOldProperties does, is printed. configFilePath is a
-// VS Code URI, with the file scheme when the config was named with --config.
 func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[string]any {
 	cfgMap := map[string]any{}
 	if result == nil {
@@ -346,18 +295,10 @@ func configurationOutput(result *config.LoadResult, opts *readConfigOpts) map[st
 		}
 		cfgMap[k] = v
 	}
-	// TS makes a file URI of --config, and without a workspace of
-	// --override-config, which is then the configuration (configPath =
-	// overrideConfigFile); a configuration found in the workspace, or its
-	// default path when only --override-config is given, has the
-	// vscode-fileHost scheme, with or without --container-id
-	// (devContainersSpecCLI.ts readConfiguration).
 	scheme := "vscode-fileHost"
 	if opts.configPath != "" || opts.overrideConfig != "" && !readConfigurationHasWorkspace(opts) {
 		scheme = "file"
 	}
-	// TS findContainerAndIdLabels reads the URI's fsPath (devContainersSpecCLI.ts
-	// readConfiguration), so read-configuration always writes it.
 	cfgMap["configFilePath"] = configFileURI(result.Config.ConfigFilePath, scheme, true)
 	return cfgMap
 }
@@ -378,11 +319,6 @@ func configFileURI(path, scheme string, withFSPath bool) map[string]any {
 	return uri
 }
 
-// readConfigurationContainerID is the container read-configuration reads: the
-// --container-id, else the one the id labels or the workspace folder and
-// config file find. A lookup that fails, also for want of a Docker engine
-// (lister is then one that fails with engineErr), fails the command, as TS's
-// findContainerAndIdLabels throws.
 func readConfigurationContainerID(ctx context.Context, lister containerLister, opts *readConfigOpts, workspaceFolder string, result *config.LoadResult) (string, error) {
 	if opts.containerID != "" {
 		return opts.containerID, nil
@@ -391,14 +327,9 @@ func readConfigurationContainerID(ctx context.Context, lister containerLister, o
 	if result != nil {
 		configFile = result.Config.ConfigFilePath
 	}
-	// [local_folder, config_file] so multiple configs in one project resolve
-	// to the right container (fallback to local_folder for legacy ones).
 	return resolveContainerID(ctx, lister, workspaceFolder, configFile, opts.idLabels)
 }
 
-// inspectContainerConfig is the config of container cid, nil when there is no
-// container to inspect. A container that cannot be inspected is an error, as
-// TS findContainerAndIdLabels' inspectContainer throws.
 func inspectContainerConfig(ctx context.Context, engine *docker.EngineClient, cid string) (*container.Config, error) {
 	if cid == "" {
 		return nil, nil
@@ -413,10 +344,6 @@ func inspectContainerConfig(ctx context.Context, engine *docker.EngineClient, ci
 	return inspect.Config, nil
 }
 
-// substituteDevContainerID resolves ${devcontainerId} in cfgMap from the id
-// labels of the container read-configuration found, as TS readConfiguration
-// adds beforeContainerSubstitute(idLabels) before the container's environment;
-// without a container cfgMap is returned as it is.
 func substituteDevContainerID(containerCfg *container.Config, cfgMap map[string]any, providedIDLabels []string, workspaceFolder string, result *config.LoadResult) (map[string]any, error) {
 	if containerCfg == nil {
 		return cfgMap, nil
@@ -435,10 +362,6 @@ func substituteDevContainerID(containerCfg *container.Config, cfgMap map[string]
 	return substituted.(map[string]any), nil
 }
 
-// substituteContainerEnv resolves ${containerEnv:...} in cfgMap with the
-// container's environment; without a container cfgMap is returned as it is.
-// configFile is the configuration's file, which an unresolvable variable's
-// error names.
 func substituteContainerEnv(containerCfg *container.Config, cfgMap map[string]any, configFile string) (map[string]any, error) {
 	if containerCfg == nil {
 		return cfgMap, nil
@@ -453,10 +376,6 @@ func substituteContainerEnv(containerCfg *container.Config, cfgMap map[string]an
 	return cfgMap, nil
 }
 
-// workspaceOutput is read-configuration's "workspace"; ok is false when the
-// configuration gives none. Without a workspace folder it has only the
-// configuration's own workspaceFolder and workspaceMount, as TS
-// getWorkspaceConfiguration leaves them for an undefined workspace.
 func workspaceOutput(result *config.LoadResult) (ws map[string]any, ok bool) {
 	if result == nil || result.WorkspaceConfig == nil {
 		return nil, false
@@ -465,41 +384,25 @@ func workspaceOutput(result *config.LoadResult) (ws map[string]any, ok bool) {
 	if result.WorkspaceConfig.WorkspaceFolder != "" {
 		ws["workspaceFolder"] = result.WorkspaceConfig.WorkspaceFolder
 	}
-	// A workspaceMount the configuration sets is written as it is set, even
-	// empty or null (TS readDevContainerConfigFile's `'workspaceMount' in
-	// config`); otherwise the computed one, if any.
 	if v, set := result.Raw["workspaceMount"]; set {
 		ws["workspaceMount"] = v
 	} else if result.WorkspaceConfig.WorkspaceMount != "" {
 		ws["workspaceMount"] = result.WorkspaceConfig.WorkspaceMount
 	}
-	// The loader's additional mounts are at most the Git worktree common dir's,
-	// TS's additionalMountString (getWorkspaceConfiguration).
 	if mounts := result.WorkspaceConfig.AdditionalMounts; len(mounts) > 0 {
 		ws["additionalMountString"] = mounts[0]
 	}
 	return ws, true
 }
 
-// needsFeaturesConfiguration reports whether read-configuration resolves the
-// config's Features: for featuresConfiguration, or for a merged configuration
-// without a container, which takes the Features' metadata (TS readConfiguration).
 func needsFeaturesConfiguration(opts *readConfigOpts, containerID string, result *config.LoadResult) bool {
 	return featuresWanted(opts, containerID) && result != nil && len(result.Config.Features) > 0
 }
 
-// featuresWanted reports whether TS readConfiguration reads the Features
-// configuration, which it does even for a configuration with no Features.
 func featuresWanted(opts *readConfigOpts, containerID string) bool {
 	return opts.includeFeaturesCfg || (opts.includeMergedCfg && containerID == "")
 }
 
-// readConfigurationMetadata is the metadata read-configuration merges. With a
-// container it is TS getImageMetadataFromContainer: the container's
-// devcontainer.metadata entries, substituted, then the configuration's
-// updateable properties for a container with every id label, else the
-// Features' entries and the configuration's entry. Without one it is base (the
-// image's and the Features' metadata) and the configuration's entry.
 func readConfigurationMetadata(base, featureEntries []imagemeta.Entry, containerCfg *container.Config, result *config.LoadResult, providedIDLabels []string, workspaceFolder string, lgr log.Logger) ([]imagemeta.Entry, error) {
 	var cfg *config.DevContainer
 	hostSub, configFile := config.EnvHostSubContext(), ""
@@ -516,12 +419,6 @@ func readConfigurationMetadata(base, featureEntries []imagemeta.Entry, container
 	return imageMetadataFromContainer(containerCfg.Labels, cfg, featureEntries, idLabels, hostMetadataSubstitution(hostSub, idLabels), lgr)
 }
 
-// mergedConfigurationOutput is read-configuration's "mergedConfiguration": the
-// merge of entries (readConfigurationMetadata). With a container,
-// ${containerEnv:...} is resolved with its environment. TS builds
-// mergedConfiguration by spreading the config, so the properties
-// mergeConfiguration does not own (image, features, build, configFilePath, ...)
-// come from cfgMap.
 func mergedConfigurationOutput(entries []imagemeta.Entry, containerCfg *container.Config, cfgMap map[string]any, configFile string) (map[string]any, error) {
 	merged := imagemeta.MergeConfiguration(entries)
 
@@ -553,9 +450,6 @@ func mergedConfigurationOutput(entries []imagemeta.Entry, containerCfg *containe
 	return mergedMap, nil
 }
 
-// readConfigurationImageBuildInfo runs getImageBuildInfo for read-configuration's
-// merged configuration without a container. Without a configuration TS reads an
-// empty one, which names no image.
 func readConfigurationImageBuildInfo(ctx context.Context, lgr log.Logger, engine *docker.EngineClient, dockerPath string, result *config.LoadResult) (*imageBuildInfo, error) {
 	cfg := &config.DevContainer{}
 	if result != nil {
@@ -571,12 +465,6 @@ func readConfigurationImageBuildInfo(ctx context.Context, lgr log.Logger, engine
 	return getImageBuildInfo(ctx, cfg, newImageInspector(ctx, lgr, engine), composeConfig, lgr)
 }
 
-// configToMetadataEntry converts a DevContainer to a metadata Entry
-// for merging. When omitRemoteEnv is true, remoteEnv is excluded from the
-// entry (used for image metadata labels with --omit-config-remote-env-from-metadata).
-// configToMetadataEntry builds the devcontainer.metadata entry for cfg,
-// including its remoteEnv. Use configMetadataEntry when remoteEnv must be
-// omitted (a runtime decision on some up/build paths).
 func configToMetadataEntry(cfg *config.DevContainer) imagemeta.Entry {
 	return configMetadataEntry(cfg, false)
 }
@@ -598,9 +486,6 @@ func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta
 		Mounts:              metadataMounts(cfg),
 		Customizations:      cfg.Customizations,
 	}
-	// Port and host-requirement properties are part of the config metadata entry
-	// (pickConfigProperties in TS). Omitting them made the devcontainer.metadata
-	// label lossy vs the TS CLI.
 	if len(cfg.ForwardPorts) > 0 {
 		fp := make([]any, len(cfg.ForwardPorts))
 		for i, p := range cfg.ForwardPorts {
@@ -624,7 +509,6 @@ func configMetadataEntry(cfg *config.DevContainer, omitRemoteEnv bool) imagemeta
 	if cfg.RemoteEnv != nil && !omitRemoteEnv {
 		entry.RemoteEnv = cfg.RemoteEnv
 	}
-	// Lifecycle commands
 	if !cfg.OnCreateCommand.IsEmpty() {
 		entry.OnCreateCommand = cfg.OnCreateCommand.Raw()
 	}

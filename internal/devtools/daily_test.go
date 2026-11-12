@@ -2,9 +2,6 @@ package devtools
 
 import "testing"
 
-// TestDailyChanged covers the run/skip boundary of the daily gate: ages use
-// integer-hour truncation, and the window is exclusive (age == window skips),
-// matching the former daily-changed.sh.
 func TestDailyChanged(t *testing.T) {
 	const now = 2_000_000_000
 	const h = 3600

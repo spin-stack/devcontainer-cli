@@ -75,7 +75,6 @@ func TestExecInContainer(t *testing.T) {
 	if code != 3 {
 		t.Errorf("exitCode = %d, want 3", code)
 	}
-	// The command is run as `/bin/sh -c <command>` with the given user/env.
 	if gotOpts.User != "vscode" || len(gotOpts.Env) != 1 || gotOpts.Env[0] != "FOO=bar" {
 		t.Errorf("opts user/env = %q/%v", gotOpts.User, gotOpts.Env)
 	}

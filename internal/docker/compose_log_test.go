@@ -12,8 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// jsonLog is a --log-format json logger and the events it writes, decoded,
-// each as "<type> <level>: <text>".
 func jsonLog() (log.Logger, func() []string) {
 	var buf bytes.Buffer
 	lgr := log.New(log.Options{Format: "json", Writer: &buf})
@@ -30,8 +28,6 @@ func jsonLog() (log.Logger, func() []string) {
 	}
 }
 
-// fakeDocker is an executable docker that answers `compose version --short`
-// with version, or fails when version is empty.
 func fakeDocker(t *testing.T, version string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "docker")
@@ -45,8 +41,6 @@ func fakeDocker(t *testing.T, version string) string {
 	return path
 }
 
-// Detecting Compose logs the command it runs and the version it found, as TS
-// dockerComposeCLIConfig does (spec-node/dockerCompose.ts).
 func TestNewComposeClientLogsTheComposeVersion(t *testing.T) {
 	docker := fakeDocker(t, "2.24.5")
 	lgr, events := jsonLog()
@@ -64,7 +58,6 @@ func TestNewComposeClientLogsTheComposeVersion(t *testing.T) {
 	}
 }
 
-// When Compose v2 is not there, the command is still logged, but no version.
 func TestNewComposeClientLogsAFailedVersionCommand(t *testing.T) {
 	docker := fakeDocker(t, "")
 	lgr, events := jsonLog()

@@ -7,9 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// --additional-features adds only the Features the config does not declare
-// (the config's value wins), reports which keys came from the flag alone, and
-// works on a config without a features object.
 func TestMergeAdditionalFeatures(t *testing.T) {
 	cfg := &config.DevContainer{Features: map[string]any{"ghcr.io/a/b/node:1": map[string]any{"version": "20"}}}
 	only, err := mergeAdditionalFeatures(cfg, `{

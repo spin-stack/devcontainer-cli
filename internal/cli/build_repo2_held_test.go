@@ -10,9 +10,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// The Dockerfile written to name the final stage sits next to the user's with
-// a copy of its .dockerignore, and Cleanup removes both and leaves the user's
-// files alone.
 func TestPrepareDockerfileBuildCleanupRemovesTheWrittenFiles(t *testing.T) {
 	dir := t.TempDir()
 	dockerfile := filepath.Join(dir, "Dockerfile")

@@ -7,8 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// An image neither local nor in a registry is pulled five times before the
-// inspection fails, as TS retry({ maxRetries: 5 }) tries it.
 func TestNewImageInspectorPullsFiveTimes(t *testing.T) {
 	const name = "Not A Valid Name"
 	api := &fakeEngineAPI{}

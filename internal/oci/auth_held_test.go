@@ -12,9 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// pathOnly makes dir the whole PATH and writes each named executable into it as
-// a /bin/sh script with the given body. The scripts use shell builtins only, so
-// they run although nothing else is on PATH.
 func pathOnly(t *testing.T, scripts map[string]string) {
 	t.Helper()
 	if runtime.GOOS != "linux" {
@@ -29,7 +26,6 @@ func pathOnly(t *testing.T, scripts map[string]string) {
 	t.Setenv("PATH", dir)
 }
 
-// helperReturning is a docker-credential-* body answering `get` with user:secret.
 func helperReturning(user string) string {
 	return `read reg; printf '{"Username":"` + user + `","Secret":"s"}\n'`
 }
@@ -58,10 +54,6 @@ func basicUser(t *testing.T, cred *credential) string {
 	return user
 }
 
-// TS getCredentialFromDockerConfigOrCredentialHelper (httpOCIRegistry.ts): with
-// no docker config holding auth, Linux asks docker-credential-pass when `pass`
-// is on PATH and the libsecret helper otherwise (Go names it secretservice, the
-// binary docker ships, where TS says `secret`).
 func TestPlatformDefaultHelperFollowsPass(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
@@ -88,8 +80,6 @@ func TestPlatformDefaultHelperFollowsPass(t *testing.T) {
 	}
 }
 
-// TS computes configContainsAuth as any credHelpers key, a credsStore, or any
-// auths key, and asks the platform default helper only when it is false.
 func TestDockerConfigWithAuthSkipsPlatformDefault(t *testing.T) {
 	for _, tt := range []struct {
 		name, config string
@@ -117,9 +107,6 @@ func TestDockerConfigWithAuthSkipsPlatformDefault(t *testing.T) {
 	}
 }
 
-// TS asks credsStore only in the else branch of credHelpers[registry]: a
-// registry's own helper that finds nothing does not fall back to credsStore,
-// and an empty helper name is no helper at all.
 func TestRegistryHelperDoesNotFallBackToCredsStore(t *testing.T) {
 	pathOnly(t, map[string]string{
 		"docker-credential-store": helperReturning("store"),

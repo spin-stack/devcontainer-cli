@@ -10,15 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestOracleFlagCoverage guards the flag inventory against the ACTUAL TypeScript
-// oracle, not a hand-maintained copy: for every top-level command the oracle
-// defines, each of its flags must appear in docs/parity/cli-flags-inventory.yaml
-// (which TestFlagInventoryParity in turn pins to the live Cobra tree). Together
-// the two tests make oracle → inventory → Cobra tree a closed loop, so a flag the
-// upstream CLI adds cannot silently go missing from `up`/`build`/… again.
-//
-// The oracle lives in the reference/ submodule, present only in the parity CI
-// lane; the hermetic unit lane skips this test.
 func TestOracleFlagCoverage(t *testing.T) {
 	const oraclePath = "../../reference/src/spec-node/devContainersSpecCLI.ts"
 	src, err := os.ReadFile(oraclePath)
@@ -26,9 +17,6 @@ func TestOracleFlagCoverage(t *testing.T) {
 		t.Skipf("oracle not checked out (%s); run `task reference`", oraclePath)
 	}
 
-	// deliberatelyUnmodeled: oracle flags we intentionally do not expose, with the
-	// reason. Keep this tiny and justified — a real new upstream flag must be added
-	// to the CLI, not silenced here.
 	deliberatelyUnmodeled := map[string]string{}
 
 	oracle := oracleCommandFlags(string(src))
@@ -36,8 +24,6 @@ func TestOracleFlagCoverage(t *testing.T) {
 
 	var problems []string
 
-	// Global options (yargs `.option(..., { global: true })`) belong to every
-	// command; the inventory tracks them under `global_flags`.
 	inventoryGlobals := inventoryGlobalFlags(t)
 	for f := range oracleGlobalFlags(string(src)) {
 		if !inventoryGlobals[f] {
@@ -47,7 +33,7 @@ func TestOracleFlagCoverage(t *testing.T) {
 	for cmd, flags := range oracle {
 		invFlags, ok := inventory[cmd]
 		if !ok {
-			continue // command not modeled in the inventory (e.g. features/* live elsewhere)
+			continue
 		}
 		for f := range flags {
 			if _, skip := deliberatelyUnmodeled[f]; skip {
@@ -64,9 +50,6 @@ func TestOracleFlagCoverage(t *testing.T) {
 	}
 }
 
-// oracleGlobalFlags returns the flag names the oracle declares as global options
-// on the root yargs chain (before `.strict()`), i.e. the ones every command
-// accepts.
 func oracleGlobalFlags(src string) map[string]bool {
 	start := strings.Index(src, ".scriptName('devcontainer')")
 	end := strings.Index(src, ".strict();")
@@ -82,7 +65,6 @@ func oracleGlobalFlags(src string) map[string]bool {
 	return out
 }
 
-// inventoryGlobalFlags loads the global flag names declared in the YAML.
 func inventoryGlobalFlags(t *testing.T) map[string]bool {
 	t.Helper()
 	data, err := os.ReadFile("../../docs/parity/cli-flags-inventory.yaml")
@@ -102,12 +84,8 @@ func inventoryGlobalFlags(t *testing.T) map[string]bool {
 	return out
 }
 
-// oracleCommandFlags maps each top-level command name to the set of flag names
-// its options function declares in the oracle source.
 func oracleCommandFlags(src string) map[string]map[string]bool {
-	// y.command('up', 'desc', provisionOptions, provisionHandler)
 	cmdRe := regexp.MustCompile(`y\.command\('([a-z-]+)',\s*'[^']*',\s*(\w+Options),`)
-	// A quoted kebab/lower flag key mapping to an option object: 'no-lockfile': {
 	flagRe := regexp.MustCompile(`'([a-z][a-z0-9-]*)':\s*\{`)
 
 	fnBodies := oracleOptionFnBodies(src)
@@ -129,8 +107,6 @@ func oracleCommandFlags(src string) map[string]map[string]bool {
 	return out
 }
 
-// oracleOptionFnBodies returns the source text of each `function <name>Options(...)`
-// block, split at top-level function boundaries.
 func oracleOptionFnBodies(src string) map[string]string {
 	lines := strings.Split(src, "\n")
 	fnStart := regexp.MustCompile(`^(?:async )?function (\w+)\(`)
@@ -155,7 +131,6 @@ func oracleOptionFnBodies(src string) map[string]string {
 	return bodies
 }
 
-// inventoryCommandFlags loads the flag names declared per command in the YAML.
 func inventoryCommandFlags(t *testing.T) map[string]map[string]bool {
 	t.Helper()
 	data, err := os.ReadFile("../../docs/parity/cli-flags-inventory.yaml")

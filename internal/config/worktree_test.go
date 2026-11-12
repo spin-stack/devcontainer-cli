@@ -1,16 +1,5 @@
 package config
 
-// Oracle tests ported from the upstream devcontainers CLI:
-//   reference/src/test/workspaceConfiguration.test.ts
-//   (describe 'getWorkspaceConfiguration' > 'git worktree handling').
-//
-// The container-side targets (/workspaces/...) are independent of the temp
-// prefix — they derive from the path segments below the common ancestor of the
-// worktree and its common dir — so the fixtures use a real t.TempDir() and the
-// host-side source paths are computed relative to it. Pinned to linux, where the
-// bind mount carries no consistency= suffix (computeWorkspaceConfig reads
-// runtime.GOOS directly and cannot be faked hermetically).
-
 import (
 	"os"
 	"path/filepath"
@@ -19,8 +8,6 @@ import (
 	"testing"
 )
 
-// writeGitlink creates a worktree at <base>/<worktreeRel> whose `.git` gitlink
-// file holds the given gitdir line, and returns the absolute worktree path.
 func writeGitlink(t *testing.T, base, worktreeRel, gitdirLine string) string {
 	t.Helper()
 	wt := filepath.Join(base, filepath.FromSlash(worktreeRel))
@@ -114,8 +101,6 @@ func TestWorktreeCommonDir(t *testing.T) {
 	})
 }
 
-// TestWorktreeCommonDirNoMount covers the cases that must NOT produce an extra
-// mount: a normal clone (.git dir), an absolute gitdir, and the flag disabled.
 func TestWorktreeCommonDirNoMount(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("oracle pins the linux consistency behavior (empty suffix)")
@@ -152,16 +137,12 @@ func TestWorktreeCommonDirNoMount(t *testing.T) {
 		if len(wc.AdditionalMounts) != 0 {
 			t.Errorf("additionalMounts = %q, want none when the flag is off", wc.AdditionalMounts)
 		}
-		// Without the remap the mount is the plain basename.
 		if want := "type=bind,source=" + wt + ",target=/workspaces/feature"; wc.WorkspaceMount != want {
 			t.Errorf("workspaceMount = %q, want %q", wc.WorkspaceMount, want)
 		}
 	})
 }
 
-// TestLoadDevContainerConfigWithMountsWorktree locks the full config-load wiring:
-// the MountGitWorktreeCommonDir option reaches computeWorkspaceConfig and the
-// resulting LoadResult carries the common-dir mount.
 func TestLoadDevContainerConfigWithMountsWorktree(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("oracle pins the linux consistency behavior (empty suffix)")
@@ -188,7 +169,6 @@ func TestLoadDevContainerConfigWithMountsWorktree(t *testing.T) {
 		t.Errorf("WorkspaceFolder = %q", res.WorkspaceConfig.WorkspaceFolder)
 	}
 
-	// Default load (no worktree option) must NOT add the mount.
 	res2, err := LoadDevContainerConfig(wt, "", "")
 	if err != nil {
 		t.Fatalf("default load: %v", err)
@@ -198,11 +178,6 @@ func TestLoadDevContainerConfigWithMountsWorktree(t *testing.T) {
 	}
 }
 
-// TestWorktreeCommonDirCustomWorkspaceMount holds TS getWorkspaceConfiguration
-// (utils.ts): the common-dir mount is computed with the workspace mount, so a
-// config that sets both workspaceFolder and workspaceMount gets none, and one
-// that sets only workspaceMount gets it at the computed container mount folder,
-// whatever the custom mount's type or target.
 func TestWorktreeCommonDirCustomWorkspaceMount(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("oracle pins the linux consistency behavior (empty suffix)")
@@ -251,11 +226,6 @@ func TestWorktreeCommonDirCustomWorkspaceMount(t *testing.T) {
 	}
 }
 
-// TestLoadKeepsAnEmptyWorkspaceMount holds TS getWorkspaceConfiguration and
-// readDevContainerConfigFile (utils.ts, configContainer.ts), which test
-// `'workspaceMount' in config`: an empty or null workspaceMount is set, so it
-// replaces the computed mount and mounts no workspace, and with workspaceFolder
-// also set the worktree common dir is not mounted either.
 func TestLoadKeepsAnEmptyWorkspaceMount(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("oracle pins the linux consistency behavior (empty suffix)")

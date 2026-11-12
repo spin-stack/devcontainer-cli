@@ -77,8 +77,6 @@ func newSetUpCmd() *cobra.Command {
 	return cmd
 }
 
-// runSetUp validates the flags, opens the log and finds the container, then
-// hands it to setUpContainer.
 func runSetUp(ctx context.Context, out Output, opts *setUpOpts) error {
 	if opts.containerID == "" {
 		return writeValidationError(out, "Missing required argument: --container-id")
@@ -93,8 +91,6 @@ func runSetUp(ctx context.Context, out Output, opts *setUpOpts) error {
 	if err := validateTerminalImplications(opts.terminalColumns, opts.terminalRows); err != nil {
 		return writeValidationError(out, err.Error())
 	}
-	// TS parity: set-up rejects malformed --remote-env at parse time like
-	// its siblings (exec/up/run-user-commands); Go was missing this.
 	if err := validateRemoteEnvs(opts.remoteEnvs); err != nil {
 		return writeValidationError(out, err.Error())
 	}
@@ -118,7 +114,6 @@ func runSetUp(ctx context.Context, out Output, opts *setUpOpts) error {
 	}
 	defer engine.Close()
 
-	// TS doSetUp reads the --config file before it looks for the container.
 	loaded, err := setUpConfig(opts.configPath)
 	if err != nil {
 		return writeErrorJSON(out, setUpErrorOutput(err))
@@ -131,9 +126,6 @@ func runSetUp(ctx context.Context, out Output, opts *setUpOpts) error {
 	return setUpContainer(ctx, out, engine, logger, opts, loaded, inspect)
 }
 
-// setUpErrorOutput is TS doSetUp's error result: a ContainerError as it is
-// (a NotObjectError is one in TS), any other error described as "An error
-// occurred running user commands in the container.".
 func setUpErrorOutput(err error) coreerrors.ErrorOutput {
 	if _, ok := errors.AsType[*config.NotObjectError](err); ok {
 		return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: err.Error()})
@@ -144,9 +136,6 @@ func setUpErrorOutput(err error) coreerrors.ErrorOutput {
 	return coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: "An error occurred running user commands in the container.", OriginalError: err})
 }
 
-// setUpContainer runs the lifecycle hooks in the container and writes the
-// result.
-//
 // mutate-lane: TestParityMatrix - set-up.container-config-success,
 // set-up.container-metadata-success and set-up.after-failed-post-create-success
 // set up a real container through it.
@@ -168,9 +157,6 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 	if cfg != nil {
 		cfgProbe, cfgRemoteEnv = cfg.UserEnvProbe, cfg.RemoteEnv
 	}
-	// The shell server and userEnvProbe run as the merged remoteUser (the
-	// config's wins), matching the TS CLI. Remote env: probe → CLI --remote-env
-	// → config remoteEnv.
 	probeStrategy := lifecycle.UserEnvProbeStrategy(cmp.Or(cfgProbe, opts.defaultUserEnvProbe))
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, merged.RemoteUser, probeStrategy, opts.containerSessionDataFolder)
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, merged.RemoteUser, hookRemoteEnv(probed, opts.remoteEnvs, cfgRemoteEnv)...)
@@ -189,7 +175,6 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 			}),
 		})
 		if hookErr != nil {
-			// TS set-up reports only the message and description.
 			return writeErrorJSON(out, coreerrors.ToErrorOutput(hookContainerError(hookErr, "", "An error occurred running user commands in the container.")))
 		}
 	}
@@ -198,11 +183,6 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 	return writeSuccessJSON(out, result, setUpResultKeys...)
 }
 
-// setUpConfig loads the --config file set-up merges over the container's
-// metadata (nil without --config) as TS doSetUp reads it: with no workspace,
-// so ${localWorkspaceFolder} and its basename stay as written, and so does
-// ${containerWorkspaceFolder} unless the config sets workspaceFolder. A file
-// that does not exist is TS's "Dev container config (...) not found.".
 func setUpConfig(configPath string) (*config.LoadResult, error) {
 	if configPath == "" {
 		return nil, nil
@@ -215,9 +195,6 @@ func setUpConfig(configPath string) (*config.LoadResult, error) {
 	return loaded, err
 }
 
-// setUpEntries are the metadata entries set-up merges: the container's
-// metadata label entries, then the config (when there is one) as the last
-// entry.
 func setUpEntries(labels map[string]string, cfg *config.DevContainer, logger log.Logger) []imagemeta.Entry {
 	entries := imagemeta.ReadMetadataFromLabels(labels, logger)
 	if cfg != nil {
@@ -226,17 +203,6 @@ func setUpEntries(labels map[string]string, cfg *config.DevContainer, logger log
 	return entries
 }
 
-// setUpResult is set-up's success result as TS doSetUp reports it:
-// configuration (--include-configuration) is the loaded configuration ({}
-// without one) and mergedConfiguration (--include-merged-configuration) the
-// merge of entries over it, both with ${containerEnv:...} resolved from the
-// container's environment. configFilePath is the file URI, which TS never
-// substitutes.
-//
-// TS substitutes both before it runs the lifecycle hooks, whether or not they
-// are reported, so set-up computes the result first: a variable that cannot be
-// resolved is the ContainerError it fails with, naming the configuration's
-// file.
 func setUpResult(loaded *config.LoadResult, entries []imagemeta.Entry, containerCfg *container.Config, includeConfig, includeMerged bool) (map[string]any, error) {
 	cfgMap := map[string]any{}
 	var configFileURI any

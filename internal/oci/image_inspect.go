@@ -14,20 +14,14 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// dockerManifestListMediaType is the Docker counterpart of an OCI image index.
 const dockerManifestListMediaType = "application/vnd.docker.distribution.manifest.list.v2+json"
 
-// ImageConfig is the part of an image's config blob ("config" object) the CLI
-// reads: the default user, environment and labels (devcontainer.metadata).
 type ImageConfig struct {
 	User   string            `json:"User,omitempty"`
 	Env    []string          `json:"Env,omitempty"`
 	Labels map[string]string `json:"Labels,omitempty"`
 }
 
-// ImageDetails is the TS ImageDetails built by inspectImageInRegistry
-// (utils.ts): the config digest as Id, the image config, and the platform that
-// was asked for.
 type ImageDetails struct {
 	ID           string
 	Config       ImageConfig
@@ -36,9 +30,6 @@ type ImageDetails struct {
 	Variant      string
 }
 
-// QualifyImageName is TS qualifyImageName (utils.ts): a bare name is a Docker
-// Hub library image, a two-segment name is a Docker Hub user image, anything
-// longer already names its registry.
 func QualifyImageName(name string) string {
 	segments := strings.Split(name, "/")
 	switch len(segments) {
@@ -54,8 +45,6 @@ func QualifyImageName(name string) string {
 	}
 }
 
-// registryServer is the host the registry API is served from: Docker Hub's
-// API lives on registry-1.docker.io, not docker.io (TS inspectImageInRegistry).
 func registryServer(registry string) string {
 	if registry == "docker.io" {
 		return "registry-1.docker.io"
@@ -63,11 +52,6 @@ func registryServer(registry string) string {
 	return registry
 }
 
-// InspectImageInRegistry is TS inspectImageInRegistry (utils.ts): it reads an
-// image's config straight from its registry, without pulling it. The reference
-// resolves to an image manifest (its config is used whatever its platform, as
-// TS does) or to an image index / manifest list, whose entry for platform is
-// then fetched. The config blob's "config" object becomes ImageDetails.Config.
 func (c *Client) InspectImageInRegistry(ctx context.Context, name string, platform ocispec.Platform) (*ImageDetails, error) {
 	resourceAndVersion := QualifyImageName(name)
 	ref, err := ParseRef(resourceAndVersion)
@@ -88,8 +72,6 @@ func (c *Client) InspectImageInRegistry(ctx context.Context, name string, platfo
 		return nil, err
 	}
 	if server != ref {
-		// Credentials are looked up for the registry as named (docker.io), like
-		// TS requestEnsureAuthenticated does with ref.registry.
 		if ac, ok := repo.Client.(*auth.Client); ok {
 			named, credential := ref.Registry, ac.Credential
 			ac.Credential = func(ctx context.Context, host string) (auth.Credential, error) {
@@ -166,8 +148,6 @@ func (c *Client) InspectImageInRegistry(ctx context.Context, name string, platfo
 	}, nil
 }
 
-// fetchManifestBytes fetches a manifest by tag or digest and reads it, verifying
-// the bytes against the returned descriptor.
 func fetchManifestBytes(ctx context.Context, repo *remote.Repository, reference string) (ocispec.Descriptor, []byte, error) {
 	desc, rc, err := repo.FetchReference(ctx, reference)
 	if err != nil {
@@ -181,8 +161,6 @@ func fetchManifestBytes(ctx context.Context, repo *remote.Repository, reference 
 	return desc, body, nil
 }
 
-// manifestConfig returns the config descriptor of an image manifest (OCI or
-// Docker v2 schema 2); it is empty when the document has none.
 func manifestConfig(body []byte) (ocispec.Descriptor, error) {
 	var m ocispec.Manifest
 	if err := json.Unmarshal(body, &m); err != nil {
@@ -191,9 +169,6 @@ func manifestConfig(body []byte) (ocispec.Descriptor, error) {
 	return m.Config, nil
 }
 
-// indexEntryForPlatform is TS getImageIndexEntryForPlatform
-// (containerCollectionsOCI.ts): the first entry whose os and architecture match,
-// and whose variant matches when a variant is asked for.
 func indexEntryForPlatform(index ocispec.Index, platform ocispec.Platform) (ocispec.Descriptor, bool) {
 	for _, m := range index.Manifests {
 		if m.Platform == nil || m.Platform.Architecture != platform.Architecture || m.Platform.OS != platform.OS {

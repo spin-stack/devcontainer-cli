@@ -2,11 +2,6 @@ package devtools
 
 import "testing"
 
-// TestParityAffected is a golden table: every expected value was captured from the
-// former scripts/parity-affected.sh before the port (files fed one-per-line with a
-// trailing newline, as `git diff --name-only` emits), so this proves behavior parity
-// and guards the conservative mapping (a wrong "none"/narrow result silently skips
-// runtime cases the change could break).
 func TestParityAffected(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -44,8 +39,6 @@ func TestParityAffected(t *testing.T) {
 		{"unknown path → all", []string{"totally-unknown-file"}, "all"},
 		{"full wins over leaf", []string{"internal/cli/exec.go", "docs/parity/parity-matrix.yaml"}, "all"},
 
-		// Post-migration: the ported logic lives under internal/ and cmd/, so a
-		// change to it conservatively triggers the full matrix (internal/*, cmd/*).
 		{"ported logic → all", []string{"internal/devtools/parityaffected.go"}, "all"},
 		{"devtool main → all", []string{"cmd/devtool/main.go"}, "all"},
 

@@ -7,8 +7,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 )
 
-// A string mount from image metadata resolves ${devcontainerId} across the
-// whole spec before it is parsed.
 func TestMountFromMetadataStringSpec(t *testing.T) {
 	m, err := mountFromMetadata("type=volume,source=cache-${devcontainerId},target=/cache", "abc123")
 	if err != nil {
@@ -19,7 +17,6 @@ func TestMountFromMetadataStringSpec(t *testing.T) {
 	}
 }
 
-// An object mount keeps the type it names and is a bind mount without one.
 func TestMountFromMetadataObjectType(t *testing.T) {
 	volume, err := mountFromMetadata(map[string]any{"type": "volume", "source": "v", "target": "/v"}, "id")
 	if err != nil {
@@ -37,8 +34,6 @@ func TestMountFromMetadataObjectType(t *testing.T) {
 	}
 }
 
-// An empty string mount records nothing in the configuration's metadata entry;
-// a non-empty one is kept as written.
 func TestMetadataMountsSkipsEmptyStrings(t *testing.T) {
 	var cfg config.DevContainer
 	if err := json.Unmarshal([]byte(`{"mounts": ["", "source=/h,target=/c,type=bind"]}`), &cfg); err != nil {

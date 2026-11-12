@@ -83,7 +83,7 @@ func TestUpRemoteUserFallsBackInTSOrder(t *testing.T) {
 		ctr         container.InspectResponse
 		imageLabels map[string]string
 		want        string
-		wantImage   bool // whether the image had to be asked
+		wantImage   bool
 	}{
 		{"config", "cfg", withUser("ctr", metadataLabels(`[{"remoteUser":"meta"}]`)), metadataLabels(`[{"remoteUser":"img"}]`), "cfg", false},
 		{"container metadata", "", withUser("ctr", metadataLabels(`[{"remoteUser":"meta"}]`)), metadataLabels(`[{"remoteUser":"img"}]`), "meta", false},
@@ -112,16 +112,12 @@ func TestUpRemoteUserFallsBackInTSOrder(t *testing.T) {
 	}
 }
 
-// containerMetadata reads a container's metadata labels without substitution
-// or id labels: its entries, then the configuration's.
 func containerMetadata(labels map[string]string) func(container.InspectResponse, *config.DevContainer) ([]imagemeta.Entry, error) {
 	return func(_ container.InspectResponse, cfg *config.DevContainer) ([]imagemeta.Entry, error) {
 		return imageMetadataFromContainer(labels, cfg, nil, nil, func(*[]imagemeta.Entry) error { return nil }, quietLogger())
 	}
 }
 
-// upConfigurationJSON is what addUpConfiguration adds to up's result, as up
-// prints it, for a container whose metadata labels are containerLabels.
 func upConfigurationJSON(t *testing.T, opts *upOpts, cfg *config.DevContainer, ctr container.InspectResponse, containerLabels map[string]string) map[string]any {
 	t.Helper()
 	result := map[string]any{}
@@ -378,8 +374,6 @@ func TestParseFlagMounts(t *testing.T) {
 	}
 }
 
-// composeConfigRunner answers `docker compose config` with config (or fails
-// when config is nil).
 type composeConfigRunner struct{ config map[string]any }
 
 func (r composeConfigRunner) Run(_ context.Context, _ io.Writer, _ string, args ...string) ([]byte, []byte, int, error) {
@@ -408,8 +402,6 @@ func TestResolveComposeProjectNameFollowsTheTSChain(t *testing.T) {
 		configDir    string
 		composeFiles []string
 	}
-	// inDevcontainer lays a config and its compose file out under
-	// <root>/My_Proj/.devcontainer.
 	inDevcontainer := func(t *testing.T, compose string) setup {
 		dir := filepath.Join(t.TempDir(), "My_Proj", ".devcontainer")
 		return setup{dir, []string{write(t, filepath.Join(dir, "docker-compose.yml"), compose)}}
@@ -563,8 +555,6 @@ func TestDropRanHooksWithoutAStartTimeAsksWithNone(t *testing.T) {
 	}
 }
 
-// recordingExecutor records the commands it is asked to run and fails them
-// with err.
 type recordingExecutor struct {
 	commands []string
 	err      error
@@ -604,8 +594,6 @@ func TestDotfilesAfterPostCreateInstallsAndOnlyWarnsOnFailure(t *testing.T) {
 	}
 }
 
-// TestE2E_UpCacheImage starts a container from a prebuilt --cache-image instead
-// of the config's image, and reports a cache image it cannot pull.
 func TestE2E_UpCacheImage(t *testing.T) {
 	if !dockerAvailable() {
 		t.Skip("Docker not available")
@@ -641,8 +629,6 @@ func TestE2E_UpCacheImage(t *testing.T) {
 	}
 }
 
-// TestE2E_UpReusesStoppedContainer starts the workspace's stopped container
-// again instead of creating another one.
 func TestE2E_UpReusesStoppedContainer(t *testing.T) {
 	if !dockerAvailable() {
 		t.Skip("Docker not available")
@@ -687,8 +673,6 @@ func TestAddUpConfigurationDropsAConfigFilePathThatResolvesToNothing(t *testing.
 	}
 }
 
-// up's Features build writes the configuration's containerEnv into the image
-// as ENV lines, as TS getFeaturesBuildOptions does and build already did.
 func TestUpFeatureBuildOptionsCarryTheContainerEnv(t *testing.T) {
 	cfg := &config.DevContainer{ContainerEnv: map[string]string{"VAR_WITH_SPACES": "value with spaces"}}
 	got := (&upRunner{opts: &upOpts{}}).featureBuildOptions(cfg, &config.LoadResult{}, "").ContainerEnv

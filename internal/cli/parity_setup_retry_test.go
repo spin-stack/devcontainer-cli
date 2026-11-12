@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// A setup_cmd that fails once with a transient build error is re-run and its
-// output read; one that keeps failing still fails the case.
 func TestParitySetupRetriesATransientBuildFailure(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "attempted")
 	setup := `if [ -e "` + marker + `" ]; then echo READY=yes; else touch "` + marker + `"; echo "ERROR: failed to solve: /tmp/build-features/hello_0: not found" >&2; exit 1; fi`

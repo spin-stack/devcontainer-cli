@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// TestMain runs the command itself, instead of the tests, in the child process
-// TestTheCommandIsWired starts.
 func TestMain(m *testing.M) {
 	if os.Getenv("DEVTOOL_RUN_MAIN") == "1" {
 		main()
@@ -17,7 +15,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// devtool runs this test binary as the devtool command, with args and stdin.
 func devtool(t *testing.T, stdin string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], args...)
@@ -35,8 +32,6 @@ func devtool(t *testing.T, stdin string, args ...string) (code int, stdout, stde
 	return cmd.ProcessState.ExitCode(), o.String(), e.String()
 }
 
-// TestTheCommandIsWired holds what main adds to devtools.Main: the process's
-// arguments, standard streams and exit code.
 func TestTheCommandIsWired(t *testing.T) {
 	if code, out, errOut := devtool(t, "internal/cli/exec.go\n", "parity-affected"); code != 0 || out != "exec\n" || errOut != "" {
 		t.Errorf("parity-affected: code=%d stdout=%q stderr=%q, want 0 \"exec\\n\" \"\"", code, out, errOut)

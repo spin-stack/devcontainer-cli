@@ -47,28 +47,24 @@ func TestResolveFeatureID(t *testing.T) {
 			wantMapped: false,
 		},
 		{
-			// A migrated legacy shorthand pins :1 (versionBackwardComp).
 			name:       "LegacyMigratedPinsV1",
 			id:         "git",
 			wantID:     "ghcr.io/devcontainers/features/git:1",
 			wantMapped: true,
 		},
 		{
-			// golang → go, pinned :1.
 			name:       "LegacyRenamed_golang",
 			id:         "golang",
 			wantID:     "ghcr.io/devcontainers/features/go:1",
 			wantMapped: true,
 		},
 		{
-			// common → common-utils, pinned :1.
 			name:       "LegacyRenamed_common",
 			id:         "common",
 			wantID:     "ghcr.io/devcontainers/features/common-utils:1",
 			wantMapped: true,
 		},
 		{
-			// An explicit version tag is honored instead of the :1 pin.
 			name:       "LegacyWithVersion",
 			id:         "node:18",
 			wantID:     "ghcr.io/devcontainers/features/node:18",
@@ -115,7 +111,6 @@ func TestResolveFeatureID(t *testing.T) {
 }
 
 func TestDeprecatedFeatureIntoOptions(t *testing.T) {
-	// gradle/maven fold into java, jupyterlab into python, each with a flag.
 	for name, want := range map[string]struct{ mapTo, opt string }{
 		"gradle":     {"java", "installGradle"},
 		"maven":      {"java", "installMaven"},
@@ -149,10 +144,6 @@ func TestUserFeaturesToArray_Nil(t *testing.T) {
 	}
 }
 
-// A local Feature resolves next to its configuration, and only inside the
-// workspace's .devcontainer folder, as TS processFeatureIdentifier
-// (containerFeaturesConfiguration.ts) requires; each refusal is the error TS
-// logs.
 func TestLocalFeaturePath(t *testing.T) {
 	ws := t.TempDir()
 	dc := filepath.Join(ws, ".devcontainer")
@@ -167,7 +158,6 @@ func TestLocalFeaturePath(t *testing.T) {
 		{name: "parent folder", id: "../feat", configDir: dc, workspaceRoot: ws, wantErr: outside + filepath.Join(ws, "feat")},
 		{name: "configuration at the workspace root", id: "./feat", configDir: ws, workspaceRoot: ws, wantErr: outside + filepath.Join(ws, "feat")},
 		{name: "configuration of another workspace", id: "./feat", configDir: dc, workspaceRoot: filepath.Join(ws, "other"), wantErr: outside + filepath.Join(dc, "feat")},
-		// TS looks for ".." anywhere in the relative path, a folder name included.
 		{name: "dots in a folder name", id: "./a..b", configDir: dc, workspaceRoot: ws, wantErr: outside + filepath.Join(dc, "a..b")},
 		{name: "absolute", id: filepath.Join(dc, "feat"), configDir: dc, workspaceRoot: ws, wantErr: "An Absolute path to a local feature is not allowed."},
 		{name: "absolute without a configuration", id: "/feat", wantErr: "An Absolute path to a local feature is not allowed."},
@@ -189,8 +179,6 @@ func TestLocalFeaturePath(t *testing.T) {
 	}
 }
 
-// Without a workspace folder the workspace root is the working directory, as
-// TS's params.cwd falls back to process.cwd().
 func TestLocalFeaturePathDefaultsToTheWorkingDirectory(t *testing.T) {
 	ws := t.TempDir()
 	t.Chdir(ws)

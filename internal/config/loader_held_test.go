@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// A workspace that is not in a repository mounts at /workspaces/<basename> with
-// no extra mount, even with the worktree common-dir mount enabled: TS
-// getWorkspaceConfiguration finds no `.git` and adds nothing.
 func TestComputeWorkspaceConfigOutsideARepository(t *testing.T) {
 	ws := filepath.Join(t.TempDir(), "plain")
 	if err := os.MkdirAll(ws, 0o755); err != nil {
@@ -21,8 +18,6 @@ func TestComputeWorkspaceConfigOutsideARepository(t *testing.T) {
 	}
 }
 
-// The ceiling is compared as a clean path, so one written with a trailing
-// separator still stops the walk before a `.git` above it.
 func TestDetectGitRootUntilCleansTheCeiling(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
@@ -38,9 +33,6 @@ func TestDetectGitRootUntilCleansTheCeiling(t *testing.T) {
 	}
 }
 
-// Off Windows a config's ${localEnv:NAME} is case-sensitive (TS
-// replaceWithContext → lookupValue lowercases the name only when the platform
-// is win32), so a name in another case than the host variable resolves to "".
 func TestLoadResolvesLocalEnvCaseSensitivelyOffWindows(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the host is Windows")

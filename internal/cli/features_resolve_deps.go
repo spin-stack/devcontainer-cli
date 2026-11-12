@@ -31,8 +31,6 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				Writer: os.Stderr,
 			})
 
-			// 0.88: workspace-folder defaults to cwd when not provided, which
-			// resolvePath("") is.
 			ws := resolvePath(workspaceFolder)
 			loadResult, err := config.LoadDevContainerConfig(ws, "", "")
 			if err != nil {
@@ -42,18 +40,12 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			cfg := loadResult.Config
 			userFeatures := features.UserFeaturesToArray(cfg.Features)
 			if len(userFeatures) == 0 {
-				// TS parity: no parseable features → stderr error + exit 1
-				// (featuresCLI/resolveDependencies.ts:92-93), NOT an empty
-				// installOrder on stdout.
 				logger.Write(fmt.Sprintf("Could not parse features object in configuration '%s'", cfg.ConfigFilePath), log.LevelError)
 				return &coreerrors.ExitCodeError{Code: 1}
 			}
 
 			ociClient := newOCIClient(cmd.Context(), logger)
 
-			// Read the lockfile (if any) so tarball/OCI resolution can pin digests.
-			// One that cannot be read fails the command as an uncaught error does
-			// in TS (runAsyncHandler): console.error(err) on stderr, exit code 1.
 			var lockfile *features.Lockfile
 			if cfg.ConfigFilePath != "" {
 				lockfile, _, err = features.ReadLockfile(cfg.ConfigFilePath)
@@ -64,11 +56,6 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			}
 			basePath := filepath.Dir(cfg.ConfigFilePath)
 
-			// Build the dependency graph once (with dependency edges and
-			// overrideFeatureInstallOrder priorities), then derive both the mermaid
-			// diagram and the install order from it via a single builder. The
-			// previous edge-less node list ignored transitive dependencies in
-			// the install order.
 			processFeature := newMetadataProcessFeature(ociClient, logger, localFeatureRoots{basePath, ws}, lockfile)
 			graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, cfg.OverrideFeatureInstallOrder, lockfile)
 			if err != nil {
@@ -99,8 +86,6 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				entries = append(entries, installEntry{ID: id, Options: opts})
 			}
 
-			// The TS CLI prints the mermaid dependency graph to stdout before the
-			// install-order JSON.
 			fmt.Fprintln(out.Stdout(), features.GenerateMermaidDiagram(graph))
 
 			data, _ := stringify.JSON(map[string]any{"installOrder": entries}, "  ")
@@ -115,9 +100,6 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 	return cmd
 }
 
-// errorInspect is what console.error prints for an error the reference
-// throws, frames left out: a lockfile error as Node.js shows the JavaScript
-// error, any other with its message.
 func errorInspect(err error) string {
 	if lerr, ok := errors.AsType[*features.LockfileError](err); ok {
 		return lerr.Inspect()

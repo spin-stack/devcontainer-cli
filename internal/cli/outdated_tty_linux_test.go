@@ -14,10 +14,6 @@ type terminalStdout struct{ terminal *os.File }
 func (o terminalStdout) Stdout() io.Writer { return o.terminal }
 func (terminalStdout) Stderr() io.Writer   { return io.Discard }
 
-// outdated indents its JSON only on a terminal, as TS's
-// JSON.stringify(outdated, undefined, process.stdout.isTTY ? '  ' : undefined);
-// a character device that is no terminal (/dev/null) or a regular file gets
-// none.
 func TestOutdatedIndentsOnlyOnATerminal(t *testing.T) {
 	master, terminal := openPTY(t)
 	ws := writeOutdatedWorkspace(t, `{}`, "")

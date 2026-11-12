@@ -69,10 +69,8 @@ func TestFindConfigFile(t *testing.T) {
 
 func TestLoadDevContainerConfig(t *testing.T) {
 	tests := []struct {
-		name string
-		// files maps a path relative to the temp dir to its content.
-		files map[string]string
-		// configPath and overridePath are relative to the temp dir; empty means "".
+		name         string
+		files        map[string]string
 		configPath   string
 		overridePath string
 		wantErr      bool
@@ -340,7 +338,6 @@ func TestGetDockerComposeFilePaths_Defaults(t *testing.T) {
 		t.Fatalf("paths len = %d", len(paths))
 	}
 
-	// Add override
 	os.WriteFile(filepath.Join(dir, "docker-compose.override.yml"), []byte("version: '3'"), 0644)
 	paths, err = DockerComposeFilePaths(c, map[string]string{}, dir)
 	if err != nil {
@@ -380,7 +377,6 @@ func TestLoadAllFixtures(t *testing.T) {
 			continue
 		}
 
-		// Verify variant detection is consistent
 		variants := 0
 		if result.Config.IsImageConfig() {
 			variants++
@@ -399,9 +395,6 @@ func TestLoadAllFixtures(t *testing.T) {
 	t.Logf("loaded %d fixtures, skipped %d (no devcontainer.json)", loaded, skipped)
 }
 
-// The deprecated properties reach the typed config even when customizations is
-// already set (the substituted re-read used to overwrite the move), and
-// RawConfig keeps the configuration as written, variables unresolved.
 func TestLoadMovesDeprecatedPropertiesAndKeepsRawConfig(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, ".devcontainer.json")
@@ -438,11 +431,6 @@ func TestLoadMovesDeprecatedPropertiesAndKeepsRawConfig(t *testing.T) {
 	}
 }
 
-// TS names a workspace's default config path (getDefaultDevContainerConfigPath)
-// as configFilePath when the workspace has no devcontainer.json and
-// --override-config is given, so relative paths in the override (a Dockerfile,
-// a local Feature, ${localWorkspaceFolder}-relative files) resolve against
-// <workspace>/.devcontainer, not the override's folder.
 func TestLoadDevContainerConfigOverrideWithoutWorkspaceConfig(t *testing.T) {
 	ws := t.TempDir()
 	override := filepath.Join(t.TempDir(), "override.json")
@@ -464,9 +452,6 @@ func TestLoadDevContainerConfigOverrideWithoutWorkspaceConfig(t *testing.T) {
 	}
 }
 
-// Without a workspace, TS's configuration is the override itself
-// (configPath = overrideConfigFile): a devcontainer.json in the current
-// directory is not discovered.
 func TestLoadDevContainerConfigOverrideWithoutWorkspace(t *testing.T) {
 	cwd := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cwd, ".devcontainer"), 0o755); err != nil {
@@ -492,10 +477,6 @@ func TestLoadDevContainerConfigOverrideWithoutWorkspace(t *testing.T) {
 	}
 }
 
-// TS reads the override in place of the configuration, so a missing override
-// is the configuration not found, named by the configuration's path: --config,
-// the one found in the workspace, the workspace's default path, or without a
-// workspace the override itself (configContainer.ts resolveWithLocalFolder).
 func TestLoadDevContainerConfigMissingOverrideIsNotFound(t *testing.T) {
 	ws := t.TempDir()
 	withConfig := t.TempDir()
@@ -528,8 +509,6 @@ func TestLoadDevContainerConfigMissingOverrideIsNotFound(t *testing.T) {
 	}
 }
 
-// Only a missing override is a configuration not found; one that cannot be
-// read for another reason keeps its read error.
 func TestLoadDevContainerConfigUnreadableOverride(t *testing.T) {
 	_, err := LoadDevContainerConfig(t.TempDir(), "", t.TempDir())
 	if _, ok := errors.AsType[*NotFoundError](err); ok || err == nil || !strings.Contains(err.Error(), "read override config") {
@@ -537,9 +516,6 @@ func TestLoadDevContainerConfigUnreadableOverride(t *testing.T) {
 	}
 }
 
-// A host variable without a name is TS's ContainerError (variableSubstitution.ts),
-// its description the whole text: the loader adds no prefix of its own, so
-// commands report it as TS does.
 func TestLoadDevContainerConfigUnresolvableVariableIsAContainerError(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, ".devcontainer", "devcontainer.json")

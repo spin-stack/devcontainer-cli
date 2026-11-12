@@ -13,14 +13,11 @@ import (
 	"testing"
 )
 
-// readRegistry is a read-only OCI distribution registry over plain HTTP,
-// addressed as localhost (which the OCI client reaches without TLS): it serves
-// the tag lists and manifests a test puts in it and 404s anything else.
 type readRegistry struct {
 	host      string
-	tags      map[string][]string // repository -> tags
-	manifests map[string][]byte   // repository -> manifest served for any reference
-	blobs     map[string][]byte   // digest -> blob, from any repository
+	tags      map[string][]string
+	manifests map[string][]byte
+	blobs     map[string][]byte
 }
 
 func newReadRegistry(t *testing.T) *readRegistry {
@@ -75,8 +72,6 @@ func (r *readRegistry) serve(w http.ResponseWriter, req *http.Request) {
 	_, _ = w.Write([]byte(`{"errors":[{"code":"NAME_UNKNOWN","message":"not found"}]}`))
 }
 
-// featureManifest is a Feature manifest whose keys are deliberately not in
-// sorted order, so a re-marshal would show.
 func featureManifest(id string) []byte {
 	return []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
 		`"config":{"mediaType":"application/vnd.devcontainers","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},` +
@@ -146,8 +141,6 @@ func TestFeaturesInfoModes(t *testing.T) {
 	}
 }
 
-// Every failure exits non-zero; under --output-format json stdout still holds
-// an empty object, and under text it holds nothing.
 func TestFeaturesInfoFailures(t *testing.T) {
 	reg := newReadRegistry(t)
 	reg.manifests["ns/untagged"] = featureManifest("untagged")

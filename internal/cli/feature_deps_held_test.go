@@ -18,8 +18,6 @@ func resolveMetadata(t *testing.T, reg oci.Registry, local localFeatureRoots, lo
 	return newMetadataProcessFeature(reg, log.Null, local, lockfile)(&features.FNode{UserFeatureID: id, Options: opts})
 }
 
-// A local Feature's metadata is its devcontainer-feature.json, its id the
-// user's reference when the file declares none, and its value the options.
 func TestMetadataProcessFeatureLocal(t *testing.T) {
 	roots := devcontainerRoots(t)
 	base := roots.configDir
@@ -46,10 +44,6 @@ func TestMetadataProcessFeatureLocal(t *testing.T) {
 	}
 }
 
-// resolve-dependencies refuses a local Feature outside the workspace's
-// .devcontainer folder as TS processFeatureIdentifier does: the reason is
-// logged and no Feature set comes back, which the graph fails; without a
-// configuration (features info's graph) a local Feature is refused too.
 func TestMetadataProcessFeatureRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 	roots := devcontainerRoots(t)
 	writeFeature(t, roots.workspaceRoot, "feat", `{"version":"1.0.0"}`)
@@ -72,7 +66,6 @@ func TestMetadataProcessFeatureRefusesLocalFeaturesOutsideDevcontainer(t *testin
 	}
 }
 
-// A direct tarball's metadata is the devcontainer-feature.json inside it.
 func TestMetadataProcessFeatureTarball(t *testing.T) {
 	opts := map[string]any{"v": "1"}
 	uri := serveBytes(t, featureTgzBytes(t, map[string]string{"devcontainer-feature.json": `{"id":"tb","installsAfter":["x"]}`}), http.StatusOK) + "/f.tgz"
@@ -93,9 +86,6 @@ func TestMetadataProcessFeatureTarball(t *testing.T) {
 	}
 }
 
-// An OCI Feature's metadata is the manifest annotation, else (absent or empty)
-// the devcontainer-feature.json of its first layer; its id is the annotation's,
-// else the reference's.
 func TestMetadataProcessFeatureOCI(t *testing.T) {
 	const id = "ghcr.io/owner/coll/hello:1"
 	layer := map[string]string{"devcontainer-feature.json": `{"id":"from-layer","dependsOn":{"ghcr.io/owner/coll/layer-dep:1":{}}}`}
@@ -180,8 +170,6 @@ func TestMetadataProcessFeatureOCI(t *testing.T) {
 	}
 }
 
-// `features info` draws the root and its dependencies; a graph that cannot be
-// built is an empty flowchart.
 func TestRenderDependencyMermaid(t *testing.T) {
 	reg := newOCIFeatureRegistry()
 	root := `{"id":"root","dependsOn":{"ghcr.io/owner/coll/dep:1":{}}}`
@@ -197,7 +185,6 @@ func TestRenderDependencyMermaid(t *testing.T) {
 	}
 }
 
-// A tarball without devcontainer-feature.json has empty metadata, not an error.
 func TestFeatureMetadataFromTarballWithoutMetadata(t *testing.T) {
 	meta, err := featureMetadataFromTarball(featureTgzBytes(t, map[string]string{"install.sh": "#!/bin/sh\n"}))
 	if err != nil || !reflect.DeepEqual(meta, features.Feature{}) {

@@ -10,9 +10,6 @@ import (
 	"testing"
 )
 
-// These tests require Docker and run real containers.
-// Skip if Docker is not available.
-
 func dockerAvailable() bool {
 	cmd := exec.Command("docker", "info")
 	return cmd.Run() == nil
@@ -28,11 +25,9 @@ func TestE2E_BuildUpExec_Image(t *testing.T) {
 		t.Skip("fixtures not found")
 	}
 
-	// Build
 	buildOut := runCLI(t, "build", "--workspace-folder", fixture)
 	assertOutcome(t, buildOut, "success")
 
-	// Up
 	upOut := runCLI(t, "up", "--workspace-folder", fixture, "--skip-post-create")
 	assertOutcome(t, upOut, "success")
 
@@ -42,11 +37,9 @@ func TestE2E_BuildUpExec_Image(t *testing.T) {
 		t.Fatal("no containerId in up output")
 	}
 
-	// Exec
-	cmd := exec.Command(os.Args[0], "-test.run=^$") // dummy — we use docker directly
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	_ = cmd
 
-	// Direct docker exec to verify
 	execCmd := exec.Command("docker", "exec", containerID, "echo", "e2e-test-ok")
 	execOut, err := execCmd.CombinedOutput()
 	if err != nil {
@@ -56,7 +49,6 @@ func TestE2E_BuildUpExec_Image(t *testing.T) {
 		t.Errorf("exec output = %q", string(execOut))
 	}
 
-	// Cleanup
 	exec.Command("docker", "rm", "-f", containerID).Run()
 }
 
@@ -70,13 +62,11 @@ func TestE2E_BuildUpExec_Dockerfile(t *testing.T) {
 		t.Skip("fixtures not found")
 	}
 
-	// Build
 	buildOut := runCLI(t, "build", "--workspace-folder", fixture)
 	assertOutcome(t, buildOut, "success")
 	buildResult := parseJSON(t, buildOut)
 	t.Logf("Built image: %v", buildResult["imageName"])
 
-	// Up
 	upOut := runCLI(t, "up", "--workspace-folder", fixture, "--skip-post-create")
 	assertOutcome(t, upOut, "success")
 
@@ -86,19 +76,16 @@ func TestE2E_BuildUpExec_Dockerfile(t *testing.T) {
 		t.Fatal("no containerId")
 	}
 
-	// Verify container is running
 	inspectCmd := exec.Command("docker", "inspect", "--format", "{{.State.Running}}", containerID)
 	inspectOut, _ := inspectCmd.Output()
 	if strings.TrimSpace(string(inspectOut)) != "true" {
 		t.Errorf("container not running: %s", string(inspectOut))
 	}
 
-	// Cleanup
 	exec.Command("docker", "rm", "-f", containerID).Run()
 }
 
 func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
-	// read-configuration looks for the container; this engine has none.
 	startFakeEngine(t, nil)
 	fixtures := []struct {
 		name    string
@@ -151,8 +138,6 @@ func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
 		})
 	}
 }
-
-// --- Helpers ---
 
 func runCLI(t *testing.T, args ...string) string {
 	t.Helper()

@@ -6,7 +6,6 @@ import (
 	coreerrors "github.com/devcontainers/cli/internal/errors"
 )
 
-// A command's error result is written as JSON.stringify writes it.
 func TestWriteErrorJSONDoesNotEscapeHTML(t *testing.T) {
 	var out captureOutput
 	_ = writeErrorJSON(&out, coreerrors.ErrorOutput{Outcome: "error", Message: "a && <b>", Description: "a && <b>"})

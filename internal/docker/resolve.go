@@ -5,17 +5,13 @@ import (
 	"strings"
 )
 
-// argumentExpression is TS dockerfileUtils.ts argumentExpression.
 var argumentExpression = regexp.MustCompile(`\$\{?([a-zA-Z0-9_]+)(:(-|\+)([^}]+))?\}?`)
 
-// dfScope is a TS Stage or the preamble ({ from?, instructions }).
 type dfScope struct {
 	from         *From
 	instructions []Instruction
 }
 
-// Resolver ports the variable resolution of TS dockerfileUtils.ts
-// (replaceVariables / findValue), which findBaseImage and findUserStatement use.
 type Resolver struct {
 	preamble  *dfScope
 	stages    []*dfScope
@@ -24,8 +20,6 @@ type Resolver struct {
 	platform  map[string]string
 }
 
-// NewResolver resolves df's variables with the --build-arg values and the
-// automatic BUILD*/TARGET* platform ARGs (TS globalBuildxPlatformArgs).
 func NewResolver(df *Dockerfile, buildArgs, platformArgs map[string]string) *Resolver {
 	r := &Resolver{
 		preamble:  &dfScope{instructions: df.Preamble.Instructions},
@@ -53,13 +47,10 @@ func (r *Resolver) startStage(target string) *dfScope {
 	return r.stages[len(r.stages)-1]
 }
 
-// fromImage resolves a stage's FROM image in the global scope.
 func (r *Resolver) fromImage(s *dfScope, baseEnv map[string]string) string {
 	return r.replace(baseEnv, s.from.Image, r.preamble, len(r.preamble.instructions))
 }
 
-// FindBaseImage is TS findBaseImage: follow FROM <stage> to the first image
-// that is not a stage. The base image's env is not available in FROM.
 func (r *Resolver) FindBaseImage(target string) string {
 	seen := map[*dfScope]bool{}
 	for s := r.startStage(target); s != nil; {
@@ -77,8 +68,6 @@ func (r *Resolver) FindBaseImage(target string) string {
 	return ""
 }
 
-// FindUserStatement is TS findUserStatement: the last USER of the target stage
-// (or of the stage it is built FROM), with its variables resolved.
 func (r *Resolver) FindUserStatement(baseEnv map[string]string, target string) string {
 	seen := map[*dfScope]bool{}
 	for s := r.startStage(target); s != nil; {
@@ -96,7 +85,6 @@ func (r *Resolver) FindUserStatement(baseEnv map[string]string, target string) s
 	return ""
 }
 
-// replace is TS replaceVariables.
 func (r *Resolver) replace(baseEnv map[string]string, str string, s *dfScope, before int) string {
 	var b strings.Builder
 	last := 0
@@ -104,9 +92,9 @@ func (r *Resolver) replace(baseEnv map[string]string, str string, s *dfScope, be
 		b.WriteString(str[last:m[0]])
 		last = m[1]
 		value := r.findValue(baseEnv, str[m[2]:m[3]], s, before)
-		varExp := m[4]    // mutate-exempt: m[4] and m[5] are both -1 exactly when the :-word/:+word group is unmatched
-		if varExp != -1 { // ${var:-word} / ${var:+word}
-			option, word := str[m[6]], str[m[8]:m[9]] // the option is one character, - or +
+		varExp := m[4] // mutate-exempt: m[4] and m[5] are both -1 exactly when the :-word/:+word group is unmatched
+		if varExp != -1 {
+			option, word := str[m[6]], str[m[8]:m[9]]
 			isSet := value != ""
 			if (option == '-' && !isSet) || (option == '+' && isSet) {
 				value = word
@@ -119,7 +107,6 @@ func (r *Resolver) replace(baseEnv map[string]string, str string, s *dfScope, be
 	return b.String()
 }
 
-// trimOneQuote strips one leading and one trailing quote, as TS getExpressionValue does.
 func trimOneQuote(s string) string {
 	if s != "" && (s[0] == '"' || s[0] == '\'') {
 		s = s[1:]
@@ -130,8 +117,6 @@ func trimOneQuote(s string) string {
 	return s
 }
 
-// findValue is TS findValue. An ARG without a default (and no build arg) does
-// not define the variable, so the lookup continues outward.
 func (r *Resolver) findValue(baseEnv map[string]string, variable string, s *dfScope, before int) string {
 	considerArg := true
 	seen := map[*dfScope]bool{}

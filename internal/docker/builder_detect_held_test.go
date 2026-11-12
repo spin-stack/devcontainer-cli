@@ -6,8 +6,6 @@ import (
 	"github.com/devcontainers/cli/internal/log"
 )
 
-// A buildx command that exits non-zero reports nothing, even when it printed
-// what would parse as a builder.
 func TestBuilderDetectionIgnoresAFailedBuildx(t *testing.T) {
 	inspect := &recordingRunner{responses: []cannedResponse{{stdout: []byte("Name: default\nDriver: docker\n"), code: 1}}}
 	c := &Client{DockerPath: "docker", Log: log.Null, Runner: inspect}

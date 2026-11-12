@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// Mediatypes for devcontainer OCI artifacts.
 const (
 	ManifestMediaType        = "application/vnd.devcontainers"
 	TarLayerMediaType        = "application/vnd.devcontainers.layer.v1+tar"
@@ -19,18 +18,16 @@ var (
 	regexForVersionOrDigest = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$`)
 )
 
-// Ref represents a parsed OCI reference for a Feature or Template.
-// e.g., ghcr.io/devcontainers/features/go:1.0.0
 type Ref struct {
-	Registry  string // "ghcr.io"
-	Owner     string // "devcontainers"
-	Namespace string // "devcontainers/features"
-	Path      string // "devcontainers/features/go"
-	Resource  string // "ghcr.io/devcontainers/features/go"
-	ID        string // "go"
-	Version   string // tag or digest (most specific)
-	Tag       string // "1.0.0" (empty if digest)
-	Digest    string // "sha256:..." (empty if tag)
+	Registry  string
+	Owner     string
+	Namespace string
+	Path      string
+	Resource  string
+	ID        string
+	Version   string
+	Tag       string
+	Digest    string
 }
 
 // Scheme is the transport the registry is addressed over, mirroring the TS
@@ -45,18 +42,14 @@ func (r *Ref) Scheme() string {
 	return "https"
 }
 
-// CollectionRef represents a collection metadata artifact reference.
-// e.g., ghcr.io/devcontainers/features:latest
 type CollectionRef struct {
-	Registry string // "ghcr.io"
-	Path     string // "devcontainers/features"
-	Resource string // "ghcr.io/devcontainers/features"
-	Tag      string // always "latest"
-	Version  string // always "latest"
+	Registry string
+	Path     string
+	Resource string
+	Tag      string
+	Version  string
 }
 
-// ParseRef parses an OCI reference string into a structured Ref.
-// Matches the TS implementation in containerCollectionsOCI.ts:getRef().
 func ParseRef(input string) (*Ref, error) {
 	input = strings.ToLower(input)
 
@@ -71,10 +64,8 @@ func ParseRef(input string) (*Ref, error) {
 	indexOfLastSlash := strings.LastIndex(input, "/")
 
 	if indexOfLastAt != -1 {
-		// Digest reference: registry/path@sha256:hex
 		resource = input[:indexOfLastAt]
 		digestWithAlgo := input[indexOfLastAt+1:]
-		// TS splits on every colon and wants exactly two parts.
 		parts := strings.Split(digestWithAlgo, ":")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid digest format %q, expected 'sha256:hex'", digestWithAlgo)
@@ -87,13 +78,9 @@ func ParseRef(input string) (*Ref, error) {
 		}
 		digest = digestWithAlgo
 	} else if indexOfLastColon > indexOfLastSlash {
-		// Tag reference: registry/path:tag. TS also checks
-		// indexOfLastColon !== -1, which this implies: the last slash is never
-		// before index -1.
 		resource = input[:indexOfLastColon]
 		tag = input[indexOfLastColon+1:]
 	} else {
-		// No tag or digest — default to "latest"
 		resource = input
 		tag = "latest"
 	}
@@ -107,8 +94,6 @@ func ParseRef(input string) (*Ref, error) {
 		return nil, fmt.Errorf("resource %q must have at least registry/namespace/id", resource)
 	}
 
-	// TS getRef: the devcontainers-contrib Features moved to devcontainers-extra;
-	// owner, namespace and path follow, the resource stays as written.
 	if parts[1] == "devcontainers-contrib" {
 		parts[1] = "devcontainers-extra"
 	}
@@ -143,13 +128,10 @@ func ParseRef(input string) (*Ref, error) {
 	}, nil
 }
 
-// Ref is the collection as the repository the registry client pushes to.
 func (r *CollectionRef) Ref() *Ref {
 	return &Ref{Registry: r.Registry, Path: r.Path, Resource: r.Resource, Tag: r.Tag, Version: r.Version}
 }
 
-// ParseCollectionRef parses registry + namespace into a CollectionRef, as TS
-// getCollectionRef does: the namespace, lowercased, is the whole path.
 func ParseCollectionRef(registry, namespace string) (*CollectionRef, error) {
 	registry = strings.ToLower(registry)
 	namespace = strings.ToLower(namespace)

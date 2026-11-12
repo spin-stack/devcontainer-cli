@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// In detect mode the GPU is enabled only when `docker info` ran and reported
-// the nvidia runtime; a failed docker info or one without the runtime ("<no
-// value>") leaves it off.
 func TestCheckGPUAvailabilityDetectsTheNvidiaRuntime(t *testing.T) {
 	orig := nvidiaContainerCLIInfo
 	t.Cleanup(func() { nvidiaContainerCLIInfo = orig })

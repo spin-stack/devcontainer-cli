@@ -6,11 +6,6 @@ import (
 	"testing"
 )
 
-// A Docker Compose configuration's container workspace folder is its own
-// workspaceFolder or `/`, never /workspaces/<basename> (TS
-// getWorkspaceConfiguration -> getRemoteWorkspaceFolder, dockerCompose.ts).
-// ${containerWorkspaceFolder} resolves to the same folder, with or without a
-// workspace.
 func TestLoadComposeWorkspaceFolder(t *testing.T) {
 	tests := []struct {
 		name         string

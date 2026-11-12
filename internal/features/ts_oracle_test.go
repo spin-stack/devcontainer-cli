@@ -9,8 +9,6 @@ import (
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
-// The goldens are the results of the reference functions themselves
-// (go tool task testdata:ts-oracle).
 func TestTSOracleVersion(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/version.json", map[string]oracletest.Func{
 		"parseVersion": func(args []json.RawMessage) (any, error) {
@@ -30,9 +28,6 @@ func TestTSOracleVersion(t *testing.T) {
 	})
 }
 
-// TestTSOracleLockfile holds GenerateLockfile and the lockfile text to TS
-// generateLockfile + writeLockfile's JSON.stringify: the features in
-// localeCompare order of their ids, each dependsOn in metadata order.
 func TestTSOracleLockfile(t *testing.T) {
 	oracletest.Run(t, "testdata/ts-oracle/lockfile.json", map[string]oracletest.Func{
 		"generateLockfileText": func(args []json.RawMessage) (any, error) {

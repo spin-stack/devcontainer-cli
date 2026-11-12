@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// metrics.json keeps the shape the former shell wrote: every key present, and a
-// measurement that was not taken written as null, not omitted.
 func TestMetricsJSONKeepsEveryKeyAndNulls(t *testing.T) {
 	ms := 1.5
 	size := int64(10)
@@ -30,7 +28,6 @@ func TestMetricsJSONKeepsEveryKeyAndNulls(t *testing.T) {
 	}
 }
 
-// MeanMillis warms up once and then times exactly runs calls.
 func TestMeanMillisWarmsUpThenRuns(t *testing.T) {
 	calls := 0
 	if got := MeanMillis(4, func() { calls++ }); got < 0 {
@@ -49,8 +46,6 @@ func TestMeanMillisWarmsUpThenRuns(t *testing.T) {
 	}
 }
 
-// The mean is in milliseconds: a run of 20 ms measures as 20 ms, not as its
-// microseconds or seconds.
 func TestMeanMillisIsMilliseconds(t *testing.T) {
 	got := MeanMillis(2, func() { time.Sleep(20 * time.Millisecond) })
 	if got < 20 || got > 2000 {
@@ -58,7 +53,6 @@ func TestMeanMillisIsMilliseconds(t *testing.T) {
 	}
 }
 
-// Sizes are nil for a missing file, and the gzip size is what gzip writes.
 func TestFileAndGzipSize(t *testing.T) {
 	dir := t.TempDir()
 	if FileSize(filepath.Join(dir, "absent")) != nil || GzipSize(filepath.Join(dir, "absent")) != nil {

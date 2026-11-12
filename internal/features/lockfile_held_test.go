@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// heldLockfile has a dependsOn array and a tarball URI with "&" in it.
 func heldLockfile() *Lockfile {
 	const tgz = "https://x/b.tgz?v=1&w=2"
 	return &Lockfile{Features: map[string]LockfileEntry{
@@ -17,9 +16,6 @@ func heldLockfile() *Lockfile {
 	}}
 }
 
-// heldLockfileJSON is what TS writeLockfile (reference/src/spec-configuration/
-// lockfile.ts) writes for heldLockfile: JSON.stringify(lockfile, null, 2) +
-// '\n', printed by node; "&" is not escaped.
 const heldLockfileJSON = `{
   "features": {
     "ghcr.io/o/f/a:1": {
@@ -40,15 +36,10 @@ const heldLockfileJSON = `{
 }
 `
 
-// heldLockfileCosmetic is heldLockfileJSON as another tool could have written
-// it: compact, \u escapes, no trailing newline. TS JSON.parse -> JSON.stringify
-// makes it heldLockfileJSON again.
 const heldLockfileCosmetic = `{"features":{"ghcr.io/o/f/a:1":{"version":"1.0.0","resolved":"ghcr.io/o/f/a@sha256:a",` +
 	`"integrity":"sha256:a","dependsOn":["ghcr.io/o/f/b:1","https://x/b.tgz?v=1&w=2"]},` +
 	`"https://x/b.tgz?v=1&w=2":{"version":"2.0.0","resolved":"https://x/b.tgz?v=1&w=2","integrity":"sha256:b"}}}`
 
-// writeHeldLockfile puts content in the lockfile of a config in a new
-// directory, dated an hour ago, and returns the config and lockfile paths.
 func writeHeldLockfile(t *testing.T, content string) (string, string) {
 	t.Helper()
 	configPath := filepath.Join(t.TempDir(), "devcontainer.json")
@@ -76,8 +67,6 @@ func readHeld(t *testing.T, path string) (string, time.Time) {
 	return string(data), info.ModTime()
 }
 
-// A new lockfile is written as TS writeLockfile writes it, which creates the
-// file when there is none: the lockfile is on by default.
 func TestWriteLockfileWritesWhatTSWrites(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "devcontainer.json")
 	if err := WriteLockfile(configPath, heldLockfile(), WriteOptions{}); err != nil {
@@ -88,10 +77,6 @@ func TestWriteLockfileWritesWhatTSWrites(t *testing.T) {
 	}
 }
 
-// TS writeLockfile rewrites an existing lockfile only when its JSON.parse ->
-// JSON.stringify differs from the new one, and frozen fails on exactly those:
-// the file TS wrote and a cosmetic variant of it are left alone and pass, a
-// stale or unparsable one is replaced and fails.
 func TestWriteLockfileComparesTheOldLockfileAsTSNormalizesIt(t *testing.T) {
 	for _, tt := range []struct {
 		name, old string
@@ -127,8 +112,6 @@ func TestWriteLockfileComparesTheOldLockfileAsTSNormalizesIt(t *testing.T) {
 	}
 }
 
-// An empty features object, and the empty dependsOn TS leaves out, compare
-// equal to their compact spelling: JSON.stringify writes {} and [] on one line.
 func TestWriteLockfileFrozenAcceptsCompactEmptyObjects(t *testing.T) {
 	for _, old := range []string{`{"features":{}}`, "{\n  \"features\": {}\n}\n"} {
 		configPath, _ := writeHeldLockfile(t, old)

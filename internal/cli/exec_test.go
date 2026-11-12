@@ -6,24 +6,15 @@ import (
 	"testing"
 )
 
-// TestExecExitCode_SignaledDerives128PlusN verifies the 128+N contract for the
-// edge where the host process (the CLI's `docker` child) is terminated by a
-// signal. os/exec reports ExitCode()==-1 in that case; execExitCode must
-// recover the signal from the WaitStatus and return 128+N, matching the TS CLI
-// (e.g. 143 for SIGTERM), instead of surfacing -1/255.
-//
-// Hermetic: runs /bin/sleep only, no Docker. The test signals the child
-// directly and then Waits, producing a real *exec.ExitError with a signaled
-// WaitStatus.
 func TestExecExitCode_SignaledDerives128PlusN(t *testing.T) {
 	cases := []struct {
 		name   string
 		signal syscall.Signal
 		want   int
 	}{
-		{"SIGTERM", syscall.SIGTERM, 128 + int(syscall.SIGTERM)}, // 143
-		{"SIGKILL", syscall.SIGKILL, 128 + int(syscall.SIGKILL)}, // 137
-		{"SIGINT", syscall.SIGINT, 128 + int(syscall.SIGINT)},    // 130
+		{"SIGTERM", syscall.SIGTERM, 128 + int(syscall.SIGTERM)},
+		{"SIGKILL", syscall.SIGKILL, 128 + int(syscall.SIGKILL)},
+		{"SIGINT", syscall.SIGINT, 128 + int(syscall.SIGINT)},
 	}
 
 	for _, tc := range cases {
@@ -42,7 +33,6 @@ func TestExecExitCode_SignaledDerives128PlusN(t *testing.T) {
 				t.Fatalf("expected *exec.ExitError from a signaled process, got %T: %v", err, err)
 			}
 
-			// Sanity: os/exec reports -1 for a signaled child.
 			if got := exitErr.ExitCode(); got != -1 {
 				t.Fatalf("precondition: expected ExitCode()==-1 for signaled child, got %d", got)
 			}
@@ -54,9 +44,6 @@ func TestExecExitCode_SignaledDerives128PlusN(t *testing.T) {
 	}
 }
 
-// TestExecExitCode_NormalExitPassthrough verifies that a normal (non-signaled)
-// exit code is passed through unchanged, i.e. the signal-derivation path only
-// triggers on ExitCode()==-1.
 func TestExecExitCode_NormalExitPassthrough(t *testing.T) {
 	cmd := exec.Command("/bin/sh", "-c", "exit 7")
 	err := cmd.Run()

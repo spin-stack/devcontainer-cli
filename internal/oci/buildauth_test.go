@@ -26,12 +26,6 @@ func readConfigAuths(t *testing.T, dir string) map[string]dockerConfigAuth {
 	return cf.Auths
 }
 
-// isolatedDockerConfig returns a DOCKER_CONFIG directory holding a config.json
-// with credentials for an unrelated registry. Credential resolution must not fall
-// back to the developer's own ~/.docker/config.json or to a platform credential
-// helper: both would resolve real credentials for ghcr.io/docker.io and make
-// these tests assert against whatever the host happens to be logged into (and
-// print that credential on failure).
 func isolatedDockerConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -55,7 +49,6 @@ func TestResolveBuildAuthFromOCIEnvAndGitHubToken(t *testing.T) {
 	defer cleanup()
 
 	auths := readConfigAuths(t, dir)
-	// docker.io has no resolvable credential here → must be absent.
 	if len(auths) != 2 {
 		t.Fatalf("want 2 auths (myreg + ghcr), got %d: %v", len(auths), auths)
 	}
@@ -65,7 +58,6 @@ func TestResolveBuildAuthFromOCIEnvAndGitHubToken(t *testing.T) {
 	if got := auths["ghcr.io"].Auth; got != base64.StdEncoding.EncodeToString([]byte("USERNAME:ghtok")) {
 		t.Errorf("ghcr auth = %q", got)
 	}
-	// The temp config must be self-contained: no credsStore/credHelpers keys.
 	data, _ := os.ReadFile(filepath.Join(dir, "config.json"))
 	if s := string(data); strings.Contains(s, "credsStore") || strings.Contains(s, "credHelpers") {
 		t.Errorf("temp config leaked store/helper keys:\n%s", s)
@@ -108,9 +100,6 @@ func TestResolveBuildAuthDedupesRegistries(t *testing.T) {
 	}
 }
 
-// TestResolveBuildAuth_IdentityToken covers the fix for token-only credentials
-// (ACR / OAuth refresh token): they carry an identitytoken but no base64 auth, and
-// were dropped by the old guard, leaving the build subprocess unauthenticated.
 func TestResolveBuildAuth_IdentityToken(t *testing.T) {
 	cfgDir := t.TempDir()
 	cfg := `{"auths":{"myacr.azurecr.io":{"identitytoken":"eyJTOKEN"}}}`
@@ -137,9 +126,6 @@ func TestResolveBuildAuth_IdentityToken(t *testing.T) {
 	}
 }
 
-// An empty registry (an image reference with no registry part resolved) is
-// skipped before any lookup, even when DEVCONTAINERS_OCI_AUTH carries an entry
-// with an empty host that would match it.
 func TestResolveBuildAuthSkipsAnEmptyRegistry(t *testing.T) {
 	env := map[string]string{"DEVCONTAINERS_OCI_AUTH": "|u|p", "DOCKER_CONFIG": isolatedDockerConfig(t)}
 	dir, cleanup, ok, err := ResolveBuildAuth(env, []string{""}, log.Null)
@@ -149,11 +135,6 @@ func TestResolveBuildAuthSkipsAnEmptyRegistry(t *testing.T) {
 	}
 }
 
-// TestBuildAuthFromDockerConfigOffHome: a caller that serves the Docker config
-// from tmpfs or FUSE sets DOCKER_CONFIG to a directory outside $HOME whose
-// config.json is a symlink into another; the credential is read through the
-// link, never from ~/.docker, and the bridged copy is written under TMPDIR and
-// removed by cleanup.
 func TestBuildAuthFromDockerConfigOffHome(t *testing.T) {
 	root := t.TempDir()
 	served := filepath.Join(root, "served")

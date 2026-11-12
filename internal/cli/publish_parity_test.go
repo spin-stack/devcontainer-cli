@@ -15,11 +15,6 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// TestPublishParity publishes the same feature/template collection through the TS
-// oracle and the Go CLI into a throwaway registry:3 container (via testcontainers)
-// under separate namespaces, and asserts the normalized result JSON matches. The
-// per-item layer digest differs (tar headers embed non-deterministic mtimes) but is
-// scrubbed by normalizeOutput, so publishedTags + version are what get compared.
 func TestPublishParity(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 
@@ -58,7 +53,7 @@ func TestPublishParity(t *testing.T) {
 
 	cases := []struct {
 		name       string
-		subcommand string // "features" | "templates"
+		subcommand string
 		collection string
 		itemIDs    []string
 	}{
@@ -89,8 +84,6 @@ func TestPublishParity(t *testing.T) {
 				t.Errorf("publish result differs:\n--- TS\n%s\n--- Go\n%s", tsOut, goOut)
 			}
 
-			// Output parity alone is insufficient for a mutating command. Verify the
-			// registry state for every item and the collection metadata artifact.
 			client := oci.NewClientWithAuthPolicy(log.Null, osEnvMap(), oci.DefaultAuthPolicy())
 			for _, id := range tc.itemIDs {
 				tagsFor := func(namespace string) []string {

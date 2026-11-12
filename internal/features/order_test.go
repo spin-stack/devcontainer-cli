@@ -35,7 +35,6 @@ func TestComputeInstallOrder(t *testing.T) {
 		wantOrder []string
 	}{
 		{
-			// Should be sorted lexicographically within the round (all have same priority).
 			name: "NoDeps",
 			build: func() []*FNode {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
@@ -46,7 +45,6 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantOrder: []string{"a", "b", "c"},
 		},
 		{
-			// b depends on a → a must install before b.
 			name: "HardDep",
 			build: func() []*FNode {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
@@ -56,7 +54,6 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantOrder: []string{"a", "b"},
 		},
 		{
-			// b installsAfter a → a should install first if both present.
 			name: "SoftDep",
 			build: func() []*FNode {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
@@ -67,7 +64,6 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantOrder: []string{"a", "b"},
 		},
 		{
-			// b installsAfter x (not in worklist) → x is pruned, b installs freely.
 			name: "SoftDepNotPresent",
 			build: func() []*FNode {
 				x := makeOCINode("ghcr.io/ns/x:1", "ghcr.io", "ns", "x")
@@ -89,7 +85,6 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			// c → b → a (chain).
 			name: "Chain",
 			build: func() []*FNode {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
@@ -100,7 +95,6 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantOrder: []string{"a", "b", "c"},
 		},
 		{
-			// d depends on b, c; both depend on a. a first, then b and c (sorted), then d.
 			name: "Diamond",
 			build: func() []*FNode {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
@@ -112,11 +106,6 @@ func TestComputeInstallOrder(t *testing.T) {
 			wantOrder: []string{"a", "b", "c", "d"},
 		},
 		{
-			// a, b, c with no deps; BuildDependencyGraph gave the override
-			// order [c, a] as c priority 2, a priority 1, b priority 0.
-			// Round 1: all eligible, max priority = 2 → only c.
-			// Round 2: a,b eligible, max priority = 1 → only a.
-			// Round 3: b.
 			name: "OverridePriority",
 			build: func() []*FNode {
 				a := makeOCINode("ghcr.io/ns/a:1", "ghcr.io", "ns", "a")
