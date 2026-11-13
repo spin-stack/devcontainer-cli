@@ -176,6 +176,37 @@ func TestUpDockerfileBuildsOnce(t *testing.T) {
 	}
 }
 
+func TestUpImageFeaturesTagsFolderImage(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	ws := writeFixture(t, map[string]string{
+		".devcontainer/devcontainer.json":               `{"image":"alpine:3","features":{"./hello":{}}}`,
+		".devcontainer/hello/devcontainer-feature.json": `{"id":"hello","version":"1.0.0"}`,
+		".devcontainer/hello/install.sh":                "#!/bin/sh\n",
+	})
+	loadResult, err := config.LoadDevContainerConfig(ws, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeDockerRunner{}
+	run := &upRunner{
+		log:        log.Null,
+		docker:     fakeDockerClient(r),
+		engine:     &docker.EngineClient{API: &fakeDockerAPI{version: "25.0.0", imageConfig: &dockerspec.DockerOCIImageConfig{}}},
+		opts:       &upOpts{workspaceFolder: ws, noLockfile: true, updateRemoteUserUIDDefault: "never"},
+		substitute: func(*[]imagemeta.Entry) error { return errStopAfterBuild },
+	}
+	if _, err := run.fromImage(t.Context(), loadResult.Config, loadResult, ws, nil, true); !errors.Is(err, errStopAfterBuild) {
+		t.Fatalf("up of an image with a Feature: %v, want it to reach the container", err)
+	}
+	builds := imageBuilds(r.calls)
+	if len(builds) != 1 {
+		t.Fatalf("docker builds = %v, want one", builds)
+	}
+	if got, want := tagsOf(builds[0]), []string{folderImageName(ws) + "-features"}; !slices.Equal(got, want) {
+		t.Errorf("tags = %v, want %v, as the official CLI names it", got, want)
+	}
+}
+
 type dockerfileBuildRun struct {
 	files       map[string]string
 	config      config.DevContainer

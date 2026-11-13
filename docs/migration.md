@@ -111,6 +111,13 @@ runs the official CLI is unaffected:
   build. `up` of a Dockerfile configuration with Features now tags the image
   `vsc-<folder>-<hash>`, not `vsc-<folder>-<hash>-features`; a script that looked
   the image up by the old name should use the new one.
+- `up` of an image configuration with Features tags the image
+  `vsc-<folder>-<hash>-features`, as the official CLI tags it, instead of
+  `<image>-features` (for example
+  `mcr.microsoft.com/devcontainers/base:ubuntu-features`). Every workspace on the
+  same image shared the old tag, so concurrent `up` runs could start a container
+  from another workspace's image. A script that looked the image up by the old
+  name should use the new one, or read it from the container.
 - When the workspace is a Git worktree and the configuration sets both
   `workspaceMount` and `workspaceFolder`, `up` no longer mounts the main
   repository's Git common directory, and `read-configuration` no longer reports
