@@ -113,6 +113,7 @@ func buildDockerfileImage(ctx context.Context, logger log.Logger, dockerClient *
 			UseBuildKitContexts: useBuildx,
 			Syntax:              featuresSyntaxDirective(ctx, engine, fb.OmitSyntaxDirective, useBuildx, parsed),
 			ConfigContainerEnv:  fb.ContainerEnv,
+			ConfigEnvOrder:      fb.ContainerEnvOrder,
 			SecretIDs:           secretIDs,
 			CABundle:            caSecrets != nil,
 		})
