@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/devcontainers/cli/internal/config"
+	"github.com/devcontainers/cli/internal/features"
 )
 
 type orderedObject struct {
@@ -83,9 +84,35 @@ func mergedKeys(configurationKeys []string) []string {
 func orderConfigurations(result map[string]any, loaded *config.LoadResult) {
 	cfgKeys := configurationKeys(loaded)
 	if m, ok := result["configuration"].(map[string]any); ok {
+		orderConfigurationValues(m, loaded)
 		result["configuration"] = orderedObject{m, cfgKeys}
 	}
 	if m, ok := result["mergedConfiguration"].(map[string]any); ok {
+		orderConfigurationValues(m, loaded)
 		result["mergedConfiguration"] = orderedObject{m, mergedKeys(cfgKeys)}
+	}
+}
+
+func orderConfigurationValues(m map[string]any, loaded *config.LoadResult) {
+	if loaded == nil || loaded.Config == nil {
+		return
+	}
+	cfg := loaded.Config
+	orderProperty(m, "containerEnv", cfg.ContainerEnvOrder)
+	feats, ok := m["features"].(map[string]any)
+	if !ok {
+		return
+	}
+	for id := range feats {
+		orderProperty(feats, id, cfg.FeatureOptionOrder[id])
+	}
+	orderProperty(m, "features", cfg.FeatureOrder)
+}
+
+// orderProperty writes the object at m[key] with its keys in
+// features.PropertyOrder; a value already ordered, or not an object, stays.
+func orderProperty(m map[string]any, key string, declared []string) {
+	if obj, ok := m[key].(map[string]any); ok {
+		m[key] = orderedObject{obj, features.PropertyOrder(obj, declared)}
 	}
 }

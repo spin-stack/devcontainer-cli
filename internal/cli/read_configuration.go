@@ -444,6 +444,7 @@ func mergedConfigurationOutput(entries []imagemeta.Entry, containerCfg *containe
 	if err := json.Unmarshal(mergedJSON, &mergedMap); err != nil {
 		return nil, fmt.Errorf("read merged configuration: %w", err)
 	}
+	orderProperty(mergedMap, "containerEnv", merged.ContainerEnvOrder)
 	for k, v := range cfgMap {
 		if !mergedOwnKeys[k] {
 			mergedMap[k] = v
