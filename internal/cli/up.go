@@ -577,7 +577,8 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 
 // mutate-lane: TestParityMatrix - up.image-success, up.image-with-features-success,
 // up.image-with-git-feature-success and up.update-uid-amd64-platform-option-success
-// start through it; also TestE2E_BuildUpExec_Image and TestE2E_FeatureUserHomeAndLocalEnv.
+// start through it; also TestUpImageFeaturesTagsFolderImage, TestE2E_BuildUpExec_Image and
+// TestE2E_FeatureUserHomeAndLocalEnv.
 func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
 	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
 	if cfg.Image == "" {
@@ -600,7 +601,7 @@ func (r *upRunner) fromImage(ctx context.Context, cfg *config.DevContainer, load
 	imageName := cfg.Image
 	if len(cfg.Features) > 0 {
 		r.lockfileRead = !opts.noLockfile
-		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, nil, r.featureBuildOptions(cfg, loadResult, platform))
+		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, cfg.Image, cfg.Features, useBuildx, []string{folderImageName(workspaceFolder) + "-features"}, r.featureBuildOptions(cfg, loadResult, platform))
 		if err != nil {
 			return "", fmt.Errorf("install features: %w", err)
 		}
