@@ -321,8 +321,9 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 
 	existingIDs, _ := engine.ListContainers(ctx, true, idLabels)
 	if len(existingIDs) > 0 && opts.removeExisting {
-		logger.Write(fmt.Sprintf("Removing existing container %s...", existingIDs[0]), log.LevelInfo)
-		_ = engine.RemoveContainer(ctx, existingIDs[0])
+		if err := removeExistingContainer(ctx, engine, logger, cfg, opts.dockerPath, existingIDs[0]); err != nil {
+			return writeErrorJSON(out, coreerrors.ToErrorOutput(err))
+		}
 		existingIDs = nil
 	}
 
@@ -1044,6 +1045,42 @@ func hookRemoteEnv(probed map[string]string, remoteEnvs []string, cfgRemoteEnv m
 		}
 	}
 	return append(env, secrets...)
+}
+
+type containerRemover interface {
+	RemoveContainer(ctx context.Context, id string) error
+}
+
+type containerRemoveError struct {
+	dockerPath string
+	id         string
+	err        error
+}
+
+func (e *containerRemoveError) Error() string {
+	return fmt.Sprintf("Command failed: %s rm -f %s", e.dockerPath, e.id)
+}
+
+func (e *containerRemoveError) Unwrap() error { return e.err }
+
+func removeExistingContainer(ctx context.Context, engine containerRemover, logger log.Logger, cfg *config.DevContainer, dockerPath, id string) error {
+	text := "Removing Existing Container"
+	if cfg.IsComposeConfig() {
+		text = "Removing existing container."
+	}
+	start := logger.Start(text)
+	if err := engine.RemoveContainer(ctx, id); err != nil {
+		removeErr := &coreerrors.ContainerError{
+			Description:   "An error occurred setting up the container.",
+			OriginalError: &containerRemoveError{dockerPath: cmp.Or(dockerPath, "docker"), id: id, err: err},
+		}
+		if cfg.IsComposeConfig() {
+			removeErr.ContainerID = id
+		}
+		return removeErr
+	}
+	logger.Stop(text, start)
+	return nil
 }
 
 func hookContainerError(hookErr error, containerID, fallback string) *coreerrors.ContainerError {
