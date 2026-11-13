@@ -23,6 +23,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/devcontainers/cli/internal/config"
+	coreerrors "github.com/devcontainers/cli/internal/errors"
 	"github.com/devcontainers/cli/internal/docker"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/lifecycle"
@@ -654,5 +655,76 @@ func TestUpFeatureBuildOptionsCarryTheContainerEnv(t *testing.T) {
 	got := (&upRunner{opts: &upOpts{}}).featureBuildOptions(cfg, &config.LoadResult{}, "").ContainerEnv
 	if !reflect.DeepEqual(got, cfg.ContainerEnv) {
 		t.Errorf("ContainerEnv = %v, want the config's %v", got, cfg.ContainerEnv)
+	}
+}
+
+type fakeRemover struct {
+	removed []string
+	err     error
+}
+
+func (f *fakeRemover) RemoveContainer(_ context.Context, id string) error {
+	f.removed = append(f.removed, id)
+	return f.err
+}
+
+func TestRemoveExistingContainer(t *testing.T) {
+	daemonErr := errors.New("removal of container abc is already in progress")
+	image := &config.DevContainer{}
+	compose := &config.DevContainer{DockerComposeFile: config.StringOrStrings{"docker-compose.yml"}}
+	for _, tc := range []struct {
+		name       string
+		cfg        *config.DevContainer
+		dockerPath string
+		removeErr  error
+		wantEvents []string
+		wantErr    *coreerrors.ErrorOutput
+	}{
+		{"image config", image, "", nil, []string{"start:Removing Existing Container", "stop:Removing Existing Container"}, nil},
+		{"compose config", compose, "", nil, []string{"start:Removing existing container.", "stop:Removing existing container."}, nil},
+		{"image config fails", image, "", daemonErr, []string{"start:Removing Existing Container"}, &coreerrors.ErrorOutput{
+			Outcome: "error", Message: "Command failed: docker rm -f abc", Description: "An error occurred setting up the container.",
+		}},
+		{"compose config fails", compose, "/usr/bin/podman", daemonErr, []string{"start:Removing existing container."}, &coreerrors.ErrorOutput{
+			Outcome: "error", Message: "Command failed: /usr/bin/podman rm -f abc", Description: "An error occurred setting up the container.", ContainerID: "abc",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logged bytes.Buffer
+			logger := log.New(log.Options{Writer: &logged, Format: "json", Level: log.LevelTrace})
+			engine := &fakeRemover{err: tc.removeErr}
+
+			err := removeExistingContainer(context.Background(), engine, logger, tc.cfg, tc.dockerPath, "abc")
+
+			if !slices.Equal(engine.removed, []string{"abc"}) {
+				t.Errorf("removed %q, want [abc]", engine.removed)
+			}
+			var events []string
+			for line := range strings.Lines(logged.String()) {
+				var e log.Event
+				if err := json.Unmarshal([]byte(line), &e); err != nil {
+					t.Fatalf("log line %q: %v", line, err)
+				}
+				events = append(events, e.Type+":"+e.Text)
+			}
+			if !slices.Equal(events, tc.wantEvents) {
+				t.Errorf("events = %q, want %q", events, tc.wantEvents)
+			}
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("err = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("err = nil, want the removal failure")
+			}
+			if got := coreerrors.ToErrorOutput(err); !reflect.DeepEqual(got, *tc.wantErr) {
+				t.Errorf("error output = %+v, want %+v", got, *tc.wantErr)
+			}
+			if !errors.Is(err, daemonErr) {
+				t.Errorf("err = %v, want it to wrap the daemon error", err)
+			}
+		})
 	}
 }
