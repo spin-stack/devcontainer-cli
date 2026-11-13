@@ -12,7 +12,6 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
 	coreerrors "github.com/devcontainers/cli/internal/errors"
-	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/stringify"
@@ -329,10 +328,6 @@ func (r *buildRunner) buildImage(ctx context.Context, cfg *config.DevContainer, 
 		return nil, fmt.Errorf("no image specified in devcontainer.json")
 	}
 
-	if err := checkLegacyFeatures(cfg.Features); err != nil {
-		return nil, err
-	}
-
 	logger.Write(fmt.Sprintf("Using image: %s", cfg.Image), log.LevelInfo)
 
 	folderImage := folderImageName(resolvePath(opts.workspaceFolder))
@@ -454,17 +449,6 @@ func imageBuildFor(cfg *config.DevContainer, opts *buildOpts) imageBuild {
 		return imageRelabeled
 	}
 	return imageAsIs
-}
-
-func checkLegacyFeatures(feats map[string]any) error {
-	userFeatures, _ := features.UpdateDeprecatedFeaturesIntoOptions(sortedUserFeatures(feats, nil))
-	for _, f := range userFeatures {
-		id, _ := features.BackwardCompatibleID(f.UserFeatureID)
-		if features.ClassifyID(id) == features.SourceLegacyShorthand {
-			return &coreerrors.ContainerError{Description: fmt.Sprintf(msgLegacyFeature, id)}
-		}
-	}
-	return nil
 }
 
 func imageNamesOr(names []string, fallback string) []string {
@@ -693,6 +677,7 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		Output:                      opts.output,
 		ContainerEnv:                cfg.ContainerEnv,
 		ContainerEnvOrder:           cfg.ContainerEnvOrder,
+		FeatureOrder:                cfg.FeatureOrder,
 		FeatureOptionOrder:          cfg.FeatureOptionOrder,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,

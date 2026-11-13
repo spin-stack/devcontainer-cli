@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/product"
 )
@@ -24,10 +25,12 @@ func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON st
 		cfg.Features = make(map[string]any)
 	}
 
+	cfg.FeatureOrder = features.PropertyOrder(cfg.Features, cfg.FeatureOrder)
 	additionalOnly := make(map[string]bool)
-	for k, v := range additional {
+	for _, k := range features.PropertyOrder(additional, jsonc.MemberNames([]byte(additionalFeaturesJSON))) {
 		if _, exists := cfg.Features[k]; !exists {
-			cfg.Features[k] = v
+			cfg.Features[k] = additional[k]
+			cfg.FeatureOrder = append(cfg.FeatureOrder, k)
 			additionalOnly[k] = true
 			if names := jsonc.MemberNames([]byte(additionalFeaturesJSON), k); len(names) > 0 {
 				if cfg.FeatureOptionOrder == nil {

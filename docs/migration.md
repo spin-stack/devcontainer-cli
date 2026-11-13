@@ -208,6 +208,13 @@ runs the official CLI is unaffected:
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
+- Features are resolved in the order the configuration declares them, as the
+  official CLI resolves them: integer-like ids such as `"9"` first, ascending,
+  then the others in declaration order, followed by the `--additional-features`
+  ids the configuration does not name. When several Features fail, the one
+  reported is the first in that order; earlier releases reported the first by
+  sorted id. `build` no longer reports a legacy Feature id before trying the
+  Features declared ahead of it, or before pulling the image.
 
 ## Rollback
 
