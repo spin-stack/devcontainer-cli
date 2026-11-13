@@ -1516,6 +1516,55 @@ initial_cases:
     current_status: match
     notes: "A Feature's value is the user's options object from devcontainer.json as JSON.parse built it, so it keeps JS property order: the array-index keys 2 and 10 first, ascending, then zz and a as declared. Go sorted it (10, 2, a, zz)."
 
+  - id: read-configuration.configuration-container-env-and-features-key-order-success
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"containerEnv\":{\"ZED\":\"1\",\"10\":\"2\",\"ALPHA\":\"3\",\"2\":\"4\"},\"features\":{\"zeta\":{\"zz\":\"1\",\"10\":\"t\",\"a\":\"b\",\"2\":\"s\"},\"10\":{},\"alpha\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE}"
+    key_order: ["configuration.containerEnv", "configuration.features", "configuration.features.zeta"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "configuration is the devcontainer.json object as JSON.parse built it, so containerEnv, features and each Feature's options keep JS property order: the array-index keys 2 and 10 first, ascending, then the others as declared. Go sorted them (10, 2, ALPHA, ZED)."
+
+  - id: read-configuration.merged-container-env-key-order-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"containerEnv\":{\"ZED\":\"1\",\"10\":\"2\",\"ALPHA\":\"3\",\"2\":\"4\"}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    key_order: ["configuration.containerEnv", "mergedConfiguration.containerEnv"]
+    asserts: [exit_code, stdout_normalized]
+    class: output-shape
+    current_status: match
+    notes: "mergedConfiguration's containerEnv is mergeConfiguration's Object.assign over the metadata entries, so it keeps JS property order (2, 10, ZED, ALPHA). Go sorted it."
+
+  - id: up.container-env-run-order-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: |
+      D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}
+      rm -rf $D && mkdir -p $D/ws/.devcontainer
+      printf '%s' '{"image":"alpine:3","containerEnv":{"ZED":"1","10":"2","ALPHA":"3","2":"4"}}' > $D/ws/.devcontainer/devcontainer.json
+      printf '%s\n' '#!/bin/sh' "echo \"\$*\" >> $D/docker.log" "exec $(command -v docker) \"\$@\"" > $D/docker
+      chmod +x $D/docker
+      echo WORKSPACE=$D/ws
+      echo DOCKER_WRAP=$D/docker
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --docker-path ${DOCKER_WRAP} --skip-post-create --update-remote-user-uid-default never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    verify_cmd: "grep -o -E -- '-e (ZED|10|ALPHA|2)=[0-9]+' /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}/docker.log"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "The docker CLI is a wrapper that logs its arguments; verify_cmd lists the -e flags of docker run. TS passes the merged containerEnv in Object.keys order: the integer keys ascending (2, 10), then the others as declared (ZED, ALPHA). Go ranged over a map, so the order changed from run to run. The container's Config.Env is not compared: Docker reorders it."
+
   - id: read-configuration.features-configuration-oci-feature-key-order-success
     lane: runtime
     command: read-configuration

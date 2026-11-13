@@ -50,6 +50,29 @@ func TestReadConfigurationWritesTSKeyOrder(t *testing.T) {
 	}
 }
 
+func TestReadConfigurationWritesNestedObjectsInPropertyOrder(t *testing.T) {
+	startFakeEngine(t, nil)
+	stdout, err := readConfigurationStdout("--workspace-folder", writeConfigFixture(t, map[string]string{
+		".devcontainer/devcontainer.json": `{
+			"image": "alpine:3",
+			"containerEnv": {"ZED": "1", "10": "2", "ALPHA": "3", "2": "4"},
+			"features": {"zeta": {"zz": "1", "10": "t", "a": "b", "2": "s"}, "10": {}, "alpha": {}}
+		}`,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string][]string{
+		"configuration.containerEnv":  {"2", "10", "ZED", "ALPHA"},
+		"configuration.features":      {"10", "zeta", "alpha"},
+		"configuration.features.zeta": {"2", "10", "zz", "a"},
+	} {
+		if got, err := jsonKeyOrder(stdout, path); err != nil || !slices.Equal(got, want) {
+			t.Errorf("keys of %q = %v (%v), want %v", path, got, err, want)
+		}
+	}
+}
+
 func TestOrderConfigurationsWritesTSMergedOrder(t *testing.T) {
 	loaded := &config.LoadResult{KeyOrder: []string{"name", "customizations", "image", "remoteUser", "postCreateCommand", "containerEnv"}}
 	fields := func(keys ...string) map[string]any {

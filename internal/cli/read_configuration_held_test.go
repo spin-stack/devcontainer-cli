@@ -373,7 +373,7 @@ func TestMergedConfigurationOutput(t *testing.T) {
 		if env := got["remoteEnv"]; !reflect.DeepEqual(env, map[string]any{"P": "/container/bin"}) {
 			t.Errorf("remoteEnv = %v, want ${containerEnv:PATH} resolved with the container's env", env)
 		}
-		if env, _ := got["containerEnv"].(map[string]any); env["H"] != result.HostSub.Env["HOME"] {
+		if env, _ := got["containerEnv"].(orderedObject); env.fields["H"] != result.HostSub.Env["HOME"] {
 			t.Errorf("containerEnv = %v, want the label's ${localEnv:HOME} substituted", got["containerEnv"])
 		}
 	})

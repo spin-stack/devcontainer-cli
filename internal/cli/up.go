@@ -18,6 +18,7 @@ import (
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
 	coreerrors "github.com/devcontainers/cli/internal/errors"
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/lifecycle"
 	"github.com/devcontainers/cli/internal/log"
@@ -538,6 +539,7 @@ func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cf
 		}
 		cfgResult, _ := result["configuration"].(map[string]any)
 		if mm, ok := mergedSub.(map[string]any); ok {
+			orderProperty(mm, "containerEnv", merged.ContainerEnvOrder)
 			for k, v := range cfgResult {
 				if !mergedOwnKeys[k] {
 					mm[k] = v
@@ -697,8 +699,9 @@ func (r *upRunner) runContainer(ctx context.Context, imageName string, cfg *conf
 	containerUser := containerRunUser(merged.ContainerUser, imageInspect)
 
 	var envVars []string
-	for k, v := range withCABundleEnv(merged.ContainerEnv, opts.caBundle) {
-		envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
+	containerEnv := withCABundleEnv(merged.ContainerEnv, opts.caBundle)
+	for _, k := range features.PropertyOrder(containerEnv, merged.ContainerEnvOrder) {
+		envVars = append(envVars, k+"="+containerEnv[k])
 	}
 
 	mounts, err := upWorkspaceMounts(loadResult.WorkspaceConfig, workspaceFolder, opts.workspaceMountConsistency)
