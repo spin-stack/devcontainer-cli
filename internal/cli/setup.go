@@ -159,7 +159,7 @@ func setUpContainer(ctx context.Context, out Output, engine *docker.EngineClient
 	}
 	probeStrategy := lifecycle.UserEnvProbeStrategy(cmp.Or(cfgProbe, opts.defaultUserEnvProbe))
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, merged.RemoteUser, probeStrategy, opts.containerSessionDataFolder)
-	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, merged.RemoteUser, hookRemoteEnv(probed, opts.remoteEnvs, cfgRemoteEnv)...)
+	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, merged.RemoteUser, hookRemoteEnv(probed, opts.remoteEnvs, cfgRemoteEnv, nil)...)
 	defer shellServer.Close()
 
 	executor := &lifecycle.ShellExecutor{Server: shellServer, Log: logger}

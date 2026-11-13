@@ -222,7 +222,11 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 
 	remoteUser := lifecycleRemoteUser(merged, cfg)
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, lifecycleUserEnvProbe(opts.defaultUserEnvProbe, cfg), opts.containerSessionDataFolder)
-	remoteEnv := lifecycleRemoteEnv(probed, opts.secrets.env(), opts.remoteEnvs, cfg)
+	var cfgRemoteEnv map[string]*string
+	if cfg != nil {
+		cfgRemoteEnv = cfg.RemoteEnv
+	}
+	remoteEnv := hookRemoteEnv(probed, opts.remoteEnvs, cfgRemoteEnv, opts.secrets.env())
 
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, remoteEnv...)
 	defer shellServer.Close()
@@ -280,19 +284,3 @@ func lifecycleUserEnvProbe(defaultProbe string, cfg *config.DevContainer) lifecy
 	return lifecycle.UserEnvProbeStrategy(defaultProbe)
 }
 
-func lifecycleRemoteEnv(probed map[string]string, secrets, remoteEnvs []string, cfg *config.DevContainer) []string {
-	var env []string
-	for k, v := range probed {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-	env = append(env, secrets...)
-	env = append(env, remoteEnvs...)
-	if cfg != nil {
-		for k, v := range cfg.RemoteEnv {
-			if v != nil {
-				env = append(env, fmt.Sprintf("%s=%s", k, *v))
-			}
-		}
-	}
-	return env
-}

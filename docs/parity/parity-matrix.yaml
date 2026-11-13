@@ -3061,6 +3061,20 @@ initial_cases:
     class: lifecycle-runtime
     current_status: match
 
+  - id: run-user-commands.secrets-override-remote-env-success
+    lane: runtime
+    command: run-user-commands
+    priority: p1
+    docker_required: true
+    ts_cmd: "run-user-commands --workspace-folder ${WORKSPACE} --secrets-file ${SECRETS_FILE} --remote-env TOKEN=cli --remote-env CONFIG_WINS=cli --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    setup_cmd: "WORKSPACE=/tmp/parity-secrets-env-run-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; printf '%s' '{\"image\":\"alpine:3.20\",\"overrideCommand\":true,\"remoteEnv\":{\"TOKEN\":\"config\",\"CONFIG_WINS\":\"config\"},\"postCreateCommand\":\"printenv TOKEN CONFIG_WINS > env.postCreateCommand.testMarker\"}' > ${WORKSPACE}/.devcontainer.json; SECRETS_FILE=${WORKSPACE}/test-secrets-temp.json; printf '%s' '{\"TOKEN\":\"SecretValue1\"}' > ${SECRETS_FILE}; if [ \"${PARITY_SIDE}\" = \"ts\" ]; then ${PARITY_CLI_TS} up --workspace-folder ${WORKSPACE} --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; else ${PARITY_CLI_GO} up --workspace-folder ${WORKSPACE} --skip-post-create --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container >/dev/null; fi; echo WORKSPACE=$WORKSPACE; echo SECRETS_FILE=$SECRETS_FILE"
+    verify_cmd: "cat ${WORKSPACE}/env.postCreateCommand.testMarker"
+    cleanup_cmd: "IDS=$(docker ps -aq --filter label=parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}); [ -n \"$IDS\" ] && docker rm -f $IDS >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: lifecycle-runtime
+    current_status: match
+    notes: "Same precedence as up.secrets-override-remote-env-success: run-user-commands hands runLifecycleHooks the probed remoteEnv and the secrets, and each hook runs with {...remoteEnv, ...secrets}."
+
   - id: run-user-commands.workspace-subfolder-config-success
     lane: runtime
     command: run-user-commands
@@ -3793,6 +3807,20 @@ initial_cases:
     class: up-runtime
     current_status: match
     arm64_required: true
+
+  - id: up.secrets-override-remote-env-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --secrets-file ${SECRETS_FILE} --remote-env TOKEN=cli --remote-env CONFIG_WINS=cli --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE} --remove-existing-container"
+    setup_cmd: "WORKSPACE=/tmp/parity-secrets-env-up-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf ${WORKSPACE}; mkdir -p ${WORKSPACE}; printf '%s' '{\"image\":\"alpine:3.20\",\"overrideCommand\":true,\"remoteEnv\":{\"TOKEN\":\"config\",\"CONFIG_WINS\":\"config\"},\"postCreateCommand\":\"printenv TOKEN CONFIG_WINS > env.postCreateCommand.testMarker\"}' > ${WORKSPACE}/.devcontainer.json; SECRETS_FILE=${WORKSPACE}/test-secrets-temp.json; printf '%s' '{\"TOKEN\":\"SecretValue1\"}' > ${SECRETS_FILE}; echo WORKSPACE=$WORKSPACE; echo SECRETS_FILE=$SECRETS_FILE"
+    verify_cmd: "cat ${WORKSPACE}/env.postCreateCommand.testMarker"
+    cleanup_cmd: "docker rm -f ${CONTAINER_ID} >/dev/null 2>&1 || true; rm -rf ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "Lifecycle hooks see {...remoteEnv, ...secrets} (injectHeadless.ts runLifecycleCommand), where remoteEnv is the probed env, then --remote-env, then the config's remoteEnv (probeRemoteEnv): a --secrets-file value beats both remoteEnv sources of the same name, and the config's remoteEnv beats --remote-env. Go put the secrets before both, so remoteEnv won."
 
   - id: up.workspace-secrets-success
     lane: runtime

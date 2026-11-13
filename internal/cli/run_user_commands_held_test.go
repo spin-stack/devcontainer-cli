@@ -3,7 +3,6 @@ package cli
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -181,20 +180,5 @@ func TestLifecycleUserEnvProbe(t *testing.T) {
 		if got := lifecycleUserEnvProbe("loginShell", tc.cfg); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
-	}
-}
-
-func TestLifecycleRemoteEnvOrder(t *testing.T) {
-	probed := map[string]string{"PATH": "/probed"}
-	secrets := []string{"TOKEN=s"}
-	cli := []string{"PATH=/cli"}
-	value := "/config"
-	cfg := &config.DevContainer{RemoteEnv: map[string]*string{"PATH": &value, "UNSET": nil}}
-
-	if got, want := lifecycleRemoteEnv(probed, secrets, cli, cfg), []string{"PATH=/probed", "TOKEN=s", "PATH=/cli", "PATH=/config"}; !slices.Equal(got, want) {
-		t.Errorf("with config: %v, want %v", got, want)
-	}
-	if got, want := lifecycleRemoteEnv(probed, secrets, cli, nil), []string{"PATH=/probed", "TOKEN=s", "PATH=/cli"}; !slices.Equal(got, want) {
-		t.Errorf("without config: %v, want %v", got, want)
 	}
 }
