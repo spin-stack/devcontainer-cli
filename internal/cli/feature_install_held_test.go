@@ -429,7 +429,7 @@ func TestTarballFeatureIDUsesTheURLPath(t *testing.T) {
 
 func TestFetchFeatureSetsReportsTheFirstSortedFailure(t *testing.T) {
 	for range 5 {
-		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, devcontainerRoots(t))
+		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, nil, devcontainerRoots(t))
 		if err == nil || !strings.Contains(err.Error(), "'./a-missing'") {
 			t.Fatalf("err = %v, want the failure of ./a-missing", err)
 		}

@@ -40,6 +40,7 @@ type FeaturesBuildParams struct {
 	UseBuildKitContexts       bool
 	Syntax                    string
 	ConfigContainerEnv        map[string]string
+	ConfigEnvOrder            []string // ConfigContainerEnv's member names as declared
 	SecretIDs                 []string
 	CABundle                  bool
 }
@@ -119,7 +120,7 @@ func GenerateFeaturesBuildOptions(p FeaturesBuildParams) *ExtendImageBuildInfo {
 		"#{featureLayer}", featureLayers(p, contentSourceRootPath),
 		"#{containerEnv}", "",
 		"#{devcontainerMetadata}", devcontainerMetadataLabel(p.Metadata),
-		"#{containerEnvMetadata}", generateContainerEnvs(p.ConfigContainerEnv, true),
+		"#{containerEnvMetadata}", generateContainerEnvs(p.ConfigContainerEnv, p.ConfigEnvOrder, true),
 	)
 	dockerfile := replacer.Replace(containerFeaturesBaseDockerfile)
 
@@ -165,7 +166,7 @@ func featureLayers(p FeaturesBuildParams, contentSourceRootPath string) string {
 	}
 	for _, set := range p.FeatureSets {
 		for _, feat := range set.Features {
-			b.WriteString(generateContainerEnvs(feat.ContainerEnv, false))
+			b.WriteString(generateContainerEnvs(feat.ContainerEnv, feat.ContainerEnvOrder, false))
 			source := path.Join(contentSourceRootPath, feat.ConsecutiveId)
 			dest := path.Join(FeaturesContainerTempDestFolder, feat.ConsecutiveId)
 			if !p.UseBuildKitContexts {
@@ -184,8 +185,11 @@ func featureLayers(p FeaturesBuildParams, contentSourceRootPath string) string {
 	return b.String()
 }
 
-// Keys are sorted, where TS writes them in insertion order: Go maps carry none.
-func generateContainerEnvs(env map[string]string, escapeDollar bool) string {
+// The lines follow containerEnv's property order (order holds its member
+// names as declared), as TS's Object.keys does: without escapeDollar, a value
+// that references a variable an earlier line sets expands to that line's
+// value.
+func generateContainerEnvs(env map[string]string, order []string, escapeDollar bool) string {
 	if len(env) == 0 {
 		return ""
 	}
@@ -193,11 +197,7 @@ func generateContainerEnvs(env map[string]string, escapeDollar bool) string {
 	if escapeDollar {
 		special += "$"
 	}
-	keys := make([]string, 0, len(env))
-	for k := range env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := features.PropertyOrder(env, order)
 	lines := make([]string, 0, len(keys))
 	for _, k := range keys {
 		lines = append(lines, "ENV "+k+`="`+backslashEscape(env[k], special)+`"`)
@@ -322,12 +322,7 @@ func featureValueObject(feat features.Feature, info FeatureFileInfo) ([]string, 
 	}
 	switch v := feat.Value.(type) {
 	case map[string]any:
-		userKeys := make([]string, 0, len(v))
-		for k := range v {
-			userKeys = append(userKeys, k)
-		}
-		sort.Strings(userKeys)
-		for _, k := range userKeys {
+		for _, k := range features.PropertyOrder(v, feat.ValueOrder) {
 			set(k, v[k])
 		}
 	case nil:
@@ -337,7 +332,8 @@ func featureValueObject(feat features.Feature, info FeatureFileInfo) ([]string, 
 			set("version", v)
 		}
 	}
-	return keys, values
+	// getFeatureEnvVariables lists the object's Object.keys.
+	return features.PropertyOrder(values, keys), values
 }
 
 func jsString(v any) string {

@@ -33,8 +33,10 @@ type Feature struct {
 	CachePath            string            `json:"cachePath,omitempty"`
 	ConsecutiveId        string            `json:"consecutiveId,omitempty"`
 	Value                any               `json:"value"`
+	ValueOrder           []string          `json:"-"`
 	UserOptions          map[string]any    `json:"-"`
 	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
+	ContainerEnvOrder    []string          `json:"-"`
 	Mounts               []any             `json:"mounts,omitempty"`
 	Init                 *bool             `json:"init,omitempty"`
 	Privileged           *bool             `json:"privileged,omitempty"`
@@ -204,6 +206,11 @@ func (f *Feature) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	f.DependsOnOrder = jsonc.MemberNames(data, "dependsOn")
+	// TS writes containerEnv's ENV lines and the value's options in the
+	// order the document declares them (a line may use a variable an
+	// earlier one sets), and Go maps keep none.
+	f.ContainerEnvOrder = jsonc.MemberNames(data, "containerEnv")
+	f.ValueOrder = jsonc.MemberNames(data, "value")
 	f.Metadata = slices.Clone(data)
 	return nil
 }
@@ -310,9 +317,13 @@ type Config struct {
 type DevContainerFeature struct {
 	UserFeatureID string
 	Options       any
+	// OptionOrder is the member names of Options's object as written.
+	OptionOrder []string
 }
 
-func UserFeaturesToArray(features map[string]any) []DevContainerFeature {
+// optionOrder maps a Feature id to the member names of its options object
+// in devcontainer.json; an id it lacks has its options in sorted order.
+func UserFeaturesToArray(features map[string]any, optionOrder map[string][]string) []DevContainerFeature {
 	if features == nil {
 		return nil
 	}
@@ -321,6 +332,7 @@ func UserFeaturesToArray(features map[string]any) []DevContainerFeature {
 		result = append(result, DevContainerFeature{
 			UserFeatureID: id,
 			Options:       opts,
+			OptionOrder:   optionOrder[id],
 		})
 	}
 	return result

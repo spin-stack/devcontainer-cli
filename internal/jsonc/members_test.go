@@ -22,6 +22,18 @@ func TestMemberNamesKeepsDocumentOrder(t *testing.T) {
 	}
 }
 
+func TestMemberNamesFollowsAPath(t *testing.T) {
+	doc := []byte(`{"features": {"./f": {"zz": 1, /* c */ "aa": 2}, "./g": true}}`)
+	if got := MemberNames(doc, "features", "./f"); !slices.Equal(got, []string{"zz", "aa"}) {
+		t.Errorf("MemberNames(features, ./f) = %v, want [zz aa]", got)
+	}
+	for _, path := range [][]string{{"features", "./g"}, {"features", "./h"}, {"features", "./f", "zz"}} {
+		if got := MemberNames(doc, path...); got != nil {
+			t.Errorf("MemberNames(%v) = %v, want nil", path, got)
+		}
+	}
+}
+
 func TestNamesKeepsDocumentOrder(t *testing.T) {
 	doc := []byte("\ufeff{\n // comment\n \"name\": \"x\",\n \"image\": \"y\",\n \"capAdd\": [],\n}")
 	if got := Names(doc); !slices.Equal(got, []string{"name", "image", "capAdd"}) {

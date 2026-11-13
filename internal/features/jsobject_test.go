@@ -2,6 +2,7 @@ package features
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -50,5 +51,16 @@ func TestMetadataObject(t *testing.T) {
 	}
 	if _, err := metadataObject(json.RawMessage(`{`)); err == nil {
 		t.Error("broken metadata: no error")
+	}
+}
+
+func TestPropertyOrderListsKeysAsObjectKeys(t *testing.T) {
+	m := map[string]int{"PATH": 1, "SDKMAN_DIR": 2, "10": 3, "2": 4, "b": 5, "a": 6}
+	got := PropertyOrder(m, []string{"SDKMAN_DIR", "gone", "10", "PATH", "SDKMAN_DIR", "2"})
+	if want := []string{"2", "10", "SDKMAN_DIR", "PATH", "a", "b"}; !slices.Equal(got, want) {
+		t.Errorf("PropertyOrder = %v, want %v", got, want)
+	}
+	if got := PropertyOrder(map[string]int{}, []string{"x"}); len(got) != 0 {
+		t.Errorf("PropertyOrder of an empty map = %v", got)
 	}
 }

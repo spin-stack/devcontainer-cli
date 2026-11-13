@@ -56,6 +56,9 @@ type DevContainer struct {
 	Extensions any `json:"extensions,omitempty"`
 	Settings   any `json:"settings,omitempty"`
 	DevPort    any `json:"devPort,omitempty"`
+
+	ContainerEnvOrder  []string            `json:"-"`
+	FeatureOptionOrder map[string][]string `json:"-"`
 }
 
 type Customizations map[string]any

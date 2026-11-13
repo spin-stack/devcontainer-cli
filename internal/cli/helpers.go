@@ -29,6 +29,12 @@ func mergeAdditionalFeatures(cfg *config.DevContainer, additionalFeaturesJSON st
 		if _, exists := cfg.Features[k]; !exists {
 			cfg.Features[k] = v
 			additionalOnly[k] = true
+			if names := jsonc.MemberNames([]byte(additionalFeaturesJSON), k); len(names) > 0 {
+				if cfg.FeatureOptionOrder == nil {
+					cfg.FeatureOptionOrder = map[string][]string{}
+				}
+				cfg.FeatureOptionOrder[k] = names
+			}
 		}
 	}
 	return additionalOnly, nil

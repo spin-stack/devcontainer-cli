@@ -1079,6 +1079,20 @@ initial_cases:
     current_status: match
     notes: "Without BuildKit, TS builds the dev_container_feature_content_temp image from the features folder and COPYs /tmp/build-features/hello_0 to /tmp/dev-container-features/hello_0 (kept in the image), so verify_cmd also compares the staged devcontainer-features.env and the devcontainer-features-install.sh banner (getFeatureInstallWrapperScript). Go used to copy from the build context to /tmp/build-features/_dev_container_feature_0."
 
+  - id: build.features-env-declaration-order-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/sdk; printf '%s' '{\"id\":\"sdk\",\"version\":\"1.0.0\",\"name\":\"Sdk\",\"options\":{\"version\":{\"type\":\"string\",\"default\":\"latest\"}},\"containerEnv\":{\"SDKMAN_DIR\":\"/usr/local/sdkman\",\"PATH\":\"${SDKMAN_DIR}/bin:${PATH}\"}}' > $WORKSPACE/.devcontainer/sdk/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'set -e' 'cp devcontainer-features.env /features-env.txt' > $WORKSPACE/.devcontainer/sdk/install.sh; chmod +x $WORKSPACE/.devcontainer/sdk/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"containerEnv\":{\"ZED\":\"1\",\"ALPHA\":\"2\"},\"features\":{\"./sdk\":{\"zz\":\"1\",\"version\":\"2\",\"aa\":\"3\"}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm ${IMAGE_NAME} cat /features-env.txt; echo; docker image inspect -f '{{json .Config.Env}}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "TS writes a Feature's containerEnv as ENV lines in devcontainer-feature.json's order and the config's containerEnv in devcontainer.json's (generateContainerEnvs, Object.keys), and devcontainer-features.env lists the options the Feature declares, then the user's other options in the user's order (getFeatureValueObject). The Feature's PATH line uses SDKMAN_DIR, which the line before it sets, so the image's PATH starts with /usr/local/sdkman/bin. Go sorted the keys: PATH came first and expanded an unset SDKMAN_DIR to /bin, ALPHA preceded ZED, and AA preceded ZZ."
+
   - id: up.compose-features-staging-layout-success
     lane: runtime
     command: up

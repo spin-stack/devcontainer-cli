@@ -457,7 +457,7 @@ func imageBuildFor(cfg *config.DevContainer, opts *buildOpts) imageBuild {
 }
 
 func checkLegacyFeatures(feats map[string]any) error {
-	userFeatures, _ := features.UpdateDeprecatedFeaturesIntoOptions(sortedUserFeatures(feats))
+	userFeatures, _ := features.UpdateDeprecatedFeaturesIntoOptions(sortedUserFeatures(feats, nil))
 	for _, f := range userFeatures {
 		id, _ := features.BackwardCompatibleID(f.UserFeatureID)
 		if features.ClassifyID(id) == features.SourceLegacyShorthand {
@@ -692,6 +692,8 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		Push:                        opts.push,
 		Output:                      opts.output,
 		ContainerEnv:                cfg.ContainerEnv,
+		ContainerEnvOrder:           cfg.ContainerEnvOrder,
+		FeatureOptionOrder:          cfg.FeatureOptionOrder,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,
 		ConfigPath:                  cfg.ConfigFilePath,

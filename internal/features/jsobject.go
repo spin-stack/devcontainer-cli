@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,6 +86,18 @@ func KeyOrder(keys []string) []string {
 		o.set(k, nil)
 	}
 	return o.order()
+}
+
+// PropertyOrder is KeyOrder of m's keys as declared, followed by the keys of
+// m that declared does not name (a map a caller built), sorted.
+func PropertyOrder[V any](m map[string]V, declared []string) []string {
+	keys := make([]string, 0, len(declared)+len(m))
+	for _, k := range declared {
+		if _, ok := m[k]; ok {
+			keys = append(keys, k)
+		}
+	}
+	return KeyOrder(append(keys, slices.Sorted(maps.Keys(m))...))
 }
 
 func (o *jsObject) MarshalJSON() ([]byte, error) {

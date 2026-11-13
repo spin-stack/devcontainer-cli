@@ -47,6 +47,8 @@ type FeatureBuildOptions struct {
 	Secrets                     []string
 	CABundle                    string
 	ContainerEnv                map[string]string
+	ContainerEnvOrder           []string
+	FeatureOptionOrder          map[string][]string
 	SkipPersistCustoms          bool
 	FeaturesBasePath            string
 	WorkspaceFolder             string
@@ -65,12 +67,12 @@ type fetchFeatureResult struct {
 	TmpDir      string
 }
 
-func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, local, nil, nil)
+func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, optionOrder map[string][]string, local localFeatureRoots) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, optionOrder, local, nil, nil)
 }
 
-func sortedUserFeatures(featuresCfg map[string]any) []features.DevContainerFeature {
-	userFeatures := features.UserFeaturesToArray(featuresCfg)
+func sortedUserFeatures(featuresCfg map[string]any, optionOrder map[string][]string) []features.DevContainerFeature {
+	userFeatures := features.UserFeaturesToArray(featuresCfg, optionOrder)
 	sort.Slice(userFeatures, func(i, j int) bool {
 		return userFeatures[i].UserFeatureID < userFeatures[j].UserFeatureID
 	})
@@ -111,12 +113,12 @@ func createFeaturesFolder() (string, error) {
 	}
 }
 
-func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, optionOrder map[string][]string, local localFeatureRoots, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
 
-	userFeatures := sortedUserFeatures(featuresCfg)
+	userFeatures := sortedUserFeatures(featuresCfg, optionOrder)
 	userFeatures, warnings := features.UpdateDeprecatedFeaturesIntoOptions(userFeatures)
 	for _, w := range warnings {
 		logger.Write(w, log.LevelWarning)
@@ -170,7 +172,7 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresC
 
 const featureStagePrefix = ".stage-"
 
-func featureFromMetadata(m features.Feature, id string, opts any, cachePath string) features.Feature {
+func featureFromMetadata(m features.Feature, id string, opts any, optOrder []string, cachePath string) features.Feature {
 	return features.Feature{
 		ID:                   id,
 		Version:              m.Version,
@@ -178,6 +180,7 @@ func featureFromMetadata(m features.Feature, id string, opts any, cachePath stri
 		Description:          m.Description,
 		DocumentationURL:     m.DocumentationURL,
 		Value:                opts,
+		ValueOrder:           optOrder,
 		UserOptions:          extractUserOptions(opts),
 		Options:              m.Options,
 		DependsOn:            m.DependsOn,
@@ -185,6 +188,7 @@ func featureFromMetadata(m features.Feature, id string, opts any, cachePath stri
 		InstallsAfter:        m.InstallsAfter,
 		LegacyIds:            m.LegacyIds,
 		ContainerEnv:         m.ContainerEnv,
+		ContainerEnvOrder:    m.ContainerEnvOrder,
 		Mounts:               m.Mounts,
 		Init:                 m.Init,
 		Privileged:           m.Privileged,
@@ -213,7 +217,7 @@ func processInstallFeature(
 	nextStageDir func() string,
 ) (*features.Set, error) {
 	id := node.UserFeatureID
-	opts := node.Options
+	opts, optOrder := node.Options, node.OptionOrder
 	resolvedID, srcType, err := resolveFeatureID(logger, id)
 	if err != nil {
 		return nil, err
@@ -249,7 +253,7 @@ func processInstallFeature(
 		if featID == "" {
 			featID = filepath.Base(id)
 		}
-		feat := featureFromMetadata(m, featID, opts, featureDir)
+		feat := featureFromMetadata(m, featID, opts, optOrder, featureDir)
 		if feat.Name == "" {
 			feat.Name = id
 		}
@@ -288,7 +292,7 @@ func processInstallFeature(
 			featID = tarballFeatureID(id)
 		}
 
-		feat := featureFromMetadata(m, featID, opts, featureDir)
+		feat := featureFromMetadata(m, featID, opts, optOrder, featureDir)
 		if feat.Name == "" {
 			feat.Name = id
 		}
@@ -349,31 +353,33 @@ func processInstallFeature(
 		}
 
 		feat := features.Feature{
-			ID:               cmp.Or(m.ID, ref.ID),
-			Version:          m.Version,
-			Name:             m.Name,
-			Description:      m.Description,
-			DocumentationURL: m.DocumentationURL,
-			Value:            opts,
-			UserOptions:      extractUserOptions(opts),
-			Options:          m.Options,
-			DependsOn:        m.DependsOn,
-			DependsOnOrder:   m.DependsOnOrder,
-			InstallsAfter:    m.InstallsAfter,
-			LegacyIds:        m.LegacyIds,
-			ContainerEnv:     m.ContainerEnv,
-			Init:             m.Init,
-			Privileged:       m.Privileged,
-			CapAdd:           m.CapAdd,
-			SecurityOpt:      m.SecurityOpt,
-			Entrypoint:       m.Entrypoint,
-			Mounts:           m.Mounts,
-			Customizations:   m.Customizations,
-			Included:         true,
-			CachePath:        featureDir,
-			Metadata:         m.Metadata,
-			File:             m.Metadata,
-			SourceKeys:       features.OCIFeatureKeys,
+			ID:                cmp.Or(m.ID, ref.ID),
+			Version:           m.Version,
+			Name:              m.Name,
+			Description:       m.Description,
+			DocumentationURL:  m.DocumentationURL,
+			Value:             opts,
+			ValueOrder:        optOrder,
+			UserOptions:       extractUserOptions(opts),
+			Options:           m.Options,
+			DependsOn:         m.DependsOn,
+			DependsOnOrder:    m.DependsOnOrder,
+			InstallsAfter:     m.InstallsAfter,
+			LegacyIds:         m.LegacyIds,
+			ContainerEnv:      m.ContainerEnv,
+			ContainerEnvOrder: m.ContainerEnvOrder,
+			Init:              m.Init,
+			Privileged:        m.Privileged,
+			CapAdd:            m.CapAdd,
+			SecurityOpt:       m.SecurityOpt,
+			Entrypoint:        m.Entrypoint,
+			Mounts:            m.Mounts,
+			Customizations:    m.Customizations,
+			Included:          true,
+			CachePath:         featureDir,
+			Metadata:          m.Metadata,
+			File:              m.Metadata,
+			SourceKeys:        features.OCIFeatureKeys,
 		}
 		if feat.Version == "" {
 			feat.Version = ref.Tag
@@ -582,7 +588,7 @@ func fetchBuildFeatures(ctx context.Context, logger log.Logger, featuresCfg map[
 			return nil, err
 		}
 	}
-	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, lockfile, fbOpts.OverrideFeatureInstallOrder)
+	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, fbOpts.FeatureOptionOrder, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, lockfile, fbOpts.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -666,6 +672,7 @@ func extendImageWithFeatures(
 		UseBuildKitContexts: useBuildx,
 		Syntax:              syntax,
 		ConfigContainerEnv:  fbOpts.ContainerEnv,
+		ConfigEnvOrder:      fbOpts.ContainerEnvOrder,
 		SecretIDs:           secretIDs,
 		CABundle:            caSecrets != nil,
 	})

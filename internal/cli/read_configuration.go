@@ -183,7 +183,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if needsFeaturesConfiguration(opts, containerID, result) {
 		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 		var featErr error
-		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, localFeatureRoots{filepath.Dir(result.Config.ConfigFilePath), workspaceFolder})
+		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, result.Config.FeatureOptionOrder, localFeatureRoots{filepath.Dir(result.Config.ConfigFilePath), workspaceFolder})
 		if featErr != nil {
 			return readConfigurationFailure(lgr, featErr)
 		}

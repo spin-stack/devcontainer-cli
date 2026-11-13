@@ -1999,8 +1999,32 @@
         },
         true
       ],
-      "divergence": "unresolved: TS keeps containerEnv's key order; the Go config carries containerEnv as a map, so generateContainerEnvs sorts the keys",
       "result": "ENV ZED=\"1\"\nENV ALPHA=\"2\""
+    },
+    {
+      "name": "a line uses a variable an earlier line sets",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "SDKMAN_DIR": "/usr/local/sdkman",
+          "PATH": "${SDKMAN_DIR}/bin:${PATH}"
+        },
+        false
+      ],
+      "result": "ENV SDKMAN_DIR=\"/usr/local/sdkman\"\nENV PATH=\"${SDKMAN_DIR}/bin:${PATH}\""
+    },
+    {
+      "name": "integer keys first",
+      "fn": "generateContainerEnvs",
+      "args": [
+        {
+          "B": "1",
+          "10": "2",
+          "2": "3"
+        },
+        true
+      ],
+      "result": "ENV 2=\"3\"\nENV 10=\"2\"\nENV B=\"1\""
     },
     {
       "name": "unicode and newline",
@@ -2338,7 +2362,6 @@
           }
         }
       ],
-      "divergence": "unresolved: TS keeps the order of the user's option values; features.Feature.Value is a map, so featureValueObject sorts the keys the options do not declare",
       "result": [
         [
           "version",

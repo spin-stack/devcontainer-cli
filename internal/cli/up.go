@@ -1132,6 +1132,8 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		LockfileExcludeIDs:          opts.lockfileExcludeIDs,
 		HostSub:                     &loadResult.HostSub,
 		ContainerEnv:                cfg.ContainerEnv,
+		ContainerEnvOrder:           cfg.ContainerEnvOrder,
+		FeatureOptionOrder:          cfg.FeatureOptionOrder,
 		AdditionalMetadata:          []imagemeta.Entry{configMetadataEntry(cfg, false)},
 		LabelMetadata:               []imagemeta.Entry{r.configLabel},
 	}

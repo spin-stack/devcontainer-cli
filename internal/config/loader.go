@@ -133,6 +133,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	objectPath := cmp.Or(configPath, overrideConfigPath)
 	var raw map[string]any
 	var keyOrder []string
+	var docs [][]byte
 	if configPath != "" {
 		baseData, err := os.ReadFile(configPath)
 		switch {
@@ -141,6 +142,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 				return nil, wrapParseError("parse config", configPath, err)
 			}
 			keyOrder = jsonc.Names(baseData)
+			docs = append(docs, baseData)
 		case overrideConfigPath == "":
 			return nil, fmt.Errorf("read config %s: %w", configPath, err)
 		}
@@ -159,6 +161,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		}
 		raw = deepMergeConfig(raw, overrideRaw)
 		keyOrder = append(keyOrder, jsonc.Names(overrideData)...)
+		docs = append(docs, overrideData)
 	}
 
 	raw = updateFromOldProperties(raw)
@@ -208,6 +211,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}
 
 	config.ConfigFilePath = configFilePath
+	config.ContainerEnvOrder, config.FeatureOptionOrder = declaredOrder(docs)
 
 	return &LoadResult{
 		Config:          &config,
@@ -217,6 +221,21 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 		HostSub:         ctx,
 		KeyOrder:        keyOrder,
 	}, nil
+}
+
+func declaredOrder(docs [][]byte) (containerEnv []string, featureOptions map[string][]string) {
+	for _, data := range docs {
+		containerEnv = append(containerEnv, jsonc.MemberNames(data, "containerEnv")...)
+		for _, id := range jsonc.MemberNames(data, "features") {
+			if names := jsonc.MemberNames(data, "features", id); len(names) > 0 {
+				if featureOptions == nil {
+					featureOptions = map[string][]string{}
+				}
+				featureOptions[id] = append(featureOptions[id], names...)
+			}
+		}
+	}
+	return containerEnv, featureOptions
 }
 
 func deepMergeConfig(base, override map[string]any) map[string]any {

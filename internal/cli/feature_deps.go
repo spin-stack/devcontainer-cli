@@ -47,7 +47,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
-			meta.Value = node.Options
+			meta.Value, meta.ValueOrder = node.Options, node.OptionOrder
 			if meta.ID == "" {
 				meta.ID = id
 			}
@@ -64,7 +64,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
-			meta.Value = node.Options
+			meta.Value, meta.ValueOrder = node.Options, node.OptionOrder
 			return &features.Set{
 				SourceInfo: &features.TarballSource{TarballURI: id, UserID: id},
 				Features:   []features.Feature{meta},
@@ -94,7 +94,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 			if annoID := ociAnnotationID(manifest); annoID != "" {
 				meta.ID = annoID
 			}
-			meta.Value = node.Options
+			meta.Value, meta.ValueOrder = node.Options, node.OptionOrder
 
 			return &features.Set{
 				SourceInfo: &features.OCISource{

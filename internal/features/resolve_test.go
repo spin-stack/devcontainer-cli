@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -75,9 +76,9 @@ func TestUpdateDeprecatedFeaturesIntoOptions(t *testing.T) {
 	}
 	got, warnings := UpdateDeprecatedFeaturesIntoOptions(in)
 	want := []DevContainerFeature{
-		{UserFeatureID: "ghcr.io/devcontainers/features/java:1", Options: map[string]any{"version": "17", "installGradle": true}},
+		{UserFeatureID: "ghcr.io/devcontainers/features/java:1", Options: map[string]any{"version": "17", "installGradle": true}, OptionOrder: []string{"version", "installGradle"}},
 		{UserFeatureID: "node:18", Options: map[string]any{}},
-		{UserFeatureID: "ghcr.io/devcontainers/features/python:1", Options: map[string]any{"installJupyterlab": true}},
+		{UserFeatureID: "ghcr.io/devcontainers/features/python:1", Options: map[string]any{"installJupyterlab": true}, OptionOrder: []string{"installJupyterlab"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("features = %v, want %v", got, want)
@@ -88,6 +89,19 @@ func TestUpdateDeprecatedFeaturesIntoOptions(t *testing.T) {
 	if in[0].Options != "17" || len(in) != 4 {
 		t.Errorf("the input was modified: %v", in)
 	}
+
+	ordered := []DevContainerFeature{
+		{UserFeatureID: "java", Options: map[string]any{"version": "21", "installMaven": false}, OptionOrder: []string{"version", "installMaven"}},
+		{UserFeatureID: "maven", Options: true},
+		{UserFeatureID: "gradle", Options: true},
+	}
+	got, _ = UpdateDeprecatedFeaturesIntoOptions(ordered)
+	if len(got) != 1 || !slices.Equal(got[0].OptionOrder, []string{"version", "installMaven", "installGradle"}) {
+		t.Errorf("option order = %v, want the declared options then the new one once", got)
+	}
+	if ordered[0].OptionOrder[1] != "installMaven" || len(ordered[0].OptionOrder) != 2 {
+		t.Errorf("the input's option order was modified: %v", ordered[0].OptionOrder)
+	}
 }
 
 func TestUserFeaturesToArray(t *testing.T) {
@@ -95,14 +109,14 @@ func TestUserFeaturesToArray(t *testing.T) {
 		"ghcr.io/devcontainers/features/go:1":   map[string]any{"version": "1.21"},
 		"ghcr.io/devcontainers/features/node:1": true,
 	}
-	arr := UserFeaturesToArray(features)
+	arr := UserFeaturesToArray(features, nil)
 	if len(arr) != 2 {
 		t.Errorf("len = %d, want 2", len(arr))
 	}
 }
 
 func TestUserFeaturesToArray_Nil(t *testing.T) {
-	arr := UserFeaturesToArray(nil)
+	arr := UserFeaturesToArray(nil, nil)
 	if arr != nil {
 		t.Errorf("expected nil, got %v", arr)
 	}
