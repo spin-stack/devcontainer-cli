@@ -117,9 +117,10 @@ touches a compared surface, reflected in the parity matrix.
   order (`pickFeatureProperties` for a Feature, `pickConfigProperties` for the
   configuration) and `&`, `<`, `>` unescaped, as in TS. Within a property's object value
   (a mount object, `customizations`, `portsAttributes`, …) the keys are sorted, because a
-  decoded Go map keeps no order, where TS keeps the order they were written in; an entry
-  given in another order (a base image's label written by another tool) is likewise
-  rewritten in pick order. The parsed metadata is the same; only the label's bytes differ
+  decoded Go map keeps no order, where TS keeps the order they were written in;
+  `containerEnv` alone keeps TS's order (the array-index keys ascending, then the others
+  as written). An entry given in another order (a base image's label written by another
+  tool) is likewise rewritten in pick order. The parsed metadata is the same; only the label's bytes differ
   (`internal/imagemeta/testdata/ts-oracle/imagemeta.json` records both cases).
 - **Command results write nested objects with their keys sorted.** TS writes each result
   with `JSON.stringify`, so properties come in insertion order. Go matches that order for

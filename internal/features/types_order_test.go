@@ -87,3 +87,12 @@ func TestFeatureMarshalJSONMovesDeprecatedProperties(t *testing.T) {
 		t.Error("extensions concatenated onto a number, which has no concat: want an error")
 	}
 }
+
+func TestFeatureMarshalJSONWritesTheValueInPropertyOrder(t *testing.T) {
+	f := Feature{ID: "x", Included: true, SourceKeys: LocalFeatureKeys,
+		Value: map[string]any{"zz": "1", "10": "t", "a": true, "2": "s"}, ValueOrder: []string{"zz", "10", "a", "2"}}
+	got, err := json.Marshal(f)
+	if want := `{"id":"x","name":"","value":{"2":"s","10":"t","zz":"1","a":true},"included":true}`; err != nil || string(got) != want {
+		t.Errorf("got  %s, %v\nwant %s", got, err, want)
+	}
+}

@@ -315,7 +315,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 	run.idLabels = idLabels
 	run.substitute = hostMetadataSubstitution(loadResult.HostSub, idLabels)
-	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, opts.omitConfigRemoteEnvFromMeta); err != nil {
+	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, loadResult.Config.ContainerEnvOrder, opts.omitConfigRemoteEnvFromMeta); err != nil {
 		return writeErrorResult(out, err.Error())
 	}
 

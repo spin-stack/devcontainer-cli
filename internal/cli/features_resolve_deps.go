@@ -81,7 +81,9 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 				}
 				var opts any
 				if len(fs.Features) > 0 {
-					opts = fs.Features[0].Value
+					if opts, err = features.JSValue(fs.Features[0].Value, fs.Features[0].ValueOrder); err != nil {
+						return err
+					}
 				}
 				entries = append(entries, installEntry{ID: id, Options: opts})
 			}

@@ -179,6 +179,24 @@ func toJS(v any) (any, error) {
 	return parseJS(data)
 }
 
+// JSValue is toJS of v, with the keys of a map v in
+// PropertyOrder(v, declared).
+func JSValue(v any, declared []string) (any, error) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return toJS(v)
+	}
+	obj := newJSObject()
+	for _, k := range PropertyOrder(m, declared) {
+		js, err := toJS(m[k])
+		if err != nil {
+			return nil, err
+		}
+		obj.set(k, js)
+	}
+	return obj, nil
+}
+
 func jsTruthy(v any) bool {
 	switch x := v.(type) {
 	case nil:

@@ -25,7 +25,7 @@ func TestConfigLabelEntryPicksTheRawConfig(t *testing.T) {
 	}`), &raw); err != nil {
 		t.Fatal(err)
 	}
-	entry, err := configLabelEntry(raw, false)
+	entry, err := configLabelEntry(raw, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +34,14 @@ func TestConfigLabelEntryPicksTheRawConfig(t *testing.T) {
 	if string(got) != want {
 		t.Errorf("entry = %s\nwant    %s", got, want)
 	}
-	omitted, err := configLabelEntry(raw, true)
+	omitted, err := configLabelEntry(raw, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if omitted.RemoteEnv != nil {
 		t.Errorf("remoteEnv kept with omitRemoteEnv: %v", omitted.RemoteEnv)
 	}
-	if _, err := configLabelEntry(map[string]any{"init": "yes"}, false); err == nil {
+	if _, err := configLabelEntry(map[string]any{"init": "yes"}, nil, false); err == nil {
 		t.Error("an init that is no boolean: want an error")
 	}
 }
@@ -162,5 +162,30 @@ func TestHostMetadataSubstitutionLeavesTheRawEntriesRaw(t *testing.T) {
 		if got := imagemeta.GenerateMetadataLabel(raw); got != label {
 			t.Errorf("idLabels %v: the raw entries changed:\n got %s\nwant %s", idLabels, got, label)
 		}
+	}
+}
+
+func TestMetadataEntriesKeepTheContainerEnvOrder(t *testing.T) {
+	raw := map[string]any{"containerEnv": map[string]any{"ZED": "1", "10": "2", "ALPHA": "${localEnv:U}", "2": "4"}}
+	order := []string{"ZED", "10", "ALPHA", "2"}
+	entry, err := configLabelEntry(raw, order, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"containerEnv":{"2":"4","10":"2","ZED":"1","ALPHA":"${localEnv:U}"}}]`
+	if got := containerMetadataLabel([]imagemeta.Entry{entry}); got != want {
+		t.Errorf("label = %s\nwant    %s", got, want)
+	}
+	entries := []imagemeta.Entry{entry}
+	if err := hostMetadataSubstitution(config.HostSubContext{Env: map[string]string{"U": "me"}}, nil)(&entries); err != nil {
+		t.Fatal(err)
+	}
+	want = `[{"containerEnv":{"2":"4","10":"2","ZED":"1","ALPHA":"me"}}]`
+	if got := containerMetadataLabel(entries); got != want {
+		t.Errorf("substituted label = %s\nwant    %s", got, want)
+	}
+	cfg := &config.DevContainer{ContainerEnv: map[string]string{"ZED": "1", "ALPHA": "3"}, ContainerEnvOrder: []string{"ZED", "ALPHA"}}
+	if got, want := containerMetadataLabel([]imagemeta.Entry{configMetadataEntry(cfg, false)}), `[{"containerEnv":{"ZED":"1","ALPHA":"3"}}]`; got != want {
+		t.Errorf("config entry label = %s\nwant    %s", got, want)
 	}
 }

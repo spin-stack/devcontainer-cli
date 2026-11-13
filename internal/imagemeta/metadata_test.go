@@ -26,7 +26,7 @@ func TestEntryKeyOrdersNameEveryProperty(t *testing.T) {
 	typ := reflect.TypeFor[Entry]()
 	for i := range typ.NumField() {
 		name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
-		if name != "id" && !slices.Contains(configEntryKeys, name) {
+		if name != "id" && name != "-" && !slices.Contains(configEntryKeys, name) {
 			t.Errorf("property %q is in no key order", name)
 		}
 	}
