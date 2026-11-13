@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
@@ -54,7 +55,7 @@ func TestTSOracleImageMetadata(t *testing.T) {
 			if err := oracletest.Args(args, &env, &escapeDollar); err != nil {
 				return nil, err
 			}
-			return generateContainerEnvs(env, escapeDollar), nil
+			return generateContainerEnvs(env, jsonc.Names(args[0]), escapeDollar), nil
 		},
 		"getFeatureValueObject": func(args []json.RawMessage) (any, error) {
 			var feat features.Feature

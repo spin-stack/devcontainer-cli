@@ -123,18 +123,24 @@ func UpdateDeprecatedFeaturesIntoOptions(userFeatures []DevContainerFeature) (up
 			return u.UserFeatureID == m.mapTo || u.UserFeatureID == qualified || strings.HasPrefix(u.UserFeatureID, qualified+":")
 		})
 		if i == -1 {
-			updated = append(updated, DevContainerFeature{UserFeatureID: qualified + ":1", Options: map[string]any{m.option: true}})
+			updated = append(updated, DevContainerFeature{UserFeatureID: qualified + ":1", Options: map[string]any{m.option: true}, OptionOrder: []string{m.option}})
 			continue
 		}
 		options := map[string]any{}
+		order := slices.Clone(updated[i].OptionOrder)
 		switch o := updated[i].Options.(type) {
 		case map[string]any:
 			maps.Copy(options, o)
 		case string:
 			options["version"] = o
+			order = []string{"version"}
 		}
 		options[m.option] = true
+		if !slices.Contains(order, m.option) {
+			order = append(order, m.option)
+		}
 		updated[i].Options = options
+		updated[i].OptionOrder = order
 	}
 	updated = slices.DeleteFunc(updated, func(u DevContainerFeature) bool {
 		_, deprecated := deprecatedFeaturesIntoOptions[u.UserFeatureID]

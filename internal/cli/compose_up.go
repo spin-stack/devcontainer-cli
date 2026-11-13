@@ -274,7 +274,7 @@ func (r *upRunner) composeFeatureSets(ctx context.Context, cfg *config.DevContai
 			return nil, "", err
 		}
 	}
-	res, err := fetchFeatureSetsWithOrder(ctx, r.log, cfg.Features, localFeatureRoots{filepath.Dir(cfg.ConfigFilePath), opts.workspaceFolder}, lockfile, cfg.OverrideFeatureInstallOrder)
+	res, err := fetchFeatureSetsWithOrder(ctx, r.log, cfg.Features, cfg.FeatureOptionOrder, localFeatureRoots{filepath.Dir(cfg.ConfigFilePath), opts.workspaceFolder}, lockfile, cfg.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, "", err
 	}
@@ -454,6 +454,7 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 			UseBuildKitContexts: useContexts,
 			Syntax:              syntax,
 			ConfigContainerEnv:  cfg.ContainerEnv,
+			ConfigEnvOrder:      cfg.ContainerEnvOrder,
 		})
 		if !useContexts {
 			if err := buildFeatureContentImage(ctx, r.docker, featuresFolder); err != nil {

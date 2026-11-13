@@ -13,6 +13,7 @@ type FNode struct {
 	Type             string
 	UserFeatureID    string
 	Options          any
+	OptionOrder      []string
 	Set              *Set
 	DependsOn        []*FNode
 	InstallsAfter    []*FNode

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/jsonc"
 )
 
 // tsFeaturesBuildCase is testdata/ts-features-build/<case>/input.json: the
@@ -26,6 +27,7 @@ type tsFeaturesBuildCase struct {
 	RemoteUser         string            `json:"remoteUser"`
 	Metadata           []Entry           `json:"metadata"`
 	ConfigContainerEnv map[string]string `json:"configContainerEnv"`
+	ConfigEnvOrder     []string          `json:"-"`
 	FeatureSets        []struct {
 		SourceInformation struct {
 			Type                        string `json:"type"`
@@ -46,6 +48,7 @@ func loadTSFeaturesBuildCase(t *testing.T, name string) (tsFeaturesBuildCase, []
 	if err := json.Unmarshal(data, &c); err != nil {
 		t.Fatal(err)
 	}
+	c.ConfigEnvOrder = jsonc.MemberNames(data, "configContainerEnv")
 	infos := map[string]FeatureFileInfo{}
 	var sets []*features.Set
 	for _, s := range c.FeatureSets {
@@ -85,7 +88,10 @@ func readGolden(t *testing.T, parts ...string) string {
 }
 
 func TestGenerateFeaturesBuildOptions_MatchesTS(t *testing.T) {
-	for _, name := range []string{"buildkit", "no-buildkit"} {
+	// declaration-order: a Feature's containerEnv line that uses a variable
+	// an earlier line sets, user options the Feature does not declare, and
+	// the config's containerEnv, all in the order the documents write them.
+	for _, name := range []string{"buildkit", "no-buildkit", "declaration-order"} {
 		t.Run(name, func(t *testing.T) {
 			c, sets, infos := loadTSFeaturesBuildCase(t, name)
 			info := GenerateFeaturesBuildOptions(FeaturesBuildParams{
@@ -97,6 +103,7 @@ func TestGenerateFeaturesBuildOptions_MatchesTS(t *testing.T) {
 				ImageUser:           "imguser",
 				UseBuildKitContexts: c.UseBuildKit,
 				ConfigContainerEnv:  c.ConfigContainerEnv,
+				ConfigEnvOrder:      c.ConfigEnvOrder,
 			})
 			if want := readGolden(t, name, "Dockerfile"); info.DockerfileContent != want {
 				t.Errorf("Dockerfile differs from TS:\n--- got\n%s\n--- want\n%s", info.DockerfileContent, want)

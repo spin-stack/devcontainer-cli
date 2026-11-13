@@ -148,7 +148,7 @@ func TestFetchFeatureSets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			roots := devcontainerRoots(t)
 			tt.setup(t, roots.configDir)
-			result, err := fetchFeatureSets(t.Context(), log.Null, tt.entries, roots)
+			result, err := fetchFeatureSets(t.Context(), log.Null, tt.entries, nil, roots)
 			if result != nil && result.TmpDir != "" {
 				defer os.RemoveAll(result.TmpDir)
 			}
@@ -232,7 +232,7 @@ func TestFetchFeatureSets_StagingLayout(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dirB, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	result, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./dir-a": true}, roots)
+	result, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./dir-a": true}, nil, roots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 		t.Run(tc.id, func(t *testing.T) {
 			var logs bytes.Buffer
 			logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logs})
-			result, err := fetchFeatureSets(t.Context(), logger, map[string]any{tc.id: true}, roots)
+			result, err := fetchFeatureSets(t.Context(), logger, map[string]any{tc.id: true}, nil, roots)
 			if result != nil {
 				t.Fatalf("result = %+v, want none", result)
 			}
@@ -420,7 +420,7 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 func TestFetchFeatureSetsMovesDeprecatedFeaturesIntoOptions(t *testing.T) {
 	var logs bytes.Buffer
 	logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logs})
-	result, err := fetchFeatureSets(t.Context(), logger, map[string]any{"gradle": map[string]any{}, "node:18": map[string]any{}}, devcontainerRoots(t))
+	result, err := fetchFeatureSets(t.Context(), logger, map[string]any{"gradle": map[string]any{}, "node:18": map[string]any{}}, nil, devcontainerRoots(t))
 	if result != nil || err == nil || err.Error() != fmt.Sprintf(msgLegacyFeature, "node:18") {
 		t.Fatalf("result = %+v, err = %v; want the legacy Feature error for node:18", result, err)
 	}
@@ -455,5 +455,56 @@ func TestCreateFeaturesFolderIsTheRunsAlone(t *testing.T) {
 			t.Fatalf("%s handed out twice", dir)
 		}
 		seen[dir] = true
+	}
+}
+
+func TestFetchedFeaturesKeepTheDeclaredOrder(t *testing.T) {
+	roots := devcontainerRoots(t)
+	write := func(name, metadata string) {
+		t.Helper()
+		dir := filepath.Join(roots.configDir, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "devcontainer-feature.json"), []byte(metadata), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("sdk", `{"id": "sdk", "version": "1.0.0",
+		"options": {"version": {"type": "string", "default": "latest"}},
+		"containerEnv": {"SDKMAN_DIR": "/usr/local/sdkman", "PATH": "${SDKMAN_DIR}/bin:${PATH}"},
+		"dependsOn": {"./dep": {"zz": "1", "aa": "2"}}}`)
+	write("dep", `{"id": "dep", "version": "1.0.0"}`)
+
+	result, err := fetchFeatureSets(t.Context(), log.Null,
+		map[string]any{"./sdk": map[string]any{"zz": "1", "version": "2", "aa": "3"}},
+		map[string][]string{"./sdk": {"zz", "version", "aa"}}, roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(result.TmpDir)
+	if err := stageFeatureBuildFiles(result.TmpDir, result.FeatureSets, "root", "root"); err != nil {
+		t.Fatal(err)
+	}
+	wantEnv := map[string]string{"sdk": "VERSION=\"2\"\nZZ=\"1\"\nAA=\"3\"", "dep": "ZZ=\"1\"\nAA=\"2\""}
+	for _, set := range result.FeatureSets {
+		f := set.Features[0]
+		data, err := os.ReadFile(filepath.Join(f.CachePath, imagemeta.FeatureEnvFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(data); got != wantEnv[f.ID] {
+			t.Errorf("%s %s = %q, want %q", f.ID, imagemeta.FeatureEnvFile, got, wantEnv[f.ID])
+		}
+	}
+
+	dockerfile := imagemeta.GenerateFeaturesBuildOptions(imagemeta.FeaturesBuildParams{
+		BaseName: "base", FeatureSets: result.FeatureSets, ContainerUser: "root", RemoteUser: "root", UseBuildKitContexts: true,
+	}).DockerfileContent
+	if want := "ENV SDKMAN_DIR=\"/usr/local/sdkman\"\nENV PATH=\"${SDKMAN_DIR}/bin:${PATH}\"\n"; !strings.Contains(dockerfile, want) {
+		t.Errorf("Dockerfile lacks the Feature's ENV lines in declaration order %q:\n%s", want, dockerfile)
 	}
 }

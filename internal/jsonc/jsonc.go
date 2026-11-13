@@ -36,21 +36,29 @@ func Names(data []byte) []string {
 	return objectNames(v)
 }
 
-func MemberNames(data []byte, field string) []string {
+// MemberNames lists, in document order, the member names of the object
+// that path leads to through nested objects: MemberNames(data, "features",
+// id) names the options of one Feature in a devcontainer.json.
+func MemberNames(data []byte, path ...string) []string {
 	v, err := hujson.Parse(stripBOM(data))
 	if err != nil {
 		return nil
 	}
-	top, ok := v.Value.(*hujson.Object)
-	if !ok {
+next:
+	for _, field := range path {
+		obj, ok := v.Value.(*hujson.Object)
+		if !ok {
+			return nil
+		}
+		for _, m := range obj.Members {
+			if lit, ok := m.Name.Value.(hujson.Literal); ok && lit.String() == field {
+				v = m.Value
+				continue next
+			}
+		}
 		return nil
 	}
-	for _, m := range top.Members {
-		if lit, ok := m.Name.Value.(hujson.Literal); ok && lit.String() == field {
-			return objectNames(m.Value)
-		}
-	}
-	return nil
+	return objectNames(v)
 }
 
 func objectNames(v hujson.Value) []string {

@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -33,6 +34,7 @@ func BuildDependencyGraph(
 			Type:          "user-provided",
 			UserFeatureID: f.UserFeatureID,
 			Options:       f.Options,
+			OptionOrder:   f.OptionOrder,
 			DependsOn:     []*FNode{},
 			InstallsAfter: []*FNode{},
 		})
@@ -89,6 +91,7 @@ func resolveDependencyGraph(
 					Type:          "resolved",
 					UserFeatureID: depID,
 					Options:       feat.DependsOn[depID],
+					OptionOrder:   jsonc.MemberNames(feat.Metadata, "dependsOn", depID),
 					DependsOn:     []*FNode{},
 					InstallsAfter: []*FNode{},
 				}
