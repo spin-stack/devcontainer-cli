@@ -65,3 +65,15 @@ func TestMergeAdditionalFeaturesRejectsInvalidJSON(t *testing.T) {
 		t.Errorf("features = %v, want the config untouched on a parse error", cfg.Features)
 	}
 }
+
+// A config with no recorded option order still gets one for an additional
+// Feature, even one with a single option.
+func TestMergeAdditionalFeaturesRecordsASingleOptionWithoutPriorOrder(t *testing.T) {
+	cfg := &config.DevContainer{}
+	if _, err := mergeAdditionalFeatures(cfg, `{"./g": {"only": 1}}`); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.FeatureOptionOrder["./g"]; !slices.Equal(got, []string{"only"}) {
+		t.Errorf("FeatureOptionOrder[./g] = %v, want [only]", got)
+	}
+}
