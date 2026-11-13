@@ -1093,6 +1093,20 @@ initial_cases:
     current_status: match
     notes: "TS writes a Feature's containerEnv as ENV lines in devcontainer-feature.json's order and the config's containerEnv in devcontainer.json's (generateContainerEnvs, Object.keys), and devcontainer-features.env lists the options the Feature declares, then the user's other options in the user's order (getFeatureValueObject). The Feature's PATH line uses SDKMAN_DIR, which the line before it sets, so the image's PATH starts with /usr/local/sdkman/bin. Go sorted the keys: PATH came first and expanded an unset SDKMAN_DIR to /bin, ALPHA preceded ZED, and AA preceded ZZ."
 
+  - id: build.dockerfile-features-env-declaration-order-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/sdk; printf '%s' '{\"id\":\"sdk\",\"version\":\"1.0.0\",\"name\":\"Sdk\",\"options\":{\"version\":{\"type\":\"string\",\"default\":\"latest\"}},\"containerEnv\":{\"SDKMAN_DIR\":\"/usr/local/sdkman\",\"PATH\":\"${SDKMAN_DIR}/bin:${PATH}\"}}' > $WORKSPACE/.devcontainer/sdk/devcontainer-feature.json; printf '%s\\n' '#!/bin/sh' 'set -e' 'cp devcontainer-features.env /features-env.txt' > $WORKSPACE/.devcontainer/sdk/install.sh; chmod +x $WORKSPACE/.devcontainer/sdk/install.sh; printf 'FROM alpine:3\\n' > $WORKSPACE/.devcontainer/Dockerfile; printf '%s' '{\"build\":{\"dockerfile\":\"Dockerfile\"},\"containerEnv\":{\"ZED\":\"1\",\"ALPHA\":\"2\"},\"features\":{\"./sdk\":{\"zz\":\"1\",\"version\":\"2\",\"aa\":\"3\"}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker run --rm ${IMAGE_NAME} cat /features-env.txt; echo; docker image inspect -f '{{json .Config.Env}}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "The same declaration order as build.features-env-declaration-order-success, through a Dockerfile configuration, which builds the user's Dockerfile and the Features in one combined Dockerfile-with-features."
+
   - id: up.compose-features-staging-layout-success
     lane: runtime
     command: up
