@@ -1093,6 +1093,48 @@ initial_cases:
     current_status: match
     notes: "The compose service's Features Dockerfile (appended to `FROM <image> AS dev_container_auto_added_stage_label`) has the same structure as the image build's: builtin env, consecutiveId folders, install wrapper, the Feature's containerEnv and, like TS getFeaturesBuildOptions, the config's containerEnv as ENV lines (CFG_VAR). Go used the _dev_container_feature_<i> layout and left the config's containerEnv out of the compose image."
 
+  - id: build.feature-host-variables-raw-label-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\",\"mounts\":[{\"source\":\"${localEnv:HOME}\",\"target\":\"/parity-home\",\"type\":\"bind\"}],\"postCreateCommand\":\"echo ${localEnv:HOME}\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '#!/bin/sh\\ntrue\\n' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker image inspect -f '{{index .Config.Labels \"devcontainer.metadata\"}}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "TS getDevcontainerMetadata writes the Feature's raw values to the devcontainer.metadata label (imageMetadata.ts uses .raw), so a Feature mount and lifecycle command keep ${localEnv:HOME} and are resolved on the host that runs `up`. Go resolved the Feature's mounts before building the label, baking the build host's HOME into the image."
+
+  - id: up.compose-feature-host-variables-raw-label-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\",\"mounts\":[{\"source\":\"${localEnv:HOME}\",\"target\":\"/parity-home\",\"type\":\"bind\"}],\"postCreateCommand\":\"echo ${localEnv:HOME}\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '#!/bin/sh\\ntrue\\n' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf 'services:\\n  app:\\n    image: alpine:3\\n    command: sleep infinity\\n' > $WORKSPACE/.devcontainer/docker-compose.yml; printf '%s' '{\"dockerComposeFile\":\"docker-compose.yml\",\"service\":\"app\",\"workspaceFolder\":\"/\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --skip-post-create --update-remote-user-uid-default never --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "docker inspect -f '{{index .Config.Labels \"devcontainer.metadata\"}}' ${CONTAINER_ID}; docker image inspect -f '{{index .Config.Labels \"devcontainer.metadata\"}}' $(docker inspect -f '{{.Image}}' ${CONTAINER_ID}); docker inspect -f '{{range .Mounts}}{{.Source}}->{{.Destination}} {{end}}' ${CONTAINER_ID}"
+    cleanup_cmd: "docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${WORKSPACE}/.devcontainer/docker-compose.yml down -t 0 >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "The compose service's image and container labels keep the Feature's ${localEnv:HOME} raw, as TS writes them; the bind mount the container gets is resolved on this host (TS getDevcontainerMetadata's featureRaw.map(substitute)). Go resolved the Feature's mounts before building the label."
+
+  - id: read-configuration.feature-host-variables-merged-success
+    lane: runtime
+    command: read-configuration
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/f; printf '%s' '{\"id\":\"f\",\"version\":\"1.0.0\",\"mounts\":[{\"source\":\"${localEnv:HOME}\",\"target\":\"/parity-home\",\"type\":\"bind\"}],\"postCreateCommand\":\"echo ${localEnv:HOME}\"}' > $WORKSPACE/.devcontainer/f/devcontainer-feature.json; printf '#!/bin/sh\\ntrue\\n' > $WORKSPACE/.devcontainer/f/install.sh; chmod +x $WORKSPACE/.devcontainer/f/install.sh; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./f\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    verify_cmd: "true"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    asserts: [exit_code, stdout_normalized]
+    class: merged-configuration
+    current_status: match
+    notes: "Without a container, TS getDevcontainerMetadata resolves the Features' raw entries with the configuration's host substitution, so mergedConfiguration lists the Feature's mount and postCreateCommand with ${localEnv:HOME} resolved. Go listed them raw."
+
   - id: read-configuration.container-id-missing-error
     lane: runtime
     command: read-configuration

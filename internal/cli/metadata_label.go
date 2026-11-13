@@ -53,13 +53,30 @@ type metadataSubstitution func(entries *[]imagemeta.Entry) error
 
 func hostMetadataSubstitution(hostSub config.HostSubContext, idLabels []string) metadataSubstitution {
 	return func(entries *[]imagemeta.Entry) error {
+		// Resolve a copy: decoding into *entries would write through the
+		// mounts, commands and maps they share with the raw entries that
+		// become the devcontainer.metadata label.
+		data, err := json.Marshal(*entries)
+		if err != nil {
+			return fmt.Errorf("copy metadata entries: %w", err)
+		}
+		var resolved []imagemeta.Entry
+		if err := json.Unmarshal(data, &resolved); err != nil {
+			return fmt.Errorf("copy metadata entries: %w", err)
+		}
 		resolver := config.NewVariableResolver()
 		ctx := config.SubstitutionContext{HostSubContext: hostSub}
 		if idLabels == nil {
-			return resolver.ResolveInto(ctx, config.PhaseHost, entries)
+			err = resolver.ResolveInto(ctx, config.PhaseHost, &resolved)
+		} else {
+			ctx.DevContainerID = config.ComputeDevContainerID(config.EnvMap(idLabels))
+			err = resolver.BeforeContainerInto(ctx, &resolved)
 		}
-		ctx.DevContainerID = config.ComputeDevContainerID(config.EnvMap(idLabels))
-		return resolver.BeforeContainerInto(ctx, entries)
+		if err != nil {
+			return err
+		}
+		*entries = resolved
+		return nil
 	}
 }
 

@@ -399,11 +399,11 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		featureEntries = append(featureEntries, featureMetadataEntry(fs, s.skipPersistCustoms))
 	}
 	labelMetadata := slices.Concat(baseEntries, featureEntries, []imagemeta.Entry{r.configLabel})
-	metadata := slices.Clone(baseEntries)
+	metadata := slices.Concat(baseEntries, featureEntries)
 	if err := r.substitute(&metadata); err != nil {
 		return nil, fmt.Errorf("substitute the image's metadata: %w", err)
 	}
-	metadata = slices.Concat(metadata, featureEntries, []imagemeta.Entry{configMetadataEntry(cfg, false)})
+	metadata = append(metadata, configMetadataEntry(cfg, false))
 
 	result := &composeExtendResult{imageMetadata: metadata}
 	userSyntax := ""

@@ -210,6 +210,9 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 			for _, fs := range featResult.FeatureSets {
 				featureEntries = append(featureEntries, featureMetadataEntry(fs, false))
 			}
+			if err := hostMetadataSubstitution(result.HostSub, nil)(&featureEntries); err != nil {
+				return readConfigurationFailure(lgr, fmt.Errorf("substitute the Features' metadata: %w", err))
+			}
 		}
 		entries, entriesErr := readConfigurationMetadata(append(base, featureEntries...), featureEntries, containerCfg, result, opts.idLabels, workspaceFolder, lgr)
 		if entriesErr != nil {

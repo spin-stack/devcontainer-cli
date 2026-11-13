@@ -31,7 +31,7 @@ func TestSubstituteFeatureHostVars(t *testing.T) {
 	if got := f.ContainerEnv["WS"]; got != "/home/me/proj/x" {
 		t.Errorf("containerEnv WS = %q, want /home/me/proj/x", got)
 	}
-	if got := f.Mounts[0].(string); got != "source=/home/me/.ssh,target=/root/.ssh,type=bind" {
-		t.Errorf("mount = %q, want resolved localEnv:HOME", got)
+	if got := f.Mounts[0].(string); got != "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind" {
+		t.Errorf("mount = %q, want it raw", got)
 	}
 }
