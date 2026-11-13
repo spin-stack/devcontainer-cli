@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/pfs"
 )
@@ -211,7 +212,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}
 
 	config.ConfigFilePath = configFilePath
-	config.ContainerEnvOrder, config.FeatureOptionOrder, config.BuildArgsOrder = declaredOrder(docs)
+	config.ContainerEnvOrder, config.FeatureOrder, config.FeatureOptionOrder, config.BuildArgsOrder = declaredOrder(docs)
 
 	return &LoadResult{
 		Config:          &config,
@@ -223,11 +224,13 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}, nil
 }
 
-func declaredOrder(docs [][]byte) (containerEnv []string, featureOptions map[string][]string, buildArgs []string) {
+func declaredOrder(docs [][]byte) (containerEnv, featureIDs []string, featureOptions map[string][]string, buildArgs []string) {
 	for _, data := range docs {
 		containerEnv = append(containerEnv, jsonc.MemberNames(data, "containerEnv")...)
 		buildArgs = append(buildArgs, jsonc.MemberNames(data, "build", "args")...)
-		for _, id := range jsonc.MemberNames(data, "features") {
+		ids := jsonc.MemberNames(data, "features")
+		featureIDs = append(featureIDs, ids...)
+		for _, id := range ids {
 			if names := jsonc.MemberNames(data, "features", id); len(names) > 0 {
 				if featureOptions == nil {
 					featureOptions = map[string][]string{}
@@ -236,7 +239,7 @@ func declaredOrder(docs [][]byte) (containerEnv []string, featureOptions map[str
 			}
 		}
 	}
-	return containerEnv, featureOptions, buildArgs
+	return containerEnv, features.KeyOrder(featureIDs), featureOptions, buildArgs
 }
 
 func deepMergeConfig(base, override map[string]any) map[string]any {

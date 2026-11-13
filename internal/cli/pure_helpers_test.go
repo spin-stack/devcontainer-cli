@@ -12,6 +12,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/log"
 	"github.com/devcontainers/cli/internal/oci"
 )
 
@@ -258,7 +259,7 @@ func TestBuildArgsAndOptionsFromConfig(t *testing.T) {
 }
 
 func TestCommandErrorOutputKeepsAContainerError(t *testing.T) {
-	legacy := checkLegacyFeatures(map[string]any{"myfeature": true})
+	_, _, legacy := resolveFeatureID(log.Null, "myfeature")
 	out := commandErrorOutput(fmt.Errorf("install features: %w", legacy), "An error occurred setting up the container")
 	want := fmt.Sprintf(msgLegacyFeature, "myfeature")
 	if out.Description != want || out.Message != want {

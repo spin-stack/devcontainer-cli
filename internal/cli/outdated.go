@@ -447,7 +447,7 @@ func newUpgradeCmd() *cobra.Command {
 
 			lockfilePath := cfg.ConfigFilePath
 
-			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, cfg.FeatureOptionOrder, localFeatureRoots{filepath.Dir(lockfilePath), ws}, nil, nil)
+			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, cfg.FeatureOrder, cfg.FeatureOptionOrder, localFeatureRoots{filepath.Dir(lockfilePath), ws}, nil, nil)
 			if err != nil {
 				return err
 			}

@@ -1170,6 +1170,7 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		HostSub:                     &loadResult.HostSub,
 		ContainerEnv:                cfg.ContainerEnv,
 		ContainerEnvOrder:           cfg.ContainerEnvOrder,
+		FeatureOrder:                cfg.FeatureOrder,
 		FeatureOptionOrder:          cfg.FeatureOptionOrder,
 		AdditionalMetadata:          []imagemeta.Entry{configMetadataEntry(cfg, false)},
 		LabelMetadata:               []imagemeta.Entry{r.configLabel},

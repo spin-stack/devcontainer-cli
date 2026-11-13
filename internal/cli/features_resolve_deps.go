@@ -38,7 +38,7 @@ func realFeaturesResolveDepsCmd() *cobra.Command {
 			}
 
 			cfg := loadResult.Config
-			userFeatures := features.UserFeaturesToArray(cfg.Features, cfg.FeatureOptionOrder)
+			userFeatures := features.UserFeaturesToArray(cfg.Features, cfg.FeatureOrder, cfg.FeatureOptionOrder)
 			if len(userFeatures) == 0 {
 				logger.Write(fmt.Sprintf("Could not parse features object in configuration '%s'", cfg.ConfigFilePath), log.LevelError)
 				return &coreerrors.ExitCodeError{Code: 1}

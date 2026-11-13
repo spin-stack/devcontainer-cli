@@ -975,6 +975,58 @@ initial_cases:
     current_status: match
     notes: "With the configuration at the workspace root (.devcontainer.json), './feat' resolves outside the .devcontainer folder, which processFeatureIdentifier refuses; build reports the plain Error buildDependencyGraph throws as its message: {\"outcome\":\"error\",\"message\":\"ERR: Feature './feat' could not be processed.  You may not have permission ...\",\"description\":\"An error occurred building the container.\"}, exit 1. Go used to build the Feature."
 
+  - id: features.resolve-dependencies-declaration-order-success
+    lane: contract
+    command: features
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/zeta $WORKSPACE/.devcontainer/alpha $WORKSPACE/.devcontainer/mid $WORKSPACE/.devcontainer/beta $WORKSPACE/.devcontainer/omega; printf '%s' '{\"id\":\"zeta\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/zeta/devcontainer-feature.json; printf '%s' '{\"id\":\"alpha\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/alpha/devcontainer-feature.json; printf '%s' '{\"id\":\"mid\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/mid/devcontainer-feature.json; printf '%s' '{\"id\":\"beta\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/beta/devcontainer-feature.json; printf '%s' '{\"id\":\"omega\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/omega/devcontainer-feature.json; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"./zeta\":{},\"./alpha\":{},\"./mid\":{},\"./beta\":{},\"./omega\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "features resolve-dependencies --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_text]
+    class: features
+    current_status: match
+    notes: "userFeaturesToArray (containerFeaturesConfiguration.ts) lists the configuration's Features in Object.keys order, and the mermaid graph lists the dependency graph's worklist in that order: ./zeta, ./alpha, ./mid, ./beta, ./omega. Go used to take them in Go map order."
+
+  - id: build.features-first-failure-in-declaration-order-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer $WORKSPACE/zeta; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"../zeta\":{},\"zz\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "Features are processed in Object.keys order and the first that fails is reported: '../zeta' is refused (outside .devcontainer) before the legacy id 'zz' is classified, so build reports ERR: Feature '../zeta' could not be processed. Go used to check every id for a legacy one before resolving any Feature and reported 'Legacy feature 'zz' not supported.'."
+
+  - id: build.features-integer-like-ids-first-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"../zeta\":{},\"10\":{},\"9\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "Object.keys lists integer-like keys first, ascending, so '9' is processed first and build reports 'Legacy feature '9' not supported.'. Go used to sort the ids and reported '10'."
+
+  - id: build.additional-features-after-config-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer $WORKSPACE/zeta $WORKSPACE/alpha; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"../zeta\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --additional-features '{\"../alpha\":{}}'"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "userFeaturesToArray appends the --additional-features ids after the configuration's, so '../zeta' is processed and refused first. Go used to sort the merged ids and reported '../alpha'."
+
   - id: up.update-uid-remote-user-from-image-metadata-success
     lane: runtime
     command: up

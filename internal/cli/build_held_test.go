@@ -106,14 +106,14 @@ func TestImageBuildFor(t *testing.T) {
 	}
 }
 
-func TestCheckLegacyFeatures(t *testing.T) {
-	for _, id := range []string{"node", "golang", "gradle", "ghcr.io/devcontainers/features/node:1", "./local-feature", "owner/repo/feature"} {
-		if err := checkLegacyFeatures(map[string]any{id: true}); err != nil {
+func TestResolveFeatureIDRefusesLegacyIDs(t *testing.T) {
+	for _, id := range []string{"node", "golang", "ghcr.io/devcontainers/features/node:1", "./local-feature", "owner/repo/feature"} {
+		if _, _, err := resolveFeatureID(log.Null, id); err != nil {
 			t.Errorf("%s: unexpected error %v", id, err)
 		}
 	}
 	for _, id := range []string{"not-a-feature", "not-a-feature:1", "node:1", "node:18", "gradle:1"} {
-		err := checkLegacyFeatures(map[string]any{id: true})
+		_, _, err := resolveFeatureID(log.Null, id)
 		if err == nil || !strings.Contains(err.Error(), "Legacy feature '"+id+"' not supported") {
 			t.Errorf("%s: error = %v, want the legacy feature error naming it", id, err)
 		}

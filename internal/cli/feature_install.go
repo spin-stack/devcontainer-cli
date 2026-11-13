@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +47,7 @@ type FeatureBuildOptions struct {
 	CABundle                    string
 	ContainerEnv                map[string]string
 	ContainerEnvOrder           []string
+	FeatureOrder                []string
 	FeatureOptionOrder          map[string][]string
 	SkipPersistCustoms          bool
 	FeaturesBasePath            string
@@ -67,16 +67,8 @@ type fetchFeatureResult struct {
 	TmpDir      string
 }
 
-func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, optionOrder map[string][]string, local localFeatureRoots) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, optionOrder, local, nil, nil)
-}
-
-func sortedUserFeatures(featuresCfg map[string]any, optionOrder map[string][]string) []features.DevContainerFeature {
-	userFeatures := features.UserFeaturesToArray(featuresCfg, optionOrder)
-	sort.Slice(userFeatures, func(i, j int) bool {
-		return userFeatures[i].UserFeatureID < userFeatures[j].UserFeatureID
-	})
-	return userFeatures
+func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, order []string, optionOrder map[string][]string, local localFeatureRoots) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, order, optionOrder, local, nil, nil)
 }
 
 type localFeatureRoots struct {
@@ -113,13 +105,12 @@ func createFeaturesFolder() (string, error) {
 	}
 }
 
-func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, optionOrder map[string][]string, local localFeatureRoots, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, order []string, optionOrder map[string][]string, local localFeatureRoots, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
 
-	userFeatures := sortedUserFeatures(featuresCfg, optionOrder)
-	userFeatures, warnings := features.UpdateDeprecatedFeaturesIntoOptions(userFeatures)
+	userFeatures, warnings := features.UpdateDeprecatedFeaturesIntoOptions(features.UserFeaturesToArray(featuresCfg, order, optionOrder))
 	for _, w := range warnings {
 		logger.Write(w, log.LevelWarning)
 	}
@@ -588,7 +579,7 @@ func fetchBuildFeatures(ctx context.Context, logger log.Logger, featuresCfg map[
 			return nil, err
 		}
 	}
-	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, fbOpts.FeatureOptionOrder, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, lockfile, fbOpts.OverrideFeatureInstallOrder)
+	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, fbOpts.FeatureOrder, fbOpts.FeatureOptionOrder, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, lockfile, fbOpts.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, err
 	}

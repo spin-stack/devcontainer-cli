@@ -109,14 +109,32 @@ func TestUserFeaturesToArray(t *testing.T) {
 		"ghcr.io/devcontainers/features/go:1":   map[string]any{"version": "1.21"},
 		"ghcr.io/devcontainers/features/node:1": true,
 	}
-	arr := UserFeaturesToArray(features, nil)
+	arr := UserFeaturesToArray(features, nil, nil)
 	if len(arr) != 2 {
 		t.Errorf("len = %d, want 2", len(arr))
 	}
 }
 
+func TestUserFeaturesToArrayFollowsTheOrderThenSortsTheRest(t *testing.T) {
+	features := map[string]any{"./z": true, "./a": 1, "./m": "x", "./b": false}
+	arr := UserFeaturesToArray(features, []string{"./z", "./gone", "./m", "./z"}, map[string][]string{"./m": {"o"}})
+	var ids []string
+	for _, f := range arr {
+		ids = append(ids, f.UserFeatureID)
+		if f.Options != features[f.UserFeatureID] {
+			t.Errorf("%s options = %v, want %v", f.UserFeatureID, f.Options, features[f.UserFeatureID])
+		}
+	}
+	if want := []string{"./z", "./m", "./a", "./b"}; !slices.Equal(ids, want) {
+		t.Errorf("ids = %v, want %v", ids, want)
+	}
+	if !slices.Equal(arr[1].OptionOrder, []string{"o"}) || arr[0].OptionOrder != nil {
+		t.Errorf("option order = %v, %v", arr[0].OptionOrder, arr[1].OptionOrder)
+	}
+}
+
 func TestUserFeaturesToArray_Nil(t *testing.T) {
-	arr := UserFeaturesToArray(nil, nil)
+	arr := UserFeaturesToArray(nil, nil, nil)
 	if arr != nil {
 		t.Errorf("expected nil, got %v", arr)
 	}

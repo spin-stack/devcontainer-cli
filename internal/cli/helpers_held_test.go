@@ -77,3 +77,16 @@ func TestMergeAdditionalFeaturesRecordsASingleOptionWithoutPriorOrder(t *testing
 		t.Errorf("FeatureOptionOrder[./g] = %v, want [only]", got)
 	}
 }
+
+func TestMergeAdditionalFeaturesAppendsTheirOrderAfterTheConfigs(t *testing.T) {
+	cfg := &config.DevContainer{
+		Features:     map[string]any{"./b": true, "./a": true, "./u": true},
+		FeatureOrder: []string{"./b", "./a"},
+	}
+	if _, err := mergeAdditionalFeatures(cfg, `{"./d": true, "7": true, "./a": true, "./c": true}`); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"./b", "./a", "./u", "7", "./d", "./c"}; !slices.Equal(cfg.FeatureOrder, want) {
+		t.Errorf("FeatureOrder = %v, want %v", cfg.FeatureOrder, want)
+	}
+}

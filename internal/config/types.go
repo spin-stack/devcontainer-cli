@@ -58,6 +58,7 @@ type DevContainer struct {
 	DevPort    any `json:"devPort,omitempty"`
 
 	ContainerEnvOrder  []string            `json:"-"`
+	FeatureOrder       []string            `json:"-"`
 	FeatureOptionOrder map[string][]string `json:"-"`
 	BuildArgsOrder     []string            `json:"-"`
 }

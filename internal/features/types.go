@@ -322,14 +322,22 @@ type DevContainerFeature struct {
 	OptionOrder []string
 }
 
-// optionOrder maps a Feature id to the member names of its options object
-// in devcontainer.json; an id it lacks has its options in sorted order.
-func UserFeaturesToArray(features map[string]any, optionOrder map[string][]string) []DevContainerFeature {
+// UserFeaturesToArray lists features in order, then the ids order does not
+// name, sorted. optionOrder maps a Feature id to the member names of its
+// options object in devcontainer.json; an id it lacks has its options in
+// sorted order.
+func UserFeaturesToArray(features map[string]any, order []string, optionOrder map[string][]string) []DevContainerFeature {
 	if features == nil {
 		return nil
 	}
 	result := make([]DevContainerFeature, 0, len(features))
-	for id, opts := range features {
+	seen := make(map[string]bool, len(features))
+	for _, id := range slices.Concat(order, slices.Sorted(maps.Keys(features))) {
+		opts, ok := features[id]
+		if !ok || seen[id] {
+			continue
+		}
+		seen[id] = true
 		result = append(result, DevContainerFeature{
 			UserFeatureID: id,
 			Options:       opts,
