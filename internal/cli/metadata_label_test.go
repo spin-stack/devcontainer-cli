@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
@@ -139,5 +140,27 @@ func TestHostMetadataSubstitution(t *testing.T) {
 	}
 	if want := config.ComputeDevContainerID(config.EnvMap(idLabels)); entries[0].ContainerEnv["ID"] != want {
 		t.Errorf("with id labels: ID = %q, want %q", entries[0].ContainerEnv["ID"], want)
+	}
+}
+
+func TestHostMetadataSubstitutionLeavesTheRawEntriesRaw(t *testing.T) {
+	raw := []imagemeta.Entry{{
+		ID:                "f",
+		Mounts:            []any{map[string]any{"source": "${localEnv:SRC}", "target": "/m", "type": "bind"}},
+		PostCreateCommand: []any{"echo", "${localEnv:SRC}"},
+		Customizations:    map[string]any{"x": "${localEnv:SRC}"},
+	}}
+	label := imagemeta.GenerateMetadataLabel(raw)
+	resolved := slices.Clone(raw)
+	for _, idLabels := range [][]string{nil, {"devcontainer.local_folder=/ws"}} {
+		if err := hostMetadataSubstitution(config.HostSubContext{Env: map[string]string{"SRC": "/host/src"}}, idLabels)(&resolved); err != nil {
+			t.Fatal(err)
+		}
+		if got := resolved[0].Mounts[0].(map[string]any)["source"]; got != "/host/src" {
+			t.Errorf("idLabels %v: resolved mount source = %v, want /host/src", idLabels, got)
+		}
+		if got := imagemeta.GenerateMetadataLabel(raw); got != label {
+			t.Errorf("idLabels %v: the raw entries changed:\n got %s\nwant %s", idLabels, got, label)
+		}
 	}
 }

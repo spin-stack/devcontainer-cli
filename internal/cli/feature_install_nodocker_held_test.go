@@ -21,7 +21,7 @@ func TestExtendImageWithFeaturesResolvesFeatureHostVars(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "devcontainer-feature.json"), []byte(`{"id":"envy","version":"1.0.0","containerEnv":{"FROM_HOST":"${localEnv:HOST_VALUE}"}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "devcontainer-feature.json"), []byte(`{"id":"envy","version":"1.0.0","containerEnv":{"FROM_HOST":"${localEnv:HOST_VALUE}"},"mounts":[{"source":"${localEnv:HOST_VALUE}","target":"/m","type":"bind"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -53,8 +53,11 @@ func TestExtendImageWithFeaturesResolvesFeatureHostVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extended Dockerfile: %v (calls %v)", err, r.calls)
 	}
-	if !strings.Contains(string(data), "resolved-on-host") || strings.Contains(string(data), "localEnv") {
+	if !strings.Contains(string(data), `ENV FROM_HOST="resolved-on-host"`) {
 		t.Errorf("extended Dockerfile = %s, want FROM_HOST resolved from the host", data)
+	}
+	if !strings.Contains(string(data), `\"source\":\"\${localEnv:HOST_VALUE}\"`) || strings.Contains(string(data), `\"source\":\"resolved-on-host\"`) {
+		t.Errorf("extended Dockerfile = %s, want the label's Feature mount raw", data)
 	}
 }
 

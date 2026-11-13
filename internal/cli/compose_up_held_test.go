@@ -1278,3 +1278,32 @@ func TestBuildAndExtendComposeForTheBuildCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildAndExtendComposeKeepsFeatureHostVariablesRawInTheLabel(t *testing.T) {
+	h := newComposeHarness(t)
+	h.write("vars/devcontainer-feature.json", `{"id":"vars","version":"1.0.0","containerEnv":{"FE":"${localEnv:SRC}/env"},"mounts":[{"source":"${localEnv:SRC}","target":"/m","type":"bind"}],"postCreateCommand":"echo ${localEnv:SRC}"}`)
+	h.write("vars/install.sh", "#!/bin/sh\n")
+	s := h.start(&config.DevContainer{Features: map[string]any{"./vars": map[string]any{}}}, map[string]any{"image": "alpine:3"})
+	s.loadResult.HostSub = config.HostSubContext{Env: map[string]string{"SRC": "/host/src"}}
+	h.r.substitute = hostMetadataSubstitution(s.loadResult.HostSub, s.idLabels)
+	res, err := h.r.buildAndExtendCompose(context.Background(), s, h.persisted, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := readFile(t, overrideDockerfile(t, readFile(t, res.overrideFiles[0])))
+	for _, want := range []string{`\"source\":\"\${localEnv:SRC}\"`, `\"postCreateCommand\":\"echo \${localEnv:SRC}\"`, `ENV FE="/host/src/env"`} {
+		if !strings.Contains(content, want) {
+			t.Errorf("Dockerfile lacks %s:\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, `\"source\":\"/host/src\"`) {
+		t.Errorf("the label carries the build host's mount source:\n%s", content)
+	}
+	feature := res.imageMetadata[1]
+	if got := feature.Mounts[0].(map[string]any)["source"]; got != "/host/src" {
+		t.Errorf("the container's Feature mount source = %v, want /host/src", got)
+	}
+	if feature.PostCreateCommand != "echo /host/src" {
+		t.Errorf("the container's Feature postCreateCommand = %v, want echo /host/src", feature.PostCreateCommand)
+	}
+}

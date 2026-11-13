@@ -44,6 +44,11 @@ func TestE2E_FeatureUserHomeAndLocalEnv(t *testing.T) {
 		t.Skip("Docker not available")
 	}
 	t.Setenv("E2E_LOCALENV_MARKER", "resolved-localenv-1234")
+	mountSrc := t.TempDir()
+	if err := os.WriteFile(filepath.Join(mountSrc, "marker"), []byte("mounted-from-localenv"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("E2E_LOCALENV_MOUNT", mountSrc)
 
 	ws := writeFixture(t, map[string]string{
 		".devcontainer/devcontainer.json": `{
@@ -55,7 +60,8 @@ func TestE2E_FeatureUserHomeAndLocalEnv(t *testing.T) {
 			"id": "localfeat",
 			"version": "1.0.0",
 			"name": "localfeat",
-			"containerEnv": { "MY_LOCAL_ENV": "${localEnv:E2E_LOCALENV_MARKER}" }
+			"containerEnv": { "MY_LOCAL_ENV": "${localEnv:E2E_LOCALENV_MARKER}" },
+			"mounts": [{ "source": "${localEnv:E2E_LOCALENV_MOUNT}", "target": "/e2e-localenv-mount", "type": "bind" }]
 		}`,
 		".devcontainer/localfeat/install.sh": "#!/bin/sh\nset -e\n" +
 			`echo "REMOTE_USER_HOME=[$_REMOTE_USER_HOME]" > /e2e-feature-marker` + "\n",
@@ -74,6 +80,16 @@ func TestE2E_FeatureUserHomeAndLocalEnv(t *testing.T) {
 	}
 	if got := dockerExec(t, id, "printenv MY_LOCAL_ENV"); got != "resolved-localenv-1234" {
 		t.Errorf("#308 Feature containerEnv ${localEnv} = %q, want resolved-localenv-1234", got)
+	}
+	if got := dockerExec(t, id, "cat /e2e-localenv-mount/marker"); got != "mounted-from-localenv" {
+		t.Errorf("Feature mount ${localEnv} not resolved on the host running up: %q", got)
+	}
+	out, err := exec.Command("sh", "-c", `docker image inspect -f '{{index .Config.Labels "devcontainer.metadata"}}' "$(docker inspect -f '{{.Image}}' `+id+`)"`).CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspect the container's image: %v\n%s", err, out)
+	}
+	if label := string(out); !strings.Contains(label, `"source":"${localEnv:E2E_LOCALENV_MOUNT}"`) || strings.Contains(label, mountSrc) {
+		t.Errorf("image label = %s, want the Feature's mount source raw", label)
 	}
 }
 

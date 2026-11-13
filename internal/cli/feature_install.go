@@ -548,10 +548,8 @@ func engineAtLeast23(ctx context.Context, engine *docker.EngineClient) bool {
 }
 
 // substituteFeatureHostVars resolves host-side variables (${localEnv:…},
-// ${localWorkspaceFolder}, …) in each Feature's containerEnv values and mounts,
-// so a Feature mount like "${localEnv:HOME}/.cfg" reaches Docker resolved —
-// matching how the config's own containerEnv/mounts are substituted (upstream
-// #308, which only substituted devcontainer.json's own values).
+// ${localWorkspaceFolder}, …) in each Feature's containerEnv, which the
+// Features Dockerfile writes as ENV lines (upstream #308).
 func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) error {
 	resolver := config.NewVariableResolver()
 	ctx := config.SubstitutionContext{HostSubContext: hs}
@@ -565,15 +563,6 @@ func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) e
 				}
 				if s, ok := resolved.(string); ok {
 					f.ContainerEnv[k] = s
-				}
-			}
-			if len(f.Mounts) > 0 {
-				resolved, err := resolver.Resolve(ctx, config.PhaseHost, f.Mounts)
-				if err != nil {
-					return fmt.Errorf("resolve Feature %s mounts: %w", f.ID, err)
-				}
-				if m, ok := resolved.([]any); ok {
-					f.Mounts = m
 				}
 			}
 		}

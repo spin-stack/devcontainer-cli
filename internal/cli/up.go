@@ -305,7 +305,7 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 		return writeErrorResult(out, fmt.Sprintf("apply workspace pre-container substitutions: %v", err))
 	}
 	run.idLabels = idLabels
-	run.substitute = func(entries *[]imagemeta.Entry) error { return resolver.BeforeContainerInto(idCtx, entries) }
+	run.substitute = hostMetadataSubstitution(loadResult.HostSub, idLabels)
 	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, opts.omitConfigRemoteEnvFromMeta); err != nil {
 		return writeErrorResult(out, err.Error())
 	}
