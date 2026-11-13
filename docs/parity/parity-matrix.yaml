@@ -2079,6 +2079,56 @@ initial_cases:
     class: required-args
     current_status: match
 
+  - id: run-user-commands.secrets-file-missing
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    ts_cmd: "run-user-commands --workspace-folder path-that-does-not-exist --secrets-file path-that-does-not-exist.json"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "readSecretsFromFile throws ContainerError{description: 'Failed to read/parse secrets'} with Node's ENOENT message, before the configuration is looked up. Go used to ignore an unreadable file and run with no secrets."
+
+  - id: run-user-commands.secrets-file-invalid-json
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    setup_cmd: "D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $D; mkdir -p $D; printf '%s' '{\"A\":\"1\",}' > $D/secrets.json; echo SECRETS_FILE=$D/secrets.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "run-user-commands --workspace-folder path-that-does-not-exist --secrets-file ${SECRETS_FILE}"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "jsonc.parse reports a trailing comma as a parse error, so the message is 'Invalid json data'. Go used to ignore a malformed file and run with no secrets."
+
+  - id: run-user-commands.secrets-file-jsonc-config-not-found
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    setup_cmd: "D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $D; mkdir -p $D; printf '%s' '{ /* c */ \"A\": 1, \"B\": [1, 2], \"C\": {\"x\": true} }' > $D/secrets.json; echo SECRETS_FILE=$D/secrets.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "run-user-commands --workspace-folder path-that-does-not-exist --secrets-file ${SECRETS_FILE}"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "jsonc.parse accepts comments and non-string values, so the command gets past the secrets file to the configuration lookup. Go json.Unmarshal into map[string]string used to reject non-string values."
+
+  - id: run-user-commands.secrets-file-null-value-failure
+    lane: contract
+    command: run-user-commands
+    priority: p1
+    docker_required: false
+    setup_cmd: "D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $D; mkdir -p $D; printf '%s' '{\"A\": null}' > $D/secrets.json; echo SECRETS_FILE=$D/secrets.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "run-user-commands --workspace-folder path-that-does-not-exist --secrets-file ${SECRETS_FILE}"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "createLog masks Object.values(secrets).filter(v => v.length), which throws a TypeError on a null value; the command's catch-all reports it."
+
   - id: set-up.missing-container-id
     lane: contract
     command: set-up
@@ -2361,6 +2411,56 @@ initial_cases:
     asserts: [exit_code, stdout_normalized]
     class: required-args
     current_status: match
+
+  - id: up.secrets-file-missing
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    ts_cmd: "up --workspace-folder path-that-does-not-exist --secrets-file path-that-does-not-exist.json"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "readSecretsFromFile throws ContainerError{description: 'Failed to read/parse secrets'} with Node's ENOENT message, before the configuration is looked up. Go used to ignore an unreadable file and run with no secrets."
+
+  - id: up.secrets-file-invalid-json
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    setup_cmd: "D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $D; mkdir -p $D; printf '%s' '{\"A\":\"1\",}' > $D/secrets.json; echo SECRETS_FILE=$D/secrets.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "up --workspace-folder path-that-does-not-exist --secrets-file ${SECRETS_FILE}"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "jsonc.parse reports a trailing comma as a parse error, so the message is 'Invalid json data'. Go used to ignore a malformed file and run with no secrets."
+
+  - id: up.secrets-file-jsonc-config-not-found
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    setup_cmd: "D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $D; mkdir -p $D; printf '%s' '{ /* c */ \"A\": 1, \"B\": [1, 2], \"C\": {\"x\": true} }' > $D/secrets.json; echo SECRETS_FILE=$D/secrets.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "up --workspace-folder path-that-does-not-exist --secrets-file ${SECRETS_FILE}"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "jsonc.parse accepts comments and non-string values, so the command gets past the secrets file to the configuration lookup. Go json.Unmarshal into map[string]string used to reject non-string values."
+
+  - id: up.secrets-file-null-value-failure
+    lane: contract
+    command: up
+    priority: p1
+    docker_required: false
+    setup_cmd: "D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $D; mkdir -p $D; printf '%s' '{\"A\": null}' > $D/secrets.json; echo SECRETS_FILE=$D/secrets.json"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "up --workspace-folder path-that-does-not-exist --secrets-file ${SECRETS_FILE}"
+    asserts: [exit_code, stdout_normalized]
+    class: secrets-file
+    current_status: match
+    notes: "createLog masks Object.values(secrets).filter(v => v.length), which throws a TypeError on a null value; the command's catch-all reports it."
 
   - id: up.override-config-missing-error
     lane: contract

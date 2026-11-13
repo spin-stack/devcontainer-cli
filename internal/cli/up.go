@@ -62,6 +62,7 @@ type upOpts struct {
 	terminalColumns             givenInt
 	terminalRows                givenInt
 	secretsFile                 string
+	secrets                     fileSecrets
 	caBundle                    string
 	experimentalLockfile        bool
 	experimentalFrozenLockfile  bool
@@ -247,12 +248,20 @@ func runUp(ctx context.Context, out Output, opts *upOpts) error {
 	}
 	defer closeLog()
 
+	if opts.secrets, err = loadSecretsFile(opts.secretsFile); err != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(err))
+	}
+	maskValues, err := opts.secrets.maskValues()
+	if err != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: "An error occurred setting up the container.", OriginalError: err}))
+	}
+
 	logger := log.New(log.Options{
 		Version: cliVersion(),
 		Level:   log.ParseLevel(opts.logLevel),
 		Format:  opts.logFormat,
 		Writer:  logDst,
-		Secrets: secretValuesFromFile(opts.secretsFile),
+		Secrets: maskValues,
 	})
 	ociAuthPolicy(ctx).SetLogger(logger)
 
@@ -575,7 +584,7 @@ func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer,
 	defer authCleanup()
 
 	buildResult, err := dockerClient.Build(ctx, docker.BuildOptions{
-		Secrets:     buildxSecrets(buildSecretsFromFile(opts.secretsFile), useBuildx, logger),
+		Secrets:     buildxSecrets(opts.secrets.env(), useBuildx, logger),
 		FileSecrets: caBundleBuildSecrets(opts.caBundle, useBuildx, logger),
 		Dockerfile:  dockerfilePath,
 		ContextPath: contextPath,
@@ -1031,7 +1040,7 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 	logger, engine, opts := r.log, r.engine, r.opts
 	probeStrategy := lifecycle.UserEnvProbeStrategy(cmp.Or(cfg.UserEnvProbe, opts.defaultUserEnvProbe))
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, opts.containerSessionDataFolder)
-	extra := append(secretsRemoteEnv(opts.secretsFile, logger), opts.remoteEnvs...)
+	extra := append(opts.secrets.env(), opts.remoteEnvs...)
 	mergedRemoteEnv := hookRemoteEnv(probed, extra, cfg.RemoteEnv)
 
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, mergedRemoteEnv...)
@@ -1076,18 +1085,6 @@ func (r *upRunner) checkContainerSubstitution(inspectResp container.InspectRespo
 		containerEnv = config.EnvMap(inspectResp.Config.Env)
 	}
 	return checkContainerSubstitution(containerEnv, cfg.ConfigFilePath, raw, imagemeta.MergeConfiguration(entries))
-}
-
-func secretsRemoteEnv(path string, logger log.Logger) []string {
-	if path == "" {
-		return nil
-	}
-	envs, err := readSecretsFile(path)
-	if err != nil {
-		logger.Write(fmt.Sprintf("Warning: secrets file: %v", err), log.LevelWarning)
-		return nil
-	}
-	return envs
 }
 
 func hookRemoteEnv(probed map[string]string, extra []string, cfgRemoteEnv map[string]*string) []string {
@@ -1178,7 +1175,7 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 	opts := r.opts
 	return &FeatureBuildOptions{
 		Platform:                    platform,
-		Secrets:                     buildSecretsFromFile(opts.secretsFile),
+		Secrets:                     opts.secrets.env(),
 		CABundle:                    opts.caBundle,
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),

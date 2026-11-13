@@ -464,34 +464,6 @@ func TestParseComposeServiceBuildReadsTheServicesBuild(t *testing.T) {
 	}
 }
 
-func TestSecretsRemoteEnv(t *testing.T) {
-	dir := t.TempDir()
-	good := filepath.Join(dir, "secrets.json")
-	if err := os.WriteFile(good, []byte(`{"TOKEN":"s3cr3t"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		name, path string
-		want       []string
-		warns      bool
-	}{
-		{"no file", "", nil, false},
-		{"file", good, []string{"TOKEN=s3cr3t"}, false},
-		{"missing file", filepath.Join(dir, "missing.json"), nil, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var logged bytes.Buffer
-			got := secretsRemoteEnv(tc.path, log.New(log.Options{Writer: &logged}))
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("env = %q, want %q", got, tc.want)
-			}
-			if warned := strings.Contains(logged.String(), "Warning: secrets file:"); warned != tc.warns {
-				t.Errorf("log = %q, want a warning: %v", logged.String(), tc.warns)
-			}
-		})
-	}
-}
-
 func TestHookRemoteEnvOrdersLaterSourcesLast(t *testing.T) {
 	got := hookRemoteEnv(
 		map[string]string{"P": "probed"},
