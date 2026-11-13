@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -337,11 +338,23 @@ func TestProcessInstallFeatureOCIErrors(t *testing.T) {
 
 func serveBytes(t *testing.T, body []byte, status int) string {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return serveTrustedTLS(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 		w.Write(body)
 	}))
+}
+
+func serveTrustedTLS(t *testing.T, h http.Handler) string {
+	t.Helper()
+	srv := httptest.NewTLSServer(h)
 	t.Cleanup(srv.Close)
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(caFile, certPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NODE_EXTRA_CA_CERTS", "")
+	t.Setenv("SSL_CERT_FILE", caFile)
 	return srv.URL
 }
 

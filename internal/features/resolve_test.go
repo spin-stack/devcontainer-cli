@@ -22,7 +22,7 @@ func TestClassifyFeatureID(t *testing.T) {
 		{"owner/feat", SourceOCI},
 		{`a\b`, SourceOCI},
 		{"https://example.com/feature.tgz", SourceDirectTarball},
-		{"http://example.com/feature.tgz", SourceDirectTarball},
+		{"http://example.com/feature.tgz", SourceOCI},
 		{"./local-feature", SourceLocalPath},
 		{"../sibling-feature", SourceLocalPath},
 		{"/abs/feature", SourceLocalPath},

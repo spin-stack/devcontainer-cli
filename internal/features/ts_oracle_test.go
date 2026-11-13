@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devcontainers/cli/internal/oci"
 	"github.com/devcontainers/cli/internal/tsoracle/oracletest"
 )
 
@@ -116,6 +117,9 @@ func TestTSOracleLegacyFeatureIDs(t *testing.T) {
 				return "direct-tarball", nil
 			case SourceLocalPath:
 				return "file-path", nil
+			}
+			if _, err := oci.ParseRef(id); err != nil {
+				return "github-repo", nil
 			}
 			return "oci", nil
 		},

@@ -297,7 +297,7 @@ func processInstallFeature(
 	default:
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
-			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
+			return nil, unparseableFeatureRef(logger, id, resolvedID, err)
 		}
 
 		userRef := ref
@@ -984,6 +984,27 @@ func isPlainHTTPURL(u string) bool {
 		return false
 	}
 	return parsed.Scheme == "http" || parsed.Hostname() == "localhost"
+}
+
+var githubReleaseFeatureName = regexp.MustCompile(`^[a-zA-Z0-9_-]*$`)
+
+// unparseableFeatureRef returns nil, after logging why, for a reference that
+// TS's GitHub Releases fallback refuses, which leaves the Feature
+// unprocessed; this CLI lacks that fallback, so it fails on any other.
+func unparseableFeatureRef(logger log.Logger, id, resolvedID string, parseErr error) error {
+	at := strings.Split(resolvedID, "@")
+	var refusal string
+	switch parts := strings.Split(at[0], "/"); {
+	case len(at) > 2:
+		refusal = "Parse error. Use the '@' symbol only to designate a version tag."
+	case len(parts) != 3 || slices.Contains(parts, "") || !githubReleaseFeatureName.MatchString(parts[2]):
+		refusal = fmt.Sprintf("Could not resolve Feature '%s'.  Ensure the Feature is published and accessible from your current environment.", resolvedID)
+	default:
+		return fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, parseErr)
+	}
+	logger.Write(fmt.Sprintf("Could not resolve Feature manifest for '%s'.  If necessary, provide registry credentials with 'docker login <registry>'.", resolvedID), log.LevelWarning)
+	logger.Write(refusal, log.LevelError)
+	return nil
 }
 
 func resolveFeatureID(logger log.Logger, id string) (string, features.SourceType, error) {

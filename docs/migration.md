@@ -208,6 +208,13 @@ runs the official CLI is unaffected:
 - Only a registry whose host is `localhost` is reached over plain HTTP. Earlier
   releases also used plain HTTP for `127.0.0.1`, which is now addressed over HTTPS
   like any other host. Refer to a local plain-HTTP registry as `localhost:<port>`.
+- Only an `https://` Feature id is a tarball URL. An `http://` id is now handled
+  as the official CLI handles it: as a registry reference it cannot parse, so
+  `build`, `up`, `read-configuration` and `upgrade` exit 1 with `ERR: Feature
+  '<id>' could not be processed. ...` without downloading anything. Earlier
+  releases downloaded the tarball over plain HTTP. Serve the tarball over HTTPS
+  (with `NODE_EXTRA_CA_CERTS` or `SSL_CERT_FILE` naming a private CA if needed),
+  or publish the Feature to an OCI registry.
 - Features are resolved in the order the configuration declares them, as the
   official CLI resolves them: integer-like ids such as `"9"` first, ascending,
   then the others in declaration order, followed by the `--additional-features`

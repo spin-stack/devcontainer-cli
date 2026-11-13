@@ -79,7 +79,7 @@ const fns: Record<string, (...args: any[]) => any> = {
 		return { userFeatures: updateDeprecatedFeaturesIntoOptions(userFeatures, capturingOutput(log)), log };
 	},
 	// Only ids it classifies without a registry request: legacy ids (it
-	// throws), tarball URLs and local paths.
+	// throws), tarball URLs, local paths and references getRef rejects.
 	getFeatureIdType: async (id: string) => (await getFeatureIdType({ output: nullOutput, env: {} } as any, id, undefined)).type,
 	// spec-node/containerFeatures.ts
 	getSafeId: (s: string) => getSafeId(s),

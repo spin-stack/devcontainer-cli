@@ -214,11 +214,9 @@ func TestDownloadFeatureTarball_2xxAccepted(t *testing.T) {
 }
 
 func TestDirectTarballDigestCheckedAgainstTheLockfile(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	uri := serveTrustedTLS(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not-a-real-tarball"))
-	}))
-	defer srv.Close()
-	uri := srv.URL + "/feature.tgz"
+	})) + "/feature.tgz"
 	sum := sha256.Sum256([]byte("not-a-real-tarball"))
 	digest := "sha256:" + hex.EncodeToString(sum[:])
 

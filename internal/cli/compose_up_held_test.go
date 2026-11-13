@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -685,9 +684,7 @@ func TestComposeFeatureSets(t *testing.T) {
 	})
 	t.Run("lockfile pins a tarball", func(t *testing.T) {
 		tgz := featureTarball(t, "tarred")
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(tgz) }))
-		defer srv.Close()
-		uri := srv.URL + "/devcontainer-feature-tarred.tgz"
+		uri := serveTrustedTLS(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write(tgz) })) + "/devcontainer-feature-tarred.tgz"
 		for _, noLockfile := range []bool{false, true} {
 			h := newComposeHarness(t)
 			h.r.opts.noLockfile = noLockfile
