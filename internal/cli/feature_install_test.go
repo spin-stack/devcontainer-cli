@@ -148,7 +148,7 @@ func TestFetchFeatureSets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			roots := devcontainerRoots(t)
 			tt.setup(t, roots.configDir)
-			result, err := fetchFeatureSets(t.Context(), log.Null, tt.entries, roots, false)
+			result, err := fetchFeatureSets(t.Context(), log.Null, tt.entries, roots)
 			if result != nil && result.TmpDir != "" {
 				defer os.RemoveAll(result.TmpDir)
 			}
@@ -232,7 +232,7 @@ func TestFetchFeatureSets_StagingLayout(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dirB, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	result, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./dir-a": true}, roots, false)
+	result, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./dir-a": true}, roots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 		t.Run(tc.id, func(t *testing.T) {
 			var logs bytes.Buffer
 			logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logs})
-			result, err := fetchFeatureSets(t.Context(), logger, map[string]any{tc.id: true}, roots, false)
+			result, err := fetchFeatureSets(t.Context(), logger, map[string]any{tc.id: true}, roots)
 			if result != nil {
 				t.Fatalf("result = %+v, want none", result)
 			}
@@ -414,6 +414,19 @@ func TestFetchFeatureSetsRefusesLocalFeaturesOutsideDevcontainer(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFetchFeatureSetsMovesDeprecatedFeaturesIntoOptions(t *testing.T) {
+	var logs bytes.Buffer
+	logger := log.New(log.Options{Level: log.LevelInfo, Format: "text", Writer: &logs})
+	result, err := fetchFeatureSets(t.Context(), logger, map[string]any{"gradle": map[string]any{}, "node:18": map[string]any{}}, devcontainerRoots(t))
+	if result != nil || err == nil || err.Error() != fmt.Sprintf(msgLegacyFeature, "node:18") {
+		t.Fatalf("result = %+v, err = %v; want the legacy Feature error for node:18", result, err)
+	}
+	warning := "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature.\n"
+	if !strings.Contains(logs.String(), warning) || strings.Contains(logs.String(), "Fetching feature") {
+		t.Errorf("logs = %q, want the gradle warning and no Feature fetched", logs.String())
 	}
 }
 

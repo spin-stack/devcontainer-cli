@@ -1,0 +1,501 @@
+{
+  "comment": "containerFeaturesConfiguration.ts getBackwardCompatibleFeatureId, updateDeprecatedFeaturesIntoOptions and the legacy, tarball and local-path classification of getFeatureIdType, ported in resolve.go (BackwardCompatibleID, UpdateDeprecatedFeaturesIntoOptions, ClassifyID).",
+  "cases": [
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "node"
+      ],
+      "result": {
+        "id": "ghcr.io/devcontainers/features/node:1",
+        "log": [
+          "(!) WARNING: Using the deprecated 'node' Feature. See https://github.com/devcontainers/features/tree/main/src/node#example-usage for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "terraform"
+      ],
+      "result": {
+        "id": "ghcr.io/devcontainers/features/terraform:1",
+        "log": [
+          "(!) WARNING: Using the deprecated 'terraform' Feature. See https://github.com/devcontainers/features/tree/main/src/terraform#example-usage for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "golang"
+      ],
+      "result": {
+        "id": "ghcr.io/devcontainers/features/go:1",
+        "log": [
+          "(!) WARNING: Using the deprecated 'golang' Feature. See https://github.com/devcontainers/features/tree/main/src/go#example-usage for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "common"
+      ],
+      "result": {
+        "id": "ghcr.io/devcontainers/features/common-utils:1",
+        "log": [
+          "(!) WARNING: Using the deprecated 'common' Feature. See https://github.com/devcontainers/features/tree/main/src/common-utils#example-usage for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "gradle"
+      ],
+      "result": {
+        "id": "gradle",
+        "log": [
+          "(!) WARNING: Falling back to the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "maven"
+      ],
+      "result": {
+        "id": "maven",
+        "log": [
+          "(!) WARNING: Falling back to the deprecated 'maven' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "jupyterlab"
+      ],
+      "result": {
+        "id": "jupyterlab",
+        "log": [
+          "(!) WARNING: Falling back to the deprecated 'jupyterlab' Feature. It is now part of the 'python' Feature. See https://github.com/devcontainers/features/tree/main/src/python#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "node:18"
+      ],
+      "result": {
+        "id": "node:18",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "node:1"
+      ],
+      "result": {
+        "id": "node:1",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "golang:1"
+      ],
+      "result": {
+        "id": "golang:1",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "go"
+      ],
+      "result": {
+        "id": "go",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "my-custom-feature"
+      ],
+      "result": {
+        "id": "my-custom-feature",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "owner/repo/feat"
+      ],
+      "result": {
+        "id": "owner/repo/feat",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "devcontainers/features/node:1"
+      ],
+      "result": {
+        "id": "devcontainers/features/node:1",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "ghcr.io/devcontainers/features/node:1"
+      ],
+      "result": {
+        "id": "ghcr.io/devcontainers/features/node:1",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "./node"
+      ],
+      "result": {
+        "id": "./node",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "https://example.com/devcontainer-feature-node.tgz"
+      ],
+      "result": {
+        "id": "https://example.com/devcontainer-feature-node.tgz",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        "Node"
+      ],
+      "result": {
+        "id": "Node",
+        "log": []
+      }
+    },
+    {
+      "fn": "getBackwardCompatibleFeatureId",
+      "args": [
+        ""
+      ],
+      "result": {
+        "id": "",
+        "log": []
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "gradle",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java:1",
+            "options": {
+              "installGradle": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "gradle",
+            "options": {
+              "version": "8"
+            }
+          },
+          {
+            "userFeatureId": "maven",
+            "options": true
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java:1",
+            "options": {
+              "installGradle": true,
+              "installMaven": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature.",
+          "(!) WARNING: Using the deprecated 'maven' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "java",
+            "options": "17"
+          },
+          {
+            "userFeatureId": "gradle",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "java",
+            "options": {
+              "version": "17",
+              "installGradle": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java:1",
+            "options": {
+              "version": "21"
+            }
+          },
+          {
+            "userFeatureId": "maven",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java:1",
+            "options": {
+              "version": "21",
+              "installMaven": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'maven' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java",
+            "options": true
+          },
+          {
+            "userFeatureId": "gradle",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java",
+            "options": {
+              "installGradle": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/javascript:1",
+            "options": {}
+          },
+          {
+            "userFeatureId": "gradle",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/javascript:1",
+            "options": {}
+          },
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/java:1",
+            "options": {
+              "installGradle": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "jupyterlab",
+            "options": {}
+          },
+          {
+            "userFeatureId": "node:18",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "node:18",
+            "options": {}
+          },
+          {
+            "userFeatureId": "ghcr.io/devcontainers/features/python:1",
+            "options": {
+              "installJupyterlab": true
+            }
+          }
+        ],
+        "log": [
+          "(!) WARNING: Using the deprecated 'jupyterlab' Feature. It is now part of the 'python' Feature. See https://github.com/devcontainers/features/tree/main/src/python#options for the updated Feature."
+        ]
+      }
+    },
+    {
+      "fn": "updateDeprecatedFeaturesIntoOptions",
+      "args": [
+        [
+          {
+            "userFeatureId": "gradle:1",
+            "options": {}
+          },
+          {
+            "userFeatureId": "node",
+            "options": {}
+          }
+        ]
+      ],
+      "result": {
+        "userFeatures": [
+          {
+            "userFeatureId": "gradle:1",
+            "options": {}
+          },
+          {
+            "userFeatureId": "node",
+            "options": {}
+          }
+        ],
+        "log": []
+      }
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "node"
+      ],
+      "error": "Legacy feature 'node' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information."
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "node:18"
+      ],
+      "error": "Legacy feature 'node:18' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information."
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "gradle"
+      ],
+      "error": "Legacy feature 'gradle' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information."
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "my-custom-feature"
+      ],
+      "error": "Legacy feature 'my-custom-feature' not supported. Please check https://containers.dev/features for replacements.\nIf you were hoping to use local Features, remember to prepend your Feature name with \"./\". Please check https://containers.dev/implementors/features-distribution/#addendum-locally-referenced for more information."
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "https://example.com/devcontainer-feature-node.tgz"
+      ],
+      "result": "direct-tarball"
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "./node"
+      ],
+      "result": "file-path"
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "../node"
+      ],
+      "result": "file-path"
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
+        "/node"
+      ],
+      "result": "file-path"
+    }
+  ]
+}

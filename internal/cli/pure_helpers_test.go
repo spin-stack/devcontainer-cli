@@ -316,17 +316,6 @@ func TestWriteSuccessJSON(t *testing.T) {
 	}
 }
 
-func TestAddFeatureOption(t *testing.T) {
-	got := addFeatureOption(map[string]any{"version": "1"}, "gradle")
-	if got["version"] != "1" || got["gradle"] != true {
-		t.Errorf("addFeatureOption merge wrong: %v", got)
-	}
-	got = addFeatureOption(true, "maven")
-	if got["maven"] != true || len(got) != 1 {
-		t.Errorf("addFeatureOption(non-map) = %v", got)
-	}
-}
-
 func TestOCIAnnotationID(t *testing.T) {
 	mk := func(ann map[string]string) *oci.ManifestContainer {
 		return &oci.ManifestContainer{Manifest: &oci.Manifest{Annotations: ann}}

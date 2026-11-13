@@ -67,3 +67,57 @@ func TestTSOracleLockfile(t *testing.T) {
 		},
 	})
 }
+
+func TestTSOracleLegacyFeatureIDs(t *testing.T) {
+	oracletest.Run(t, "testdata/ts-oracle/legacy.json", map[string]oracletest.Func{
+		"getBackwardCompatibleFeatureId": func(args []json.RawMessage) (any, error) {
+			var id string
+			if err := oracletest.Args(args, &id); err != nil {
+				return nil, err
+			}
+			mapped, warning := BackwardCompatibleID(id)
+			log := []string{}
+			if warning != "" {
+				log = append(log, warning)
+			}
+			return map[string]any{"id": mapped, "log": log}, nil
+		},
+		"updateDeprecatedFeaturesIntoOptions": func(args []json.RawMessage) (any, error) {
+			var in []struct {
+				UserFeatureID string `json:"userFeatureId"`
+				Options       any    `json:"options"`
+			}
+			if err := oracletest.Args(args, &in); err != nil {
+				return nil, err
+			}
+			userFeatures := make([]DevContainerFeature, len(in))
+			for i, f := range in {
+				userFeatures[i] = DevContainerFeature{UserFeatureID: f.UserFeatureID, Options: f.Options}
+			}
+			updated, warnings := UpdateDeprecatedFeaturesIntoOptions(userFeatures)
+			out := make([]map[string]any, len(updated))
+			for i, f := range updated {
+				out[i] = map[string]any{"userFeatureId": f.UserFeatureID, "options": f.Options}
+			}
+			if warnings == nil {
+				warnings = []string{}
+			}
+			return map[string]any{"userFeatures": out, "log": warnings}, nil
+		},
+		"getFeatureIdType": func(args []json.RawMessage) (any, error) {
+			var id string
+			if err := oracletest.Args(args, &id); err != nil {
+				return nil, err
+			}
+			switch ClassifyID(id) {
+			case SourceLegacyShorthand:
+				return nil, oracletest.ErrThrows
+			case SourceDirectTarball:
+				return "direct-tarball", nil
+			case SourceLocalPath:
+				return "file-path", nil
+			}
+			return "oci", nil
+		},
+	})
+}
