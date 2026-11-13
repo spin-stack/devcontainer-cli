@@ -170,6 +170,12 @@ upstream issue it fixes.
   (upstream #930). This CLI applies the labels with one more build, `FROM <image>`, tagged
   with the `--image-name` values or, without them, the image's own name
   (`TestE2E_ComposeBuildLabel`, `internal/cli/e2e_fixes_test.go`).
+- **`build --label` applies to a Dockerfile configuration.** TS passes `--label` only to
+  the build that extends an image configuration with Features (`updateImage`); the single
+  `docker build` of a Dockerfile configuration (`buildAndExtendImage`) drops it without a
+  word. This CLI passes each `--label` to that build, as it does for an image and for a
+  Docker Compose configuration, so that `--label` never goes unapplied without a word
+  (`TestBuildDockerfileBuildFlags`, `internal/cli/dockerfile_build_held_test.go`).
 - **`features generate-docs` and `templates generate-docs` document the folders they are
   given.** TS takes every entry of the project folder as an item folder: pointed at a
   single Feature or Template folder it looks for metadata under each of its files and
@@ -226,7 +232,11 @@ upstream issue it fixes.
   runtime/E2E/release/`windows-latest`/ConPTY lane. The `platform="win32"` logic is kept
   solely for parity with the oracle. (arm64 runtime is validated via a non-gating,
   QEMU-emulated experimental job.)
-- **Runtime: Docker only.** Podman is not supported (no parity guarantee or test).
+- **Runtime: Docker only.** Podman is not supported (no parity guarantee or test). TS's
+  Podman-only behavior is not implemented, among it `--security-opt label=disable` on a
+  build with BuildKit build contexts when `getenforce` is not `Disabled` and `podman info`
+  reports SELinux enabled (`isUsingSELinuxLabels`), and `--security-opt label=disable`
+  and `--userns=keep-id` on `podman run`. With Docker, TS adds neither.
 - **Compose: v2 only** (`docker compose`). Compose v1 (`docker-compose`) is not supported.
 - **`exec`: inherited terminal** (`docker exec -it` inherits the controlling terminal),
   no self-managed PTY. The 128+N contract comes from the child process. Interactive
