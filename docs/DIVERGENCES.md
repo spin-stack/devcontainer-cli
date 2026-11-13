@@ -157,14 +157,14 @@ upstream issue it fixes.
   in the build context (upstream #969). This CLI copies the ignore file next to every
   Dockerfile it generates (`TestCopyDockerignore`,
   `TestBuildAndExtendComposeDockerfileService` in `internal/cli/compose_up_held_test.go`,
-  and `TestE2E_SiblingDockerignore` in `internal/cli/e2e_fixes_test.go`).
+  `TestBuildDockerfileKeepsTheSiblingDockerignore`, and `TestE2E_SiblingDockerignore` in `internal/cli/e2e_fixes_test.go`).
 - **A `LABEL devcontainer.metadata` in the Dockerfile is kept.** TS builds the image's
   metadata label from the base image's label and the configuration and writes it over the
   image, so a `LABEL devcontainer.metadata=…` written in the built stage of the user's
   Dockerfile is lost (upstream #1225). This CLI merges that stage's entries between the
   base image's and the configuration's (`TestStageLabelsDevcontainerMetadata` and
-  `TestStageLabelsReadsTheNamedStage` in `internal/docker`, `TestDockerfileImageMetadata`
-  in `internal/cli/build_held_test.go`).
+  `TestStageLabelsReadsTheNamedStage` in `internal/docker`, `TestBuildDockerfileMetadataLabel`
+  in `internal/cli/dockerfile_build_held_test.go`).
 - **`build --label` applies to a Docker Compose configuration.** `docker compose build`
   takes no labels, and TS drops `--label` for a Compose configuration without a word
   (upstream #930). This CLI applies the labels with one more build, `FROM <image>`, tagged

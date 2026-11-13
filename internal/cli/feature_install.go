@@ -57,6 +57,7 @@ type FeatureBuildOptions struct {
 	ConfigPath                  string
 	LockfileExcludeIDs          map[string]bool
 	OverrideFeatureInstallOrder []string
+	OmitSyntaxDirective         bool
 }
 
 type fetchFeatureResult struct {
@@ -570,17 +571,10 @@ func substituteFeatureHostVars(sets []*features.Set, hs config.HostSubContext) e
 	return nil
 }
 
-func extendImageWithFeatures(
-	ctx context.Context,
-	logger log.Logger,
-	dockerClient *docker.Client,
-	engine *docker.EngineClient,
-	baseImage string,
-	featuresCfg map[string]any,
-	useBuildx bool,
-	imageNames []string,
-	fbOpts *FeatureBuildOptions,
-) ([]string, error) {
+func fetchBuildFeatures(ctx context.Context, logger log.Logger, featuresCfg map[string]any, fbOpts *FeatureBuildOptions) (*fetchFeatureResult, error) {
+	if len(featuresCfg) == 0 {
+		return nil, nil
+	}
 	var lockfile *features.Lockfile
 	if fbOpts.ConfigPath != "" && !fbOpts.NoLockfile {
 		var err error
@@ -592,24 +586,40 @@ func extendImageWithFeatures(
 	if err != nil {
 		return nil, err
 	}
+	if fbOpts.HostSub != nil {
+		if err := substituteFeatureHostVars(result.FeatureSets, *fbOpts.HostSub); err != nil {
+			return nil, err
+		}
+	}
+	if !fbOpts.NoLockfile && fbOpts.ConfigPath != "" {
+		lf := features.GenerateLockfile(&features.Config{FeatureSets: result.FeatureSets}, fbOpts.LockfileExcludeIDs)
+		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, features.WriteOptions{Frozen: fbOpts.FrozenLockfile}); err != nil {
+			return nil, fmt.Errorf("lockfile: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func extendImageWithFeatures(
+	ctx context.Context,
+	logger log.Logger,
+	dockerClient *docker.Client,
+	engine *docker.EngineClient,
+	baseImage string,
+	featuresCfg map[string]any,
+	useBuildx bool,
+	imageNames []string,
+	fbOpts *FeatureBuildOptions,
+) ([]string, error) {
+	result, err := fetchBuildFeatures(ctx, logger, featuresCfg, fbOpts)
+	if err != nil {
+		return nil, err
+	}
 	if result == nil {
 		return imageNames, nil
 	}
 	featureSets := result.FeatureSets
 	tmpDir := result.TmpDir
-
-	if fbOpts.HostSub != nil {
-		if err := substituteFeatureHostVars(featureSets, *fbOpts.HostSub); err != nil {
-			return nil, err
-		}
-	}
-
-	if !fbOpts.NoLockfile && fbOpts.ConfigPath != "" {
-		lf := features.GenerateLockfile(&features.Config{FeatureSets: featureSets}, fbOpts.LockfileExcludeIDs)
-		if err := features.WriteLockfile(fbOpts.ConfigPath, lf, features.WriteOptions{Frozen: fbOpts.FrozenLockfile}); err != nil {
-			return nil, fmt.Errorf("lockfile: %w", err)
-		}
-	}
 
 	baseImageInfo, _ := engine.InspectImage(ctx, baseImage)
 

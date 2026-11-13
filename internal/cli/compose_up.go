@@ -431,16 +431,7 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 		// TS: BuildKit build contexts need Compose >= 2.17.0 (the CLI variant is
 		// always Docker: Podman is unsupported, see docs/DIVERGENCES.md).
 		useContexts := s.useBuildx && s.client.SupportsAdditionalContexts()
-		syntax := ""
-		switch {
-		case opts.omitSyntaxDirective:
-		case engineAtLeast23(ctx, r.engine):
-			syntax = userSyntax
-		case useContexts && !dockerfileSupportsBuildContexts(parsed):
-			syntax = "docker/dockerfile:1.4"
-		default:
-			syntax = userSyntax
-		}
+		syntax := featuresSyntaxDirective(ctx, r.engine, opts.omitSyntaxDirective, useContexts, parsed)
 		if err := stageFeatureBuildFiles(featuresFolder, featureSets, containerUser, remoteUser); err != nil {
 			return nil, err
 		}
