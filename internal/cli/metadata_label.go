@@ -17,7 +17,7 @@ var labelConfigProperties = []string{
 	"otherPortsAttributes", "forwardPorts", "shutdownAction", "updateRemoteUserUID", "hostRequirements",
 }
 
-func configLabelEntry(raw map[string]any, omitRemoteEnv bool) (imagemeta.Entry, error) {
+func configLabelEntry(raw map[string]any, envOrder []string, omitRemoteEnv bool) (imagemeta.Entry, error) {
 	picked := map[string]any{}
 	for _, k := range labelConfigProperties {
 		if v, ok := raw[k]; ok && (!omitRemoteEnv || k != "remoteEnv") {
@@ -32,6 +32,7 @@ func configLabelEntry(raw map[string]any, omitRemoteEnv bool) (imagemeta.Entry, 
 	if err != nil {
 		return imagemeta.Entry{}, fmt.Errorf("devcontainer.metadata entry of the configuration: %w", err)
 	}
+	entry.ContainerEnvOrder = envOrder
 	return entry, nil
 }
 
@@ -74,6 +75,9 @@ func hostMetadataSubstitution(hostSub config.HostSubContext, idLabels []string) 
 		}
 		if err != nil {
 			return err
+		}
+		for i := range resolved {
+			resolved[i].ContainerEnvOrder = (*entries)[i].ContainerEnvOrder
 		}
 		*entries = resolved
 		return nil

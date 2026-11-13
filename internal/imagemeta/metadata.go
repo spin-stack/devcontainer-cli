@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/devcontainers/cli/internal/features"
+	"github.com/devcontainers/cli/internal/jsonc"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -19,6 +21,7 @@ type Entry struct {
 	SecurityOpt          []string           `json:"securityOpt,omitempty"`
 	Mounts               []any              `json:"mounts,omitempty"`
 	ContainerEnv         map[string]string  `json:"containerEnv,omitempty"`
+	ContainerEnvOrder    []string           `json:"-"`
 	ContainerUser        string             `json:"containerUser,omitempty"`
 	RemoteEnv            map[string]*string `json:"remoteEnv,omitempty"`
 	RemoteUser           string             `json:"remoteUser,omitempty"`
@@ -65,6 +68,13 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data.Bytes(), &fields); err != nil {
 		return nil, err
 	}
+	if _, ok := fields["containerEnv"]; ok {
+		env, err := containerEnvJSON(e.ContainerEnv, e.ContainerEnvOrder)
+		if err != nil {
+			return nil, err
+		}
+		fields["containerEnv"] = env
+	}
 	order := configEntryKeys
 	if e.ID != "" {
 		order = append(slices.Clone(featureEntryKeys), configEntryKeys...)
@@ -86,6 +96,38 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 	}
 	out.WriteByte('}')
 	return out.Bytes(), nil
+}
+
+func containerEnvJSON(env map[string]string, order []string) (json.RawMessage, error) {
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	out.WriteByte('{')
+	for i, k := range features.PropertyOrder(env, order) {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		if err := enc.Encode(k); err != nil {
+			return nil, err
+		}
+		out.Truncate(out.Len() - 1)
+		out.WriteByte(':')
+		if err := enc.Encode(env[k]); err != nil {
+			return nil, err
+		}
+		out.Truncate(out.Len() - 1)
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
+}
+
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	type plain Entry
+	if err := json.Unmarshal(data, (*plain)(e)); err != nil {
+		return err
+	}
+	e.ContainerEnvOrder = jsonc.MemberNames(data, "containerEnv")
+	return nil
 }
 
 func ReadMetadataFromLabels(labels map[string]string, logger log.Logger) []Entry {

@@ -215,3 +215,19 @@ func TestComposeFeaturesBuild(t *testing.T) {
 		t.Errorf("label-only content = %q, want %q", label.DockerfileContent, want)
 	}
 }
+
+func TestGenerateComposeFeaturesOverrideWritesTheMergedEnvInPropertyOrder(t *testing.T) {
+	entries := imagemeta.ReadMetadataFromLabels(map[string]string{
+		imagemeta.MetadataLabel: `[{"containerEnv":{"ZB":"base","10":"base","AB":"base"}}]`,
+	}, nil)
+	entries = append(entries, imagemeta.Entry{
+		ContainerEnv:      map[string]string{"ZED": "cfg", "AB": "cfg", "2": "cfg", "ALPHA": "cfg"},
+		ContainerEnvOrder: []string{"ZED", "AB", "2", "ALPHA"},
+	})
+	got := generateComposeFeaturesOverride(composeFeaturesOverride{Service: "app", Merged: imagemeta.MergeConfiguration(entries)})
+	_, env, _ := strings.Cut(got, "    environment:\n")
+	want := "      - '2=cfg'\n      - '10=base'\n      - 'ZB=base'\n      - 'AB=cfg'\n      - 'ZED=cfg'\n      - 'ALPHA=cfg'\n"
+	if env != want {
+		t.Errorf("environment:\n%s\nwant:\n%s", env, want)
+	}
+}

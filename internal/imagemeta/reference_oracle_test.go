@@ -41,6 +41,18 @@ func TestTSOracleImageMetadata(t *testing.T) {
 			}
 			return merged, nil
 		},
+		"mergeConfigurationContainerEnv": func(args []json.RawMessage) (any, error) {
+			var entries []Entry
+			if err := oracletest.Args(args, &entries); err != nil {
+				return nil, err
+			}
+			merged := MergeConfiguration(entries)
+			pairs := [][2]string{}
+			for _, k := range features.PropertyOrder(merged.ContainerEnv, merged.ContainerEnvOrder) {
+				pairs = append(pairs, [2]string{k, merged.ContainerEnv[k]})
+			}
+			return pairs, nil
+		},
 		"getDevcontainerMetadataLabel": func(args []json.RawMessage) (any, error) {
 			var entries []Entry
 			if err := oracletest.Args(args, &entries); err != nil {

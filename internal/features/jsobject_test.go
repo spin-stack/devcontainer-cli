@@ -64,3 +64,24 @@ func TestPropertyOrderListsKeysAsObjectKeys(t *testing.T) {
 		t.Errorf("PropertyOrder of an empty map = %v", got)
 	}
 }
+
+func TestJSValueOrdersAMapsKeys(t *testing.T) {
+	for _, tc := range []struct {
+		v     any
+		order []string
+		want  string
+	}{
+		{map[string]any{"zz": "1", "10": "t", "a": map[string]any{"y": 1, "b": 2}, "2": "s", "m": nil}, []string{"zz", "gone", "10", "a", "2"}, `{"2":"s","10":"t","zz":"1","a":{"b":2,"y":1},"m":null}`},
+		{"latest", []string{"x"}, `"latest"`},
+		{true, nil, `true`},
+		{nil, nil, `null`},
+	} {
+		js, err := JSValue(tc.v, tc.order)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := json.Marshal(js); err != nil || string(got) != tc.want {
+			t.Errorf("JSValue(%v, %v) = %s, %v; want %s", tc.v, tc.order, got, err, tc.want)
+		}
+	}
+}

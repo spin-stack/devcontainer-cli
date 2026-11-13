@@ -186,7 +186,7 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	defer engine.Close()
 
 	run := &buildRunner{log: logger, docker: dockerClient, engine: engine, opts: opts}
-	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, false); err != nil {
+	if run.configLabel, err = configLabelEntry(loadResult.RawConfig, loadResult.Config.ContainerEnvOrder, false); err != nil {
 		return writeErrorResult(out, err.Error())
 	}
 

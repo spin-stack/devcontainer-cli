@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/devcontainers/cli/internal/features"
 )
 
 type MergedConfig struct {
@@ -32,6 +34,7 @@ type MergedConfig struct {
 	OtherPortsAttributes  any                 `json:"otherPortsAttributes,omitempty"`
 	ForwardPorts          []any               `json:"forwardPorts,omitempty"`
 	ContainerEnv          map[string]string   `json:"containerEnv"`
+	ContainerEnvOrder     []string            `json:"-"`
 	RemoteEnv             map[string]*string  `json:"remoteEnv"`
 	Customizations        map[string][]any    `json:"customizations,omitempty"`
 	Mounts                []any               `json:"mounts,omitempty"`
@@ -83,6 +86,7 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		m.Mounts = append(m.Mounts, e.Mounts...)
 
 		maps.Copy(m.ContainerEnv, e.ContainerEnv)
+		m.ContainerEnvOrder = append(m.ContainerEnvOrder, features.PropertyOrder(e.ContainerEnv, e.ContainerEnvOrder)...)
 		maps.Copy(m.RemoteEnv, e.RemoteEnv)
 		for k, v := range e.Customizations {
 			m.Customizations[k] = append(m.Customizations[k], v)
@@ -130,6 +134,7 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		}
 	}
 
+	m.ContainerEnvOrder = features.KeyOrder(m.ContainerEnvOrder)
 	m.Mounts = dedupeMountsByTarget(m.Mounts)
 	m.ForwardPorts = dedupeForwardPorts(m.ForwardPorts)
 	m.HostRequirements = mergeHostRequirements(entries)

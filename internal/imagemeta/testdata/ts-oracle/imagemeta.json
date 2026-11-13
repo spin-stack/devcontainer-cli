@@ -1,5 +1,5 @@
 {
-  "comment": "imageMetadata.ts mergeConfiguration (with an empty config) and getDevcontainerMetadataLabel, commonUtils.ts getEntPasswdShellCommand, containerFeaturesConfiguration.ts generateContainerEnvs, getFeatureValueObject and escapeQuotesForShell, containerFeatures.ts getSafeId; ported in merge.go and extend.go.",
+  "comment": "imageMetadata.ts mergeConfiguration (with an empty config, and its containerEnv entries) and getDevcontainerMetadataLabel, commonUtils.ts getEntPasswdShellCommand, containerFeaturesConfiguration.ts generateContainerEnvs, getFeatureValueObject and escapeQuotesForShell, containerFeatures.ts getSafeId; ported in merge.go and extend.go.",
   "cases": [
     {
       "name": "ts: remoteEnv from features and devcontainer.json",
@@ -1553,6 +1553,58 @@
       }
     },
     {
+      "name": "containerEnv keeps a key's first position",
+      "fn": "mergeConfigurationContainerEnv",
+      "args": [
+        [
+          {
+            "containerEnv": {
+              "ZB": "base",
+              "10": "base",
+              "AB": "base"
+            }
+          },
+          {
+            "id": "f"
+          },
+          {
+            "containerEnv": {
+              "ZED": "cfg",
+              "AB": "cfg",
+              "2": "cfg",
+              "ALPHA": "cfg"
+            }
+          }
+        ]
+      ],
+      "result": [
+        [
+          "2",
+          "cfg"
+        ],
+        [
+          "10",
+          "base"
+        ],
+        [
+          "ZB",
+          "base"
+        ],
+        [
+          "AB",
+          "cfg"
+        ],
+        [
+          "ZED",
+          "cfg"
+        ],
+        [
+          "ALPHA",
+          "cfg"
+        ]
+      ]
+    },
+    {
       "name": "ts: label for Dockerfile",
       "fn": "getDevcontainerMetadataLabel",
       "args": [
@@ -1810,6 +1862,34 @@
         ]
       ],
       "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"postCreateCommand\\\":\\\"p\\\",\\\"waitFor\\\":\\\"onCreateCommand\\\",\\\"customizations\\\":{\\\"vscode\\\":{}},\\\"mounts\\\":[\\\"type=bind,src=/a,dst=/b\\\"],\\\"containerEnv\\\":{\\\"A\\\":\\\"1\\\"},\\\"containerUser\\\":\\\"c\\\",\\\"init\\\":true,\\\"privileged\\\":true,\\\"capAdd\\\":[\\\"NET_ADMIN\\\"],\\\"securityOpt\\\":[\\\"label=disable\\\"],\\\"remoteUser\\\":\\\"r\\\",\\\"userEnvProbe\\\":\\\"none\\\",\\\"remoteEnv\\\":{\\\"B\\\":\\\"2\\\"},\\\"overrideCommand\\\":false,\\\"portsAttributes\\\":{\\\"3000\\\":{\\\"label\\\":\\\"x\\\"}},\\\"otherPortsAttributes\\\":{\\\"onAutoForward\\\":\\\"ignore\\\"},\\\"forwardPorts\\\":[3000],\\\"shutdownAction\\\":\\\"none\\\",\\\"updateRemoteUserUID\\\":true,\\\"hostRequirements\\\":{\\\"cpus\\\":2}} \\\n]\""
+    },
+    {
+      "name": "containerEnv in each entry's property order",
+      "fn": "getDevcontainerMetadataLabel",
+      "args": [
+        [
+          {
+            "containerEnv": {
+              "ZB": "1",
+              "10": "b",
+              "AB": "2",
+              "2": "a"
+            }
+          },
+          {
+            "id": "f"
+          },
+          {
+            "containerEnv": {
+              "ZED": "1",
+              "10": "x",
+              "ALPHA": "2",
+              "2": "y"
+            }
+          }
+        ]
+      ],
+      "result": "LABEL devcontainer.metadata=\"[ \\\n{\\\"containerEnv\\\":{\\\"2\\\":\\\"a\\\",\\\"10\\\":\\\"b\\\",\\\"ZB\\\":\\\"1\\\",\\\"AB\\\":\\\"2\\\"}}, \\\n{\\\"id\\\":\\\"f\\\"}, \\\n{\\\"containerEnv\\\":{\\\"2\\\":\\\"y\\\",\\\"10\\\":\\\"x\\\",\\\"ZED\\\":\\\"1\\\",\\\"ALPHA\\\":\\\"2\\\"}} \\\n]\""
     },
     {
       "name": "getEntPasswd 'root'",

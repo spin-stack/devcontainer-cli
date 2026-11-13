@@ -67,17 +67,18 @@ func (f Feature) MarshalJSON() ([]byte, error) {
 	feature := newJSObject()
 	for _, k := range f.SourceKeys {
 		var v any
+		var order []string
 		switch k {
 		case "id":
 			v = f.ID
 		case "name":
 			v = f.Name
 		case "value":
-			v = f.Value
+			v, order = f.Value, f.ValueOrder
 		case "included":
 			v = f.Included
 		}
-		js, err := toJS(v)
+		js, err := JSValue(v, order)
 		if err != nil {
 			return nil, err
 		}

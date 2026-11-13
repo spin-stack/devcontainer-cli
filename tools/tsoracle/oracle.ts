@@ -61,6 +61,8 @@ const fns: Record<string, (...args: any[]) => any> = {
 	supportsBuildContexts: (df: string) => supportsBuildContexts(extractDockerfile(df)),
 	// spec-node/imageMetadata.ts
 	mergeConfiguration: (config: any, metadata: any[]) => mergeConfiguration(config, metadata),
+	// The containerEnv's key order is the compose environment's line order: entries keep it.
+	mergeConfigurationContainerEnv: (metadata: any[]) => Object.entries(mergeConfiguration({} as any, metadata).containerEnv || {}),
 	getDevcontainerMetadataLabel: (raw: any[]) => getDevcontainerMetadataLabel({ config: raw, raw, substitute: (x: any) => x }),
 	// spec-configuration/containerFeaturesConfiguration.ts
 	generateContainerEnvs: (env: any, escapeDollar: boolean) => generateContainerEnvs(env ?? undefined, escapeDollar),

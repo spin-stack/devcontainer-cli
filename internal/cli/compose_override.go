@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"slices"
 	"strings"
 
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 )
 
@@ -212,12 +212,7 @@ func generateComposeFeaturesOverride(in composeFeaturesOverride) string {
 	}
 	if len(merged.ContainerEnv) > 0 {
 		b.WriteString("\n    environment:")
-		keys := make([]string, 0, len(merged.ContainerEnv))
-		for k := range merged.ContainerEnv {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		for _, k := range keys {
+		for _, k := range features.PropertyOrder(merged.ContainerEnv, merged.ContainerEnvOrder) {
 			v := strings.ReplaceAll(merged.ContainerEnv[k], "\n", `\n`)
 			v = escapeComposeDollar(v)
 			v = strings.ReplaceAll(v, "'", "''")
