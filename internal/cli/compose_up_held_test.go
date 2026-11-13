@@ -886,7 +886,7 @@ func TestBuildAndExtendComposeImageServiceWithFeatures(t *testing.T) {
 			for _, want := range []string{
 				"\n    image: " + folderImageName(h.ws) + "\n",
 				"\n      context: " + emptyDir + "\n",
-				"\n        - _DEV_CONTAINERS_IMAGE_USER=vscode\n",
+				"\n        - _DEV_CONTAINERS_IMAGE_USER=vscode\n        - _DEV_CONTAINERS_FEATURE_CONTENT_SOURCE=dev_container_feature_content_temp\n",
 			} {
 				if !strings.Contains(override, want) {
 					t.Errorf("override lacks %q:\n%s", want, override)

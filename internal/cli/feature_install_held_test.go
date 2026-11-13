@@ -656,6 +656,24 @@ func TestExtendImageWithFeaturesTags(t *testing.T) {
 	}
 }
 
+func TestExtendImageWithFeaturesBuildArgOrder(t *testing.T) {
+	res := extendRun{useBuildx: true}.run(t)
+	if res.err != nil {
+		t.Fatal(res.err)
+	}
+	var got []string
+	for i, a := range res.build {
+		if a == "--build-arg" && i+1 < len(res.build) {
+			got = append(got, res.build[i+1])
+		}
+	}
+	want := []string{"BUILDKIT_INLINE_CACHE=1", "_DEV_CONTAINERS_BASE_IMAGE=base:latest", "_DEV_CONTAINERS_IMAGE_USER=root",
+		"_DEV_CONTAINERS_FEATURE_CONTENT_SOURCE=" + imagemeta.ComposeFeatureContentImage}
+	if !slices.Equal(got, want) {
+		t.Errorf("build args = %v, want %v", got, want)
+	}
+}
+
 func TestExtendImageWithFeaturesUsesTheImageUser(t *testing.T) {
 	for name, tc := range map[string]struct {
 		config *dockerspec.DockerOCIImageConfig

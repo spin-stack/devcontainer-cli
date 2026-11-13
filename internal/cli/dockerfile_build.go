@@ -9,6 +9,7 @@ import (
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
+	"github.com/devcontainers/cli/internal/features"
 	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 )
@@ -156,7 +157,7 @@ func buildDockerfileImage(ctx context.Context, logger log.Logger, dockerClient *
 		ContextPath: dockerContextPath(cfg),
 		Tags:        imageNames,
 		Target:      info.OverrideTarget,
-		BuildArgs:   configArgs,
+		BuildArgs:   orderedBuildArgs(configArgs, features.PropertyOrder(configArgs, cfg.BuildArgsOrder)),
 		CacheFrom:   cacheFrom,
 		Labels:      fb.Labels,
 		NoCache:     fb.NoCache,
@@ -180,6 +181,14 @@ func buildDockerfileImage(ctx context.Context, logger log.Logger, dockerClient *
 		logger.Write(string(result.Stderr), log.LevelInfo)
 	}
 	return nil
+}
+
+func orderedBuildArgs(args map[string]string, keys []string) [][2]string {
+	out := make([][2]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, [2]string{k, args[k]})
+	}
+	return out
 }
 
 func featureBuildArgOrder(args map[string]string) []string {

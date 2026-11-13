@@ -372,6 +372,28 @@ func TestBuildDockerfileWritesTheReferenceDockerfile(t *testing.T) {
 	})
 }
 
+func TestBuildDockerfileBuildArgOrder(t *testing.T) {
+	res := dockerfileBuildRun{
+		files: map[string]string{".devcontainer/Dockerfile": "FROM alpine AS dev\n"},
+		config: config.DevContainer{
+			Build:          &config.Build{Dockerfile: "Dockerfile", Args: map[string]string{"MID": "5", "ALPHA": "4", "ZED": "3", "10": "2", "2": "1"}},
+			BuildArgsOrder: []string{"ZED", "10", "ALPHA", "2", "MID", "ZED"},
+		},
+		useBuildx: true,
+	}.run(t)
+	if res.err != nil {
+		t.Fatal(res.err)
+	}
+	wantArgs := dockerCall{"buildx", "build", "--load", "--build-arg", "BUILDKIT_INLINE_CACHE=1",
+		"-f", res.path, "-t", "img", "--target", "dev_containers_target_stage",
+		"--build-arg", "2=1", "--build-arg", "10=2", "--build-arg", "ZED=3", "--build-arg", "ALPHA=4", "--build-arg", "MID=5",
+		"--build-arg", "_DEV_CONTAINERS_BASE_IMAGE=dev",
+		filepath.Join(res.ws, ".devcontainer")}
+	if !reflect.DeepEqual(res.build, wantArgs) {
+		t.Errorf("build =\n%v\nwant\n%v", res.build, wantArgs)
+	}
+}
+
 func TestBuildDockerfileStage(t *testing.T) {
 	t.Run("a configured target is the base stage, the Dockerfile kept", func(t *testing.T) {
 		res := dockerfileBuildRun{

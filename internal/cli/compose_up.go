@@ -487,9 +487,7 @@ func (r *upRunner) buildAndExtendCompose(ctx context.Context, s composeStart, pe
 			override.Context = emptyDir
 		}
 		override.BuildKitInlineCache = s.useBuildx
-		for _, k := range sortedStringKeys(info.BuildArgs) {
-			override.BuildArgs = append(override.BuildArgs, [2]string{k, info.BuildArgs[k]})
-		}
+		override.BuildArgs = orderedBuildArgs(info.BuildArgs, featureBuildArgOrder(info.BuildArgs))
 		for _, k := range sortedStringKeys(info.BuildKitContexts) {
 			v := info.BuildKitContexts[k]
 			if v == "." {

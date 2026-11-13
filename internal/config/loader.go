@@ -211,7 +211,7 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}
 
 	config.ConfigFilePath = configFilePath
-	config.ContainerEnvOrder, config.FeatureOptionOrder = declaredOrder(docs)
+	config.ContainerEnvOrder, config.FeatureOptionOrder, config.BuildArgsOrder = declaredOrder(docs)
 
 	return &LoadResult{
 		Config:          &config,
@@ -223,9 +223,10 @@ func LoadDevContainerConfigWithMounts(workspaceFolder, configPath, overrideConfi
 	}, nil
 }
 
-func declaredOrder(docs [][]byte) (containerEnv []string, featureOptions map[string][]string) {
+func declaredOrder(docs [][]byte) (containerEnv []string, featureOptions map[string][]string, buildArgs []string) {
 	for _, data := range docs {
 		containerEnv = append(containerEnv, jsonc.MemberNames(data, "containerEnv")...)
+		buildArgs = append(buildArgs, jsonc.MemberNames(data, "build", "args")...)
 		for _, id := range jsonc.MemberNames(data, "features") {
 			if names := jsonc.MemberNames(data, "features", id); len(names) > 0 {
 				if featureOptions == nil {
@@ -235,7 +236,7 @@ func declaredOrder(docs [][]byte) (containerEnv []string, featureOptions map[str
 			}
 		}
 	}
-	return containerEnv, featureOptions
+	return containerEnv, featureOptions, buildArgs
 }
 
 func deepMergeConfig(base, override map[string]any) map[string]any {

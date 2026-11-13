@@ -58,3 +58,25 @@ func TestLoadKeepsContainerEnvAndFeatureOptionOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadKeepsBuildArgsOrder(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "devcontainer.json")
+	override := filepath.Join(dir, "override.json")
+	if err := os.WriteFile(base, []byte(`{
+		// comment
+		"build": {"dockerfile": "Dockerfile", "args": {"ZED": "1", "10": "a", "ALPHA": "2"}}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte(`{"build": {"args": {"MID": "3", "ZED": "4"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := LoadDevContainerConfig(dir, base, override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"ZED", "10", "ALPHA", "MID", "ZED"}; !slices.Equal(res.Config.BuildArgsOrder, want) {
+		t.Errorf("BuildArgsOrder = %v, want %v", res.Config.BuildArgsOrder, want)
+	}
+}
