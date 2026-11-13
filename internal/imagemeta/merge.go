@@ -134,7 +134,6 @@ func MergeConfiguration(entries []Entry) *MergedConfig {
 		}
 	}
 
-	m.ContainerEnvOrder = features.KeyOrder(m.ContainerEnvOrder)
 	m.Mounts = dedupeMountsByTarget(m.Mounts)
 	m.ForwardPorts = dedupeForwardPorts(m.ForwardPorts)
 	m.HostRequirements = mergeHostRequirements(entries)
