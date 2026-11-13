@@ -11,7 +11,7 @@ import (
 
 func writeFixture(t *testing.T, files map[string]string) string {
 	t.Helper()
-	root := t.TempDir()
+	root := uniqueWorkspace(t)
 	for rel, content := range files {
 		p := filepath.Join(root, rel)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -20,6 +20,17 @@ func writeFixture(t *testing.T, files map[string]string) string {
 		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+	return root
+}
+
+// Concurrent runs share the Docker daemon, and a Compose project's name and
+// images come from the workspace's basename.
+func uniqueWorkspace(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(t.TempDir(), "ws-")
+	if err != nil {
+		t.Fatal(err)
 	}
 	return root
 }
@@ -165,11 +176,11 @@ func TestE2E_SiblingDockerignore(t *testing.T) {
 		".devcontainer/secret.txt":              "SUPERSECRET\n",
 	})
 
-	buildOut := runCLI(t, "build", "--workspace-folder", ws, "--image-name", "e2e-dockerignore:test")
+	image := uniqueImageName(t, "e2e-dockerignore")
+	buildOut := runCLI(t, "build", "--workspace-folder", ws, "--image-name", image)
 	assertOutcome(t, buildOut, "success")
-	defer exec.Command("docker", "rmi", "-f", "e2e-dockerignore:test").Run()
 
-	out, err := exec.Command("docker", "run", "--rm", "e2e-dockerignore:test", "cat", "/dockerignore-result").CombinedOutput()
+	out, err := exec.Command("docker", "run", "--rm", image, "cat", "/dockerignore-result").CombinedOutput()
 	if err != nil {
 		t.Fatalf("docker run failed: %v\n%s", err, out)
 	}

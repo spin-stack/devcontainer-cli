@@ -24,6 +24,7 @@ func TestE2E_BuildUpExec_Image(t *testing.T) {
 	if _, err := os.Stat(fixture); os.IsNotExist(err) {
 		t.Skip("fixtures not found")
 	}
+	fixture = copyFixture(t, fixture)
 
 	buildOut := runCLI(t, "build", "--workspace-folder", fixture)
 	assertOutcome(t, buildOut, "success")
@@ -58,6 +59,7 @@ func TestE2E_BuildUpExec_Dockerfile(t *testing.T) {
 	if _, err := os.Stat(fixture); os.IsNotExist(err) {
 		t.Skip("fixtures not found")
 	}
+	fixture = copyFixture(t, fixture)
 
 	buildOut := runCLI(t, "build", "--workspace-folder", fixture)
 	assertOutcome(t, buildOut, "success")
@@ -80,6 +82,15 @@ func TestE2E_BuildUpExec_Dockerfile(t *testing.T) {
 	}
 
 	exec.Command("docker", "rm", "-f", containerID).Run()
+}
+
+func copyFixture(t *testing.T, src string) string {
+	t.Helper()
+	dst := uniqueWorkspace(t)
+	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	return dst
 }
 
 func TestE2E_ReadConfiguration_AllVariants(t *testing.T) {
