@@ -51,6 +51,8 @@ func TestLoadSecretsFileFailsAsTS(t *testing.T) {
 		{"empty", writeSecretsFile(t, ``), "Invalid json data"},
 		{"trailing comma", writeSecretsFile(t, `{"A":"1",}`), "Invalid json data"},
 		{"array trailing comma", writeSecretsFile(t, `[1,2,]`), "Invalid json data"},
+		{"one-element array trailing comma", writeSecretsFile(t, `{"A":["x",]}`), "Invalid json data"},
+		{"one-member object trailing comma", writeSecretsFile(t, `{"A":{"x":1,}}`), "Invalid json data"},
 		{"trailing data", writeSecretsFile(t, `{"A":"1"} x`), "Invalid json data"},
 		{"bom", writeSecretsFile(t, "\xEF\xBB\xBF{\"A\":\"1\"}"), "Invalid json data"},
 		{"unquoted name", writeSecretsFile(t, `{A:"1"}`), "Invalid json data"},
@@ -87,6 +89,18 @@ func TestLoadSecretsFileAcceptsWhatJSONCParses(t *testing.T) {
 		{"number", `5`, []string{}, nil},
 		{"repeated and index keys", `{"B":"1","2":"x","A":"2","B":"3","1":"y"}`,
 			[]string{"1=y", "2=x", "B=3", "A=2"}, []string{"y", "x", "3", "2"}},
+		// Expected values below are what node prints for the reference's
+		// jsonc.parse followed by `{...secrets}`.
+		{"array index boundaries",
+			`{"B":"b","4294967295":"max","4294967294":"top","01":"lead","0":"zero","-1":"neg","99999999999999999999":"long","10":"ten","2":"two"}`,
+			[]string{"0=zero", "2=two", "10=ten", "4294967294=top", "B=b", "4294967295=max", "01=lead", "-1=neg", "99999999999999999999=long"},
+			[]string{"zero", "two", "ten", "top", "b", "max", "lead", "neg", "long"}},
+		{"String of numbers",
+			`{"Z":-0,"M":-0.0e5,"BIG":1.7976931348623157e308,"NBIG":-1.7976931348623157e308,"I":1e400,"NI":-1e400,"E20":1e20,"E21":1e21,"L":123456789012345678901234,"S":1e-7,"T":0.000001}`,
+			[]string{"Z=0", "M=0", "BIG=1.7976931348623157e+308", "NBIG=-1.7976931348623157e+308", "I=Infinity", "NI=-Infinity",
+				"E20=100000000000000000000", "E21=1e+21", "L=1.2345678901234569e+23", "S=1e-7", "T=0.000001"}, nil},
+		{"masking by length", `{"A":["x"],"N":[null],"NN":[[null,1],null],"E":[],"S":""}`,
+			[]string{"A=x", "N=", "NN=,1,", "E=", "S="}, []string{"x", "", ",1,"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, err := loadSecretsFile(writeSecretsFile(t, tc.content))

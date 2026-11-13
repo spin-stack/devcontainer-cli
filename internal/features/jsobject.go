@@ -76,6 +76,17 @@ func (o *jsObject) order() []string {
 	return append(idx, rest...)
 }
 
+// KeyOrder lists the distinct keys of an object that JavaScript gave the
+// properties keys, in that order, as it enumerates them: the integer-index
+// keys ascending, then the others where each was first set.
+func KeyOrder(keys []string) []string {
+	o := newJSObject()
+	for _, k := range keys {
+		o.set(k, nil)
+	}
+	return o.order()
+}
+
 func (o *jsObject) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteByte('{')
