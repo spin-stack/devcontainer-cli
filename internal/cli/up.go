@@ -987,8 +987,7 @@ func (r *upRunner) runLifecycleForUp(ctx context.Context, containerID string, cf
 	logger, engine, opts := r.log, r.engine, r.opts
 	probeStrategy := lifecycle.UserEnvProbeStrategy(cmp.Or(cfg.UserEnvProbe, opts.defaultUserEnvProbe))
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, probeStrategy, opts.containerSessionDataFolder)
-	extra := append(opts.secrets.env(), opts.remoteEnvs...)
-	mergedRemoteEnv := hookRemoteEnv(probed, extra, cfg.RemoteEnv)
+	mergedRemoteEnv := hookRemoteEnv(probed, opts.remoteEnvs, cfg.RemoteEnv, opts.secrets.env())
 
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, mergedRemoteEnv...)
 	defer shellServer.Close()
@@ -1034,18 +1033,18 @@ func (r *upRunner) checkContainerSubstitution(inspectResp container.InspectRespo
 	return checkContainerSubstitution(containerEnv, cfg.ConfigFilePath, raw, imagemeta.MergeConfiguration(entries))
 }
 
-func hookRemoteEnv(probed map[string]string, extra []string, cfgRemoteEnv map[string]*string) []string {
+func hookRemoteEnv(probed map[string]string, remoteEnvs []string, cfgRemoteEnv map[string]*string, secrets []string) []string {
 	var env []string
 	for k, v := range probed {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = append(env, extra...)
+	env = append(env, remoteEnvs...)
 	for k, v := range cfgRemoteEnv {
 		if v != nil {
 			env = append(env, fmt.Sprintf("%s=%s", k, *v))
 		}
 	}
-	return env
+	return append(env, secrets...)
 }
 
 func hookContainerError(hookErr error, containerID, fallback string) *coreerrors.ContainerError {

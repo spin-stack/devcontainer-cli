@@ -467,11 +467,15 @@ func TestParseComposeServiceBuildReadsTheServicesBuild(t *testing.T) {
 func TestHookRemoteEnvOrdersLaterSourcesLast(t *testing.T) {
 	got := hookRemoteEnv(
 		map[string]string{"P": "probed"},
-		[]string{"S=secret", "R=cli"},
-		map[string]*string{"C": strPtr("config"), "UNSET": nil},
+		[]string{"R=cli", "TOKEN=cli"},
+		map[string]*string{"TOKEN": strPtr("config"), "UNSET": nil},
+		[]string{"TOKEN=secret"},
 	)
-	if want := []string{"P=probed", "S=secret", "R=cli", "C=config"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"P=probed", "R=cli", "TOKEN=cli", "TOKEN=config", "TOKEN=secret"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("env = %q, want %q", got, want)
+	}
+	if got, want := hookRemoteEnv(nil, []string{"R=cli"}, nil, nil), []string{"R=cli"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("without config or secrets: env = %q, want %q", got, want)
 	}
 }
 
