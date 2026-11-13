@@ -74,7 +74,7 @@ type BuildOptions struct {
 	ContextPath string
 	Tags        []string
 	Target      string
-	BuildArgs   map[string]string
+	BuildArgs   [][2]string
 	CacheFrom   []string
 	Labels      []string
 	NoCache     bool
@@ -149,8 +149,8 @@ func (c *Client) buildArgs(opts BuildOptions) []string {
 	for _, cf := range opts.CacheFrom {
 		args = append(args, "--cache-from", cf)
 	}
-	for k, v := range opts.BuildArgs {
-		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
+	for _, a := range opts.BuildArgs {
+		args = append(args, "--build-arg", a[0]+"="+a[1])
 	}
 	for _, l := range opts.Labels {
 		args = append(args, "--label", l)

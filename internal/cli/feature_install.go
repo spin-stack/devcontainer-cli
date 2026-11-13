@@ -706,7 +706,7 @@ func extendImageWithFeatures(
 		ContextPath: tmpDir,
 		Tags:        tags,
 		Target:      buildInfo.OverrideTarget,
-		BuildArgs:   buildInfo.BuildArgs,
+		BuildArgs:   orderedBuildArgs(buildInfo.BuildArgs, featureBuildArgOrder(buildInfo.BuildArgs)),
 		UseBuildx:   useBuildx,
 		NoCache:     fbOpts.NoCache,
 		CacheFrom:   fbOpts.CacheFrom,

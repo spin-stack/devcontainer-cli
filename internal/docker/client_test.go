@@ -104,7 +104,7 @@ func TestBuildArgs(t *testing.T) {
 		{
 			name: "BuildArgMap",
 			opts: BuildOptions{
-				BuildArgs:   map[string]string{"NODE_VERSION": "18"},
+				BuildArgs:   [][2]string{{"NODE_VERSION", "18"}},
 				Dockerfile:  "Dockerfile",
 				ContextPath: ".",
 			},

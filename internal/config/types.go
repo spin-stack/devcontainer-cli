@@ -59,6 +59,7 @@ type DevContainer struct {
 
 	ContainerEnvOrder  []string            `json:"-"`
 	FeatureOptionOrder map[string][]string `json:"-"`
+	BuildArgsOrder     []string            `json:"-"`
 }
 
 type Customizations map[string]any

@@ -3911,6 +3911,28 @@ initial_cases:
     class: build-runtime
     current_status: match
 
+  - id: build.dockerfile-build-args-order-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: |
+      D=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}
+      rm -rf $D && mkdir -p $D/ws/.devcontainer
+      printf 'FROM alpine:3\n' > $D/ws/.devcontainer/Dockerfile
+      printf '%s' '{"build":{"dockerfile":"Dockerfile","args":{"ZED":"1","10":"2","ALPHA":"3","2":"4"}}}' > $D/ws/.devcontainer/devcontainer.json
+      printf '%s\n' '#!/bin/sh' "echo \"\$*\" >> $D/docker.log" "exec $(command -v docker) \"\$@\"" > $D/docker
+      chmod +x $D/docker
+      echo WORKSPACE=$D/ws
+      echo DOCKER_WRAP=$D/docker
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --docker-path ${DOCKER_WRAP} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "grep -o -E -- '--build-arg (ZED|10|ALPHA|2)=[0-9]+' /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}/docker.log"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "The docker CLI is a wrapper that logs its arguments; verify_cmd lists the build's --build-arg values for build.args. TS passes them in Object.keys order: the integer keys ascending (2, 10), then the others as declared (ZED, ALPHA). Go used to pass them in Go map order, which changes from run to run."
+
   - id: build.dockerfile-multi-image-success
     lock: feature-content-image
     lane: runtime

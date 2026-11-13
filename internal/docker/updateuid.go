@@ -45,12 +45,12 @@ func BuildUIDImage(ctx context.Context, client *Client, u UIDUpdate) error {
 		ContextPath: contextDir,
 		Tags:        []string{u.FixedImage},
 		ExtraArgs:   extra,
-		BuildArgs: map[string]string{
-			"BASE_IMAGE":  u.BaseImage,
-			"REMOTE_USER": u.RemoteUser,
-			"NEW_UID":     strconv.Itoa(u.UID),
-			"NEW_GID":     strconv.Itoa(u.GID),
-			"IMAGE_USER":  u.ImageUser,
+		BuildArgs: [][2]string{
+			{"BASE_IMAGE", u.BaseImage},
+			{"REMOTE_USER", u.RemoteUser},
+			{"NEW_UID", strconv.Itoa(u.UID)},
+			{"NEW_GID", strconv.Itoa(u.GID)},
+			{"IMAGE_USER", u.ImageUser},
 		},
 	})
 	if err != nil {
