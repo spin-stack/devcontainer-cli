@@ -1779,6 +1779,34 @@ initial_cases:
     current_status: match
     notes: "Without build.context the context is the Dockerfile's folder (utils.ts getDockerContextPath: parentURI(getDockerfilePath)), not the configuration's: COPY finds the file next to sub/Dockerfile. Go used the configuration's folder and the COPY failed."
 
+  - id: build.read-only-workspace-dockerfile-success
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; chmod -R u+w $WORKSPACE 2>/dev/null; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s\\n' 'FROM alpine:3' 'RUN echo ok > /marker' > $WORKSPACE/.devcontainer/Dockerfile; printf '%s' '{\"build\":{\"dockerfile\":\"Dockerfile\"},\"remoteUser\":\"root\"}' > $WORKSPACE/.devcontainer/devcontainer.json; chmod -R a-w $WORKSPACE; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "build --workspace-folder ${WORKSPACE} --image-name parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cd ${WORKSPACE} && find . | sort; docker history --no-trunc --format '{{.CreatedBy}}' ${IMAGE_NAME}"
+    cleanup_cmd: "docker rmi -f parity-${PARITY_CASE_ID}-${PARITY_SIDE} >/dev/null 2>&1; chmod -R u+w /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE} 2>/dev/null; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: build-runtime
+    current_status: match
+    notes: "TS buildAndExtendImage (singleContainer.ts) builds a Dockerfile configuration in one docker build of Dockerfile-with-features, written into the Features folder under the cache folder: the user's Dockerfile with its final stage named, then FROM $_DEV_CONTAINERS_BASE_IMAGE AS dev_containers_target_stage with the devcontainer.metadata LABEL, built with --target dev_containers_target_stage. A read-only workspace builds, nothing is written into it, and the image history ends with that LABEL instruction. Go wrote <Dockerfile>.devcontainer.build next to the Dockerfile (failing here with permission denied), built it with --target <stage> and --label devcontainer.metadata=..., and added Features in a second build."
+
+  - id: up.read-only-workspace-dockerfile-success
+    lane: runtime
+    command: up
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; chmod -R u+w $WORKSPACE 2>/dev/null; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s\\n' 'FROM alpine:3' 'RUN echo ok > /marker' > $WORKSPACE/.devcontainer/Dockerfile; printf '%s' '{\"build\":{\"dockerfile\":\"Dockerfile\"},\"remoteUser\":\"root\"}' > $WORKSPACE/.devcontainer/devcontainer.json; chmod -R a-w $WORKSPACE; echo WORKSPACE=$WORKSPACE"
+    ts_cmd: "up --workspace-folder ${WORKSPACE} --id-label parity.case=${PARITY_CASE_ID}-${PARITY_SIDE}"
+    verify_cmd: "cd ${WORKSPACE} && find . | sort; docker exec ${CONTAINER_ID} cat /marker; I=$(docker inspect -f '{{.Image}}' ${CONTAINER_ID}); docker history --no-trunc --format '{{.CreatedBy}}' $I"
+    cleanup_cmd: "I=$(docker inspect -f '{{.Image}}' ${CONTAINER_ID} 2>/dev/null); docker rm -f ${CONTAINER_ID} >/dev/null 2>&1; [ -n \"$I\" ] && docker rmi -f $I >/dev/null 2>&1; chmod -R u+w /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE} 2>/dev/null; rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; true"
+    asserts: [exit_code, stdout_normalized]
+    class: up-runtime
+    current_status: match
+    notes: "As build.read-only-workspace-dockerfile-success, for up: one build of Dockerfile-with-features from the cache folder, so a read-only workspace starts and holds only what it held. Go failed writing <Dockerfile>.devcontainer.build into the workspace."
+
   - id: upgrade.write-lockfile-to-disk-success
     lane: runtime
     command: upgrade

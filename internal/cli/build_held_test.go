@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/devcontainers/cli/internal/config"
-	"github.com/devcontainers/cli/internal/imagemeta"
 	"github.com/devcontainers/cli/internal/log"
 )
 
@@ -132,40 +131,6 @@ func TestImageNamesOr(t *testing.T) {
 	}
 }
 
-func TestDockerfileImageMetadata(t *testing.T) {
-	base := []imagemeta.Entry{{ID: "base"}}
-	stage := []imagemeta.Entry{{ID: "stage"}}
-	ids := func(entries []imagemeta.Entry) []string {
-		var out []string
-		for _, e := range entries {
-			out = append(out, e.ID+"/"+e.RemoteUser)
-		}
-		return out
-	}
-
-	cfg := &config.DevContainer{RemoteUser: "dev"}
-	configLabel := imagemeta.Entry{RemoteUser: "${localEnv:USER}"}
-	if got, want := ids(dockerfileImageMetadata(cfg, base, stage, configLabel)), []string{"base/", "stage/", "/${localEnv:USER}"}; !slices.Equal(got, want) {
-		t.Errorf("without features: %v, want %v (the config's entry as written)", got, want)
-	}
-
-	cfg.Features = map[string]any{"ghcr.io/devcontainers/features/go:1": true}
-	if got, want := ids(dockerfileImageMetadata(cfg, base, stage, configLabel)), []string{"base/", "stage/"}; !slices.Equal(got, want) {
-		t.Errorf("with features (the Feature build adds the config entry): %v, want %v", got, want)
-	}
-}
-
-func TestDockerfileBaseExport(t *testing.T) {
-	opts := &buildOpts{output: "type=oci,dest=x.tar", push: true}
-	if output, push := dockerfileBaseExport(opts, &config.DevContainer{}); output != opts.output || !push {
-		t.Errorf("without features: (%q, %v), want the flags", output, push)
-	}
-	withFeature := &config.DevContainer{Features: map[string]any{"ghcr.io/devcontainers/features/go:1": true}}
-	if output, push := dockerfileBaseExport(opts, withFeature); output != "" || push {
-		t.Errorf("with features: (%q, %v), want them left to the Feature build", output, push)
-	}
-}
-
 func TestBuildxSecrets(t *testing.T) {
 	secrets := []string{"TOKEN=x"}
 	var logged bytes.Buffer
@@ -219,33 +184,6 @@ func TestRunBuildBuildKitNeverIgnoresBuildx(t *testing.T) {
 				t.Errorf("stdout = %q, want %q", out.out.String(), tc.want)
 			}
 		})
-	}
-}
-
-func TestPrepareDockerfileBuildStage(t *testing.T) {
-	ws := writeConfigFixture(t, map[string]string{
-		".devcontainer/Dockerfile": "FROM alpine:3 AS base\nFROM base\n",
-		".devcontainer/Empty":      "RUN true\n",
-	})
-	cfgFile := filepath.Join(ws, ".devcontainer", "devcontainer.json")
-	prep, err := prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Dockerfile", Target: "base"}})
-	if err != nil || prep.StageName != "base" {
-		t.Fatalf("with a target: %+v, %v; want stage base", prep, err)
-	}
-	prep.Cleanup()
-	prep, err = prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Dockerfile"}})
-	if err != nil || prep.StageName != "dev_container_auto_added_stage_label" {
-		t.Fatalf("without a target: %+v, %v", prep, err)
-	}
-	if _, err := os.Stat(prep.Path); err != nil {
-		t.Fatalf("named Dockerfile: %v", err)
-	}
-	prep.Cleanup()
-	if _, err := os.Stat(prep.Path); !os.IsNotExist(err) {
-		t.Errorf("named Dockerfile %s left after Cleanup: %v", prep.Path, err)
-	}
-	if _, err := prepareDockerfileBuild(&config.DevContainer{ConfigFilePath: cfgFile, Build: &config.Build{Dockerfile: "Empty"}}); err == nil || !strings.Contains(err.Error(), "no FROM instructions") {
-		t.Errorf("no FROM: err = %v", err)
 	}
 }
 

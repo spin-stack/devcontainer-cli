@@ -101,6 +101,16 @@ runs the official CLI is unaffected:
   matching container.
 - Features are staged under `<tmp>/devcontainercli-<user>/container-features/`,
   one folder per build, and that folder is kept as the official CLI keeps it.
+- A Dockerfile configuration's image is made by one `docker build`, as the
+  official CLI makes it: the Dockerfile followed by the stage that installs the
+  Features and writes the `devcontainer.metadata` label, written as
+  `Dockerfile-with-features` into that Features folder and built with
+  `--target dev_containers_target_stage`. Earlier releases built the Dockerfile
+  first, wrote `<Dockerfile>.devcontainer.build` next to it when its last stage had
+  no name (failing in a read-only workspace), and added the Features in a second
+  build. `up` of a Dockerfile configuration with Features now tags the image
+  `vsc-<folder>-<hash>`, not `vsc-<folder>-<hash>-features`; a script that looked
+  the image up by the old name should use the new one.
 - When the workspace is a Git worktree and the configuration sets both
   `workspaceMount` and `workspaceFolder`, `up` no longer mounts the main
   repository's Git common directory, and `read-configuration` no longer reports

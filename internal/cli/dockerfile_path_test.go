@@ -3,9 +3,14 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
+	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
+
 	"github.com/devcontainers/cli/internal/config"
+	"github.com/devcontainers/cli/internal/docker"
+	"github.com/devcontainers/cli/internal/log"
 )
 
 func TestDockerfileAndContextPaths(t *testing.T) {
@@ -42,13 +47,14 @@ func TestAbsoluteDockerfileIsReadWhereItIs(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config.DevContainer{ConfigFilePath: filepath.Join(t.TempDir(), "devcontainer.json"), Build: &config.Build{Dockerfile: dockerfile}}
-	prep, err := prepareDockerfileBuild(cfg)
-	if err != nil {
+	t.Setenv("TMPDIR", t.TempDir())
+	r := &fakeDockerRunner{}
+	if err := buildDockerfileImage(t.Context(), log.Null, fakeDockerClient(r), &docker.EngineClient{API: &fakeDockerAPI{version: "25.0.0", imageConfig: &dockerspec.DockerOCIImageConfig{}}}, cfg, true, []string{"img"}, "", &FeatureBuildOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	defer prep.Cleanup()
-	if prep.Path != dockerfile || prep.StageName != "base" {
-		t.Errorf("prep = %q, stage %q; want %q, stage base", prep.Path, prep.StageName, dockerfile)
+	builds := imageBuilds(r.calls)
+	if len(builds) != 1 || builds[0][len(builds[0])-1] != filepath.Dir(dockerfile) || !slices.Contains(builds[0], "_DEV_CONTAINERS_BASE_IMAGE=base") {
+		t.Errorf("builds = %v; want one, on base, in %s", builds, filepath.Dir(dockerfile))
 	}
 	key, err := computeCacheKey(&config.LoadResult{Config: cfg}, nil)
 	if err != nil || key == "" {

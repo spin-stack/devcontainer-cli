@@ -3,11 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/devcontainers/cli/internal/config"
 )
 
 func buildConfigNotFound(t *testing.T, args ...string) string {
@@ -38,50 +35,5 @@ func TestBuildPositionalPathIsTheWorkspace(t *testing.T) {
 	}
 	if got := buildConfigNotFound(t, t.TempDir(), "--workspace-folder", ws); got != want {
 		t.Errorf("message with --workspace-folder = %q, want %q", got, want)
-	}
-}
-
-func TestPrepareDockerfileBuildUsesTheConfiguredTarget(t *testing.T) {
-	dir := t.TempDir()
-	dockerfile := filepath.Join(dir, "Dockerfile")
-	if err := os.WriteFile(dockerfile, []byte("FROM alpine AS base\nFROM base\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := &config.DevContainer{
-		ConfigFilePath: filepath.Join(dir, "devcontainer.json"),
-		Build:          &config.Build{Dockerfile: "Dockerfile", Target: "base"},
-	}
-	prep, err := prepareDockerfileBuild(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prep.Cleanup()
-	if prep.StageName != "base" || prep.Path != dockerfile {
-		t.Errorf("stage %q at %q, want base at %q", prep.StageName, prep.Path, dockerfile)
-	}
-}
-
-func TestPrepareDockerfileBuildNamesTheFinalStageWithoutATarget(t *testing.T) {
-	for name, cfg := range map[string]config.DevContainer{
-		"build":     {Build: &config.Build{Dockerfile: "Dockerfile"}},
-		"top level": {DockerFile: "Dockerfile"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
-			dockerfile := filepath.Join(dir, "Dockerfile")
-			if err := os.WriteFile(dockerfile, []byte("FROM alpine\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			cfg.ConfigFilePath = filepath.Join(dir, "devcontainer.json")
-			prep, err := prepareDockerfileBuild(&cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer prep.Cleanup()
-			const stage = "dev_container_auto_added_stage_label"
-			if prep.StageName != stage || prep.Path != dockerfile+".devcontainer.build" {
-				t.Errorf("stage %q at %q, want %s at the written Dockerfile", prep.StageName, prep.Path, stage)
-			}
-		})
 	}
 }

@@ -550,77 +550,24 @@ func addUpConfiguration(result map[string]any, opts *upOpts, fsPathRead bool, cf
 
 // mutate-lane: TestParityMatrix - up.update-uid-remote-user-from-image-metadata-success,
 // up.dockerfile-without-features-omit-config-remote-env-from-metadata-success,
-// up.dockerfile-with-parallel-commands-success and up.update-uid-amd64-dockerfile-platform-success
-// build through it; also TestE2E_BuildUpExec_Dockerfile and
+// up.dockerfile-with-parallel-commands-success, up.update-uid-amd64-dockerfile-platform-success
+// and up.read-only-workspace-dockerfile-success build through it; also TestUpDockerfileBuildsOnce,
+// TestE2E_BuildUpExec_Dockerfile and
 // TestE2E_UpSecretsFile (a Dockerfile RUN reads a --secrets-file secret).
 func (r *upRunner) fromDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, workspaceFolder string, idLabels []string, useBuildx bool) (string, error) {
-	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
-
-	prep, err := prepareDockerfileBuild(cfg)
-	if err != nil {
-		return "", err
-	}
-	defer prep.Cleanup()
-	dockerfilePath := prep.Path
-	stageName := prep.StageName
-
+	opts := r.opts
 	imageName := folderImageName(workspaceFolder)
-
-	findTarget := ""
-	if cfg.Build != nil {
-		findTarget = cfg.Build.Target
-	}
-	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget, buildxPlatformArgs(opts.platform))
-
-	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
-	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
-	stageMetadata := imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)
-
-	contextPath := dockerContextPath(cfg)
-
-	upCacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
-	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, []string{imageName}, upCacheFrom, opts.cacheTo)
-	defer authCleanup()
-
-	buildResult, err := dockerClient.Build(ctx, docker.BuildOptions{
-		Secrets:     buildxSecrets(opts.secrets.env(), useBuildx, logger),
-		FileSecrets: caBundleBuildSecrets(opts.caBundle, useBuildx, logger),
-		Dockerfile:  dockerfilePath,
-		ContextPath: contextPath,
-		Tags:        []string{imageName},
-		Target:      stageName,
-		BuildArgs:   buildArgsFromConfig(cfg),
-		ExtraArgs:   buildOptionsFromConfig(cfg),
-		CacheFrom:   upCacheFrom,
-		Labels:      imageLabelArgs(dockerfileImageMetadata(cfg, baseMetadata, stageMetadata, r.configLabel)),
-		NoCache:     opts.buildNoCache,
-		UseBuildx:   useBuildx,
-		CacheTo:     opts.cacheTo,
-		Env:         authEnv,
-	})
-	if err != nil {
-		return "", err
-	}
-	if buildResult.ExitCode != 0 {
-		return "", fmt.Errorf(msgDockerBuildFailed, buildResult.ExitCode, string(buildResult.Stderr))
-	}
-
-	if dockerClient.ProgressWriter == nil {
-		logger.Write(string(buildResult.Stderr), log.LevelInfo)
-	}
-
 	if len(cfg.Features) > 0 {
 		r.lockfileRead = !opts.noLockfile
-		names, err := extendImageWithFeatures(ctx, logger, dockerClient, engine, imageName, cfg.Features, useBuildx, nil, r.featureBuildOptions(cfg, loadResult, ""))
-		if err != nil {
-			return "", fmt.Errorf("install features: %w", err)
-		}
-		if len(names) > 0 {
-			imageName = names[0]
-		}
+	}
+	fb := r.featureBuildOptions(cfg, loadResult, "")
+	fb.NoCache, fb.CacheFrom, fb.CacheTo = opts.buildNoCache, opts.cacheFrom, opts.cacheTo
+	fb.OmitSyntaxDirective = opts.omitSyntaxDirective
+	if err := buildDockerfileImage(ctx, r.log, r.docker, r.engine, cfg, useBuildx, []string{imageName}, opts.platform, fb); err != nil {
+		return "", err
 	}
 
-	imageName, err = r.singleContainerRemoteUserUID(ctx, imageName, cfg, workspaceFolder)
+	imageName, err := r.singleContainerRemoteUserUID(ctx, imageName, cfg, workspaceFolder)
 	if err != nil {
 		return "", err
 	}

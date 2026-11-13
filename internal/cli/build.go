@@ -44,6 +44,7 @@ type buildOpts struct {
 	secretsFile                string
 	secrets                    fileSecrets
 	caBundle                   string
+	omitSyntaxDirective        bool
 	lockfileExcludeIDs         map[string]bool
 }
 
@@ -92,7 +93,7 @@ func newBuildCmd() *cobra.Command {
 	f.BoolVar(&opts.frozenLockfile, "frozen-lockfile", false, "Ensure lockfile exists and remains unchanged; fail otherwise.")
 	f.StringVar(&opts.secretsFile, "secrets-file", "", "Path to a JSON file with build secrets ({\"KEY\":\"VALUE\"}); each is passed to BuildKit as a build secret (requires buildx).")
 	f.StringVar(&opts.caBundle, "ca-bundle", "", caBundleFlagUsage)
-	f.Bool("omit-syntax-directive", false, "")
+	f.BoolVar(&opts.omitSyntaxDirective, "omit-syntax-directive", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
 	cmd.Flags().MarkHidden("skip-persisting-customizations-from-features")
 	cmd.Flags().MarkHidden("experimental-lockfile")
@@ -267,15 +268,6 @@ func buildFlagConflict(opts *buildOpts, useBuildx, compose bool) string {
 	return ""
 }
 
-type dockerfileBuildPrep struct {
-	Path      string
-	StageName string
-	Parsed    *docker.Dockerfile
-	cleanup   func()
-}
-
-func (p *dockerfileBuildPrep) Cleanup() { p.cleanup() }
-
 // copyDockerignore copies a Dockerfile's sibling `<name>.dockerignore` next to a
 // renamed/generated build Dockerfile, so BuildKit's per-Dockerfile ignore lookup
 // (`<dockerfile>.dockerignore`) still finds the user's rules instead of leaking
@@ -307,132 +299,21 @@ func dockerContextPath(cfg *config.DevContainer) string {
 	return filepath.Dir(dockerfileConfigPath(cfg))
 }
 
-func prepareDockerfileBuild(cfg *config.DevContainer) (*dockerfileBuildPrep, error) {
-	dockerfilePath := cfg.Dockerfile()
-	if dockerfilePath == "" {
-		return nil, fmt.Errorf("no Dockerfile specified")
-	}
-	dockerfilePath = dockerfileConfigPath(cfg)
-
-	content, err := os.ReadFile(dockerfilePath)
-	if err != nil {
-		return nil, fmt.Errorf("read Dockerfile: %w", err)
-	}
-
-	prep := &dockerfileBuildPrep{
-		Parsed:  docker.ExtractDockerfile(string(content)),
-		cleanup: func() {},
-	}
-
-	if cfg.Build != nil && cfg.Build.Target != "" {
-		prep.StageName = cfg.Build.Target
-	} else {
-		stageName, modified, err := docker.EnsureFinalStageName(string(content), "dev_container_auto_added_stage_label")
-		if err != nil {
-			return nil, err
-		}
-		prep.StageName = stageName
-		if modified != "" {
-			tmpDockerfile := dockerfilePath + ".devcontainer.build"
-			// mutate-exempt: only the docker build this process starts reads the file, as its owner, and Cleanup removes it
-			if err := os.WriteFile(tmpDockerfile, []byte(modified), 0644); err != nil {
-				return nil, fmt.Errorf("write build dockerfile: %w", err)
-			}
-			copyDockerignore(dockerfilePath, tmpDockerfile)
-			prep.cleanup = func() {
-				os.Remove(tmpDockerfile)
-				os.Remove(tmpDockerfile + ".dockerignore")
-			}
-			dockerfilePath = tmpDockerfile
-		}
-	}
-
-	prep.Path = dockerfilePath
-	return prep, nil
-}
-
-// mutate-lane: TestParityMatrix (build.dockerfile-multi-image-success,
-// build.subfolder-config-success, build.apply-build-options-success,
-// build.output-oci-success, build.cache-to-local-success,
-// build.platform-supported-dockerfile-success), also run by
+// mutate-lane: TestBuildDockerfileBuildsOnce and TestParityMatrix
+// (build.dockerfile-multi-image-success, build.subfolder-config-success,
+// build.apply-build-options-success, build.output-oci-success,
+// build.cache-to-local-success, build.platform-supported-dockerfile-success,
+// build.read-only-workspace-dockerfile-success), also run by
 // TestE2E_BuildUpExec_Dockerfile, TestE2E_SiblingDockerignore and
 // TestE2E_CABundle (an opted-in RUN reads the bundle).
 func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContainer, loadResult *config.LoadResult, useBuildx bool) ([]string, error) {
-	logger, dockerClient, engine, opts := r.log, r.docker, r.engine, r.opts
-
-	prep, err := prepareDockerfileBuild(cfg)
-	if err != nil {
-		return nil, err
-	}
-	defer prep.Cleanup()
-	dockerfilePath := prep.Path
-	stageName := prep.StageName
-
-	findTarget := ""
-	if cfg.Build != nil {
-		findTarget = cfg.Build.Target
-	}
-	baseImage := docker.FindBaseImage(prep.Parsed, buildArgsFromConfig(cfg), findTarget, buildxPlatformArgs(opts.platform))
-	logger.Write(fmt.Sprintf("Base image: %s", baseImage), log.LevelInfo)
-
-	baseLabels := engine.ImageLabelsEnsuringPresent(ctx, baseImage)
-	baseMetadata := imagemeta.ReadMetadataFromLabels(baseLabels, logger)
-	stageMetadata := imagemeta.ReadMetadataFromLabels(prep.Parsed.StageLabels(stageName), logger)
-
+	opts := r.opts
+	fb := r.featureBuildOptions(cfg, &loadResult.HostSub)
+	fb.Secrets = opts.secrets.env()
 	imageNames := imageNamesOr(opts.imageNames, folderImageName(resolvePath(opts.workspaceFolder)))
-
-	contextPath := dockerContextPath(cfg)
-
-	buildArgs := buildArgsFromConfig(cfg)
-
-	allLabels := append(slices.Clone(opts.labels), imageLabelArgs(dockerfileImageMetadata(cfg, baseMetadata, stageMetadata, r.configLabel))...)
-
-	baseOutput, basePush := dockerfileBaseExport(opts, cfg)
-
-	cacheFrom := cacheFromForDockerfileBuild(opts.cacheFrom, cfg)
-	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, imageNames, cacheFrom, opts.cacheTo)
-	defer authCleanup()
-
-	buildSecrets := buildxSecrets(opts.secrets.env(), useBuildx, logger)
-	caSecrets := caBundleBuildSecrets(opts.caBundle, useBuildx, logger)
-
-	buildOpts := docker.BuildOptions{
-		Dockerfile:  dockerfilePath,
-		ContextPath: contextPath,
-		Tags:        imageNames,
-		Target:      stageName,
-		BuildArgs:   buildArgs,
-		CacheFrom:   cacheFrom,
-		Labels:      allLabels,
-		NoCache:     opts.noCache,
-		ExtraArgs:   buildOptionsFromConfig(cfg),
-		UseBuildx:   useBuildx,
-		Platform:    opts.platform,
-		Push:        basePush,
-		Output:      baseOutput,
-		CacheTo:     opts.cacheTo,
-		Env:         authEnv,
-		Secrets:     buildSecrets,
-		FileSecrets: caSecrets,
-	}
-
-	result, err := dockerClient.Build(ctx, buildOpts)
-	if err != nil {
+	if err := buildDockerfileImage(ctx, r.log, r.docker, r.engine, cfg, useBuildx, imageNames, opts.platform, fb); err != nil {
 		return nil, err
 	}
-	if result.ExitCode != 0 {
-		return nil, fmt.Errorf(msgDockerBuildFailed, result.ExitCode, string(result.Stderr))
-	}
-
-	if dockerClient.ProgressWriter == nil {
-		logger.Write(string(result.Stderr), log.LevelInfo)
-	}
-
-	if len(cfg.Features) > 0 {
-		baseImageName := imageNames[0]
-		return extendImageWithFeatures(ctx, logger, dockerClient, engine, baseImageName, cfg.Features, useBuildx, imageNames, r.featureBuildOptions(cfg, &loadResult.HostSub))
-	}
-
 	return imageNames, nil
 }
 
@@ -593,26 +474,6 @@ func imageNamesOr(names []string, fallback string) []string {
 	return names
 }
 
-// dockerfileImageMetadata is the metadata a Dockerfile build stamps on its
-// image: the base image's, then a `LABEL devcontainer.metadata` the user's
-// Dockerfile declares (#1225; the CLI's own label would otherwise clobber it),
-// then the config's entry as written (configLabel). With Features the Feature
-// build appends that entry instead.
-func dockerfileImageMetadata(cfg *config.DevContainer, base, stage []imagemeta.Entry, configLabel imagemeta.Entry) []imagemeta.Entry {
-	metadata := append(append([]imagemeta.Entry{}, base...), stage...)
-	if len(cfg.Features) == 0 {
-		metadata = append(metadata, configLabel)
-	}
-	return metadata
-}
-
-func dockerfileBaseExport(opts *buildOpts, cfg *config.DevContainer) (output string, push bool) {
-	if len(cfg.Features) > 0 {
-		return "", false
-	}
-	return opts.output, opts.push
-}
-
 func buildxSecrets(secrets []string, useBuildx bool, logger log.Logger) []string {
 	if useBuildx {
 		return secrets
@@ -746,6 +607,7 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 			noLockfile:                 opts.noLockfile,
 			lockfileExcludeIDs:         opts.lockfileExcludeIDs,
 			caBundle:                   opts.caBundle,
+			omitSyntaxDirective:        opts.omitSyntaxDirective,
 		},
 		substitute:  hostMetadataSubstitution(loadResult.HostSub, nil),
 		configLabel: r.configLabel,
@@ -840,5 +702,6 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		WorkspaceFolder:             opts.workspaceFolder,
 		AdditionalMetadata:          []imagemeta.Entry{configToMetadataEntry(cfg)},
 		LabelMetadata:               []imagemeta.Entry{r.configLabel},
+		OmitSyntaxDirective:         opts.omitSyntaxDirective,
 	}
 }
