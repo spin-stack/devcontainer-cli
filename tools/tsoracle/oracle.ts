@@ -11,7 +11,7 @@ import { parseVersion, isEarlierVersion, getEntPasswdShellCommand } from '../../
 import { substitute, beforeContainerSubstitute, containerSubstitute } from '../../reference/src/spec-common/variableSubstitution';
 import { extractDockerfile, findBaseImage, findUserStatement, ensureDockerfileHasFinalStageName, supportsBuildContexts } from '../../reference/src/spec-node/dockerfileUtils';
 import { mergeConfiguration, getDevcontainerMetadataLabel } from '../../reference/src/spec-node/imageMetadata';
-import { generateContainerEnvs, getFeatureValueObject, parseMount, escapeQuotesForShell } from '../../reference/src/spec-configuration/containerFeaturesConfiguration';
+import { generateContainerEnvs, getFeatureValueObject, parseMount, escapeQuotesForShell, getBackwardCompatibleFeatureId, getFeatureIdType, updateDeprecatedFeaturesIntoOptions } from '../../reference/src/spec-configuration/containerFeaturesConfiguration';
 import { getSafeId } from '../../reference/src/spec-node/containerFeatures';
 import { getFeatureIdWithoutVersion } from '../../reference/src/spec-configuration/containerFeaturesOCI';
 import { generateLockfile } from '../../reference/src/spec-configuration/lockfile';
@@ -27,6 +27,9 @@ import { readLockfile } from '../../reference/src/spec-configuration/lockfile';
 // and replaceTemplatedValues are module-private in the reference; build.mjs exports them for this bundle.
 
 const nullOutput: any = { write() { }, raw() { }, start() { return 0; }, stop() { }, event() { } };
+
+// An output that keeps the text of every line written to it.
+const capturingOutput = (lines: string[]): any => ({ ...nullOutput, write(text: string) { lines.push(text); } });
 
 // A SubstitutionContext as JSON: configFile is a path, made the URI TS carries.
 function substitutionContext(c: any) {
@@ -64,6 +67,18 @@ const fns: Record<string, (...args: any[]) => any> = {
 	// The value object's key order is the env file's line order: entries keep it.
 	getFeatureValueObject: (feature: any) => Object.entries(getFeatureValueObject(feature)),
 	escapeQuotesForShell: (s: string) => escapeQuotesForShell(s),
+	// The id a Feature is resolved by and the lines logged on the way.
+	getBackwardCompatibleFeatureId: (id: string) => {
+		const log: string[] = [];
+		return { id: getBackwardCompatibleFeatureId(capturingOutput(log), id), log };
+	},
+	updateDeprecatedFeaturesIntoOptions: (userFeatures: any[]) => {
+		const log: string[] = [];
+		return { userFeatures: updateDeprecatedFeaturesIntoOptions(userFeatures, capturingOutput(log)), log };
+	},
+	// Only ids it classifies without a registry request: legacy ids (it
+	// throws), tarball URLs and local paths.
+	getFeatureIdType: async (id: string) => (await getFeatureIdType({ output: nullOutput, env: {} } as any, id, undefined)).type,
 	// spec-node/containerFeatures.ts
 	getSafeId: (s: string) => getSafeId(s),
 	// spec-configuration/containerFeaturesOCI.ts

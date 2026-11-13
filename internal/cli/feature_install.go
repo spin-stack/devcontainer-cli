@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,7 +47,6 @@ type FeatureBuildOptions struct {
 	Secrets                     []string
 	CABundle                    string
 	ContainerEnv                map[string]string
-	SkipFeatureAutoMapping      bool
 	SkipPersistCustoms          bool
 	FeaturesBasePath            string
 	WorkspaceFolder             string
@@ -66,8 +64,16 @@ type fetchFeatureResult struct {
 	TmpDir      string
 }
 
-func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots, skipAutoMapping bool) (*fetchFeatureResult, error) {
-	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, local, skipAutoMapping, nil, nil)
+func fetchFeatureSets(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots) (*fetchFeatureResult, error) {
+	return fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, local, nil, nil)
+}
+
+func sortedUserFeatures(featuresCfg map[string]any) []features.DevContainerFeature {
+	userFeatures := features.UserFeaturesToArray(featuresCfg)
+	sort.Slice(userFeatures, func(i, j int) bool {
+		return userFeatures[i].UserFeatureID < userFeatures[j].UserFeatureID
+	})
+	return userFeatures
 }
 
 type localFeatureRoots struct {
@@ -104,15 +110,16 @@ func createFeaturesFolder() (string, error) {
 	}
 }
 
-func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots, skipAutoMapping bool, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
+func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresCfg map[string]any, local localFeatureRoots, lockfile *features.Lockfile, overrideOrder []string) (*fetchFeatureResult, error) {
 	if len(featuresCfg) == 0 {
 		return nil, nil
 	}
 
-	userFeatures := features.UserFeaturesToArray(featuresCfg)
-	sort.Slice(userFeatures, func(i, j int) bool {
-		return userFeatures[i].UserFeatureID < userFeatures[j].UserFeatureID
-	})
+	userFeatures := sortedUserFeatures(featuresCfg)
+	userFeatures, warnings := features.UpdateDeprecatedFeaturesIntoOptions(userFeatures)
+	for _, w := range warnings {
+		logger.Write(w, log.LevelWarning)
+	}
 
 	logger.Write(fmt.Sprintf("Installing %d feature(s)...", len(userFeatures)), log.LevelInfo)
 
@@ -131,7 +138,7 @@ func fetchFeatureSetsWithOrder(ctx context.Context, logger log.Logger, featuresC
 	}
 
 	processFeature := func(node *features.FNode) (*features.Set, error) {
-		return processInstallFeature(logger, ociClient, node, local, skipAutoMapping, lockfile, nextStageDir)
+		return processInstallFeature(logger, ociClient, node, local, lockfile, nextStageDir)
 	}
 
 	graph, err := features.BuildDependencyGraph(logger, processFeature, userFeatures, overrideOrder, lockfile)
@@ -201,29 +208,14 @@ func processInstallFeature(
 	ociClient oci.Registry,
 	node *features.FNode,
 	local localFeatureRoots,
-	skipAutoMapping bool,
 	lockfile *features.Lockfile,
 	nextStageDir func() string,
 ) (*features.Set, error) {
 	id := node.UserFeatureID
 	opts := node.Options
-	srcType := features.ClassifyID(id)
-
-	if srcType == features.SourceLegacyShorthand {
-		name := id
-		// mutate-exempt: idx > 1 differs only for a colon at index 1, which leaves a one-character name, and no legacy Feature has one: both bounds reject the id with the same error
-		if idx := strings.LastIndex(id, ":"); idx > 0 {
-			name = id[:idx]
-		}
-		if !features.IsKnownLegacyFeature(name) {
-			return nil, &coreerrors.ContainerError{Description: fmt.Sprintf(msgLegacyFeature, id)}
-		}
-		if m, ok := features.DeprecatedFeatureIntoOptions[name]; ok {
-			logger.Write(fmt.Sprintf("(!) WARNING: Falling back to the deprecated '%s' Feature. It is now part of the '%s' Feature.", name, m.MapTo), log.LevelWarning)
-			id = fmt.Sprintf("ghcr.io/devcontainers/features/%s:1", m.MapTo)
-			opts = addFeatureOption(opts, m.Option)
-			srcType = features.ClassifyID(id)
-		}
+	resolvedID, srcType, err := resolveFeatureID(logger, id)
+	if err != nil {
+		return nil, err
 	}
 
 	switch srcType {
@@ -307,7 +299,6 @@ func processInstallFeature(
 		}, nil
 
 	default:
-		resolvedID, _ := features.ResolveID(id, skipAutoMapping)
 		ref, err := oci.ParseRef(resolvedID)
 		if err != nil {
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
@@ -315,7 +306,7 @@ func processInstallFeature(
 
 		userRef := ref
 		if lockfile != nil {
-			if integrity := lockfile.Features[id].Integrity; integrity != "" {
+			if integrity := lockfile.Features[resolvedID].Integrity; integrity != "" {
 				if pinned, perr := oci.ParseRef(ref.Resource + "@" + integrity); perr == nil {
 					ref = pinned
 				}
@@ -326,6 +317,8 @@ func processInstallFeature(
 
 		manifest, err := ociClient.FetchManifest(ref, "")
 		if err != nil {
+			// TS logs this before its GitHub Releases fallback, which this CLI lacks.
+			logger.Write(fmt.Sprintf("Could not resolve Feature manifest for '%s'.  If necessary, provide registry credentials with 'docker login <registry>'.", resolvedID), log.LevelWarning)
 			return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  You may not have permission to access this Feature, or may not be logged in.  If the issue persists, report this to the Feature author.", id)
 		}
 		if len(manifest.Manifest.Layers) == 0 {
@@ -606,7 +599,7 @@ func extendImageWithFeatures(
 			return nil, err
 		}
 	}
-	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, fbOpts.SkipFeatureAutoMapping, lockfile, fbOpts.OverrideFeatureInstallOrder)
+	result, err := fetchFeatureSetsWithOrder(ctx, logger, featuresCfg, localFeatureRoots{fbOpts.FeaturesBasePath, fbOpts.WorkspaceFolder}, lockfile, fbOpts.OverrideFeatureInstallOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -996,13 +989,16 @@ func isPlainHTTPURL(u string) bool {
 	return parsed.Scheme == "http" || parsed.Hostname() == "localhost"
 }
 
-func addFeatureOption(opts any, key string) map[string]any {
-	m := map[string]any{}
-	if existing, ok := opts.(map[string]any); ok {
-		maps.Copy(m, existing)
+func resolveFeatureID(logger log.Logger, id string) (string, features.SourceType, error) {
+	resolvedID, warning := features.BackwardCompatibleID(id)
+	if warning != "" {
+		logger.Write(warning, log.LevelWarning)
 	}
-	m[key] = true
-	return m
+	srcType := features.ClassifyID(resolvedID)
+	if srcType == features.SourceLegacyShorthand {
+		return "", srcType, &coreerrors.ContainerError{Description: fmt.Sprintf(msgLegacyFeature, resolvedID)}
+	}
+	return resolvedID, srcType, nil
 }
 
 func featureSetIDs(sets []*features.Set) string {

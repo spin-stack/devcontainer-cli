@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/devcontainers/cli/internal/config"
 	"github.com/devcontainers/cli/internal/docker"
@@ -37,7 +36,6 @@ type buildOpts struct {
 	labels                     []string
 	output                     string
 	additionalFeatures         string
-	skipFeatureAutoMapping     bool
 	skipPersistCustoms         bool
 	experimentalLockfile       bool
 	experimentalFrozenLockfile bool
@@ -85,7 +83,7 @@ func newBuildCmd() *cobra.Command {
 	f.StringVar(&opts.dockerComposePath, "docker-compose-path", "", "Docker Compose CLI path.")
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
 	f.String("user-data-folder", "", "User data folder.")
-	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
+	f.Bool("skip-feature-auto-mapping", false, "")
 	f.BoolVar(&opts.skipPersistCustoms, "skip-persisting-customizations-from-features", false, "")
 	f.BoolVar(&opts.experimentalLockfile, "experimental-lockfile", false, "")
 	f.BoolVar(&opts.experimentalFrozenLockfile, "experimental-frozen-lockfile", false, "")
@@ -580,15 +578,10 @@ func imageBuildFor(cfg *config.DevContainer, opts *buildOpts) imageBuild {
 }
 
 func checkLegacyFeatures(feats map[string]any) error {
-	for id := range feats {
-		if features.ClassifyID(id) != features.SourceLegacyShorthand {
-			continue
-		}
-		name := id
-		if i := strings.LastIndexByte(id, ':'); i != -1 {
-			name = id[:i]
-		}
-		if !features.IsKnownLegacyFeature(name) {
+	userFeatures, _ := features.UpdateDeprecatedFeaturesIntoOptions(sortedUserFeatures(feats))
+	for _, f := range userFeatures {
+		id, _ := features.BackwardCompatibleID(f.UserFeatureID)
+		if features.ClassifyID(id) == features.SourceLegacyShorthand {
 			return &coreerrors.ContainerError{Description: fmt.Sprintf(msgLegacyFeature, id)}
 		}
 	}
@@ -751,7 +744,6 @@ func (r *buildRunner) buildCompose(ctx context.Context, cfg *config.DevContainer
 			workspaceFolder:            opts.workspaceFolder,
 			cacheFrom:                  opts.cacheFrom,
 			buildNoCache:               opts.noCache,
-			skipFeatureAutoMapping:     opts.skipFeatureAutoMapping,
 			experimentalFrozenLockfile: opts.experimentalFrozenLockfile,
 			noLockfile:                 opts.noLockfile,
 			lockfileExcludeIDs:         opts.lockfileExcludeIDs,
@@ -840,7 +832,6 @@ func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *con
 		Push:                        opts.push,
 		Output:                      opts.output,
 		ContainerEnv:                cfg.ContainerEnv,
-		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,
 		ConfigPath:                  cfg.ConfigFilePath,

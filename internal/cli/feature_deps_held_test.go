@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -167,6 +169,34 @@ func TestMetadataProcessFeatureOCI(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestMetadataProcessFeatureLegacyIDs(t *testing.T) {
+	reg := newOCIFeatureRegistry()
+	reg.add(t, "ghcr.io/devcontainers/features/node:1", map[string]string{"devcontainer-feature.json": `{"id":"node"}`}, nil)
+	var logged bytes.Buffer
+	logger := log.New(log.Options{Writer: &logged, Level: log.LevelInfo})
+	set, err := newMetadataProcessFeature(reg, logger, localFeatureRoots{}, nil)(&features.FNode{UserFeatureID: "node"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := set.SourceInfo.(*features.OCISource); got.Resource != "ghcr.io/devcontainers/features/node" || got.UserID != "node" {
+		t.Errorf("source = %+v, want node:1 for the id as written", got)
+	}
+	if !strings.Contains(logged.String(), "(!) WARNING: Using the deprecated 'node' Feature.") {
+		t.Errorf("log = %q, want the deprecated Feature warning", logged.String())
+	}
+	for _, id := range []string{"node:18", "gradle", "my-custom-feature"} {
+		reg.fetched = nil
+		_, err := resolveMetadata(t, reg, localFeatureRoots{}, nil, id, nil)
+		if err == nil || err.Error() != fmt.Sprintf(msgLegacyFeature, id) || len(reg.fetched) != 0 {
+			t.Errorf("%s: err = %v, fetched %v; want the legacy Feature error and no request", id, err, reg.fetched)
+		}
+	}
+	reg.fetched = nil
+	if _, err := resolveMetadata(t, reg, localFeatureRoots{}, nil, "owner/repo/feat", nil); err == nil || !slices.Equal(reg.fetched, []string{"owner/repo/feat:latest"}) {
+		t.Errorf("owner/repo/feat: err = %v, fetched %v; want registry owner", err, reg.fetched)
 	}
 }
 

@@ -2,7 +2,9 @@ package features
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -13,25 +15,20 @@ const (
 	SourceDirectTarball
 	SourceLocalPath
 	SourceLegacyShorthand
-	SourceGitHubShorthand
 )
 
 func ClassifyID(id string) SourceType {
+	if !strings.ContainsAny(id, `/\`) {
+		return SourceLegacyShorthand
+	}
+	// TS takes only https:// as a tarball URL.
 	if strings.HasPrefix(id, "http://") || strings.HasPrefix(id, "https://") {
 		return SourceDirectTarball
 	}
 	if strings.HasPrefix(id, "./") || strings.HasPrefix(id, "../") || strings.HasPrefix(id, "/") {
 		return SourceLocalPath
 	}
-	firstSlash := strings.Index(id, "/")
-	if firstSlash > 0 {
-		firstSegment := id[:firstSlash]
-		if strings.Contains(firstSegment, ".") || strings.HasPrefix(firstSegment, "localhost") {
-			return SourceOCI
-		}
-		return SourceGitHubShorthand
-	}
-	return SourceLegacyShorthand
+	return SourceOCI
 }
 
 type InvalidLocalFeatureError struct{ Msg string }
@@ -72,8 +69,6 @@ func LocalFeaturePath(id, configDir, workspaceRoot string) (string, error) {
 	return featureFolderPath, nil
 }
 
-const versionBackwardComp = "1"
-
 const newFeaturePath = "ghcr.io/devcontainers/features"
 
 var migratedFeatures = map[string]struct{}{
@@ -89,52 +84,61 @@ var renamedFeatures = map[string]string{
 	"common": "common-utils",
 }
 
-var DeprecatedFeatureIntoOptions = map[string]struct {
-	MapTo  string
-	Option string
+var deprecatedFeaturesIntoOptions = map[string]struct {
+	mapTo  string
+	option string
 }{
 	"gradle":     {"java", "installGradle"},
 	"maven":      {"java", "installMaven"},
 	"jupyterlab": {"python", "installJupyterlab"},
 }
 
-func IsKnownLegacyFeature(name string) bool {
-	if _, migrated := migratedFeatures[name]; migrated || renamedFeatures[name] != "" {
-		return true
+func BackwardCompatibleID(id string) (mapped, warning string) {
+	if _, ok := migratedFeatures[id]; ok {
+		return newFeaturePath + "/" + id + ":1", deprecatedFeatureWarning(id, id)
 	}
-	_, ok := DeprecatedFeatureIntoOptions[name]
-	return ok
+	if to, ok := renamedFeatures[id]; ok {
+		return newFeaturePath + "/" + to + ":1", deprecatedFeatureWarning(id, to)
+	}
+	if m, ok := deprecatedFeaturesIntoOptions[id]; ok {
+		return id, fmt.Sprintf("(!) WARNING: Falling back to the deprecated '%s' Feature. It is now part of the '%s' Feature. See https://github.com/devcontainers/features/tree/main/src/%s#options for the updated Feature.", id, m.mapTo, m.mapTo)
+	}
+	return id, ""
 }
 
-func ResolveID(id string, skipAutoMapping bool) (string, bool) {
-	srcType := ClassifyID(id)
+func deprecatedFeatureWarning(id, src string) string {
+	return fmt.Sprintf("(!) WARNING: Using the deprecated '%s' Feature. See https://github.com/devcontainers/features/tree/main/src/%s#example-usage for the updated Feature.", id, src)
+}
 
-	if srcType == SourceGitHubShorthand {
-		return "ghcr.io/" + id, true
+func UpdateDeprecatedFeaturesIntoOptions(userFeatures []DevContainerFeature) (updated []DevContainerFeature, warnings []string) {
+	updated = slices.Clone(userFeatures)
+	for _, f := range userFeatures {
+		m, ok := deprecatedFeaturesIntoOptions[f.UserFeatureID]
+		if !ok {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf("(!) WARNING: Using the deprecated '%s' Feature. It is now part of the '%s' Feature. See https://github.com/devcontainers/features/tree/main/src/%s#options for the updated Feature.", f.UserFeatureID, m.mapTo, m.mapTo))
+		qualified := newFeaturePath + "/" + m.mapTo
+		i := slices.IndexFunc(updated, func(u DevContainerFeature) bool {
+			return u.UserFeatureID == m.mapTo || u.UserFeatureID == qualified || strings.HasPrefix(u.UserFeatureID, qualified+":")
+		})
+		if i == -1 {
+			updated = append(updated, DevContainerFeature{UserFeatureID: qualified + ":1", Options: map[string]any{m.option: true}})
+			continue
+		}
+		options := map[string]any{}
+		switch o := updated[i].Options.(type) {
+		case map[string]any:
+			maps.Copy(options, o)
+		case string:
+			options["version"] = o
+		}
+		options[m.option] = true
+		updated[i].Options = options
 	}
-
-	if srcType != SourceLegacyShorthand {
-		return id, false
-	}
-
-	if skipAutoMapping {
-		return id, false
-	}
-
-	// Split the name from an explicit version tag. Auto-mapped legacy features
-	// are pinned to versionBackwardComp (:1) unless the user gave an explicit
-	// version — matching the TS getBackwardCompatibleFeatureId (which pins :1),
-	// while still honoring an explicit tag if provided.
-	name := id
-	tag := ":" + versionBackwardComp
-	if idx := strings.LastIndex(id, ":"); idx > 0 {
-		name = id[:idx]
-		tag = id[idx:]
-	}
-
-	target := name
-	if renamed, ok := renamedFeatures[name]; ok {
-		target = renamed
-	}
-	return fmt.Sprintf("%s/%s%s", newFeaturePath, target, tag), true
+	updated = slices.DeleteFunc(updated, func(u DevContainerFeature) bool {
+		_, deprecated := deprecatedFeaturesIntoOptions[u.UserFeatureID]
+		return deprecated
+	})
+	return updated, warnings
 }

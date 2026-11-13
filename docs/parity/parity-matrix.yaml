@@ -348,6 +348,19 @@ initial_cases:
     current_status: match
     notes: "outdated writes JSON.stringify(outdated, undefined, process.stdout.isTTY ? '  ' : undefined): with stdout not a terminal, as here, the result is one unindented line ({\"features\":{}}, a local Feature having no versions). Go used to indent it always."
 
+  - id: outdated.legacy-ids-success
+    lane: contract
+    command: outdated
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer/local; printf '%s' '{\"id\":\"local\",\"version\":\"1.0.0\"}' > $WORKSPACE/.devcontainer/local/devcontainer-feature.json; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"node\":{},\"node:18\":{},\"terraform\":\"latest\",\"my-custom-feature\":{},\"owner/feat\":{},\"localhost:1/ns/feat:1\":{},\"./local\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "outdated --workspace-folder ${WORKSPACE} --output-format json"
+    asserts: [exit_code, stdout_text]
+    class: outdated
+    current_status: match
+    notes: "loadVersionInfo calls getRef on each id as written, without the legacy mapping: node, node:18, terraform, my-custom-feature and owner/feat do not parse and are left out, as is the local Feature. localhost:1/ns/feat:1 parses; its tags cannot be listed (connection refused), and it is still reported, with no versions: {\"features\":{\"localhost:1/ns/feat:1\":{}}}. Go used to map the legacy ids to ghcr.io and report them, and to leave out a Feature without versions."
+
   - id: outdated.text-without-features-success
     lane: contract
     command: outdated
@@ -855,6 +868,60 @@ initial_cases:
     class: features
     current_status: match
     notes: "A bare Feature id ('myfeature') is a legacy id TS rejects ('Legacy feature myfeature not supported...'), exit 1 with no result. Go used to drop the Feature error silently and print a configuration without the Feature."
+
+  - id: read-configuration.legacy-feature-id-with-tag-error
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"node:18\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stderr_normalized]
+    class: features
+    current_status: match
+    notes: "getBackwardCompatibleFeatureId maps only the exact legacy names: 'node:18' stays as written and getFeatureIdType refuses it ('Legacy feature 'node:18' not supported...'), exit 1. Go used to map it to ghcr.io/devcontainers/features/node:18 and fail fetching it."
+
+  - id: read-configuration.deprecated-feature-into-options-error
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"gradle\":{},\"node:18\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code, stderr_normalized]
+    class: features
+    current_status: match
+    notes: "updateDeprecatedFeaturesIntoOptions moves gradle into a ghcr.io/devcontainers/features/java:1 it appends after the other Features and logs '(!) WARNING: Using the deprecated 'gradle' Feature...' before any Feature is resolved, so node:18 is refused before java is requested: no network. Go used to resolve gradle in place, requesting java first."
+
+  - id: read-configuration.feature-shorthand-registry-error
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"devcontainers/features/node:1\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-merged-configuration"
+    asserts: [exit_code]
+    class: features
+    current_status: match
+    notes: "An id with a slash and no dot in its first segment is an OCI reference whose registry is that segment (getRef): 'devcontainers/features/node:1' is requested from the host devcontainers, which does not resolve, and the GitHub Releases fallback refuses the id, exit 1. Go used to prefix ghcr.io/ and install ghcr.io/devcontainers/features/node:1. Only the exit code is compared: TS ends with its GitHub Releases fallback, which this CLI does not implement (DIVERGENCES.md). network_required for the DNS lookup."
+
+  - id: read-configuration.skip-feature-auto-mapping-success
+    lane: contract
+    command: read-configuration
+    priority: p1
+    docker_required: false
+    network_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"node\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "read-configuration --workspace-folder ${WORKSPACE} --include-features-configuration --skip-feature-auto-mapping"
+    asserts: [exit_code]
+    class: features
+    current_status: match
+    notes: "TS declares --skip-feature-auto-mapping but generateFeaturesConfig never passes it to processFeatureIdentifier, so 'node' is still mapped to ghcr.io/devcontainers/features/node:1 with its deprecation warning, exit 0. Go used to honor the flag and fail to parse 'node' as a reference."
 
   - id: read-configuration.local-feature-outside-devcontainer-error
     lane: contract

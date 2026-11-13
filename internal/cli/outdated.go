@@ -85,10 +85,10 @@ type outdatedOpts struct {
 }
 
 type outdatedEntry struct {
-	Current     string `json:"current"`
-	Wanted      string `json:"wanted"`
+	Current     string `json:"current,omitempty"`
+	Wanted      string `json:"wanted,omitempty"`
 	WantedMajor string `json:"wantedMajor,omitempty"`
-	Latest      string `json:"latest"`
+	Latest      string `json:"latest,omitempty"`
 	LatestMajor string `json:"latestMajor,omitempty"`
 }
 
@@ -200,18 +200,16 @@ func runOutdated(ctx context.Context, out Output, opts outdatedOpts) error {
 	result := make(map[string]outdatedEntry)
 
 	for id := range cfg.Features {
-		resolvedID, _ := features.ResolveID(id, false)
-
-		ref, err := oci.ParseRef(resolvedID)
+		ref, err := oci.ParseRef(id)
 		if err != nil {
 			continue
 		}
 		versions := resolvePublishedVersions(ociClient, ref)
-		if len(versions) == 0 {
-			continue
-		}
 
-		latest := versions[len(versions)-1].Original()
+		var latest string
+		if len(versions) > 0 {
+			latest = versions[len(versions)-1].Original()
+		}
 		wanted := highestSatisfyingTag(versions, ref.Tag)
 
 		current := wanted
@@ -449,7 +447,7 @@ func newUpgradeCmd() *cobra.Command {
 
 			lockfilePath := cfg.ConfigFilePath
 
-			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, localFeatureRoots{filepath.Dir(lockfilePath), ws}, false, nil, nil)
+			res, err := fetchFeatureSetsWithOrder(cmd.Context(), logger, cfg.Features, localFeatureRoots{filepath.Dir(lockfilePath), ws}, nil, nil)
 			if err != nil {
 				return err
 			}

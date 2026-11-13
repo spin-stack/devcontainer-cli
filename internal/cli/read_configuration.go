@@ -46,7 +46,6 @@ type readConfigOpts struct {
 	idLabels                  []string
 	dockerPath                string
 	additionalFeatures        string
-	skipFeatureAutoMapping    bool
 	terminalColumns           givenInt
 	terminalRows              givenInt
 	cacheKey                  bool
@@ -82,7 +81,7 @@ func newReadConfigurationCmd() *cobra.Command {
 	f.Var(&opts.terminalColumns, "terminal-columns", "Terminal columns.")
 	f.Var(&opts.terminalRows, "terminal-rows", "Terminal rows.")
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
-	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
+	f.Bool("skip-feature-auto-mapping", false, "")
 	cmd.Flags().MarkHidden("skip-feature-auto-mapping")
 	f.BoolVar(&opts.cacheKey, "cache-key", false, "Also emit a deterministic content-addressed cache key for the configuration.")
 
@@ -184,7 +183,7 @@ func runReadConfiguration(ctx context.Context, out Output, opts *readConfigOpts)
 	if needsFeaturesConfiguration(opts, containerID, result) {
 		lgr := log.New(log.Options{Level: log.ParseLevel(opts.logLevel), Format: opts.logFormat, Writer: logDst})
 		var featErr error
-		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, localFeatureRoots{filepath.Dir(result.Config.ConfigFilePath), workspaceFolder}, opts.skipFeatureAutoMapping)
+		featResult, featErr = fetchFeatureSets(ctx, lgr, result.Config.Features, localFeatureRoots{filepath.Dir(result.Config.ConfigFilePath), workspaceFolder})
 		if featErr != nil {
 			return readConfigurationFailure(lgr, featErr)
 		}

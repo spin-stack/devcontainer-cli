@@ -81,6 +81,21 @@ runs the official CLI is unaffected:
   `devcontainer features package . --output-folder output`.
 - A configuration that references a legacy GitHub Releases Feature fails, in
   `read-configuration` too, instead of silently leaving the Feature out.
+- Only the exact legacy Feature names (for example `node`, `golang`, `gradle`)
+  map to `ghcr.io/devcontainers/features/<name>:1`, with a
+  `(!) WARNING: Using the deprecated '<name>' Feature.` line. A legacy name with
+  a tag, such as `node:18` or `node:1`, and any other name without a `/` fail
+  with `Legacy feature '<id>' not supported.` Replace them with the published
+  id, for example `ghcr.io/devcontainers/features/node:1` with the option
+  `"version": "18"`.
+- An id such as `owner/repo/feature` is an OCI reference whose registry is
+  `owner`; it no longer means `ghcr.io/owner/repo/feature`. Write the registry
+  explicitly.
+- `--skip-feature-auto-mapping` no longer turns the legacy mapping off: the
+  official CLI accepts the flag and ignores it.
+- `outdated` leaves legacy ids out, and reports a Feature whose versions cannot
+  be listed with empty values (`{}` in JSON, `-` in text) instead of leaving it
+  out.
 - `up` with `--id-label` and no workspace folder or configuration fails with
   `No dev container config and no workspace found.` instead of attaching to the
   matching container.

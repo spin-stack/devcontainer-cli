@@ -74,7 +74,6 @@ type upOpts struct {
 	platform                    string
 	defaultUserEnvProbe         string
 	containerSessionDataFolder  string
-	skipFeatureAutoMapping      bool
 	composeProjectName          string
 }
 
@@ -136,7 +135,7 @@ func newUpCmd() *cobra.Command {
 	f.StringArrayVar(&opts.cacheFrom, "cache-from", nil, "Cache from images.")
 	f.StringVar(&opts.cacheTo, "cache-to", "", "Cache to destination.")
 	f.StringVar(&opts.additionalFeatures, "additional-features", "", "Additional features JSON.")
-	f.BoolVar(&opts.skipFeatureAutoMapping, "skip-feature-auto-mapping", false, "")
+	f.Bool("skip-feature-auto-mapping", false, "")
 	f.StringVar(&opts.dotfilesRepo, "dotfiles-repository", "", "Dotfiles repo.")
 	f.StringVar(&opts.dotfilesCommand, "dotfiles-install-command", "", "Dotfiles install command.")
 	f.StringVar(&opts.dotfilesTarget, "dotfiles-target-path", "~/dotfiles", "Dotfiles target.")
@@ -1183,7 +1182,6 @@ func (r *upRunner) featureBuildOptions(cfg *config.DevContainer, loadResult *con
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		FeaturesBasePath:            filepath.Dir(cfg.ConfigFilePath),
 		WorkspaceFolder:             opts.workspaceFolder,
-		SkipFeatureAutoMapping:      opts.skipFeatureAutoMapping,
 		FrozenLockfile:              opts.experimentalFrozenLockfile,
 		NoLockfile:                  opts.noLockfile,
 		ConfigPath:                  cfg.ConfigFilePath,

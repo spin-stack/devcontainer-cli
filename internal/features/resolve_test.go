@@ -3,6 +3,8 @@ package features
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +17,9 @@ func TestClassifyFeatureID(t *testing.T) {
 		{"ghcr.io/devcontainers/features/node:latest", SourceOCI},
 		{"myregistry.azurecr.io/myns/myfeature:1.0", SourceOCI},
 		{"localhost:5000/ns/feat:1", SourceOCI},
+		{"owner/repo/feat", SourceOCI},
+		{"owner/feat", SourceOCI},
+		{`a\b`, SourceOCI},
 		{"https://example.com/feature.tgz", SourceDirectTarball},
 		{"http://example.com/feature.tgz", SourceDirectTarball},
 		{"./local-feature", SourceLocalPath},
@@ -22,6 +27,7 @@ func TestClassifyFeatureID(t *testing.T) {
 		{"/abs/feature", SourceLocalPath},
 		{"go", SourceLegacyShorthand},
 		{"node", SourceLegacyShorthand},
+		{"node:18", SourceLegacyShorthand},
 		{"my-feature", SourceLegacyShorthand},
 	}
 	for _, tt := range tests {
@@ -32,97 +38,55 @@ func TestClassifyFeatureID(t *testing.T) {
 	}
 }
 
-func TestResolveFeatureID(t *testing.T) {
+func TestBackwardCompatibleID(t *testing.T) {
+	deprecated := func(id, src string) string {
+		return "(!) WARNING: Using the deprecated '" + id + "' Feature. See https://github.com/devcontainers/features/tree/main/src/" + src + "#example-usage for the updated Feature."
+	}
 	tests := []struct {
-		name            string
-		id              string
-		skipAutoMapping bool
-		wantID          string
-		wantMapped      bool
+		id, wantID, wantWarning string
 	}{
-		{
-			name:       "OCI",
-			id:         "ghcr.io/devcontainers/features/go:1",
-			wantID:     "ghcr.io/devcontainers/features/go:1",
-			wantMapped: false,
-		},
-		{
-			name:       "LegacyMigratedPinsV1",
-			id:         "git",
-			wantID:     "ghcr.io/devcontainers/features/git:1",
-			wantMapped: true,
-		},
-		{
-			name:       "LegacyRenamed_golang",
-			id:         "golang",
-			wantID:     "ghcr.io/devcontainers/features/go:1",
-			wantMapped: true,
-		},
-		{
-			name:       "LegacyRenamed_common",
-			id:         "common",
-			wantID:     "ghcr.io/devcontainers/features/common-utils:1",
-			wantMapped: true,
-		},
-		{
-			name:       "LegacyWithVersion",
-			id:         "node:18",
-			wantID:     "ghcr.io/devcontainers/features/node:18",
-			wantMapped: true,
-		},
-		{
-			name:            "SkipAutoMapping",
-			id:              "go",
-			skipAutoMapping: true,
-			wantID:          "go",
-			wantMapped:      false,
-		},
-		{
-			// unknown shorthand should be auto-mapped to ghcr.io/devcontainers/features/.
-			name:       "LegacyUnknown",
-			id:         "my-custom-feature",
-			wantID:     "ghcr.io/devcontainers/features/my-custom-feature:1",
-			wantMapped: true,
-		},
-		{
-			name:       "LocalPath",
-			id:         "./local-feature",
-			wantID:     "./local-feature",
-			wantMapped: false,
-		},
-		{
-			name:       "Tarball",
-			id:         "https://example.com/feature.tgz",
-			wantID:     "https://example.com/feature.tgz",
-			wantMapped: false,
-		},
+		{"git", "ghcr.io/devcontainers/features/git:1", deprecated("git", "git")},
+		{"node", "ghcr.io/devcontainers/features/node:1", deprecated("node", "node")},
+		{"golang", "ghcr.io/devcontainers/features/go:1", deprecated("golang", "go")},
+		{"common", "ghcr.io/devcontainers/features/common-utils:1", deprecated("common", "common-utils")},
+		{"gradle", "gradle", "(!) WARNING: Falling back to the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature."},
+		{"node:18", "node:18", ""},
+		{"node:1", "node:1", ""},
+		{"golang:1", "golang:1", ""},
+		{"my-custom-feature", "my-custom-feature", ""},
+		{"owner/repo/feat", "owner/repo/feat", ""},
+		{"ghcr.io/devcontainers/features/go:1", "ghcr.io/devcontainers/features/go:1", ""},
+		{"./local-feature", "./local-feature", ""},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			id, mapped := ResolveID(tt.id, tt.skipAutoMapping)
-			if id != tt.wantID {
-				t.Errorf("id = %q, want %q", id, tt.wantID)
-			}
-			if mapped != tt.wantMapped {
-				t.Errorf("mapped = %v, want %v", mapped, tt.wantMapped)
-			}
-		})
+		id, warning := BackwardCompatibleID(tt.id)
+		if id != tt.wantID || warning != tt.wantWarning {
+			t.Errorf("BackwardCompatibleID(%q) = %q, %q; want %q, %q", tt.id, id, warning, tt.wantID, tt.wantWarning)
+		}
 	}
 }
 
-func TestDeprecatedFeatureIntoOptions(t *testing.T) {
-	for name, want := range map[string]struct{ mapTo, opt string }{
-		"gradle":     {"java", "installGradle"},
-		"maven":      {"java", "installMaven"},
-		"jupyterlab": {"python", "installJupyterlab"},
-	} {
-		m, ok := DeprecatedFeatureIntoOptions[name]
-		if !ok || m.MapTo != want.mapTo || m.Option != want.opt {
-			t.Errorf("%s → %+v, want %+v", name, m, want)
-		}
-		if !IsKnownLegacyFeature(name) {
-			t.Errorf("%s should be a known legacy feature", name)
-		}
+func TestUpdateDeprecatedFeaturesIntoOptions(t *testing.T) {
+	in := []DevContainerFeature{
+		{UserFeatureID: "ghcr.io/devcontainers/features/java:1", Options: "17"},
+		{UserFeatureID: "gradle", Options: map[string]any{"ignored": true}},
+		{UserFeatureID: "jupyterlab", Options: true},
+		{UserFeatureID: "node:18", Options: map[string]any{}},
+	}
+	got, warnings := UpdateDeprecatedFeaturesIntoOptions(in)
+	want := []DevContainerFeature{
+		{UserFeatureID: "ghcr.io/devcontainers/features/java:1", Options: map[string]any{"version": "17", "installGradle": true}},
+		{UserFeatureID: "node:18", Options: map[string]any{}},
+		{UserFeatureID: "ghcr.io/devcontainers/features/python:1", Options: map[string]any{"installJupyterlab": true}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("features = %v, want %v", got, want)
+	}
+	if len(warnings) != 2 || !strings.HasPrefix(warnings[0], "(!) WARNING: Using the deprecated 'gradle' Feature. It is now part of the 'java' Feature.") {
+		t.Errorf("warnings = %q", warnings)
+	}
+	if in[0].Options != "17" || len(in) != 4 {
+		t.Errorf("the input was modified: %v", in)
 	}
 }
 

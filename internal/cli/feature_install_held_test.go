@@ -113,7 +113,7 @@ func stageDirs(t *testing.T) func() string {
 
 func installFeature(t *testing.T, reg oci.Registry, id string, opts any, lockfile *features.Lockfile) (*features.Set, error) {
 	t.Helper()
-	return processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: id, Options: opts}, localFeatureRoots{}, false, lockfile, stageDirs(t))
+	return processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: id, Options: opts}, localFeatureRoots{}, lockfile, stageDirs(t))
 }
 
 func TestProcessInstallFeatureOCI(t *testing.T) {
@@ -217,15 +217,70 @@ func TestProcessInstallFeatureOCIPinsToTheLockfile(t *testing.T) {
 	}
 }
 
-func TestProcessInstallFeatureLegacyShorthandWithVersion(t *testing.T) {
-	reg := newOCIFeatureRegistry()
-	reg.add(t, "ghcr.io/devcontainers/features/node:1", map[string]string{"devcontainer-feature.json": `{"id":"node"}`}, nil)
-	set, err := installFeature(t, reg, "node:1", nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := set.SourceInfo.(*features.OCISource).Resource; got != "ghcr.io/devcontainers/features/node" {
-		t.Errorf("resource = %q", got)
+func TestProcessInstallFeatureLegacyIDs(t *testing.T) {
+	const digest = "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+	legacyError := func(id string) string { return fmt.Sprintf(msgLegacyFeature, id) }
+	for name, tc := range map[string]struct {
+		id          string
+		lockfile    *features.Lockfile
+		wantFetched []string
+		wantErr     string
+		wantLog     string
+	}{
+		"migrated name maps to major 1": {
+			id: "node", wantFetched: []string{"ghcr.io/devcontainers/features/node:1"},
+			wantLog: "(!) WARNING: Using the deprecated 'node' Feature. See https://github.com/devcontainers/features/tree/main/src/node#example-usage for the updated Feature.",
+		},
+		"renamed name maps to its new name": {
+			id: "golang", wantFetched: []string{"ghcr.io/devcontainers/features/go:1"},
+			wantLog: "(!) WARNING: Using the deprecated 'golang' Feature. See https://github.com/devcontainers/features/tree/main/src/go#example-usage for the updated Feature.",
+		},
+		"lockfile entry of the id as written": {
+			id: "node", lockfile: &features.Lockfile{Features: map[string]features.LockfileEntry{"node": {Integrity: digest}}},
+			wantFetched: []string{"ghcr.io/devcontainers/features/node:1"},
+		},
+		"lockfile entry of the mapped id": {
+			id: "node", lockfile: &features.Lockfile{Features: map[string]features.LockfileEntry{"ghcr.io/devcontainers/features/node:1": {Integrity: digest}}},
+			wantFetched: []string{"ghcr.io/devcontainers/features/node@" + digest},
+			wantErr:     "could not be processed",
+		},
+		"tagged legacy name":     {id: "node:18", wantErr: legacyError("node:18")},
+		"legacy name with tag 1": {id: "node:1", wantErr: legacyError("node:1")},
+		"unknown legacy name":    {id: "my-custom-feature", wantErr: legacyError("my-custom-feature")},
+		"Feature now an option": {
+			id: "gradle", wantErr: legacyError("gradle"),
+			wantLog: "(!) WARNING: Falling back to the deprecated 'gradle' Feature. It is now part of the 'java' Feature. See https://github.com/devcontainers/features/tree/main/src/java#options for the updated Feature.",
+		},
+		"first segment is the registry": {
+			id: "owner/repo/feat", wantFetched: []string{"owner/repo/feat:latest"}, wantErr: "could not be processed",
+			wantLog: "Could not resolve Feature manifest for 'owner/repo/feat'.  If necessary, provide registry credentials with 'docker login <registry>'.",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reg := newOCIFeatureRegistry()
+			for _, f := range []string{"node", "go"} {
+				reg.add(t, "ghcr.io/devcontainers/features/"+f+":1", map[string]string{"devcontainer-feature.json": `{"id":"` + f + `"}`}, nil)
+			}
+			reg.add(t, "ghcr.io/owner/repo/feat:latest", map[string]string{"devcontainer-feature.json": `{"id":"feat"}`}, nil)
+			var logged strings.Builder
+			logger := log.New(log.Options{Writer: &logged, Level: log.LevelInfo})
+			set, err := processInstallFeature(logger, reg, &features.FNode{UserFeatureID: tc.id}, localFeatureRoots{}, tc.lockfile, stageDirs(t))
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tc.wantErr)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			} else if got := set.SourceInfo.UserFeatureID(); got != tc.id {
+				t.Errorf("userFeatureId = %q, want the id as written", got)
+			}
+			if !slices.Equal(reg.fetched, tc.wantFetched) {
+				t.Errorf("fetched %v, want %v", reg.fetched, tc.wantFetched)
+			}
+			if tc.wantLog != "" && !strings.Contains(logged.String(), tc.wantLog) {
+				t.Errorf("log = %q, want %q", logged.String(), tc.wantLog)
+			}
+		})
 	}
 }
 
@@ -272,7 +327,7 @@ func TestProcessInstallFeatureOCIErrors(t *testing.T) {
 			if stage == nil {
 				stage = stageDirs(t)
 			}
-			_, err := processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: featureID}, localFeatureRoots{}, false, nil, stage)
+			_, err := processInstallFeature(log.Null, reg, &features.FNode{UserFeatureID: featureID}, localFeatureRoots{}, nil, stage)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("err = %v, want %q", err, tc.wantErr)
 			}
@@ -353,7 +408,7 @@ func TestProcessInstallFeatureTarballErrors(t *testing.T) {
 	})
 	t.Run("staging folder not writable", func(t *testing.T) {
 		uri := serveBytes(t, blob, http.StatusOK) + "/f.tgz"
-		_, err := processInstallFeature(log.Null, nil, &features.FNode{UserFeatureID: uri}, localFeatureRoots{}, false, nil, func() string { return filepath.Join(blocker, "stage") })
+		_, err := processInstallFeature(log.Null, nil, &features.FNode{UserFeatureID: uri}, localFeatureRoots{}, nil, func() string { return filepath.Join(blocker, "stage") })
 		if err == nil || !strings.Contains(err.Error(), "write feature tarball") {
 			t.Fatalf("err = %v", err)
 		}
@@ -374,7 +429,7 @@ func TestTarballFeatureIDUsesTheURLPath(t *testing.T) {
 
 func TestFetchFeatureSetsReportsTheFirstSortedFailure(t *testing.T) {
 	for range 5 {
-		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, devcontainerRoots(t), false)
+		_, err := fetchFeatureSets(t.Context(), log.Null, map[string]any{"./b-missing": true, "./a-missing": true, "./c-missing": true}, devcontainerRoots(t))
 		if err == nil || !strings.Contains(err.Error(), "'./a-missing'") {
 			t.Fatalf("err = %v, want the failure of ./a-missing", err)
 		}

@@ -32,7 +32,10 @@ func renderDependencyMermaid(client oci.Registry, logger log.Logger, roots []str
 func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local localFeatureRoots, lockfile *features.Lockfile) features.ProcessFeature {
 	return func(node *features.FNode) (*features.Set, error) {
 		id := node.UserFeatureID
-		srcType := features.ClassifyID(id)
+		resolvedID, srcType, err := resolveFeatureID(logger, id)
+		if err != nil {
+			return nil, err
+		}
 
 		switch srcType {
 		case features.SourceLocalPath:
@@ -68,13 +71,12 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 			}, nil
 
 		default:
-			resolvedID, _ := features.ResolveID(id, false)
 			ref, err := oci.ParseRef(resolvedID)
 			if err != nil {
 				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
 			}
 			if lockfile != nil {
-				if integrity := lockfile.Features[id].Integrity; integrity != "" {
+				if integrity := lockfile.Features[resolvedID].Integrity; integrity != "" {
 					if pinned, perr := oci.ParseRef(ref.Resource + "@" + integrity); perr == nil {
 						ref = pinned
 					}

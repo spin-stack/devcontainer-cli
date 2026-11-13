@@ -38,7 +38,7 @@ func TestOutdatedReportsVersions(t *testing.T) {
 	reg.tags["ns/blank"] = []string{"1.0.0"}
 	reg.tags["ns/none"] = []string{}
 	h := reg.host
-	features := `{"` + h + `/ns/multi:1":{}, "` + h + `/ns/single:3":{}, "` + h + `/ns/blank:1":{}, "` + h + `/ns/none:1":{}, "./local":{}}`
+	features := `{"` + h + `/ns/multi:1":{}, "` + h + `/ns/single:3":{}, "` + h + `/ns/blank:1":{}, "` + h + `/ns/none:1":{}, "` + h + `/ns/single:9":{}, "./local":{}, "node":{}, "node:18":{}, "terraform":"latest", "owner/feat":{}}`
 	lock := `{"features":{"` + h + `/ns/multi:1":{"version":"1.0.0"},"` + h + `/ns/blank:1":{"version":""}}}`
 	ws := writeOutdatedWorkspace(t, features, lock)
 
@@ -59,8 +59,13 @@ func TestOutdatedReportsVersions(t *testing.T) {
 		h + "/ns/multi:1":  {Current: "1.0.0", Wanted: "1.2.0", WantedMajor: "1", Latest: "2.0.0", LatestMajor: "2"},
 		h + "/ns/single:3": {Current: "3.1.0", Wanted: "3.1.0", WantedMajor: "3", Latest: "3.1.0", LatestMajor: "3"},
 		h + "/ns/blank:1":  {Current: "1.0.0", Wanted: "1.0.0", WantedMajor: "1", Latest: "1.0.0", LatestMajor: "1"},
+		h + "/ns/none:1":   {},
+		h + "/ns/single:9": {Latest: "3.1.0", LatestMajor: "3"},
 	}
-	if keys, err := jsonKeyOrder(got, "features"); err != nil || !slices.Equal(keys, []string{h + "/ns/multi:1", h + "/ns/single:3", h + "/ns/blank:1"}) {
+	if !strings.Contains(got, `"`+h+`/ns/none:1":{}`) || !strings.Contains(got, `"`+h+`/ns/single:9":{"latest":"3.1.0","latestMajor":"3"}`) {
+		t.Errorf("json output = %s, want the versions TS leaves undefined left out", got)
+	}
+	if keys, err := jsonKeyOrder(got, "features"); err != nil || !slices.Equal(keys, []string{h + "/ns/multi:1", h + "/ns/single:3", h + "/ns/blank:1", h + "/ns/none:1", h + "/ns/single:9"}) {
 		t.Errorf("features order = %v, %v; want the configuration's", keys, err)
 	}
 	if len(doc.Features) != len(want) {
@@ -77,7 +82,8 @@ func TestOutdatedReportsVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	if len(lines) != 4 || !strings.HasPrefix(lines[0], "Feature") || !strings.HasPrefix(lines[1], h+"/ns/multi ") {
+	if len(lines) != 6 || !strings.HasPrefix(lines[0], "Feature") || !strings.HasPrefix(lines[1], h+"/ns/multi ") ||
+		strings.Join(strings.Fields(lines[4]), " ") != h+"/ns/none - - -" {
 		t.Errorf("text table:\n%s", text)
 	}
 }
