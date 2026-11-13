@@ -1027,6 +1027,19 @@ initial_cases:
     current_status: match
     notes: "userFeaturesToArray appends the --additional-features ids after the configuration's, so '../zeta' is processed and refused first. Go used to sort the merged ids and reported '../alpha'."
 
+  - id: build.features-http-id-not-a-tarball-error
+    lane: runtime
+    command: build
+    priority: p1
+    docker_required: true
+    setup_cmd: "WORKSPACE=/tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}; rm -rf $WORKSPACE; mkdir -p $WORKSPACE/.devcontainer; printf '%s' '{\"image\":\"alpine:3\",\"features\":{\"http://127.0.0.1:9/devcontainer-feature-a.tgz\":{}}}' > $WORKSPACE/.devcontainer/devcontainer.json; echo WORKSPACE=$WORKSPACE"
+    cleanup_cmd: "rm -rf /tmp/parity-${PARITY_CASE_ID}-${PARITY_SIDE}"
+    ts_cmd: "build --workspace-folder ${WORKSPACE}"
+    asserts: [exit_code, stdout_normalized]
+    class: features
+    current_status: match
+    notes: "getFeatureIdType takes only https:// as a tarball URL; an http:// id goes to the OCI path, where getRef rejects it, then to the GitHub Releases fallback, which refuses an id that is not owner/repo/feature. buildDependencyGraph throws and build reports ERR: Feature 'http://...' could not be processed.  You may not have permission ... without any request. Go used to download it as a tarball and reported the connection error."
+
   - id: up.update-uid-remote-user-from-image-metadata-success
     lane: runtime
     command: up

@@ -73,7 +73,7 @@ func newMetadataProcessFeature(client oci.Registry, logger log.Logger, local loc
 		default:
 			ref, err := oci.ParseRef(resolvedID)
 			if err != nil {
-				return nil, fmt.Errorf("ERR: Feature '%s' could not be processed.  %w", id, err)
+				return nil, unparseableFeatureRef(logger, id, resolvedID, err)
 			}
 			if lockfile != nil {
 				if integrity := lockfile.Features[resolvedID].Integrity; integrity != "" {

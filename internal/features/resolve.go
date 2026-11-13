@@ -21,8 +21,7 @@ func ClassifyID(id string) SourceType {
 	if !strings.ContainsAny(id, `/\`) {
 		return SourceLegacyShorthand
 	}
-	// TS takes only https:// as a tarball URL.
-	if strings.HasPrefix(id, "http://") || strings.HasPrefix(id, "https://") {
+	if strings.HasPrefix(id, "https://") {
 		return SourceDirectTarball
 	}
 	if strings.HasPrefix(id, "./") || strings.HasPrefix(id, "../") || strings.HasPrefix(id, "/") {

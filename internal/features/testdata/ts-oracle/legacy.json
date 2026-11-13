@@ -479,6 +479,13 @@
     {
       "fn": "getFeatureIdType",
       "args": [
+        "http://example.com/devcontainer-feature-node.tgz"
+      ],
+      "result": "github-repo"
+    },
+    {
+      "fn": "getFeatureIdType",
+      "args": [
         "./node"
       ],
       "result": "file-path"
