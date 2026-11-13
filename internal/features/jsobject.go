@@ -91,7 +91,7 @@ func KeyOrder(keys []string) []string {
 // PropertyOrder is KeyOrder of m's keys as declared, followed by the keys of
 // m that declared does not name (a map a caller built), sorted.
 func PropertyOrder[V any](m map[string]V, declared []string) []string {
-	keys := make([]string, 0, len(declared)+len(m))
+	var keys []string
 	for _, k := range declared {
 		if _, ok := m[k]; ok {
 			keys = append(keys, k)
