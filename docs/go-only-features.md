@@ -202,6 +202,12 @@ with a warning.
 `RUN --mount=type=secret` the same way, and the lifecycle commands as environment
 variables. Neither leaves the value in a layer, the image config or a container label.
 
+The file is read as the reference CLI reads it for `up` and `run-user-commands`: JSON with
+comments, and a file that cannot be read or parsed (a missing file, a syntax error, a
+trailing comma) fails the command with exit code 1 and
+`{"outcome":"error","message":…,"description":"Failed to read/parse secrets"}` before
+anything is built. `build` fails the same way.
+
 ## `--ca-bundle`
 
 Trust extra certificate authorities, such as a TLS-intercepting proxy's, in image builds

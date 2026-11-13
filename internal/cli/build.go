@@ -42,6 +42,7 @@ type buildOpts struct {
 	noLockfile                 bool
 	frozenLockfile             bool
 	secretsFile                string
+	secrets                    fileSecrets
 	caBundle                   string
 	lockfileExcludeIDs         map[string]bool
 }
@@ -146,6 +147,10 @@ func runBuild(ctx context.Context, out Output, opts *buildOpts) error {
 	configPath := ""
 	if opts.configPath != "" {
 		configPath = resolvePath(opts.configPath)
+	}
+
+	if opts.secrets, err = loadSecretsFile(opts.secretsFile); err != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(err))
 	}
 
 	logger := log.New(log.Options{
@@ -388,14 +393,7 @@ func (r *buildRunner) buildDockerfile(ctx context.Context, cfg *config.DevContai
 	authEnv, authCleanup := bridgeBuildAuth(logger, baseImage, imageNames, cacheFrom, opts.cacheTo)
 	defer authCleanup()
 
-	var buildSecrets []string
-	if opts.secretsFile != "" {
-		secrets, secErr := readSecretsFile(opts.secretsFile)
-		if secErr != nil {
-			return nil, fmt.Errorf("read secrets file: %w", secErr)
-		}
-		buildSecrets = buildxSecrets(secrets, useBuildx, logger)
-	}
+	buildSecrets := buildxSecrets(opts.secrets.env(), useBuildx, logger)
 	caSecrets := caBundleBuildSecrets(opts.caBundle, useBuildx, logger)
 
 	buildOpts := docker.BuildOptions{
@@ -821,7 +819,7 @@ func labelComposeImage(ctx context.Context, dockerClient *docker.Client, imageNa
 func (r *buildRunner) featureBuildOptions(cfg *config.DevContainer, hostSub *config.HostSubContext) *FeatureBuildOptions {
 	opts := r.opts
 	return &FeatureBuildOptions{
-		Secrets:                     buildSecretsFromFile(opts.secretsFile),
+		Secrets:                     opts.secrets.env(),
 		CABundle:                    opts.caBundle,
 		OverrideFeatureInstallOrder: cfg.OverrideFeatureInstallOrder,
 		NoCache:                     opts.noCache,

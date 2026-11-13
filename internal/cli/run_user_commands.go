@@ -35,6 +35,7 @@ type runUserCommandsOpts struct {
 	defaultUserEnvProbe        string
 	containerSessionDataFolder string
 	secretsFile                string
+	secrets                    fileSecrets
 	terminalColumns            givenInt
 	terminalRows               givenInt
 }
@@ -97,12 +98,21 @@ func runUserCommands(ctx context.Context, out Output, opts *runUserCommandsOpts)
 	}
 	defer closeLog()
 
+	var err error
+	if opts.secrets, err = loadSecretsFile(opts.secretsFile); err != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(err))
+	}
+	maskValues, err := opts.secrets.maskValues()
+	if err != nil {
+		return writeErrorJSON(out, coreerrors.ToErrorOutput(&coreerrors.ContainerError{Description: "An error occurred running user commands in the container.", OriginalError: err}))
+	}
+
 	logger := log.New(log.Options{
 		Version: cliVersion(),
 		Level:   log.ParseLevel(opts.logLevel),
 		Format:  opts.logFormat,
 		Writer:  logDst,
-		Secrets: secretValuesFromFile(opts.secretsFile),
+		Secrets: maskValues,
 	})
 
 	var loadResult *config.LoadResult
@@ -212,7 +222,7 @@ func runUserCommandsInContainer(ctx context.Context, out Output, opts *runUserCo
 
 	remoteUser := lifecycleRemoteUser(merged, cfg)
 	probed := lifecycle.ProbedRemoteEnv(ctx, engine, logger, containerID, remoteUser, lifecycleUserEnvProbe(opts.defaultUserEnvProbe, cfg), opts.containerSessionDataFolder)
-	remoteEnv := lifecycleRemoteEnv(probed, buildSecretsFromFile(opts.secretsFile), opts.remoteEnvs, cfg)
+	remoteEnv := lifecycleRemoteEnv(probed, opts.secrets.env(), opts.remoteEnvs, cfg)
 
 	shellServer := lifecycle.NewShellServer(ctx, engine, containerID, remoteUser, remoteEnv...)
 	defer shellServer.Close()
