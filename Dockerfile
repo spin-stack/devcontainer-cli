@@ -43,5 +43,7 @@ LABEL org.opencontainers.image.revision="${REVISION}"
 USER nonroot:nonroot
 
 COPY ${TARGETPLATFORM}/devcontainer /devcontainer
+# The image is a copy of the binary, so the notices its licences ask for go with it.
+COPY LICENSE.txt NOTICE THIRD_PARTY_NOTICES /usr/share/doc/devcontainer-cli/
 
 ENTRYPOINT ["/devcontainer"]

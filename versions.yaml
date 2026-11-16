@@ -48,3 +48,12 @@
   note: >-
     The Task `go tool task` runs (go-tools' cmd/task), for every platform a person or a runner
     works on: no repository compiles it.
+
+- name: go-licenses
+  kind: module
+  source: github.com/google/go-licenses/v2
+  version: v2.0.1
+  track: github-release https://github.com/google/go-licenses
+  note: >-
+    task release:notices, which writes THIRD_PARTY_NOTICES for the release archives and image.
+    A bump is checked by task release:notices and the archive listing of task release --snapshot.

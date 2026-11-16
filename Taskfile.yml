@@ -24,6 +24,8 @@ vars:
   COVER_DATA: artifacts/coverage/data
   # The image GoReleaser publishes (.goreleaser.yml's dockers), tagged with the version.
   IMAGE: ghcr.io/spin-stack/devcontainer-cli
+  # What a release archive and the image carry beside the binary (.goreleaser.yml, Dockerfile).
+  NOTICES: LICENSE.txt NOTICE THIRD_PARTY_NOTICES
 
 tasks:
   default:
@@ -419,6 +421,28 @@ tasks:
     cmds:
       - echo "DISTROLESS_IMAGE=$(versions ref distroless)" >> "$GITHUB_ENV"
 
+  # The MIT, BSD and Apache licences of what the binary links ask that their notice go with every
+  # copy, a compiled one too; GoReleaser runs this before it packs the archives and the image.
+  release:notices:
+    desc: Write THIRD_PARTY_NOTICES, the licence of Go and of each module compiled into the binary
+    cmds:
+      - |
+        set -euo pipefail
+        out=$(mktemp)
+        trap 'rm -f "$out"' EXIT
+        {
+          printf '%s\n' "Third-party software compiled into the devcontainer binary, each with its licence." \
+            "devcontainer-cli's own licence is LICENSE.txt; NOTICE names what it takes from github.com/devcontainers/cli."
+          printf '\n%s\n%s\n%s\n\n' "================================================================================" \
+            "Go standard library and runtime $(go env GOVERSION)" \
+            "================================================================================"
+          cat "$(go env GOROOT)/LICENSE"
+          go run "github.com/google/go-licenses/v2@$(versions version go-licenses)" report ./cmd/devcontainer \
+            --ignore {{.MODULE}} --template hack/third-party-notices.tmpl
+        } > "$out"
+        mv "$out" THIRD_PARTY_NOTICES
+        trap - EXIT
+
   # The release workflow's own steps. What only the workflow knows - the dispatch input, the
   # prepare job's outputs, the published digest - comes in the environment.
   release:resolve:
@@ -438,7 +462,7 @@ tasks:
         git push origin "$RELEASE_TAG"
 
   release:smoke:
-    desc: Check the published image of RELEASE_VERSION reports that version
+    desc: Check the published image of RELEASE_VERSION reports that version, and it and dist's archives carry the licence notices
     cmds:
       - |
         set -euo pipefail
@@ -446,6 +470,35 @@ tasks:
         GOT="$(docker run --rm "$IMAGE" --version)"
         echo "image reported version: $GOT (expected: $RELEASE_VERSION)"
         test "$GOT" = "$RELEASE_VERSION"
+      - task: release:smoke:archives
+      - task: release:smoke:image-notices
+
+  release:smoke:archives:
+    internal: true
+    cmds:
+      - |
+        set -euo pipefail
+        set -- dist/*.tar.gz
+        test -e "$1" || { echo "no archive in dist/" >&2; exit 1; }
+        for a in "$@"; do
+          list=$(tar -tzf "$a")
+          for f in {{.NOTICES}}; do
+            grep -qx "$f" <<<"$list" || { echo "$a: no $f" >&2; exit 1; }
+          done
+        done
+
+  # The image has no shell, so the files are read from a created, never started, container.
+  release:smoke:image-notices:
+    internal: true
+    cmds:
+      - |
+        set -euo pipefail
+        IMAGE="{{.IMAGE}}:$RELEASE_VERSION"
+        c=$(docker create "$IMAGE")
+        trap 'docker rm -f "$c" >/dev/null' EXIT
+        for f in {{.NOTICES}}; do
+          docker cp "$c:/usr/share/doc/devcontainer-cli/$f" - | tar -t >/dev/null || { echo "$IMAGE: no $f" >&2; exit 1; }
+        done
 
   release:digest:
     desc: "Record the digest of the published image of RELEASE_VERSION (digest= to $GITHUB_OUTPUT, and the job summary)"
