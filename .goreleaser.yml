@@ -9,6 +9,8 @@ snapshot:
 before:
   hooks:
     - go mod tidy
+    # What archives: and dockers_v2: ship beside the binary: the licences of what it links.
+    - go tool task release:notices
     # NOTE: `go test ./...` is intentionally NOT run here. It would sweep the
     # Docker/network parity suites and reference/node_modules. Gating lives in
     # the CI / tag workflow (.github/workflows/release.yml), not the release hook.
@@ -34,6 +36,11 @@ archives:
   - id: default
     formats: [tar.gz]
     name_template: "devcontainer_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # A copy of the binary carries the notices its licences and Microsoft's MIT ask for.
+    files:
+      - LICENSE.txt
+      - NOTICE
+      - THIRD_PARTY_NOTICES
 
 checksum:
   name_template: "checksums.txt"
@@ -60,6 +67,10 @@ dockers_v2:
     ids:
       - devcontainer
     dockerfile: Dockerfile
+    extra_files:
+      - LICENSE.txt
+      - NOTICE
+      - THIRD_PARTY_NOTICES
     images:
       - ghcr.io/spin-stack/devcontainer-cli
     # Only the immutable, versioned tag here. `latest` is a moving tag, which is

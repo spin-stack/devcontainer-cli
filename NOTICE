@@ -1,0 +1,47 @@
+devcontainer-cli
+Copyright The spin-stack Authors
+
+Licensed under the Apache License, Version 2.0; see LICENSE.txt.
+
+This product is a Go implementation of the Dev Container CLI,
+https://github.com/devcontainers/cli, written to behave as that CLI does and
+validated against it. It contains material taken from that project, which is
+under the MIT License below:
+
+  - the test fixtures under src/test/configs/;
+  - internal/docker/updateUID.Dockerfile, which the binary embeds;
+  - the Go code that ports that CLI's behaviour (configuration merging,
+    lifecycle order, Feature and Template handling, output and errors).
+
+The Apache-2.0 licence does not take away the MIT notice below from that
+material: a copy of it, or of a substantial portion of it, carries the notice.
+
+THIRD_PARTY_NOTICES, shipped beside the binary in a release, carries the
+licence of each Go module compiled into the binary.
+
+--------------------------------------------------------------------------------
+github.com/devcontainers/cli
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) Microsoft Corporation.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

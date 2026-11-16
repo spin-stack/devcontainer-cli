@@ -1,0 +1,12 @@
+{{- /* go-licenses lists a module once per licence it finds in the file, so a module repeats when its file holds two; $prev prints each module's text once. */ -}}
+{{- $prev := "" -}}
+{{- range . -}}
+{{- if ne .Name $prev }}
+================================================================================
+{{ .Name }} {{ .Version }}
+================================================================================
+
+{{ .LicenseText }}
+{{ end -}}
+{{- $prev = .Name -}}
+{{- end -}}
