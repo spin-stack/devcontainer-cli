@@ -15,7 +15,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
-	github.com/spin-stack/go-tools v0.0.0-20261109214710-b4b5f4a78a45
+	github.com/spin-stack/go-tools v0.20261118.9
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/testcontainers/testcontainers-go v0.45.0
 	go.uber.org/mock v0.6.0
