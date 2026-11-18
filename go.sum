@@ -112,8 +112,8 @@ github.com/spf13/cobra v1.10.2/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiT
 github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/pflag v1.1.0 h1:6W6MbVUrnMb8PEhjkqwsVLY7ryuzRfFHF4mQd7L94ag=
 github.com/spf13/pflag v1.1.0/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
-github.com/spin-stack/go-tools v0.0.0-20261109214710-b4b5f4a78a45 h1:P+LTBxUd9tGz6qRNVF3izCagBQdxyy0hll4fjISYsV8=
-github.com/spin-stack/go-tools v0.0.0-20261109214710-b4b5f4a78a45/go.mod h1:69hWhQD1NPsnFEF6BhVAprRGO4f/CMLlPs4z/b6bkyg=
+github.com/spin-stack/go-tools v0.20261118.9 h1:D8fNq3qR/m8E/Koy3K+vRlug6z3uW0yYhwf74AMkyYU=
+github.com/spin-stack/go-tools v0.20261118.9/go.mod h1:Dz0i5ToXAyvGuFxMiSKu5pnH/gcA/k1WOX0FNmAt+GM=
 github.com/stretchr/objx v0.5.3 h1:jmXUvGomnU1o3W/V5h2VEradbpJDwGrzugQQvL0POH4=
 github.com/stretchr/objx v0.5.3/go.mod h1:rDQraq+vQZU7Fde9LOZLr8Tax6zZvy4kuNKF+QYS+U0=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
