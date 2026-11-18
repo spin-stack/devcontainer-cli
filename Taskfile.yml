@@ -398,6 +398,14 @@ tasks:
           go run ./cmd/devtool daily-changed >> "$out"
         fi
 
+  # Only the entries whose move a pull request's own checks answer: node's, which parity:contract's
+  # oracle gate holds. golangci-lint is go-tools' version, a person's to move with it; distroless
+  # and go-licenses are checked by a release, which no pull request runs; task's note names no check.
+  refresh:
+    desc: Propose what is behind of the entries CI checks (node) as one pull request; refresh.yml's step, and it pushes and opens a pull request as GITHUB_TOKEN or GH_TOKEN
+    cmds:
+      - versions refresh -propose node
+
   clean:
     desc: Remove generated artifacts and test containers
     cmds:
