@@ -1,0 +1,43 @@
+# Every Monday, the newest digest of the node image the ts-oracle runs in, proposed as a pull
+# request (task refresh): Node's patch releases change URL parsing, IDNA and JSON.parse messages,
+# and a golden is only as true as the Node it was made with. Nothing here merges.
+#
+# The pull request is opened with this run's own token, which starts no workflow: CI's checks do
+# not run on it until a person pushes to it, or closes and reopens it.
+name: Refresh
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The refresh branch is pushed with the checkout's credentials, and its pull request opened.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: Propose the pins CI checks at their newest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # A runner has no git identity, and each moved entry is a commit.
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: go tool task refresh
