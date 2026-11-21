@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
       - id: resolve
@@ -55,7 +55,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
       # pnpm installs the reference, through the firewall (task reference); pnpm 11 needs Node 22.13+.
@@ -90,7 +90,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
       # pnpm installs the reference, through the firewall (task reference); pnpm 11 needs Node 22.13+.
@@ -129,7 +129,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
       - env:
@@ -161,7 +161,7 @@ jobs:
           # Build at the tag so GoReleaser runs in release (not snapshot) mode.
           ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
 
@@ -231,7 +231,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.tag }}
           submodules: recursive
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
       # pnpm installs the reference, through the firewall (task reference); pnpm 11 needs Node 22.13+.
