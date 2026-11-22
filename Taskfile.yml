@@ -29,13 +29,16 @@ vars:
 
 includes:
   # versions, bump, release, lint:workflows and consumers, as every spin-stack repository has them
-  # (go-tools' internal/tasks/tasks.yml). No GATE_WORKFLOW and GATE_JOBS, so release refuses: a
-  # release here is release.yml's, dispatched. It runs e2e, the whole runtime matrix and publish
-  # parity on the commit before it tags it, which no run of go-cli.yml on a push does, and
-  # GoReleaser then fills a draft that a person publishes once it has its archives.
+  # (go-tools' internal/tasks/tasks.yml). RELEASE says how this repository is released, and
+  # release refuses with it: release.yml, dispatched, tags a commit its own gate passed on, and
+  # GoReleaser builds the archives from that tag into a draft.
   common:
     taskfile: "{{.GO_TOOLS_TASKS}}"
     flatten: true
+    vars:
+      RELEASE:
+        map:
+          elsewhere: release.yml
 
 tasks:
   default:
