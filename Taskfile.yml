@@ -27,6 +27,16 @@ vars:
   # What a release archive and the image carry beside the binary (.goreleaser.yml, Dockerfile).
   NOTICES: LICENSE.txt NOTICE THIRD_PARTY_NOTICES
 
+includes:
+  # versions, bump, release, lint:workflows and consumers, as every spin-stack repository has them
+  # (go-tools' internal/tasks/tasks.yml). No GATE_WORKFLOW and GATE_JOBS, so release refuses: a
+  # release here is release.yml's, dispatched. It runs e2e, the whole runtime matrix and publish
+  # parity on the commit before it tags it, which no run of go-cli.yml on a push does, and
+  # GoReleaser then fills a draft that a person publishes once it has its archives.
+  common:
+    taskfile: "{{.GO_TOOLS_TASKS}}"
+    flatten: true
+
 tasks:
   default:
     desc: Build and test the Go CLI
@@ -200,10 +210,11 @@ tasks:
       - go test ./internal/cli -run TestE2E -count=1 -timeout 5m -v {{.CLI_ARGS}}
 
   lint:
-    desc: Run Go static checks and go-tools' gates - golangci-lint, goroutine lifetimes, tests that cannot fail, AGENTS.md's references, unreachable code, one task per workflow step, pnpm through Socket Firewall
+    desc: Run Go static checks and go-tools' gates - golangci-lint, the workflows (actionlint, actions pinned by commit), goroutine lifetimes, tests that cannot fail, AGENTS.md's references, unreachable code, one task per workflow step, pnpm through Socket Firewall
     cmds:
       - go vet ./cmd/... ./internal/...
       - task: lint:go
+      - task: lint:workflows
       - ctxlife
       - testquality -allow .github/testquality-allow.txt ./...
       - refs
@@ -413,8 +424,8 @@ tasks:
       - rm -f {{.BINARY}} coverage.out coverage.html
       - rm -rf artifacts dist src/test/tmp
 
-  release:
-    desc: Run GoReleaser; pass --snapshot for a local release
+  release:artifacts:
+    desc: Build the release's archives, SBOMs and image with GoReleaser (-- --snapshot for a local build that publishes nothing)
     preconditions:
       - sh: command -v goreleaser >/dev/null
         msg: goreleaser is required

@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    # spin-stack/ci's docker8 fleet, where the jobs that build and run containers land (go-cli.yml
+    # says why): an 8-vCPU EC2 instance per job.
+    - runs-on/fleet=docker8/env=production
