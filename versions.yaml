@@ -1,5 +1,5 @@
-# Every input this repository pins, written once: `versions check` says what is behind,
-# `versions bump <name>` moves one (go-tools' commands, on the PATH of `go tool task`), and internal/devtools/versions_gate_test.go fails on a
+# Every input this repository pins, written once: `go tool task versions` says what is behind,
+# `go tool task bump NAME=<name>` moves one, and internal/devtools/versions_gate_test.go fails on a
 # pin written anywhere else. GitHub Actions are pinned by commit in the workflows; Dependabot
 # moves those, as go.sum is Go's.
 
@@ -33,7 +33,7 @@
   track: digest
   note: >-
     The released image's base (Dockerfile's DISTROLESS_IMAGE, handed to GoReleaser by task
-    release:env). A bump is checked by task release --snapshot and task release:smoke.
+    release:env). A bump is checked by task release:artifacts -- --snapshot and task release:smoke.
 
 - name: task
   kind: download
@@ -56,4 +56,14 @@
   track: github-release https://github.com/google/go-licenses
   note: >-
     task release:notices, which writes THIRD_PARTY_NOTICES for the release archives and image.
-    A bump is checked by task release:notices and the archive listing of task release --snapshot.
+    A bump is checked by task release:notices and by the archives task release:artifacts --
+    --snapshot lists.
+
+- name: actionlint
+  kind: module
+  source: github.com/rhysd/actionlint/cmd/actionlint
+  version: v1.7.12
+  track: github-release https://github.com/rhysd/actionlint
+  note: >-
+    task lint:workflows, which task lint runs. spin's version, so the spin-stack repositories'
+    workflows are read by the same linter.
