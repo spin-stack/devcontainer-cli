@@ -224,7 +224,7 @@ tasks:
       - mutate -stale-exempts
       - task: deadcode
       # The Task running this one, which taskgate asks for the task names a workflow step runs.
-      - taskgate -task {{.TASK_EXE}}
+      - taskgate -common -task {{.TASK_EXE}}
       - sfw check
 
   lint:go:
