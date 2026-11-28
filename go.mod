@@ -7,7 +7,7 @@ toolchain go1.27.4
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/iancoleman/orderedmap v0.3.0
-	github.com/moby/buildkit v0.35.0
+	github.com/moby/buildkit v0.35.1
 	github.com/moby/docker-image-spec v1.3.1
 	github.com/moby/moby/api v1.57.0
 	github.com/moby/moby/client v0.6.3
