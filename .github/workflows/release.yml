@@ -166,7 +166,7 @@ jobs:
           go-version-file: go.mod
 
       # syft powers the sboms: block in .goreleaser.yml and the image SBOM below.
-      - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+      - uses: anchore/sbom-action/download-syft@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
 
       # Multi-arch image build (arm64 emulated) + buildx driver for the
       # dockers:/docker_manifests: blocks in .goreleaser.yml.
@@ -181,7 +181,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
 
       # The released image's base, by digest from versions.yaml.
       - run: go tool task release:env
